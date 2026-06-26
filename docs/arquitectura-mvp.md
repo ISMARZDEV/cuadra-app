@@ -39,7 +39,7 @@
 13. [Riesgos y mitigaciones](#13-riesgos-y-mitigaciones)
 14. [Roadmap por fases (post-MVP)](#14-roadmap-por-fases-post-mvp)
 15. [Decisiones de arquitectura (ADRs)](#15-decisiones-de-arquitectura-adrs)
-16. [Próximos pasos](#16-próximos-pasos)
+16. [Estado de implementación y próximos pasos](#16-estado-de-implementación-y-próximos-pasos)
 17. [Lecciones del proyecto de reuso (adoptar / evitar)](#17-lecciones-del-proyecto-de-reuso-adoptar--evitar)
 
 ---
@@ -1129,17 +1129,70 @@ con código Morse para transferir US$150K). Mitigaciones obligatorias:
 
 ---
 
-## 16. Próximos pasos
+## 16. Estado de implementación y próximos pasos
 
-1. **Confirmar** el corte del MVP de §2. *(Naming ya definido: app **Cuadra**, tarjeta **Cuadra**.)*
-2. **Diseño detallado** por bounded context (contratos de puertos, esquema SQL, tools del
-   orquestador) — sobre la estructura de [`estructura-monorepo.md`](./estructura-monorepo.md);
-   candidato a flujo **SDD** (`sdd-spec` → `sdd-design` → `sdd-tasks`).
+> **Actualizado: 2026-06-26.** El backend del contexto **Insights** está COMPLETO end-to-end
+> (commit `feat(insights)`, **147 tests verdes**, RED-first). **Identity** ya estaba completo
+> (auth JWT + roles/capabilities + gating). El resto del MVP (Save, AISpace, News, Config, móvil)
+> aún **no se ha iniciado**.
+
+### 16.1 ✅ Listo (backend)
+
+**Identity** — dominio + `CapabilityResolver`, models + migración, repos/mappers,
+`GET /v1/identity/me` con auth JWT y **gating por mercado**, seed idempotente.
+
+**Insights** — bounded context end-to-end:
+- **Dominio puro**: ledger de doble entrada (`Σ postings = 0` por moneda), entidades
+  (transaction, budget, savings_goal, space, recurring_rule), kernel **Money/Currency**
+  (minor units, NUNCA float · §12·B).
+- **Infra normalizada (3NF)**: models SQLAlchemy schema `insights`, repos, mappers, merchant
+  get-or-create, **2 migraciones reversibles** (head `4cb3e311c6a6`).
+- **Casos de uso**: registrar transacción (idempotente §12·C + RBAC §12.1), abrir wallet
+  (saldo inicial vía cuenta `equity`), crear categoría, presupuestos/spaces/metas/recurrentes
+  (creators thin con validación de pertenencia), métricas de §5.3 y reportes.
+- **API `/v1/insights`**: `POST /transactions` · `GET /metrics` · `GET /daily-target` ·
+  `GET /accounts` · `GET /transactions` · `GET·POST /spaces` · `GET·POST /budgets` ·
+  `GET·POST /savings-goals` · `GET·POST /recurring-rules` · `GET /reports/by-category` ·
+  `GET /reports/income-vs-expense`. Errores → **ProblemDetails** (RFC 7807-ish).
+- **Tarjetas de §5.3 + Daily Target**: income, expenses, balance, **savings**, total_balance,
+  **net_worth**, daily-target — todas **derivadas del ledger por SQL** (§7.3, NO las toca un LLM).
+
+### 16.2 🔲 Pendiente
+
+**Insights — gaps que faltan**
+- **Captura/enriquecimiento (§5.6)**: pipeline de voz/OCR y auto-etiquetado essential/recurrente
+  (el MODELO está; falta cablear la captura y la inferencia).
+- `POST /spaces/{id}/accounts` — asignar wallets a un space ya creado (hoy solo al crearlo).
+- **Alertas proactivas** (§7.9, plano background) + `GET /alerts` · `GET /reminders`.
+- **Materialización de recurrentes**: job que postea las reglas vencidas (`RecurringRule.materialize()`
+  ya existe en el dominio; falta el scheduler).
+- **Búsqueda semántica** de transacciones y **reportes IA** (§5.5).
+- `GET /net-worth` dedicado (hoy vive dentro de `/metrics`). **FX display-only** (diferido §12·B).
+
+**Otras piezas del MVP — no iniciadas**
+- **Save (pieza 2)**: pipeline scraping → normalización → matching → taxonomía, búsqueda,
+  comparación, lista de compra. Requiere su **spike** (ver §16.3·3).
+- **AISpace (pieza 3)**: orquestador LangGraph router-a-nodos + subagentes (Finance, Purchases,
+  Coach, Support), STT por voz, HITL. Hoy solo existe el `LLMPort` intercambiable.
+- **News (§8)**: feed *masonry* curado (Super Admin + agente).
+- **Config**: perfil, monedas, suscripción freemium con cancelación de 1 toque.
+- **Móvil (Expo)**: tab bar + Insights (estado vacío → con datos) + chat con streaming.
+
+**Plataforma / entrega (§12·E)**
+- Billing/entitlements (E.3), notificaciones (E.4), observabilidad/analítica (E.6), control de
+  costo y abuso en runtime (E.7).
+
+### 16.3 Próximos pasos sugeridos
+
+1. ~~Confirmar el corte del MVP de §2~~ y ~~diseño detallado de Insights~~ → **hechos**.
+2. **Generar el `@cuadra/api-client`** (OpenAPI → hey-api) del backend Insights para arrancar el
+   móvil contra contratos reales (ADR 24, §E.1).
 3. **Spike técnico de Save**: auditar qué cadenas son VTEX (API) vs HTML; validar pipeline con
    **2 tiendas, 1 categoría** end-to-end (normalización + matching).
-4. **Spike del orquestador**: router + 1 subagente (Finance) con checkpointer Postgres y
-   registro de gasto por voz, end-to-end. → plan desglosado en
-   [`spike-orquestador.md`](./spike-orquestador.md) (tareas T0-T7 + criterio go/no-go).
+4. **Spike del orquestador**: router + 1 subagente (Finance) con checkpointer Postgres y registro
+   de gasto por voz, end-to-end → [`spike-orquestador.md`](./spike-orquestador.md) (T0-T7 +
+   go/no-go). Puede **REUSAR los casos de uso de Insights ya construidos** como tools
+   determinísticas (§7.3).
 5. **Esqueleto móvil Expo**: tab bar + Insights (estado vacío → con datos) + chat con streaming.
 
 ---
