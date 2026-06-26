@@ -135,7 +135,7 @@ sobre cimientos que soportan los 50 pisos). Por eso:
 | **Identidad** | Auth + modelo de roles/capabilities **multi-rol ready**, pero solo el rol **Usuario Normal** activo |
 | **Insights** | Wallets multi-moneda **DOP/USD**, transacciones (ingreso/gasto/transferencia), categorías, presupuesto + anillo, Spaces, balance, Daily Diary. Captura: **voz + chat + OCR** (manual) |
 | **Save** | Catálogo de **supermercados** (replicar SupermercadosRD): pipeline scraping → normalización → matching → taxonomía; búsqueda; comparación; **lista de compra** |
-| **AISpace** (Chat IA) | Router LangGraph (router-a-nodos) + subagentes: **Finance, Purchases, Coach, Support**. Entrada por **voz (STT)** y texto. Acciones con confirmación (human-in-the-loop) |
+| **AISpace** (Chat IA) | Router LangGraph (router-a-nodos) + subagentes: **Finance, Purchases, Coach, Support**. Entrada por **voz (STT)** y texto. **Multilenguaje es/en/pt** (§7.11). Acciones con confirmación (human-in-the-loop) |
 | **News** | Feed *masonry* curado por **Super Admin + agente IA** (noticias oficiales DGII/BCRD + contenido financiero). Sin rol Influencer aún |
 | **Config** | Perfil, monedas, suscripción freemium con **cancelación de 1 toque** |
 
@@ -148,6 +148,10 @@ sobre cimientos que soportan los 50 pisos). Por eso:
 
 > El **modelo de datos y de roles se diseña COMPLETO desde ya** (multi-rol y first-party-ready)
 > para no migrar el esquema después — se **implementa** por fases.
+
+> **Idiomas (mismo principio que monedas/roles): se diseña para escalar, se habilita por fases.**
+> MVP = **español (primario), inglés, portugués**. La i18n NO está acoplada a la lógica → sumar un
+> idioma toca solo 2 archivos (detector + catálogo de strings), nunca los agentes. Detalle en §7.11.
 
 ---
 
@@ -651,6 +655,26 @@ la educación** — exactamente la tesis del concepto (el miedo, no el saber):
   el agente proactivo + acciones + absorber shocks es el producto, no más tutoriales.
 - **Confianza = "empezar pequeño y ver resultados" (22%)**, no track-record/regulación → diséñalo en
   el **onboarding** (un primer insight/ahorro chico que demuestre valor rápido).
+
+### 7.11 Multilenguaje (es/en/pt, escalable)
+
+El chat soporta **español (primario), inglés y portugués**; diseñado para sumar más sin tocar la
+lógica. Patrón de producción (no "pedirle al modelo que hable tu idioma" — eso es frágil):
+
+- **Dos tipos de texto, dos mecanismos:** el texto que **genera el LLM** se controla con el prompt
+  (idioma inyectado como **valor concreto**: *"Responde en English"*, no una regla vaga); los
+  **strings deterministas** (confirmaciones, errores, canned) viven en un **catálogo i18n** por
+  locale — un prompt NO puede localizar un string hardcodeado en código.
+- **Resolución del idioma (dos señales):** **locale del cliente = primario** (el dispositivo lo sabe);
+  **detección por-mensaje** (lingua acotado a es/en/pt) solo hace **override** cuando el usuario
+  claramente escribe en otro idioma. El idioma viaja en el estado del grafo por conversación.
+- **Tool outputs neutrales** (datos, no prosa en un idioma) → no anclan la respuesta.
+- **Escalar a un idioma N = 2 archivos** (`shared/lang` detector + `shared/i18n` catálogo); los
+  agentes/grafo NO se tocan. El modelo (Claude/GPT) maneja 50-100+ idiomas nativo → nunca es el límite.
+- Default seguro: un idioma no soportado cae a **español** (no rompe, solo no localiza).
+
+> Mismo principio que monedas (§12·B, exponente por moneda) y roles (§3): el sistema se **diseña
+> completo** y se **habilita por fases**.
 
 ---
 
