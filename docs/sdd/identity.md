@@ -132,3 +132,16 @@ class CapabilityResolver:
 | **T12** | seed: roles + capabilities MVP (Usuario Normal, Super Admin) | `python -m seeds` carga roles/capabilities idempotente |
 
 > **Orden:** T1→T3 (dominio puro, sin DB) → T4→T6 (persistencia) → T7→T11 (aplicación+API) → T12 (seed). Cada bloque deja tests verdes antes de seguir.
+
+---
+
+## 4. Deuda técnica — desviaciones del doc (explícitas)
+
+Detectadas en la auditoría (2026-06-26). Cada una con su resolución planificada. **No son bugs**:
+son decisiones conscientes registradas para no arrastrar ambigüedad.
+
+| # | Desviación | Doc | Estado actual | Resolución | Cuándo |
+|---|---|---|---|---|---|
+| **D1** | **JWT claims** — el token solo trae `sub`; `require_capability` resuelve roles/caps **desde la DB por request** | §12·E E.2: claims `{roles, capabilities, home_market, current_market, plan}` en el JWT (gating stateless) | DB-per-request (siempre fresco; tráfico bajo) | Al construir el **login/provision**: poblar los claims en el *mint* del token y que el gating lea del token; el DB-resolve pasa al mint. Mitigar staleness con TTL corto + refresh | Con el flujo de login |
+| **D2** | **Resolución de capabilities** usa **un solo mercado** (current) | §3·B.3: `f(roles, home_market, current_market)` — fiscal gatea por *home*, ubicación por *current* | Correcto para MVP (RD: home==current) | Extender `CapabilityResolver` a tomar gating de **home Y current** | Multipaís (fase) |
+| **D3** | **Strict TDD no practicado** — test junto/después, no RED-first | ADR 23: RED → GREEN → REFACTOR | 25 tests verdes, cobertura completa | **Adoptar RED-first** desde el próximo contexto (la lógica pura es ideal) | Inmediato |

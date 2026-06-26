@@ -1,4 +1,4 @@
-.PHONY: help install api mobile db-up db-down migrate seed openapi api-client test
+.PHONY: help install api mobile db-up db-down migrate seed openapi api-client test test-unit test-ctx
 
 help:
 	@echo "Cuadra — comandos del monorepo"
@@ -9,7 +9,9 @@ help:
 	@echo "  make migrate     alembic upgrade head"
 	@echo "  make seed        Carga el seed inicial"
 	@echo "  make openapi     Vuelca openapi.json + regenera api-client"
-	@echo "  make test        Tests del backend"
+	@echo "  make test        Suite completa del backend (gate)"
+	@echo "  make test-unit   Solo unit, sin DB (loop TDD rápido)"
+	@echo "  make test-ctx CTX=identity   Tests de un contexto"
 
 install:
 	pnpm install
@@ -39,3 +41,9 @@ openapi:
 
 test:
 	cd apps/api && uv run pytest
+
+test-unit:
+	cd apps/api && uv run pytest -m "not integration"
+
+test-ctx:
+	cd apps/api && uv run pytest tests/$(CTX)

@@ -38,3 +38,8 @@ target-version = "py312"
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+markers = [
+    "unit: unitario, sin DB (rápido)",
+    "integration: requiere DB (Postgres)",
+]
