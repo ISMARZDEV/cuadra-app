@@ -1,4 +1,4 @@
-.PHONY: help install api mobile db-up db-down migrate seed openapi api-client test test-unit test-ctx
+.PHONY: help install api mobile db-up db-down migrate seed openapi api-client test test-unit test-ctx eval
 
 help:
 	@echo "Cuadra — comandos del monorepo"
@@ -12,6 +12,7 @@ help:
 	@echo "  make test        Suite completa del backend (gate)"
 	@echo "  make test-unit   Solo unit, sin DB (loop TDD rápido)"
 	@echo "  make test-ctx CTX=identity   Tests de un contexto"
+	@echo "  make eval        Mini-eval del FinanceAgent (LLM real, no es gate)"
 
 install:
 	pnpm install
@@ -47,3 +48,6 @@ test-unit:
 
 test-ctx:
 	cd apps/api && uv run pytest tests/$(CTX)
+
+eval:
+	cd apps/api && uv run python -m evals.finance_eval
