@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     app_env: str = "dev"
 
     # DB — PostgreSQL único (ADR 31). Réplica de lectura opcional (§12·E E.5).
-    database_url: str = "postgresql+psycopg://cuadra:cuadra@localhost:5432/cuadra"
+    database_url: str = "postgresql+psycopg://cuadra:cuadra@localhost:5433/cuadra"
     database_url_read: str = ""
 
     # IA

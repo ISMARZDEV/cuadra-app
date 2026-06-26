@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: cuadra
       POSTGRES_DB: cuadra
     ports:
-      - "5432:5432"
+      - "5433:5432"   # host 5433 (5432 ocupado por otro Postgres local)
     volumes:
       - cuadra_pg:/var/lib/postgresql/data
     healthcheck:
