@@ -12,21 +12,24 @@ DEFAULT = "es"
 _CATALOG: dict[str, dict[str, str]] = {
     "es": {
         "registered": "Listo, registré {display} en {category} desde {wallet}.",
-        "register_failed": "No pude registrarlo: {reason}",
+        "no_wallet": "No tienes una wallet todavía. Crea una (p. ej. 'Banco') antes de registrar gastos.",
+        "no_currency_wallet": "No tienes una wallet en {currency}. Crea una primero o usa otra moneda.",
         "cancelled": "Cancelado, no registré nada.",
         "other": "(AISpace) Por ahora manejo tus finanzas. Pronto más.",
         "confirm_prompt": "¿Confirmas {summary}? (sí/no)",
     },
     "en": {
         "registered": "Done — I registered {display} in {category} from {wallet}.",
-        "register_failed": "I couldn't register it: {reason}",
+        "no_wallet": "You don't have a wallet yet. Create one (e.g. 'Bank') before logging expenses.",
+        "no_currency_wallet": "You don't have a {currency} wallet. Create one first or use another currency.",
         "cancelled": "Cancelled, I didn't register anything.",
         "other": "(AISpace) For now I handle your finances. More soon.",
         "confirm_prompt": "Confirm {summary}? (yes/no)",
     },
     "pt": {
         "registered": "Pronto, registrei {display} em {category} de {wallet}.",
-        "register_failed": "Não consegui registrar: {reason}",
+        "no_wallet": "Você ainda não tem uma carteira. Crie uma (ex. 'Banco') antes de registrar gastos.",
+        "no_currency_wallet": "Você não tem uma carteira em {currency}. Crie uma primeiro ou use outra moeda.",
         "cancelled": "Cancelado, não registrei nada.",
         "other": "(AISpace) Por enquanto cuido das suas finanças. Em breve mais.",
         "confirm_prompt": "Confirma {summary}? (sim/não)",

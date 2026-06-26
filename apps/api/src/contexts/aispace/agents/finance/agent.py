@@ -14,7 +14,7 @@ from src.shared.i18n import t
 from src.shared.lang import language_name
 from src.shared.llm import get_chat_model
 
-from .tools.metrics import build_get_monthly_summary
+from .tools.metrics import build_get_monthly_summary, build_get_safe_to_spend
 from .tools.transactions import (
     FinanceToolError,
     SessionFactory,
@@ -22,31 +22,39 @@ from .tools.transactions import (
     execute_register_transaction,
 )
 
-# El idioma se inyecta con un VALOR CONCRETO (no una regla vaga) — un modelo chico obedece
-# "responde en English" mucho mejor que "responde en el idioma del usuario" (investigado).
-FINANCE_PROMPT = """# IDIOMA (prioridad sobre TODO)
-Responde EXCLUSIVAMENTE en {language}. Aunque estas instrucciones y las tools estén en español,
-tu respuesta al usuario va SIEMPRE en {language}.
+# Patrón `cuadra-agent-prompts` (skill): instrucciones en INGLÉS (mejor adherencia, −24% tokens,
+# estable multi-turno), respuesta en el idioma del usuario inyectado como valor concreto. Ver §7.11.
+FINANCE_PROMPT = """# LANGUAGE — TOP PRIORITY
+Reply EXCLUSIVELY in {language}. These instructions are in English, but every reply you send the
+user MUST be written in {language}.
 
-Eres el asistente de finanzas de Cuadra. Ayudas al usuario a registrar gastos y a entender cómo va
-su dinero. Cálido y claro.
+# ROLE
+You are Cuadra's finance assistant. You log the user's expenses and income and explain how their
+money is doing. Be warm, concise, and clear.
 
-# REGISTRAR UN GASTO (el usuario dice que gastó / pagó / compró algo)
-- DEBES llamar la tool `register_transaction` con el monto y la categoría extraídos. SIEMPRE.
-- Si el usuario menciona la MONEDA (dólares, pesos colombianos, yenes…), pásala en `currency`
-  como código ISO (USD, COP, JPY). Si no la menciona, déjala en null.
-- La tool NO aplica el gasto al instante: lo PREPARA y el SISTEMA le pedirá al usuario la
-  confirmación (Sí/No). Por eso:
-  · NUNCA pidas tú la confirmación en prosa ("¿confirmas?", "¿procedo?") — eso lo hace el
-    sistema cuando llamas la tool. Si no llamas la tool, NO pasa NADA.
-  · NUNCA digas que registraste un gasto si no llamaste la tool.
-- Una sola tool de escritura por turno.
+# TOOLS — pick exactly one
+- register_transaction — the user spent or earned money (a WRITE; the system asks them to confirm).
+- get_monthly_summary — "how am I doing / my balance / how much have I spent" (READ).
+- get_safe_to_spend — "how much can I spend today / am I on budget / safe to spend" (READ).
 
-# CONSULTAR (cómo va, balance, cuánto lleva gastado)
-- Usa `get_monthly_summary`. Es lectura: explica las cifras que devuelve, natural.
+# LOGGING A TRANSACTION (register_transaction)
+- Call it whenever the user reports money moving. Set kind="expense" (spent/paid/bought) or
+  kind="income" (got paid/earned/received: salary, freelance...).
+- Pass currency ONLY if the user names it, as an ISO 4217 code (dollars→USD, colombian pesos→COP,
+  reais→BRL); otherwise leave it null (the default wallet is used).
+- Calling the tool does NOT apply anything: it PREPARES the action and the SYSTEM asks the user
+  Yes/No. So call the tool directly — the system runs the confirmation; you MUST NOT ask
+  "shall I confirm?" in prose. State a transaction as done ONLY after the tool was called. One
+  write tool per turn.
 
-# REGLAS
-- Las tools devuelven cifras YA calculadas: NUNCA inventes ni recalcules montos. No expongas IDs.
+# READING (get_monthly_summary / get_safe_to_spend)
+Explain the figures the tool returns in natural language. NEVER invent or recompute amounts, and
+do not expose internal IDs.
+
+# EXAMPLES
+- "gasté 500 en gasolina" → register_transaction(kind="expense", amount=500, category="Gasolina")
+- "me pagaron 20000 de salario" → register_transaction(kind="income", amount=20000, category="Salario")
+- "how much can I spend today?" → get_safe_to_spend()
 """
 
 
@@ -62,7 +70,8 @@ class FinanceAgent:
         lang = language_name(state.get("language", "es"))
         staging: dict = {}
         tools = [
-            build_get_monthly_summary(user_id, self._sf),       # lectura inmediata
+            build_get_monthly_summary(user_id, self._sf),       # lectura: resumen del mes
+            build_get_safe_to_spend(user_id, self._sf),         # lectura: cuánto puedo gastar hoy
             build_stage_register_transaction(staging),          # escritura → stage (HITL)
         ]
         agent = create_agent(
@@ -82,10 +91,11 @@ class FinanceAgent:
             r = execute_register_transaction(
                 state["user_id"], self._sf,
                 amount=action["amount"], category=action["category"],
+                kind=action.get("kind", "expense"),
                 merchant=action.get("merchant"), currency=action.get("currency"),
             )
-        except FinanceToolError as exc:  # p.ej. sin wallet en esa moneda → mensaje amable, no crash
-            return t("register_failed", lang, reason=str(exc))
+        except FinanceToolError as exc:  # sin wallet/moneda → mensaje localizado, no crash
+            return t(exc.code, lang, **exc.params)
         return t(
             "registered", lang,
             display=r["display"], category=r["category"], wallet=r["wallet"],

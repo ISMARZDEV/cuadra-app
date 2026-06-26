@@ -22,3 +22,9 @@ def test_interpolates_params() -> None:
 def test_unknown_language_falls_back_to_default() -> None:
     assert t("cancelled", "xx") == t("cancelled", "es")   # default es
     assert t("cancelled", None) == t("cancelled", "es")
+
+
+def test_tool_error_keys_localized() -> None:
+    assert t("no_currency_wallet", "en", currency="BRL") == \
+        "You don't have a BRL wallet. Create one first or use another currency."
+    assert t("no_wallet", "pt").startswith("Você ainda não tem")

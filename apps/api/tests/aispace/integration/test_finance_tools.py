@@ -112,3 +112,51 @@ def test_register_zero_decimal_currency_no_x100(db_session: Session) -> None:
     )
     assert r["amount_minor"] == 500           # 0 decimales → ×1, NO ×100
     assert r["display"] == "JPY 500"
+
+
+def test_commit_localizes_tool_error(db_session: Session) -> None:
+    """Sin wallet en la moneda → commit captura FinanceToolError y lo localiza (no crash)."""
+    from src.contexts.aispace.agents.finance.agent import FinanceAgent
+
+    user_id = str(uuid.uuid4())
+    _add_wallet(db_session, user_id, "DOP", "Banco")  # solo DOP
+    agent = FinanceAgent(_factory(db_session))
+    state = {
+        "user_id": user_id,
+        "language": "en",
+        "pending_action": {"amount": 50, "category": "Gas", "currency": "USD"},
+    }
+    reply = agent.commit(state)
+    assert "USD wallet" in reply        # mensaje localizado en inglés, no español ni traceback
+
+
+def test_register_income_increases_wallet(db_session: Session) -> None:
+    """kind='income' → entra dinero a la wallet (no sale, como el gasto)."""
+    user_id = str(uuid.uuid4())
+    banco = _add_wallet(db_session, user_id, "DOP", "Banco")
+    r = execute_register_transaction(
+        user_id, _factory(db_session), amount=20000, category="Salary", kind="income"
+    )
+    assert r["amount_minor"] == 2_000_000
+    bal = SqlInsightsMetricsRepository(db_session).balances_by_account(user_id)
+    assert bal[banco.id] == 2_000_000      # ingreso → saldo SUBE (gasto bajaría)
+    cats = [a for a in SqlAccountRepository(db_session).list_by_user(user_id)]
+    assert any(a.name == "Salary" and a.type is AccountType.INCOME for a in cats)
+
+
+def test_get_safe_to_spend_tool(db_session: Session) -> None:
+    """La tool de safe-to-spend devuelve datos del daily-target (reusa GetDailyTarget)."""
+    from src.contexts.aispace.agents.finance.tools.metrics import build_get_safe_to_spend
+    from src.contexts.insights.domain.entities import Budget, BudgetPeriod
+    from src.contexts.insights.infrastructure.planning import SqlBudgetRepository
+    from src.shared.money import Money
+
+    user_id = str(uuid.uuid4())
+    fuel = Account(str(uuid.uuid4()), user_id, AccountType.EXPENSE, DOP, "Gasolina")
+    SqlAccountRepository(db_session).add(fuel)
+    SqlBudgetRepository(db_session).add(
+        Budget(str(uuid.uuid4()), user_id, fuel.id, Money(600_000, DOP), BudgetPeriod.MONTHLY)
+    )
+    tool = build_get_safe_to_spend(user_id, _factory(db_session))
+    out = tool.invoke({})
+    assert "safe_to_spend_today" in out and "DOP" in out

@@ -51,8 +51,12 @@ CORE: list[Case] = [
     Case("registra un gasto de 2000 en renta", "register", 2000, "renta"),
     Case("acabo de pagar 350 de Spotify", "register", 350, None),
     Case("gasté RD$45.50 en el parqueo", "register", 45.5, "parqueo"),
+    # ── register income ──
+    Case("me pagaron 20000 de salario", "register", 20000, None),
+    Case("cobré 5000 de un freelance", "register", 5000, None),
     # ── query (lectura) ──
     Case("¿cuánto llevo gastado este mes?", "query"),
+    Case("¿cuánto puedo gastar hoy?", "query"),
     Case("¿cómo voy con mis finanzas?", "query"),
     Case("¿cuál es mi balance?", "query"),
     Case("muéstrame mis gastos del mes", "query"),
@@ -82,7 +86,7 @@ def _outcome(result: dict) -> str:
     if "__interrupt__" in result:
         return "register"  # escritura staged → pausó en el HITL
     for m in result.get("messages", []):
-        if isinstance(m, ToolMessage) and getattr(m, "name", "") == "get_monthly_summary":
+        if isinstance(m, ToolMessage) and getattr(m, "name", "") in ("get_monthly_summary", "get_safe_to_spend"):
             return "query"
     return "other"  # no llamó tool financiera → ruteó a respond_other (o chit-chat)
 

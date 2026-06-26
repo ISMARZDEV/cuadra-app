@@ -37,9 +37,9 @@ class _IntentOut(BaseModel):
 
 
 def llm_classifier(text: str, capabilities: list[str]) -> str:
-    """Clasificador real (LLM barato, structured output). El de producción."""
+    """Real classifier (cheap LLM, structured output). English prompt — cuadra-agent-prompts skill."""
     model = get_chat_model("fast")
     out = model.with_structured_output(_IntentOut).invoke(
-        [HumanMessage(f"Clasifica la intención financiera del usuario: {text!r}")]
+        [HumanMessage(f"Classify the user's financial intent: {text!r}")]
     )
     return out.intent
