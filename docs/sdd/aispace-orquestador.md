@@ -25,7 +25,7 @@ Purchases/Coach/Support, memoria semántica (§7.5), streaming a la UI (§7.6), 
 ```
 contexts/aispace/
   orchestration/              # EL GRAFO y su mecánica (no conoce agentes concretos)
-    state.py                  #   IAMState (§7.2)
+    state.py                  #   AispaceState (§7.2)
     graph.py                  #   build_graph(): router → nodos → compile(checkpointer)
     router.py                 #   classify_intent: triggers (cortocircuitos §7.8) + LLMPort structured
     registry.py               #   INTENT→AgentSpec — añadir un agente NO toca el grafo (registry pattern)
@@ -72,7 +72,7 @@ src/api/v1/controllers/aispace.py   # POST /v1/aispace/chat (+ /resume)
 ## 3. Estado del grafo (§7.2)
 
 ```python
-class IAMState(MessagesState):          # messages: add_messages
+class AispaceState(MessagesState):          # messages: add_messages
     user_id: str
     capabilities: list[str]             # gobierna qué tools puede usar (RBAC §12.1)
     intent: str
@@ -148,7 +148,7 @@ gpt-4o-mini en dev por `LLM_PROVIDER`). `temperature=0` para determinismo de rou
 
 ## 8. Plan de tasks (RED-first) — ESTADO
 
-1. ✅ `IAMState` + `build_graph` (registry-driven) — unit con MemorySaver.
+1. ✅ `AispaceState` + `build_graph` (registry-driven) — unit con MemorySaver.
 2. ✅ `classify_intent` (cortocircuitos + `llm_classifier` inyectable) — unit.
 3. ✅ Tool `register_transaction` → `RecordTransaction` (UoW propia D1/D2, scope por closure) — integración.
 4. ✅ `FinanceAgent.plan/execute` + `confirm` (HITL `interrupt`) — unit (fakes) + integración (LLM real).
@@ -158,10 +158,14 @@ gpt-4o-mini en dev por `LLM_PROVIDER`). `temperature=0` para determinismo de rou
 > **159 tests verdes, 0 regresiones** (12 nuevos de aispace, RED-first).
 
 ### Refinamientos durante `apply` (decisiones registradas)
-- **FinanceAgent v1 = flujo DETERMINISTA** (extraer→confirmar→ejecutar), NO `create_agent`/ReAct. Con
-  UNA tool de escritura + HITL obligatorio, ReAct añade costo/no-determinismo sin valor. Migra a
-  `create_agent` cuando el agente tenga varias tools y el LLM deba ELEGIR. La estructura (tools/,
-  registry, closure-binding) ya queda lista para esa migración.
+- **FinanceAgent v1 = determinista → v2 = ReAct (`create_agent`)**, hecho al sumar la 2ª tool
+  (`get_monthly_summary`, lectura) junto a `register_transaction` (escritura): el LLM **ELIGE** la
+  tool. **HITL en ReAct** (patrón del reuso): la tool de escritura NO escribe — **stagea** la acción
+  en un dict (closure); el grafo (`confirm`) pide confirmación; al aprobar, `agent_commit` ejecuta.
+  Las lecturas responden en `agent_run` sin HITL. Contrato del agente: `run()` / `commit()`.
+- **Gotcha clave (cazado por el test):** el modelo tendía a pedir confirmación EN PROSA en vez de
+  llamar la tool. Fix = prompt forzando "DEBES llamar la tool; el SISTEMA pide la confirmación, no
+  tú" (lección directa del reuso). Sin esto, no hay HITL ni escritura.
 - **Checkpointer = singleton perezoso** en `composition_root` (no en `lifespan`): no acopla el
   arranque a la DB ni corre en tests de otros contextos.
 
@@ -170,7 +174,7 @@ gpt-4o-mini en dev por `LLM_PROVIDER`). `temperature=0` para determinismo de rou
   `capabilities` del usuario desde identity e inyectarlas al estado para gatear qué agente/tool puede
   usar. No-op hoy (un solo rol con todo); se cablea cuando entren más roles.
 - **Resolver `capabilities` reales** en el controller (hoy va `[]`).
-- Migración a `create_agent`/ReAct cuando Finance sume tools (income/transfer, get_metrics, etc.).
+- Más tools de Finance (income/transfer, daily-target, presupuestos) sobre el mismo patrón ReAct.
 - Purchases/Coach/Support · fan-out del triángulo (Coach) · streaming SSE/WS (§7.6) · memoria
   semántica pgvector (§7.5) · router encoder-only · voz (on-device en el móvil).
 ```

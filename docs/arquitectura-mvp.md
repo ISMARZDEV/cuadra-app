@@ -513,7 +513,7 @@ de razonamiento para lo complejo).
 
 ### 7.2 Estado (extender `MessagesState`)
 ```python
-class IAMState(MessagesState):           # messages: Annotated[list, add_messages]
+class AispaceState(MessagesState):           # messages: Annotated[list, add_messages]
     user_id: str
     capabilities: list[str]              # gobierna qué tools puede usar el router/agente
     intent: str
