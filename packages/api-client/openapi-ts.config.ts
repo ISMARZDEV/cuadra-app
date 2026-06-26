@@ -5,5 +5,6 @@ import { defineConfig } from "@hey-api/openapi-ts";
 export default defineConfig({
   input: "../../apps/api/openapi.json", // o http://localhost:8005/openapi.json
   output: "src/generated",
-  plugins: ["@hey-api/client-fetch", "@tanstack/react-query", "zod"],
+  client: "@hey-api/client-fetch", // en openapi-ts 0.53 el cliente HTTP va aquí, no en plugins
+  plugins: ["@tanstack/react-query", "zod"],
 });

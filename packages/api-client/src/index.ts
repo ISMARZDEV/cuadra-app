@@ -1,4 +1,3 @@
-// Punto de entrada del cliente API. Tras `make openapi` re-exporta el SDK generado:
-//   export * from "./generated";
-// `src/generated/` es gitignored (se genera en dev/CI). Por ahora, placeholder.
-export {};
+// Punto de entrada del cliente API. Re-exporta el SDK generado por `make openapi`
+// (SDK tipado + hooks TanStack Query + schemas zod). `src/generated/` es gitignored.
+export * from "./generated";
