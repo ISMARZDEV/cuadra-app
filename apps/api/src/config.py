@@ -24,5 +24,16 @@ class Settings(BaseSettings):
     langsmith_api_key: str = ""
     sentry_dsn: str = ""
 
+    # Auth (§12·E E.2) — el JWT lo emite/valida el proveedor; aquí solo la verificación de firma
+    jwt_secret: str = "change-me"
+    jwt_algorithm: str = "HS256"
+
+    # CORS (§12·E E.1) — coma-separado (evita el parseo JSON de listas de pydantic-settings)
+    cors_origins: str = "*"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
 
 settings = Settings()
