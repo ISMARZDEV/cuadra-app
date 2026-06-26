@@ -8,5 +8,6 @@ Entornos aislados: **dev · staging · prod** (DB y secrets por entorno).
 Variables clave (ver `.env.example` en la raíz):
 - `DATABASE_URL=postgresql+psycopg://cuadra:cuadra@localhost:5433/cuadra` (+ `DATABASE_URL_READ` para réplica · §12·E E.5)
   - *Nota: host 5433 — el 5432 lo ocupa otro Postgres local.*
-- `ANTHROPIC_API_KEY`, `LANGSMITH_API_KEY`, `SENTRY_DSN`
+- `LLM_PROVIDER` (`anthropic` | `openai`) + `ANTHROPIC_API_KEY` y/o `OPENAI_API_KEY` (proveedor tras LLMPort, §7.8)
+- `LANGSMITH_API_KEY`, `SENTRY_DSN`
 - `EXPO_PUBLIC_API_URL=http://localhost:8005` (mobile → backend)

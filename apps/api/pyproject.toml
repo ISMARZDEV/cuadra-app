@@ -16,7 +16,9 @@ dependencies = [
     # IA / orquestador (Fase 1+)
     "langgraph>=0.2",
     "langgraph-checkpoint-postgres>=2.0",
+    "langchain>=0.3",
     "langchain-anthropic>=0.2",
+    "langchain-openai>=0.2",
 ]
 
 [dependency-groups]

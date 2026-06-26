@@ -14,8 +14,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://cuadra:cuadra@localhost:5433/cuadra"
     database_url_read: str = ""
 
-    # IA
+    # LLM — proveedor intercambiable tras LLMPort (§7.8, shared/llm).
+    # Claude = default de prod (ADRs); OpenAI u otro vía LLM_PROVIDER (p.ej. dev).
+    llm_provider: str = "anthropic"   # "anthropic" | "openai"
     anthropic_api_key: str = ""
+    openai_api_key: str = ""
 
     # Observabilidad (ADR 28)
     langsmith_api_key: str = ""

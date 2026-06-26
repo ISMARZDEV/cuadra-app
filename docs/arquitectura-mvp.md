@@ -586,6 +586,14 @@ usó **dictado nativo on-device** (iOS/Android) para shipear Voice Mode rápido.
 > Usar **prompt caching** (system prompt + tools estables) → lecturas a ~0.1× del precio base.
 > Detalle de unit economics en §12·D.
 
+> **Proveedor intercambiable (`LLMPort`, `shared/llm`):** los agentes hablan con un **puerto**, no
+> con un SDK concreto → el proveedor se elige por config (`LLM_PROVIDER`). **Claude es el default de
+> prod** (esta tabla, ADR 8, validado en evals/§12·D); otro proveedor (p.ej. **OpenAI en dev**) entra
+> sin tocar los agentes. Implementación trivial con `init_chat_model("provider:model")` de LangChain.
+> **Ojo:** lo *provider-específico* (prompt caching de Anthropic, visión OCR del §9) es concern del
+> **adaptador**, no del agente — al correr GPT en dev esas optimizaciones no aplican igual; prod-on-Claude
+> las restaura. Mantén la lógica agéntica **provider-agnostic** detrás del puerto.
+
 ### 7.9 Arquitectura de DOS PLANOS — patrón validado por Cleo 3.0 / Autopilot
 
 El hallazgo más fuerte del blog de Cleo: **separar el sistema en dos planos** que corren en
