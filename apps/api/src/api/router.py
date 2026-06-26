@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from src.api.v1.controllers import health, identity
+from src.api.v1.controllers import health, identity, insights
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(identity.router)
+api_router.include_router(insights.router)
