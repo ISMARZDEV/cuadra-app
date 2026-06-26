@@ -1,0 +1,29 @@
+# import-linter — refuerza los límites de la arquitectura en CI (ADR 31, ADR 33).
+# `aispace` es el orquestador (consume otros contextos por puerto), por eso NO entra
+# en la independencia; sus reglas se afinan cuando tenga imports reales.
+
+[importlinter]
+root_package = src
+
+[importlinter:contract:business-contexts-independent]
+name = Los contextos de negocio no se importan entre sí (ADR 33)
+type = independence
+modules =
+    src.contexts.identity
+    src.contexts.insights
+    src.contexts.save
+    src.contexts.news
+
+[importlinter:contract:domain-puro]
+name = domain no importa de infrastructure (ADR 31)
+type = forbidden
+source_modules =
+    src.contexts.identity.domain
+    src.contexts.insights.domain
+    src.contexts.save.domain
+    src.contexts.news.domain
+forbidden_modules =
+    src.contexts.identity.infrastructure
+    src.contexts.insights.infrastructure
+    src.contexts.save.infrastructure
+    src.contexts.news.infrastructure

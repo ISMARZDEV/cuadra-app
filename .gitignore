@@ -1,0 +1,41 @@
+# ── Node / JS ──
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.expo/
+.expo-shared/
+web-build/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# ── Env / secrets ──
+.env
+.env.*
+!.env.example
+*.local
+
+# ── DB / generated ──
+*.sqlite3
+apps/api/openapi.json
+packages/api-client/src/generated/
+
+# ── OS / IDE ──
+.DS_Store
+.idea/
+.vscode/
+*.log
+logs/
+
+# ── Build artifacts ──
+coverage/
+test-results/
+playwright-report/

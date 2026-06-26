@@ -1,0 +1,20 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: cuadra-db
+    environment:
+      POSTGRES_USER: cuadra
+      POSTGRES_PASSWORD: cuadra
+      POSTGRES_DB: cuadra
+    ports:
+      - "5432:5432"
+    volumes:
+      - cuadra_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cuadra"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cuadra_pg:

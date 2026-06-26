@@ -1,0 +1,17 @@
+{
+  "name": "@cuadra/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "generate": "openapi-ts"
+  },
+  "dependencies": {
+    "@hey-api/client-fetch": "^0.5.0"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.53.0",
+    "@tanstack/react-query": "^5.51.0"
+  }
+}

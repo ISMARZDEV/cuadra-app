@@ -1,0 +1,17 @@
+{
+  "name": "cuadra-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cuadra — copiloto financiero con IA (monorepo). Backend Python/FastAPI + Mobile RN/Expo.",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "mobile": "pnpm --filter @cuadra/mobile start",
+    "api:gen": "pnpm --filter @cuadra/api-client generate",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0"
+  }
+}
