@@ -158,3 +158,35 @@ def get_get_income_vs_expense(
     session: Session = Depends(get_session),
 ) -> GetIncomeVsExpense:
     return GetIncomeVsExpense(SqlReportsRepository(session))
+
+
+# ── AISpace orquestador ──────────────────────────────────────────────────────
+# Checkpointer Postgres = singleton perezoso (D3). Lazy (no en lifespan) para no acoplar
+# el arranque de la app a la DB ni correr en los tests de otros contextos. Se crea en el
+# primer request real de aispace; los tests del chat hacen override de `get_aispace_graph`.
+_aispace_checkpointer: dict[str, object] = {}
+
+
+def get_aispace_checkpointer() -> object:
+    cp = _aispace_checkpointer.get("cp")
+    if cp is None:
+        from langgraph.checkpoint.postgres import PostgresSaver
+        from psycopg import Connection
+
+        uri = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
+        conn = Connection.connect(uri, autocommit=True)
+        cp = PostgresSaver(conn)
+        cp.setup()
+        _aispace_checkpointer["cp"] = cp
+    return cp
+
+
+def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):  # type: ignore[no-untyped-def]
+    from src.contexts.aispace.orchestration.graph import build_graph
+    from src.contexts.aispace.orchestration.registry import build_registry
+    from src.contexts.aispace.orchestration.router import llm_classifier
+
+    # session_factory = SessionLocal: cada tool abre su propia UoW (D1, sobrevive el HITL).
+    return build_graph(
+        checkpointer, classifier=llm_classifier, registry=build_registry(SessionLocal)
+    )
