@@ -1,13 +1,18 @@
-"""Entry point del seed: `python -m seeds`  (§11).
+"""Entry point del seed: `python -m seeds` (§11).
 
-Orquesta los seeds idempotentes por concern. Se llenan por fase.
+Orquesta los seeds idempotentes por contexto. Se amplía contexto a contexto.
 """
 from __future__ import annotations
 
 
 def main() -> None:
-    # TODO (Fase 1+): market_rd → categories → save_taxonomy (idempotentes)
-    print("seed: nada que cargar todavía (esqueleto).")
+    from seeds.identity_seed import seed_identity
+    from src.shared.db.base import SessionLocal
+
+    with SessionLocal() as session:
+        seed_identity(session)
+        session.commit()
+    print("seed: identity OK (idempotente).")
 
 
 if __name__ == "__main__":

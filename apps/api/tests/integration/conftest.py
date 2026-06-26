@@ -38,26 +38,14 @@ def db_session() -> Iterator[object]:
 
 @pytest.fixture
 def seeded_user(db_session):  # type: ignore[no-untyped-def]
-    """Usuario MVP: rol normal_user (wallet, card) con `card` deshabilitada en RD."""
-    from src.contexts.identity.infrastructure.models import (
-        CapabilityMarketModel,
-        CapabilityModel,
-        RoleCapabilityModel,
-        RoleModel,
-        UserModel,
-        UserRoleModel,
-    )
+    """Usuario MVP con rol normal_user — reusa el seed real (DRY + idempotente).
 
-    db_session.add(RoleModel(key="normal_user", name="Usuario Normal"))
-    db_session.add_all([CapabilityModel(key="wallet"), CapabilityModel(key="card")])
-    db_session.flush()  # reference data PRIMERO (evita FK violations por orden de insert)
-    db_session.add_all(
-        [
-            RoleCapabilityModel(role_key="normal_user", capability_key="wallet"),
-            RoleCapabilityModel(role_key="normal_user", capability_key="card"),
-        ]
-    )
-    db_session.add(CapabilityMarketModel(capability_key="card", market_id="DO", enabled=False))
+    El seed deja `card`/`remittance` deshabilitadas en RD (gating de mercado).
+    """
+    from seeds.identity_seed import seed_identity
+    from src.contexts.identity.infrastructure.models import UserModel, UserRoleModel
+
+    seed_identity(db_session)  # roles + capabilities + gating RD
     user = UserModel(
         email="ana@cuadra.do", name="Ana", home_market_id="DO", current_market_id="DO"
     )
