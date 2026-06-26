@@ -18,6 +18,14 @@ class RoleKey(StrEnum):
     SUPER_ADMIN = "super_admin"
 
 
+class AuthProvider(StrEnum):
+    """Proveedores de login (el JWT trae provider + subject). §12·E E.2."""
+
+    GOOGLE = "google"
+    APPLE = "apple"
+    PASSWORD = "password"
+
+
 class CapabilityKey(StrEnum):
     """Capabilities (funcionalidades). Aditivas por rol (ADR 4)."""
 

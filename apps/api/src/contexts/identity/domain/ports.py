@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .entities import Role, User
+from .entities import AuthIdentity, Role, User
 from .enums import CapabilityKey
 
 
@@ -25,3 +25,9 @@ class CapabilityGatingRepository(Protocol):
     """Gating de capabilities para un mercado (tabla capability_market)."""
 
     def gating_for_market(self, market_id: str) -> dict[CapabilityKey, bool]: ...
+
+
+class AuthIdentityRepository(Protocol):
+    """Mapea (provider, subject) → identidad de login (account-linking · §12·E E.2)."""
+
+    def get_by_provider_subject(self, provider: str, subject: str) -> AuthIdentity | None: ...

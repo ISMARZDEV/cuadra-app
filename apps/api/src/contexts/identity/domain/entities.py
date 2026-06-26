@@ -1,14 +1,14 @@
 """Entidades de dominio de identity — PURAS (sin SQLAlchemy · ADR 31).
 
-`Capability` y `Role` son value-objects (igualdad por valor). `User` es la
-entidad raíz (identidad por `id`). El gating por mercado NO vive aquí: lo aplica
-`CapabilityResolver` con los datos de `capability_market` (separación de concerns).
+`Capability`/`Role`/`AuthIdentity` son value-objects (igualdad por valor). `User`
+es la entidad raíz. El gating por mercado NO vive aquí: lo aplica `CapabilityResolver`.
+`email` es opcional: con OAuth (Apple Hide-My-Email) puede no venir.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .enums import CapabilityKey, RoleKey
+from .enums import AuthProvider, CapabilityKey, RoleKey
 from .value_objects import Email, MarketId
 
 
@@ -24,12 +24,22 @@ class Role:
 
 
 @dataclass(frozen=True, slots=True)
+class AuthIdentity:
+    """Método de login del usuario. Clave estable = (provider, subject)."""
+
+    user_id: str
+    provider: AuthProvider
+    subject: str
+    email: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class User:
     id: str
-    email: Email
     name: str
     locale: str
     plan: str
     home_market: MarketId       # residencia / identidad fiscal (estable) · §3·B
     current_market: MarketId    # ubicación actual (contexto) · §3·B
+    email: Email | None = None  # contacto (OAuth puede no darlo)
     roles: tuple[Role, ...] = ()
