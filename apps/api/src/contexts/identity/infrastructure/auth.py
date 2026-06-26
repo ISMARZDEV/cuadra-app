@@ -21,3 +21,9 @@ def decode_token(token: str) -> dict:
         return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     except jwt.PyJWTError as exc:  # firma inválida, expirado, etc.
         raise InvalidToken(str(exc)) from exc
+
+
+def encode_token(claims: dict) -> str:
+    """Firma un JWT con los claims dados (HS256). SOLO para dev (el dev-login lo usa); en
+    producción lo emite el proveedor externo (§E.2)."""
+    return jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
