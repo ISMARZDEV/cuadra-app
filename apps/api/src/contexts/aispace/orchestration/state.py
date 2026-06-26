@@ -9,9 +9,10 @@ from __future__ import annotations
 from langgraph.graph import MessagesState
 
 
-class IAMState(MessagesState):
+class AispaceState(MessagesState):
     user_id: str
     capabilities: list[str]              # gobierna qué tools puede usar (RBAC §12.1)
+    language: str                        # idioma de respuesta (ISO 639-1: es/en/pt) — i18n
     intent: str
     pending_action: dict | None          # acción a confirmar (HITL §7.4)
     # ui_actions (botones/tarjetas, reducer `add`) se añade en el slice de streaming (§7.6).

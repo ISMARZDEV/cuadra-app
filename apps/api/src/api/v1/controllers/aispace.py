@@ -14,7 +14,9 @@ from pydantic import BaseModel
 from src.api.composition_root import get_aispace_graph
 from src.api.extensions.security import get_current_user_id
 from src.api.problem_detail import ProblemDetailDto
+from src.shared.i18n import t
 from src.shared.ids import new_id
+from src.shared.lang import resolve_language
 
 router = APIRouter(prefix="/aispace", tags=["aispace"])
 
@@ -22,6 +24,7 @@ router = APIRouter(prefix="/aispace", tags=["aispace"])
 class ChatRequest(BaseModel):
     message: str
     thread_id: str | None = None  # null = nueva conversación
+    locale: str | None = None     # locale del cliente (señal primaria de idioma · i18n)
 
 
 class ResumeRequest(BaseModel):
@@ -39,7 +42,7 @@ def _respond(thread_id: str, result: dict, graph, cfg: dict) -> ChatResponse:  #
     state = graph.get_state(cfg).values
     pending = state.get("pending_action") if "__interrupt__" in result else None
     if pending:
-        reply = f"¿Confirmas {pending['summary']}? (sí/no)"
+        reply = t("confirm_prompt", state.get("language", "es"), summary=pending["summary"])
     else:
         messages = state.get("messages", [])
         reply = messages[-1].content if messages else None
@@ -59,8 +62,14 @@ def chat(
 ) -> ChatResponse:
     thread_id = body.thread_id or new_id()
     cfg = {"configurable": {"thread_id": thread_id}}
+    language = resolve_language(body.message, body.locale)  # cliente primario + override
     result = graph.invoke(
-        {"messages": [HumanMessage(body.message)], "user_id": user_id, "capabilities": []},
+        {
+            "messages": [HumanMessage(body.message)],
+            "user_id": user_id,
+            "capabilities": [],
+            "language": language,
+        },
         cfg,
     )
     return _respond(thread_id, result, graph, cfg)

@@ -11,12 +11,13 @@ from contextlib import contextmanager
 
 import jwt
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import MemorySaver
 from sqlalchemy.orm import Session
 
 from src.api.composition_root import get_aispace_graph
 from src.config import settings
-from src.contexts.aispace.agents.finance.agent import FinanceAgent
+from src.contexts.aispace.agents.finance.tools.transactions import execute_register_transaction
 from src.contexts.aispace.orchestration.graph import build_graph
 from src.contexts.insights.domain.ledger import Account, AccountType
 from src.contexts.insights.infrastructure.metrics import SqlInsightsMetricsRepository
@@ -32,12 +33,34 @@ def _bearer(user_id: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+class _StubFinanceAgent:
+    """Agente determinista (sin LLM): run() stagea un gasto; commit() escribe de verdad."""
+
+    intents = ("register_expense", "query_metrics")
+
+    def __init__(self, factory):  # type: ignore[no-untyped-def]
+        self._f = factory
+
+    def run(self, state) -> dict:  # type: ignore[no-untyped-def]
+        return {
+            "messages": [AIMessage("Preparé el registro, confírmalo.")],
+            "pending_action": {
+                "amount": 500, "category": "Gasolina", "merchant": None,
+                "summary": "registrar RD$500 en Gasolina", "requires_confirmation": True,
+            },
+        }
+
+    def commit(self, state) -> str:  # type: ignore[no-untyped-def]
+        execute_register_transaction(state["user_id"], self._f, amount=500, category="Gasolina")
+        return "Listo, registré RD$500 en Gasolina."
+
+
 def _test_graph(session: Session):  # type: ignore[no-untyped-def]
     @contextmanager
     def factory():
         yield session
 
-    agent = FinanceAgent(factory, extractor=lambda t: {"amount": 500, "category": "Gasolina", "merchant": None})
+    agent = _StubFinanceAgent(factory)
     return build_graph(MemorySaver(), classifier=lambda t, c: "other", registry={"register_expense": agent})
 
 
