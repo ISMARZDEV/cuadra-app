@@ -707,12 +707,12 @@ Se abre el rol **Influencer**: creadores publican sus canales; el CoachAgent cit
 > JWT). FKs **solo dentro** del mismo contexto. Así las costuras de microservicios son enforceables.
 
 ```
-IDENTITY & ACCESS
-  user(id, email, name, locale, plan,
-       home_market_id, current_market_id)               role(id, name)
-  capability(id, key)                                    user_role(user_id, role_id)
-  role_capability(role_id, capability_id)
-  capability_market(capability_id, market_id, enabled)   -- gating por jurisdicción
+IDENTITY & ACCESS   (schema "identity")
+  user(id, email?, name, locale, plan, home_market_id, current_market_id, created_at, updated_at)
+  auth_identity(id, user_id, provider, subject, email?, UNIQUE(provider,subject))  -- login: Google/Apple/password (1 user → N)
+  role(key, name)                                        capability(key, description)   -- key = PK natural (seed de enums)
+  user_role(user_id, role_key)                           role_capability(role_key, capability_key)
+  capability_market(capability_key, market_id, enabled)  -- gating por jurisdicción; market_id por ID (no FK · ADR 33)
 
 MARKET / JURISDICTION
   market(id, country, base_currency, locale, active)     -- RD activo en MVP; modelo completo

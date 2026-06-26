@@ -13,8 +13,11 @@ from src.config import settings
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
-# TODO (Fase 1+): from src.shared.db import Base; target_metadata = Base.metadata
-target_metadata = None
+# Registra los models de cada contexto en Base.metadata (para --autogenerate).
+from src.shared.db.base import Base  # noqa: E402
+import src.contexts.identity.infrastructure.models  # noqa: F401,E402  (registra las tablas)
+
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -23,6 +26,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_schemas=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -35,7 +39,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(connection=connection, target_metadata=target_metadata, include_schemas=True)
         with context.begin_transaction():
             context.run_migrations()
 

@@ -103,7 +103,14 @@ class CapabilityResolver:
 - **Encapsulación:** invariantes en value objects (`Email` valida en `__post_init__`); helpers `_privados`; `__all__` por módulo.
 
 ### 2.5 Datos (schema `identity` · ADR 33)
-`user · role · capability · user_role · role_capability · capability_market` (§10). Schema Postgres **`identity`**; cross-context (otros referencian `user_id`) **por ID, no FK**.
+**7 tablas:** `user · auth_identity · role · capability · user_role · role_capability · capability_market`.
+- **`auth_identity`** (`provider, subject, email?`) → login Google/Apple/password; clave = **`(provider, subject)`**,
+  no el email (robusto ante Apple relay / multi-provider). **1 user → N** identidades (account linking).
+- **`user.id` propio (UUID)** desacoplado del proveedor (provider-agnostic, como el `LLMPort`); el JWT (Supabase/Clerk)
+  trae `(provider, subject)` y el adapter lo mapea a nuestro `user`. **Nunca se guarda password ni JWT** (§12.1).
+- **Política de account-linking = Strategy** (en `application`): MVP = **B** (cuentas separadas + linking manual);
+  **A** (auto-link por email) = cambiar la estrategia, **no** la tabla → "funciona de ambas maneras".
+- `key` = PK natural en `role`/`capability`; `email` nullable; `market_id` por ID (no FK cross-context).
 
 ---
 
@@ -114,7 +121,7 @@ class CapabilityResolver:
 | **T1** | `domain/entities.py` + `value_objects.py` + `enums.py` (puros) | importan sin SQLAlchemy; `Email` inválido lanza |
 | **T2** | `domain/services.py` — `CapabilityResolver` + **unit tests** | unión aditiva + gating por mercado verificados (pure) |
 | **T3** | `domain/ports.py` — `Protocol` de repos | mypy/typecheck OK; sin impl |
-| **T4** | `infrastructure/models.py` — SQLAlchemy, schema `identity` | `Base.metadata` incluye las 6 tablas en schema `identity` |
+| **T4** | `infrastructure/models.py` — SQLAlchemy, schema `identity` | `Base.metadata` incluye las **7 tablas** (con `auth_identity`) en schema `identity` |
 | **T5** | **1ª migración Alembic** (`--autogenerate`) | `alembic upgrade head` crea schema `identity` + tablas en la DB |
 | **T6** | `repositories.py` + `mappers.py` (model↔entity) | repo trae un User con sus roles (integration test con DB) |
 | **T7** | `application/` — `GetMe` (query) + `dtos.py` + mapper entity→DTO | `GetMe(user_id)` devuelve `MeResponse` con capabilities efectivas |
