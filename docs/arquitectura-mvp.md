@@ -661,10 +661,14 @@ la educación** — exactamente la tesis del concepto (el miedo, no el saber):
 El chat soporta **español (primario), inglés y portugués**; diseñado para sumar más sin tocar la
 lógica. Patrón de producción (no "pedirle al modelo que hable tu idioma" — eso es frágil):
 
-- **Dos tipos de texto, dos mecanismos:** el texto que **genera el LLM** se controla con el prompt
-  (idioma inyectado como **valor concreto**: *"Responde en English"*, no una regla vaga); los
-  **strings deterministas** (confirmaciones, errores, canned) viven en un **catálogo i18n** por
-  locale — un prompt NO puede localizar un string hardcodeado en código.
+- **Instrucciones en INGLÉS, respuesta en el idioma del usuario** (ADR 34, skill
+  `cuadra-agent-prompts`): todo lo que **lee el modelo** (system prompts, docstrings de tools,
+  clasificador) va en inglés (mejor adherencia, −24% tokens, estable multi-turno); el **output**
+  va en el idioma del usuario, inyectado como **valor concreto** (*"Reply in English"*, no una
+  regla vaga). Idioma del prompt ≠ idioma del output.
+- **Dos tipos de texto, dos mecanismos:** el texto que **genera el LLM** se controla con el prompt;
+  los **strings deterministas** (confirmaciones, errores, canned) viven en un **catálogo i18n** por
+  locale (`shared/i18n`) — un prompt NO puede localizar un string hardcodeado en código.
 - **Resolución del idioma (dos señales):** **locale del cliente = primario** (el dispositivo lo sabe);
   **detección por-mensaje** (lingua acotado a es/en/pt) solo hace **override** cuando el usuario
   claramente escribe en otro idioma. El idioma viaja en el estado del grafo por conversación.
@@ -1150,6 +1154,17 @@ con código Morse para transferir US$150K). Mitigaciones obligatorias:
     mínimo y estable** (futuro paquete publicado). **Contrato OpenAPI** = única frontera front↔back →
     split de repos = publicar `api-client`. Extraer un servicio solo con presión real (escala/equipo/
     deploy); candidatos: `ingestion`, `save/jobs`, `billing`, `notifications`.
+
+34. **Prompts de agentes en INGLÉS; respuesta en el idioma del usuario** (§7.11; skill
+    `cuadra-agent-prompts`). Toda INSTRUCCIÓN que lee el modelo —system prompts, docstrings de tools,
+    prompts del clasificador— va en **inglés**: mejor adherencia a instrucciones (en español las
+    instrucciones forman una "red competitiva" que interfiere; en inglés cooperativa), estabilidad en
+    multi-turno y **eficiencia de tokens** (~24% a igualdad de contenido — medido en traducción 1:1
+    416→314; ese margen se suele reinvertir en mejores instrucciones, no en bajar el total). El **output al usuario**
+    va SIEMPRE en su idioma, inyectado como **valor concreto** (`Reply in {language}`), y los strings
+    deterministas en el **catálogo i18n** (`shared/i18n`), no en el prompt. Coherente con ADR 32 (los
+    prompts son config funcional que lee el modelo, más cerca de "código"). **Verificación obligatoria:**
+    tras cambiar un prompt, re-correr el eval (`make eval`) — el efecto es model-dependent, no se asume.
 
 ---
 
