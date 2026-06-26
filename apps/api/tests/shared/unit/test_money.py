@@ -8,6 +8,8 @@ Invariantes de los que el LEDGER depende:
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from src.shared.money import Currency, CurrencyMismatchError, Money
@@ -76,3 +78,38 @@ def test_money_is_immutable() -> None:
     m = Money(500, Currency("DOP"))
     with pytest.raises((AttributeError, Exception)):
         m.amount_minor = 999  # type: ignore[misc]
+
+
+# ── Exponente por moneda (mata el ×100 hardcodeado · §12·B estilo Stripe) ──────
+def test_currency_exponent_by_iso() -> None:
+    assert Currency("USD").exponent == 2
+    assert Currency("DOP").exponent == 2
+    assert Currency("COP").exponent == 2     # peso colombiano: ISO = 2
+    assert Currency("JPY").exponent == 0     # yen: sin minor unit
+    assert Currency("CLP").exponent == 0     # peso chileno: 0 decimales
+    assert Currency("KWD").exponent == 3     # dinar kuwaití: 3 decimales
+    assert Currency("XYZ").exponent == 2     # desconocida → default 2
+
+
+def test_money_from_major_respects_exponent() -> None:
+    assert Money.from_major(45.50, Currency("USD")).amount_minor == 4550
+    assert Money.from_major(45.55, Currency("DOP")).amount_minor == 4555
+    assert Money.from_major(500, Currency("JPY")).amount_minor == 500     # 0 dec → ×1, NO ×100
+    assert Money.from_major(1.234, Currency("KWD")).amount_minor == 1234  # 3 dec → ×1000
+
+
+def test_money_from_major_no_float_drift() -> None:
+    # 19.99 * 100 en float = 1998.9999…; debe redondear a 1999, no truncar a 1998.
+    assert Money.from_major(19.99, Currency("USD")).amount_minor == 1999
+
+
+def test_money_to_major_roundtrips() -> None:
+    assert Money(4550, Currency("USD")).to_major() == Decimal("45.50")
+    assert Money(500, Currency("JPY")).to_major() == Decimal("500")
+    assert Money(1234, Currency("KWD")).to_major() == Decimal("1.234")
+
+
+def test_money_format_uses_currency_decimals() -> None:
+    assert Money(4550, Currency("USD")).format() == "USD 45.50"
+    assert Money(500, Currency("JPY")).format() == "JPY 500"       # 0 decimales
+    assert Money(1234, Currency("KWD")).format() == "KWD 1.234"    # 3 decimales
