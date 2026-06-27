@@ -1,5 +1,2 @@
-import { Placeholder } from "@/components/ui/Placeholder";
-
-export default function AISpaceScreen() {
-  return <Placeholder title="AISpace" />;
-}
+// Route = thin re-export of the feature screen (cuadra-mobile skill §1).
+export { ChatScreen as default } from "@/features/aispace/chat-screen";

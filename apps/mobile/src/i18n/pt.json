@@ -1,0 +1,12 @@
+{
+  "tabs.news": "Notícias",
+  "tabs.insights": "Insights",
+  "tabs.save": "Poupar",
+  "tabs.config": "Config",
+  "chat.inputPlaceholder": "Pergunte-me algo...",
+  "chat.a11y.menu": "Abrir menu",
+  "chat.a11y.expand": "Expandir",
+  "chat.a11y.send": "Enviar",
+  "chat.a11y.attach": "Anexar",
+  "chat.a11y.voice": "Mensagem de voz"
+}

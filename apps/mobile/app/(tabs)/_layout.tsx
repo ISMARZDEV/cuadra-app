@@ -1,9 +1,12 @@
 import { Tabs } from "expo-router";
 
-// Tab bar — News · Insights · AISpace · Save · Config (chat AISpace al centro · §3.1).
+import { CuadraTabBar } from "@/components/navigation/cuadra-tab-bar";
+
+// Tab bar — News · Insights · [iM logo · AISpace] · Save · Config.
+// Custom pill-with-notch bar (cuadra-design-system §3 tab bar); routes stay declarative.
 export default function TabsLayout() {
   return (
-    <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: "#16A34A" }}>
+    <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <CuadraTabBar {...props} />}>
       <Tabs.Screen name="index" options={{ title: "News" }} />
       <Tabs.Screen name="insights" options={{ title: "Insights" }} />
       <Tabs.Screen name="aispace" options={{ title: "AISpace" }} />
