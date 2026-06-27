@@ -3,6 +3,8 @@
   "tabs.insights": "Insights",
   "tabs.save": "Save",
   "tabs.config": "Config",
+  "config.title": "Settings",
+  "config.darkMode": "Dark mode",
   "chat.inputPlaceholder": "Ask me something...",
   "chat.a11y.menu": "Open menu",
   "chat.a11y.expand": "Expand",

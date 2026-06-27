@@ -1,5 +1,2 @@
-import { Placeholder } from "@/components/ui/Placeholder";
-
-export default function ConfigScreen() {
-  return <Placeholder title="Config" />;
-}
+// Route = thin re-export of the feature screen (cuadra-mobile skill §1).
+export { ConfigScreen as default } from "@/features/settings/config-screen";
