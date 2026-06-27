@@ -16,9 +16,12 @@ API_PORT=8005
 METRO_PORT=8081
 
 # ── 1. IP LAN de la Mac (el iPhone/iPad NO puede usar localhost) ───────────────
-IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+# Usamos la interfaz de la RUTA POR DEFECTO (la misma que elige Metro) para que la URL de
+# la API coincida con la del dev server, aun si hay varias interfaces (en0/en9/VPN/etc.).
+DEF_IF="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')"
+IP="$(ipconfig getifaddr "${DEF_IF:-en0}" 2>/dev/null || ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
 if [[ -z "${IP}" ]]; then
-  echo "✖ No pude detectar la IP LAN (en0/en1). Conectate a una red Wi-Fi y reintentá." >&2
+  echo "✖ No pude detectar la IP LAN. Conectate a una red Wi-Fi y reintentá." >&2
   exit 1
 fi
 echo "▶ IP LAN de la Mac: ${IP}"

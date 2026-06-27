@@ -19,8 +19,9 @@ START_API="${START_API:-}"
 API_HEALTH="${API_HEALTH:-/v1/health}"
 
 # IP LAN de la Mac — el device NO puede usar localhost.
-IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
-[[ -n "${IP}" ]] || { echo "✖ Sin IP LAN (en0/en1). Conectate a Wi-Fi." >&2; exit 1; }
+DEF_IF="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')"
+IP="$(ipconfig getifaddr "${DEF_IF:-en0}" 2>/dev/null || ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+[[ -n "${IP}" ]] || { echo "✖ Sin IP LAN. Conectate a Wi-Fi." >&2; exit 1; }
 echo "▶ IP LAN: ${IP}  (el device debe estar en la MISMA Wi-Fi)"
 
 # Backend opcional, atado a 0.0.0.0 para ser alcanzable desde la LAN.
