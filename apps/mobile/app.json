@@ -7,7 +7,11 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ismarzdev.cuadra"
+    },
+    "android": {
+      "package": "com.ismarzdev.cuadra"
     },
     "plugins": [
       "expo-router",
