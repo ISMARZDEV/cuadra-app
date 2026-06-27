@@ -28,7 +28,7 @@ export function ChatScreen() {
   }));
 
   return (
-    <SafeAreaView className="flex-1 bg-bg" edges={["top"]}>
+    <SafeAreaView className="flex-1" edges={["top"]}>
       <ChatHeader />
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {CHAT_THREAD.map((item) => {

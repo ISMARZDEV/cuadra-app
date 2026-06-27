@@ -17,6 +17,7 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -242,9 +243,45 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
       ty.value = withSpring(16, { damping: 6.5, stiffness: 190, mass: 0.85, overshootClamping: false });
     }
   }, [visible, op, sc, ty]);
+
+  // Press / hold → the orb wobbles fluidly (scale pulse + tiny side sway) and KEEPS wobbling while
+  // held; on release it settles with a little bounce. No haptic — this is the visual "vibration".
+  const pressing = useOrbStore((s) => s.pressing);
+  const wob = useSharedValue(1); // scale multiplier
+  const sway = useSharedValue(0); // -1..1 → small translateX
+  useEffect(() => {
+    if (pressing) {
+      // Gentle "breathing" — subtle scale pulse, barely any sway (it will be a wheel selector,
+      // so it must feel calm/precise, not jittery).
+      wob.value = withRepeat(
+        withSequence(
+          withTiming(1.05, { duration: 460, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.98, { duration: 460, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        true,
+      );
+      sway.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 560, easing: Easing.inOut(Easing.sin) }),
+          withTiming(-1, { duration: 560, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        true,
+      );
+    } else {
+      wob.value = withSpring(1, { damping: 12, stiffness: 200, mass: 0.6 });
+      sway.value = withSpring(0, { damping: 12, stiffness: 160 });
+    }
+  }, [pressing, wob, sway]);
+
   const containerStyle = useAnimatedStyle(() => ({
     opacity: op.value,
-    transform: [{ scale: sc.value }, { translateY: ty.value }],
+    transform: [
+      { translateX: sway.value * (w * 0.02) },
+      { translateY: ty.value },
+      { scale: sc.value * wob.value },
+    ],
   }));
 
   if (!GLASS) return null;

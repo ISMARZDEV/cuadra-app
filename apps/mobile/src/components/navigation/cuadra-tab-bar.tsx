@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import {
   BadgePercent,
   ChartColumnIncreasing,
@@ -6,13 +7,12 @@ import {
   Settings,
 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   type GestureResponderEvent,
   PanResponder,
   Pressable,
   Text,
-  Vibration,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -22,6 +22,7 @@ import { BrandLogo } from "@/components/ui/brand-logo";
 import { Icon } from "@/components/ui/icon";
 import { OrbSphere } from "@/components/ui/orb-sphere";
 import { t, type TranslationKey } from "@/i18n";
+import { sounds } from "@/lib/sounds";
 import { useOrbStore } from "@/store/orb-store";
 import { palette, theme } from "@/theme";
 
@@ -64,12 +65,14 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const logoHeight = 30 * scale;
   const logoCenterY = 86 * scale; // cradled low inside the bar body (top sits at the dip line)
 
-  // Iridescent Siri-style orb. Swipe UP on the "iM" logo reveals it; tap the orb to ripple it;
-  // swipe DOWN on the orb (or 4s idle) hides it. See orb-store for the full gesture model.
+  // Iridescent Siri-style orb. Swipe UP on the empty notch space above the logo reveals it (+buzz);
+  // press/hold the orb to make it wobble; swipe DOWN on the orb (or 8s idle) hides it. The "iM"
+  // logo just navigates to chat. See orb-store for the full gesture model.
   const orbVisible = useOrbStore((s) => s.active);
   const showOrb = useOrbStore((s) => s.show);
   const hideOrb = useOrbStore((s) => s.hide);
   const bumpOrb = useOrbStore((s) => s.bump);
+  const setPressing = useOrbStore((s) => s.setPressing);
   const orbSize = NAVBAR_CIRCLE.r * 2 * scale * 1.35; // oval width
   const orbTop = NAVBAR_CIRCLE.cy * scale - (orbSize * 0.86) / 2; // oval (h = w·0.86), centred on the dip
 
@@ -87,26 +90,35 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   // Gesture thresholds: travel (px) and flick velocity (px/ms) above which a pan is a real swipe;
   // a release that stayed within TAP_SLOP counts as a tap. PanResponder (not RNGH) so it runs on
   // the current dev client with no extra native module / rebuild.
+  // Intro/close sound on every show/hide — covers swipe-up, swipe-down AND the 8s auto-hide
+  // (which flips `active` from the store timer, not from a gesture).
+  const prevVisibleRef = useRef(orbVisible);
+  useEffect(() => {
+    if (orbVisible === prevVisibleRef.current) return;
+    prevVisibleRef.current = orbVisible;
+    if (orbVisible) sounds.reveal();
+    else sounds.close();
+  }, [orbVisible]);
+
   const SWIPE_DY = 18;
   const SWIPE_VY = 0.5;
-  const TAP_SLOP = 12;
+  const SELECT_STEP = 26; // px of upward drag per selection "tick" (the future wheel selector)
 
-  // "iM" logo: tap → chat; swipe up → reveal the orb (bounces in, buzzes once).
-  const logoResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6,
+  // Swipe UP in the empty notch space above the logo → reveal the orb (bounces in, light haptic pop).
+  // Claims ONLY on an upward drag, so plain taps pass through to what's underneath.
+  const revealResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, g) => g.dy < -8,
     onPanResponderRelease: (_, g) => {
       if (g.dy < -SWIPE_DY || g.vy < -SWIPE_VY) {
-        Vibration.vibrate(10);
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         showOrb();
-      } else if (Math.abs(g.dx) < TAP_SLOP && Math.abs(g.dy) < TAP_SLOP) {
-        goToAispace();
       }
     },
   });
 
   // Touches only count on the orb's actual body, not the rectangular frame — the corners are pure
-  // glow/empty (the superellipse leaves them transparent), so tapping the resplandor must do nothing.
+  // glow/empty (the superellipse leaves them transparent), so touching the resplandor does nothing.
   const orbBox = useRef({ w: 0, h: 0 });
   const insideOrb = (evt: GestureResponderEvent) => {
     const { w, h } = orbBox.current;
@@ -117,24 +129,39 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     return Math.pow(Math.abs(nx), 2.2) + Math.pow(Math.abs(ny), 2.2) <= 0.9;
   };
 
-  // Orb: tap → ripple + buzz (no navigation); swipe down → hide.
+  // Orb: press/hold → wobble (visual, no haptic) + wave swell. Press + drag UP scrubs the (future)
+  // wheel selector → a selection "tick" per step (Haptics.selectionAsync, the date-picker feel).
+  // Swipe DOWN → hide. No navigation.
+  const stepRef = useRef(0);
   const orbResponder = PanResponder.create({
     onStartShouldSetPanResponder: insideOrb,
     onMoveShouldSetPanResponder: (evt, g) => insideOrb(evt) && Math.abs(g.dy) > 6,
-    onPanResponderRelease: (_, g) => {
-      if (g.dy > SWIPE_DY || g.vy > SWIPE_VY) {
-        hideOrb();
-      } else if (Math.abs(g.dx) < TAP_SLOP && Math.abs(g.dy) < TAP_SLOP) {
-        Vibration.vibrate(12);
-        bumpOrb();
+    onPanResponderGrant: () => {
+      setPressing(true);
+      bumpOrb();
+      stepRef.current = 0;
+    },
+    onPanResponderMove: (_, g) => {
+      const step = Math.floor(Math.max(0, -g.dy) / SELECT_STEP);
+      if (step !== stepRef.current) {
+        stepRef.current = step;
+        if (step > 0) {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid); // stronger, crisper tick
+          sounds.tick();
+        }
       }
     },
+    onPanResponderRelease: (_, g) => {
+      setPressing(false);
+      if (g.dy > SWIPE_DY || g.vy > SWIPE_VY) hideOrb();
+    },
+    onPanResponderTerminate: () => setPressing(false),
   });
 
   return (
     <View
       pointerEvents="box-none"
-      style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingBottom: Math.max((insets.bottom || 12) - 16, 6) }}
+      style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingBottom: Math.max((insets.bottom || 12) - 16, 6) + 14 }}
     >
       <View pointerEvents="box-none" style={{ width: barWidth, height: navHeight }}>
         {/* Glass bar — fills the exact silhouette; the top headroom (around the logo) is transparent. */}
@@ -192,8 +219,23 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           })}
         </View>
 
-        {/* Iridescent orb — springs up over the dip. Tap ripples it; swipe down hides it. Only
-            interactive while visible so it never steals touches from the logo underneath. */}
+        {/* Swipe-up catch zone — the empty notch space ABOVE the logo (where the orb appears).
+            Active only while hidden; an upward drag here reveals the orb. Claims on upward drag
+            only, so it never blocks taps. */}
+        <View
+          pointerEvents={orbVisible ? "none" : "auto"}
+          style={{
+            position: "absolute",
+            top: 0,
+            alignSelf: "center",
+            width: barWidth * 0.55,
+            height: logoCenterY - logoHeight / 2,
+          }}
+          {...revealResponder.panHandlers}
+        />
+
+        {/* Iridescent orb — springs up over the dip. Press/hold → wobble; swipe down hides it. Only
+            interactive while visible so it never steals touches when hidden. */}
         <View
           pointerEvents={orbVisible ? "box-none" : "none"}
           style={{ position: "absolute", alignSelf: "center", top: orbTop }}
@@ -208,15 +250,15 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           </View>
         </View>
 
-        {/* Center "iM" logo — sits concentric inside the dip. Tap → chat; swipe up → reveal the orb. */}
-        <View
+        {/* Center "iM" logo — tap navigates to the AISpace chat (reveal lives in the notch zone above). */}
+        <Pressable
           accessibilityRole="button"
           accessibilityLabel="AISpace"
+          onPress={goToAispace}
           style={{ position: "absolute", alignSelf: "center", top: logoCenterY - logoHeight / 2 }}
-          {...logoResponder.panHandlers}
         >
           <BrandLogo height={logoHeight} />
-        </View>
+        </Pressable>
       </View>
     </View>
   );

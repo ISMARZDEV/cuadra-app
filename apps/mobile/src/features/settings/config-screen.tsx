@@ -14,7 +14,7 @@ export function ConfigScreen() {
   const isDark = colorScheme === "dark";
 
   return (
-    <SafeAreaView className="flex-1 bg-bg" edges={["top"]}>
+    <SafeAreaView className="flex-1" edges={["top"]}>
       <View className="px-5 pt-4">
         <Text className="mb-5 text-2xl font-bold text-text">{t("config.title")}</Text>
 

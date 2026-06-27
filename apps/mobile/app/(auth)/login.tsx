@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 
 import { useAuthStore } from "@/features/auth/use-auth-store";
+import { sounds } from "@/lib/sounds";
 
 // Minimal dev login — exchanges a seeded email for a JWT (cuadra-mobile skill §4).
 // The polished react-hook-form + zod version lands in the forms phase.
@@ -16,7 +17,9 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await signInDev(email.trim());
+      sounds.check();
     } catch {
+      sounds.bad();
       setError("No se pudo iniciar sesión. ¿Está el backend corriendo?");
     } finally {
       setLoading(false);
@@ -24,7 +27,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <View className="flex-1 justify-center gap-6 bg-bg px-8">
+    <View className="flex-1 justify-center gap-6 px-8">
       <View className="gap-2">
         <Text className="text-3xl font-bold text-primary">Cuadra</Text>
         <Text className="text-muted">Tu copiloto financiero</Text>

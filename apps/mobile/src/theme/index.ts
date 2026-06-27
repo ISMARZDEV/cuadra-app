@@ -16,6 +16,7 @@ export const palette = {
 export const theme = {
   light: {
     bg: "#F2F7F1",
+    bgGradient: ["#FFFFFF", "#ECFFF0"], // vertical top → bottom (white → soft green)
     surface: "#FFFFFF",
     text: "#111827",
     muted: "#6B7280",
@@ -23,6 +24,7 @@ export const theme = {
   },
   dark: {
     bg: "#0B1410",
+    bgGradient: ["#082323", "#050608"], // vertical top → bottom (deep teal → near-black)
     surface: "#12201A",
     text: "#F7FAF7",
     muted: "#9CA3AF",

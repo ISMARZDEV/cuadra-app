@@ -2,6 +2,8 @@ import { vars, useColorScheme } from "nativewind";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
+import { AppBackground } from "@/components/ui/app-background";
+
 // Single source of truth for theme token VALUES (cuadra-design-system skill).
 // Applied as CSS variables at the root; tailwind.config maps them to color utilities
 // (bg-bg, text-primary, …). Switches with the system color scheme via useColorScheme().
@@ -29,7 +31,8 @@ const themes = {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { colorScheme } = useColorScheme();
   return (
-    <View style={themes[colorScheme === "dark" ? "dark" : "light"]} className="flex-1 bg-bg">
+    <View style={themes[colorScheme === "dark" ? "dark" : "light"]} className="flex-1">
+      <AppBackground />
       {children}
     </View>
   );

@@ -8,6 +8,7 @@ import { ActivityIndicator, View } from "react-native";
 
 import { useAuthStore } from "@/features/auth/use-auth-store";
 import { queryClient } from "@/lib/api/query-client";
+import { sounds } from "@/lib/sounds";
 import { ThemeProvider } from "@/lib/theme/theme-provider";
 import { palette } from "@/theme";
 
@@ -20,15 +21,20 @@ export default function RootLayout() {
     restore();
   }, [restore]);
 
+  useEffect(() => {
+    sounds.startup(); // app-launch sound (once per app open)
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         {status === "loading" ? (
-          <View className="flex-1 items-center justify-center bg-bg">
+          <View className="flex-1 items-center justify-center">
             <ActivityIndicator color={palette.primary} />
           </View>
         ) : (
-          <Stack screenOptions={{ headerShown: false }}>
+          // contentStyle transparent → the root AppBackground gradient shows through every screen.
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
             <Stack.Protected guard={status === "authenticated"}>
               <Stack.Screen name="(tabs)" />
             </Stack.Protected>

@@ -59,4 +59,6 @@ echo "▶ Metro en :${METRO_PORT} → API http://${IP}:${API_PORT}"
 echo "  En el dev-client del device: conectá a  ${IP}:${METRO_PORT}  y logueá con cualquier email."
 echo
 cd "${ROOT}/apps/mobile"
-EXPO_PUBLIC_API_URL="http://${IP}:${API_PORT}" exec npx expo start --dev-client
+# Pass extra args through to expo (e.g. `./scripts/dev-up.sh --clear` to reset Metro's cache,
+# needed after installing a new native module / adding assets).
+EXPO_PUBLIC_API_URL="http://${IP}:${API_PORT}" exec npx expo start --dev-client "$@"

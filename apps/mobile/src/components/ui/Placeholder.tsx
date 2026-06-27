@@ -8,7 +8,7 @@ import { palette } from "@/theme";
 // Estiliza con NativeWind (className) + tokens del design-system (dark/light auto).
 export function Placeholder({ title }: { title: string }) {
   return (
-    <View className="flex-1 items-center justify-center gap-3 bg-bg">
+    <View className="flex-1 items-center justify-center gap-3">
       <Icon as={Construction} size={48} color={palette.primary} />
       <Text className="text-2xl font-bold text-primary">{title}</Text>
       <Text className="text-muted">Esqueleto · sin lógica aún</Text>

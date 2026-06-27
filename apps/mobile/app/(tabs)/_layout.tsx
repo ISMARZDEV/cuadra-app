@@ -6,7 +6,10 @@ import { CuadraTabBar } from "@/components/navigation/cuadra-tab-bar";
 // Custom pill-with-notch bar (cuadra-design-system §3 tab bar); routes stay declarative.
 export default function TabsLayout() {
   return (
-    <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <CuadraTabBar {...props} />}>
+    <Tabs
+      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "transparent" } }}
+      tabBar={(props) => <CuadraTabBar {...props} />}
+    >
       <Tabs.Screen name="index" options={{ title: "News" }} />
       <Tabs.Screen name="insights" options={{ title: "Insights" }} />
       <Tabs.Screen name="aispace" options={{ title: "AISpace" }} />
