@@ -1,7 +1,31 @@
-// Paleta verde cálida (no crema, no azul frío fintech) · ui-notas-cleo.md
-export const colors = {
-  primary: "#16A34A",
-  bg: "#F7FAF7",
-  text: "#111827",
-  muted: "#6B7280",
-};
+// Paleta JS — SOLO para contextos sin className (react-native-svg charts, StatusBar,
+// navigation theme). El estilado de UI va con NativeWind (tokens en tailwind.config.js).
+// Mantener en sync con los valores del design-system (cuadra-design-system skill).
+export const palette = {
+  primary: "#16A34A", // brand green
+  accent: "#A3E635", // lime CTA
+  // metric/money accents
+  income: "#3B82F6",
+  expense: "#F97316",
+  savings: "#A855F7",
+  balance: "#22C55E",
+  danger: "#EF4444",
+  success: "#22C55E",
+} as const;
+
+export const theme = {
+  light: {
+    bg: "#F2F7F1",
+    surface: "#FFFFFF",
+    text: "#111827",
+    muted: "#6B7280",
+    border: "#DBEAD9",
+  },
+  dark: {
+    bg: "#0B1410",
+    surface: "#12201A",
+    text: "#F7FAF7",
+    muted: "#9CA3AF",
+    border: "#1E3A2A",
+  },
+} as const;
