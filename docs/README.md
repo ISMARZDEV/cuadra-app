@@ -9,6 +9,7 @@ Documentación arquitectónica del proyecto. **Fuente de verdad: `arquitectura-m
 | [`estructura-monorepo.md`](./estructura-monorepo.md) | Estructura de directorios del monorepo (esta base) |
 | [`concepto-producto.md`](./concepto-producto.md) | Visión de producto (5 capas, foso, GTM) |
 | [`ui-notas-cleo.md`](./ui-notas-cleo.md) | Patrones de UI (de Cleo) para el diseño |
+| [`liquid-glass-niveles.md`](./liquid-glass-niveles.md) | Cómo dar liquid glass a componentes propios: los 3 niveles (RN · @expo/ui · módulo nativo SwiftUI) |
 | [`spike-orquestador.md`](./spike-orquestador.md) | Plan del spike del orquestador (pendiente de ejecutar) |
 | [`research/`](./research) | Análisis fuente (Cleo, SupermercadosRD) |
 
