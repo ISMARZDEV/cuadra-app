@@ -19,7 +19,7 @@ export const NAVBAR_CIRCLE = { cx: 167.5, cy: 31.5, r: 31.5 } as const;
 // Glass/blur clipped to the EXACT notch silhouette via MaskedView (viewBox scales the path,
 // so the curve is pixel-faithful at any width). MaskedView flattens the native glass rim, so
 // we re-draw a thin light stroke along the same silhouette to restore the "glass edge".
-export function NotchedGlass({ width }: { width: number }) {
+export function NotchedGlass({ width, isInteractive = false }: { width: number; isInteractive?: boolean }) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const height = width * NAVBAR_ASPECT;
@@ -36,7 +36,7 @@ export function NotchedGlass({ width }: { width: number }) {
           </Svg>
         }
       >
-        <GlassSurface style={{ width, height }} />
+        <GlassSurface style={{ width, height }} isInteractive={isInteractive} />
       </MaskedView>
       {/* Glass rim — restores the bright edge the mask clips off. */}
       <Svg

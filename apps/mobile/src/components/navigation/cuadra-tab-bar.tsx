@@ -249,7 +249,8 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
         pointerEvents="box-none"
         style={{ width: barWidth, height: navHeight }}
       >
-        {/* Glass bar — fills the exact silhouette; the top headroom (around the logo) is transparent. */}
+        {/* Glass bar — fills the exact silhouette; the top headroom (around the logo) is transparent.
+            isInteractive: native iOS 26 touch response (glass lights up on tap). */}
         <View
           style={{
             position: "absolute",
@@ -261,7 +262,7 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
             shadowOffset: { width: 0, height: 6 },
           }}
         >
-          <NotchedGlass width={barWidth} />
+          <NotchedGlass width={barWidth} isInteractive />
         </View>
 
         {/* Tab items, laid out across the bar body (lower portion, below the hills).

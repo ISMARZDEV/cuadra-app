@@ -1,5 +1,6 @@
 import { BlurView } from "expo-blur";
 import {
+  GlassContainer,
   GlassView,
   isGlassEffectAPIAvailable,
   isLiquidGlassAvailable,
@@ -20,12 +21,14 @@ type GlassSurfaceProps = ViewProps & {
   intensity?: number;
   colorScheme?: "auto" | "light" | "dark";
   borderWidth?: number;
+  isInteractive?: boolean;
 };
 
 export function GlassSurface({
   intensity = 40,
   colorScheme: colorSchemeProp = "auto",
-  borderWidth = 5.5,
+  borderWidth = 2.5,
+  isInteractive = false,
   style,
   children,
   ...rest
@@ -40,6 +43,7 @@ export function GlassSurface({
       <GlassView
         glassEffectStyle="regular"
         colorScheme={colorSchemeProp}
+        isInteractive={isInteractive}
         style={style}
         {...rest}
       >
@@ -91,6 +95,27 @@ export function GlassSurface({
       ]}
       {...rest}
     >
+      {children}
+    </View>
+  );
+}
+
+// Cross-platform glass container — fuses multiple glass surfaces visually when they're close.
+// iOS 26+: native GlassContainer (merges adjacent GlassView elements).
+// Fallback: plain View (no fusion, but layout is preserved).
+type GlassContainerProps = ViewProps & { spacing?: number };
+
+export function GlassSurfaceContainer({ spacing, style, children, ...rest }: GlassContainerProps) {
+  if (isLiquidGlassAvailable() && isGlassEffectAPIAvailable()) {
+    return (
+      <GlassContainer spacing={spacing} style={style} {...rest}>
+        {children}
+      </GlassContainer>
+    );
+  }
+
+  return (
+    <View style={style} {...rest}>
       {children}
     </View>
   );
