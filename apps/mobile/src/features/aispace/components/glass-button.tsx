@@ -31,8 +31,9 @@ export function GlassButton({
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={shape}>
       {solid ? (
-        <View style={shape} className="items-center justify-center bg-primary">
-          <Icon as={icon} size={iconSize} color="#FFFFFF" />
+        // Solid send button: lime #c2fb7e fill + dark teal icon (Figma "Button - Liquid Glass - Symbol" send).
+        <View style={{ ...shape, backgroundColor: "#c2fb7e", alignItems: "center", justifyContent: "center" }}>
+          <Icon as={icon} size={iconSize} color="#034842" />
         </View>
       ) : (
         <GlassSurface style={{ ...shape, alignItems: "center", justifyContent: "center" }}>

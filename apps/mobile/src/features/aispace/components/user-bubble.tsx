@@ -1,12 +1,14 @@
 import { Text, View } from "react-native";
 
-// User message — right-aligned green bubble (Figma #00201E on dark, light green on light).
+import { GlassSurface } from "@/components/ui/glass-surface";
+
+// User message — right-aligned liquid glass bubble.
 export function UserBubble({ text }: { text: string }) {
   return (
     <View className="w-full flex-row justify-end px-3 py-2">
-      <View className="max-w-[80%] rounded-3xl bg-primary/15 px-4 py-3 dark:bg-[#00201E]">
+      <GlassSurface style={{ maxWidth: "80%", borderRadius: 24, paddingHorizontal: 16, paddingVertical: 12 }} intensity={50}>
         <Text className="text-base leading-5 text-text">{text}</Text>
-      </View>
+      </GlassSurface>
     </View>
   );
 }

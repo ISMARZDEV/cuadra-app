@@ -16,6 +16,11 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandLogo } from "@/components/ui/brand-logo";
@@ -24,7 +29,6 @@ import { OrbSphere } from "@/components/ui/orb-sphere";
 import { t, type TranslationKey } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { useOrbStore } from "@/store/orb-store";
-import { palette, theme } from "@/theme";
 
 import { NAVBAR_CIRCLE, NAVBAR_VIEWBOX, NotchedGlass } from "./notched-glass";
 
@@ -48,6 +52,37 @@ const ROUTE_META: Record<string, { icon: LucideIcon; labelKey: TranslationKey; b
   save: { icon: BadgePercent, labelKey: "tabs.save" },
   config: { icon: Settings, labelKey: "tabs.config" },
 };
+
+// Animated icon with spring scale bounce when focused.
+function AnimatedTabIcon({
+  icon: IconComponent,
+  color,
+  focused,
+}: {
+  icon: LucideIcon;
+  color: string;
+  focused: boolean;
+}) {
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    scale.value = withSpring(focused ? 1.25 : 1, {
+      damping: 12,
+      stiffness: 200,
+      mass: 0.8,
+    });
+  }, [focused, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Icon as={IconComponent} size={24} color={color} />
+    </Animated.View>
+  );
+}
 
 // Cuadra tab bar — exact Figma silhouette: one smooth wave with a central dip concentric to the
 // raised "iM" logo (AISpace). Geometry scales from the design viewBox so the curve stays faithful.
@@ -78,7 +113,10 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
 
   const onPress = (routeName: string, routeKey: string, focused: boolean) => {
     const event = navigation.emit({ type: "tabPress", target: routeKey, canPreventDefault: true });
-    if (!focused && !event.defaultPrevented) navigation.navigate(routeName);
+    if (!focused && !event.defaultPrevented) {
+      navigation.navigate(routeName);
+      sounds.nav();
+    }
   };
 
   // TAP on the "iM" logo navigates to the AISpace chat (the orb tap does NOT navigate).
@@ -158,12 +196,59 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     onPanResponderTerminate: () => setPressing(false),
   });
 
+  // Renders a single tab item (icon + label + optional badge).
+  const renderTabItem = (route: TabRoute) => {
+    const index = state.routes.indexOf(route);
+    const focused = state.index === index;
+    const meta = ROUTE_META[route.name];
+    if (!meta) return null;
+
+    const iconColor = focused
+      ? isDark ? "#C2FB7E" : "#6AC400"
+      : isDark ? "#6AC400" : "#034842";
+    const textColor = focused
+      ? isDark ? "#FFFFFF" : "#034842"
+      : isDark ? "#FFFFFF" : "#000000";
+
+    return (
+      <Pressable
+        key={route.key}
+        accessibilityRole="button"
+        accessibilityState={focused ? { selected: true } : {}}
+        accessibilityLabel={t(meta.labelKey)}
+        onPress={() => onPress(route.name, route.key, focused)}
+        style={{ alignItems: "center", justifyContent: "center", gap: 3 }}
+      >
+        <View style={{ height: 30, alignItems: "center", justifyContent: "center" }}>
+          <AnimatedTabIcon icon={meta.icon} color={iconColor} focused={focused} />
+          {meta.badge ? (
+            <View
+              style={{ position: "absolute", top: -4, right: -4 }}
+              className="h-2 w-2 rounded-full bg-[#FF2828]"
+            />
+          ) : null}
+        </View>
+        <Text style={{ color: textColor, fontSize: 11 }}>{t(meta.labelKey)}</Text>
+      </Pressable>
+    );
+  };
+
   return (
     <View
       pointerEvents="box-none"
-      style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", paddingBottom: Math.max((insets.bottom || 12) - 16, 6) + 14 }}
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        alignItems: "center",
+        paddingBottom: Math.max((insets.bottom || 12) - 16, 6) + 14,
+      }}
     >
-      <View pointerEvents="box-none" style={{ width: barWidth, height: navHeight }}>
+      <View
+        pointerEvents="box-none"
+        style={{ width: barWidth, height: navHeight }}
+      >
         {/* Glass bar — fills the exact silhouette; the top headroom (around the logo) is transparent. */}
         <View
           style={{
@@ -179,56 +264,51 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           <NotchedGlass width={barWidth} />
         </View>
 
-        {/* Tab items, laid out across the bar body (lower portion, below the hills). */}
+        {/* Tab items, laid out across the bar body (lower portion, below the hills).
+            Three-section layout: left group (News+Insights), center logo spacer, right group (Save+Config).
+            Each group uses space-around so items spread within their half. */}
         <View
-          style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: navHeight * 0.54, flexDirection: "row", alignItems: "center" }}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: navHeight * 0.54,
+            flexDirection: "row",
+            alignItems: "center",
+          }}
         >
-          {state.routes.map((route, index) => {
-            const focused = state.index === index;
+          {/* Left group: News + Insights */}
+          <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
+            {state.routes
+              .filter((r) => r.name === "index" || r.name === "insights")
+              .map((route) => renderTabItem(route))}
+          </View>
 
-            if (route.name === "aispace") {
-              // Center slot: spacer; the raised logo (below) is the actual touch target.
-              return <View key={route.key} style={{ flex: 1 }} />;
-            }
+          {/* Center spacer for the logo */}
+          <View style={{ width: barWidth * 0.22 }} />
 
-            const meta = ROUTE_META[route.name];
-            if (!meta) return <View key={route.key} style={{ flex: 1 }} />;
-            const color = focused ? palette.primary : theme[isDark ? "dark" : "light"].muted;
-
-            return (
-              <Pressable
-                key={route.key}
-                accessibilityRole="button"
-                accessibilityState={focused ? { selected: true } : {}}
-                accessibilityLabel={t(meta.labelKey)}
-                onPress={() => onPress(route.name, route.key, focused)}
-                style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 3 }}
-              >
-                <View>
-                  <Icon as={meta.icon} size={24} color={color} />
-                  {meta.badge ? (
-                    <View
-                      style={{ position: "absolute", top: -2, right: -4 }}
-                      className="h-2 w-2 rounded-full bg-[#FF2828]"
-                    />
-                  ) : null}
-                </View>
-                <Text style={{ color, fontSize: 11 }}>{t(meta.labelKey)}</Text>
-              </Pressable>
-            );
-          })}
+          {/* Right group: Save + Config */}
+          <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
+            {state.routes
+              .filter((r) => r.name === "save" || r.name === "config")
+              .map((route) => renderTabItem(route))}
+          </View>
         </View>
 
         {/* Swipe-up catch zone — the empty notch space ABOVE the logo (where the orb appears).
             Active only while hidden; an upward drag here reveals the orb. Claims on upward drag
             only, so it never blocks taps. */}
+        {/* Swipe-up zone: covers ONLY the center dip circle (exact diameter, no multiplier).
+            The dip circle = 63 viewBox units ≈ 71px at max bar width, safely within the center
+            slot (one slot = barWidth/5). Previously 55% of bar → blocked Insights and Save. */}
         <View
           pointerEvents={orbVisible ? "none" : "auto"}
           style={{
             position: "absolute",
             top: 0,
             alignSelf: "center",
-            width: barWidth * 0.55,
+            width: NAVBAR_CIRCLE.r * 2 * scale,
             height: logoCenterY - logoHeight / 2,
           }}
           {...revealResponder.panHandlers}
@@ -242,7 +322,10 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
         >
           <View
             onLayout={(e) => {
-              orbBox.current = { w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height };
+              orbBox.current = {
+                w: e.nativeEvent.layout.width,
+                h: e.nativeEvent.layout.height,
+              };
             }}
             {...orbResponder.panHandlers}
           >
@@ -255,7 +338,11 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           accessibilityRole="button"
           accessibilityLabel="AISpace"
           onPress={goToAispace}
-          style={{ position: "absolute", alignSelf: "center", top: logoCenterY - logoHeight / 2 }}
+          style={{
+            position: "absolute",
+            alignSelf: "center",
+            top: logoCenterY - logoHeight / 2,
+          }}
         >
           <BrandLogo height={logoHeight} />
         </Pressable>

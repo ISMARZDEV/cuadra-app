@@ -15,16 +15,42 @@ const KEEP_WARM = { keepAudioSessionActive: true };
 void setAudioModeAsync({ playsInSilentMode: true, interruptionMode: "mixWithOthers" });
 
 const players: Record<string, Player> = {
-  tick: createAudioPlayer(require("../assets/sounds/tick-a-current.wav"), KEEP_WARM),
-  reveal: createAudioPlayer(require("../assets/sounds/external-sounds/ai-intro-01.wav"), KEEP_WARM),
-  close: createAudioPlayer(require("../assets/sounds/external-sounds/close-01.wav"), KEEP_WARM),
-  startup: createAudioPlayer(require("../assets/sounds/external-sounds/startup-01.wav"), KEEP_WARM),
-  check: createAudioPlayer(require("../assets/sounds/external-sounds/check-01.wav"), KEEP_WARM),
-  bad: createAudioPlayer(require("../assets/sounds/external-sounds/bad-01.wav"), KEEP_WARM),
-  share: createAudioPlayer(require("../assets/sounds/external-sounds/shared-01.wav"), KEEP_WARM),
+  tick: createAudioPlayer(
+    require("../assets/sounds/tick-a-current.wav"),
+    KEEP_WARM,
+  ),
+  nav: createAudioPlayer(
+    require("../assets/sounds/tick-d-soft.wav"),
+    KEEP_WARM,
+  ),
+  reveal: createAudioPlayer(
+    require("../assets/sounds/external-sounds/ai-intro-01.wav"),
+    KEEP_WARM,
+  ),
+  close: createAudioPlayer(
+    require("../assets/sounds/external-sounds/close-01.wav"),
+    KEEP_WARM,
+  ),
+  startup: createAudioPlayer(
+    require("../assets/sounds/external-sounds/startup-01.wav"),
+    KEEP_WARM,
+  ),
+  check: createAudioPlayer(
+    require("../assets/sounds/external-sounds/check-01.wav"),
+    KEEP_WARM,
+  ),
+  bad: createAudioPlayer(
+    require("../assets/sounds/external-sounds/bad-01.wav"),
+    KEEP_WARM,
+  ),
+  share: createAudioPlayer(
+    require("../assets/sounds/external-sounds/shared-01.wav"),
+    KEEP_WARM,
+  ),
 };
 
-function play(p: Player) {
+function play(p: Player, volume?: number) {
+  if (volume !== undefined) p.volume = volume;
   p.seekTo(0)
     .then(() => p.play())
     .catch(() => {});
@@ -33,6 +59,7 @@ function play(p: Player) {
 // Gesture/UI → sound. share() is exposed for the future share action (no trigger yet).
 export const sounds = {
   tick: () => play(players.tick), // selector scrub step
+  nav: () => play(players.nav, 0.04), // nav item change
   reveal: () => play(players.reveal), // orb appears (swipe up)
   close: () => play(players.close), // orb hides (swipe down / auto-hide)
   startup: () => play(players.startup), // app launch

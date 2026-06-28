@@ -13,9 +13,9 @@ export function BrandLogo({ height = 36 }: { height?: number }) {
   const iW = height * I_RATIO;
   const mW = height * M_RATIO;
   return (
-    <View className="flex-row items-end" style={{ height }}>
+    <View className="flex-row items-end" style={{ height, gap: 0 }}>
       <Image source={brandI} resizeMode="contain" style={{ height, width: iW }} />
-      <Image source={brandM} resizeMode="contain" style={{ height: height * 0.98, width: mW, marginLeft: height * 0.06 }} />
+      <Image source={brandM} resizeMode="contain" style={{ height: height * 0.98, width: mW, marginLeft: -height * 0.20 }} />
     </View>
   );
 }
