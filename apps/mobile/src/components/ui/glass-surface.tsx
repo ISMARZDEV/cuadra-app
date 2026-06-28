@@ -7,7 +7,7 @@ import {
 } from "expo-glass-effect";
 import { LinearGradient } from "expo-linear-gradient";
 import { useColorScheme } from "nativewind";
-import { Platform, View, type ViewProps } from "react-native";
+import { Platform, StyleSheet, View, type ViewProps } from "react-native";
 import { SquircleView } from "react-native-squircle-view";
 
 // Cross-platform "glass" surface with Apple corner smoothing (squircle) + liquid glass border:
@@ -22,6 +22,9 @@ type GlassSurfaceProps = ViewProps & {
   colorScheme?: "auto" | "light" | "dark";
   borderWidth?: number;
   isInteractive?: boolean;
+  // Optional liquid-glass tint (iOS 26 GlassView). Falls back to a translucent overlay on the
+  // blur path so the tint still reads on Android / older iOS.
+  tintColor?: string;
 };
 
 export function GlassSurface({
@@ -29,6 +32,7 @@ export function GlassSurface({
   colorScheme: colorSchemeProp = "auto",
   borderWidth = 2.5,
   isInteractive = false,
+  tintColor,
   style,
   children,
   ...rest
@@ -44,6 +48,7 @@ export function GlassSurface({
         glassEffectStyle="regular"
         colorScheme={colorSchemeProp}
         isInteractive={isInteractive}
+        tintColor={tintColor}
         style={style}
         {...rest}
       >
@@ -74,6 +79,12 @@ export function GlassSurface({
               experimentalBlurMethod="dimezisBlurView"
               style={{ flex: 1 }}
             >
+              {tintColor ? (
+                <View
+                  pointerEvents="none"
+                  style={[StyleSheet.absoluteFill, { backgroundColor: tintColor }]}
+                />
+              ) : null}
               {children}
             </BlurView>
           </SquircleView>

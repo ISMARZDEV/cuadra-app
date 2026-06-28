@@ -20,6 +20,7 @@ import Animated, {
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useColorScheme } from "nativewind";
 
+import { AppBackground } from "@/components/ui/app-background";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import {
   NAVBAR_CIRCLE,
@@ -137,6 +138,7 @@ export function ChatScreen() {
 
   return (
     <SafeAreaView className="flex-1" edges={["top"]}>
+      <AppBackground />
       {/* Background color squares to test liquid glass blur effect */}
       <View
         style={{

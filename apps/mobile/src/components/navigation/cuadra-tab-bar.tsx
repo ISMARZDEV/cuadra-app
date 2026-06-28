@@ -10,8 +10,10 @@ import { useColorScheme } from "nativewind";
 import { useEffect, useRef } from "react";
 import {
   type GestureResponderEvent,
+  type LayoutChangeEvent,
   PanResponder,
   Pressable,
+  StyleSheet,
   Text,
   View,
   useWindowDimensions,
@@ -20,17 +22,19 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandLogo } from "@/components/ui/brand-logo";
+import { GlassSurface, GlassSurfaceContainer } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
 import { OrbSphere } from "@/components/ui/orb-sphere";
 import { t, type TranslationKey } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { useOrbStore } from "@/store/orb-store";
 
-import { NAVBAR_CIRCLE, NAVBAR_VIEWBOX, NotchedGlass } from "./notched-glass";
+import { NAVBAR_CIRCLE, NAVBAR_VIEWBOX } from "./notched-glass";
 
 // Minimal shape of the props expo-router passes to a custom `tabBar` (avoids depending on
 // @react-navigation/bottom-tabs types, which aren't hoisted in this pnpm workspace).
@@ -45,6 +49,8 @@ type CuadraTabBarProps = {
   };
 };
 
+type PressHandler = (routeName: string, routeKey: string, focused: boolean) => void;
+
 // Per-route presentation. The center route (aispace) renders the brand logo instead of an icon.
 const ROUTE_META: Record<string, { icon: LucideIcon; labelKey: TranslationKey; badge?: boolean }> = {
   index: { icon: Newspaper, labelKey: "tabs.news" },
@@ -52,6 +58,12 @@ const ROUTE_META: Record<string, { icon: LucideIcon; labelKey: TranslationKey; b
   save: { icon: BadgePercent, labelKey: "tabs.save" },
   config: { icon: Settings, labelKey: "tabs.config" },
 };
+
+// Which tabs live in each glass island (the center "aispace" logo sits in the gap between them).
+const LEFT_ISLAND = ["index", "insights"] as const;
+const RIGHT_ISLAND = ["save", "config"] as const;
+
+const BUBBLE_SPRING = { damping: 17, stiffness: 220, mass: 0.8 } as const;
 
 // Animated icon with spring scale bounce when focused.
 function AnimatedTabIcon({
@@ -66,7 +78,7 @@ function AnimatedTabIcon({
   const scale = useSharedValue(1);
 
   useEffect(() => {
-    scale.value = withSpring(focused ? 1.25 : 1, {
+    scale.value = withSpring(focused ? 1.22 : 1, {
       damping: 12,
       stiffness: 200,
       mass: 0.8,
@@ -84,8 +96,175 @@ function AnimatedTabIcon({
   );
 }
 
-// Cuadra tab bar — exact Figma silhouette: one smooth wave with a central dip concentric to the
-// raised "iM" logo (AISpace). Geometry scales from the design viewBox so the curve stays faithful.
+// A single tab (icon + label + optional badge). Reports its layout (x/width within the island)
+// so the parent island can place the liquid-glass selection bubble exactly over it.
+function TabButton({
+  route,
+  focused,
+  isDark,
+  onPress,
+  onMeasure,
+}: {
+  route: TabRoute;
+  focused: boolean;
+  isDark: boolean;
+  onPress: PressHandler;
+  onMeasure: (x: number, width: number) => void;
+}) {
+  const meta = ROUTE_META[route.name];
+  if (!meta) return null;
+
+  const iconColor = focused
+    ? isDark ? "#C2FB7E" : "#034842"
+    : isDark ? "#6AC400" : "#5A6B60";
+  const textColor = focused
+    ? isDark ? "#FFFFFF" : "#034842"
+    : isDark ? "#C9D3CC" : "#5A6B60";
+
+  return (
+    <View
+      style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+      onLayout={(e: LayoutChangeEvent) =>
+        onMeasure(e.nativeEvent.layout.x, e.nativeEvent.layout.width)
+      }
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={focused ? { selected: true } : {}}
+        accessibilityLabel={t(meta.labelKey)}
+        onPress={() => onPress(route.name, route.key, focused)}
+        style={{ alignItems: "center", justifyContent: "center", gap: 3, paddingHorizontal: 6 }}
+      >
+        <View style={{ height: 28, alignItems: "center", justifyContent: "center" }}>
+          <AnimatedTabIcon icon={meta.icon} color={iconColor} focused={focused} />
+          {meta.badge ? (
+            <View
+              style={{ position: "absolute", top: -4, right: -4 }}
+              className="h-2 w-2 rounded-full bg-[#FF2828]"
+            />
+          ) : null}
+        </View>
+        <Text style={{ color: textColor, fontSize: 11, fontWeight: focused ? "600" : "400" }}>
+          {t(meta.labelKey)}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// A glass "island" holding 2 tabs. The island base + the selection bubble are BOTH GlassViews
+// inside a GlassContainer, so on iOS 26 they fuse with the native liquid-glass morph (instead of
+// stacking into a muddy box). The bubble springs between the island's two tabs, and FADES in/out
+// when focus enters/leaves the island — so jumping between islands shows no cross-gap slide.
+function TabIsland({
+  routes,
+  focusedName,
+  isDark,
+  width,
+  height,
+  onPress,
+}: {
+  routes: TabRoute[];
+  focusedName: string | undefined;
+  isDark: boolean;
+  width: number;
+  height: number;
+  onPress: PressHandler;
+}) {
+  const layouts = useRef<Record<string, { x: number; width: number }>>({});
+  const visibleRef = useRef(false); // is the bubble currently shown in THIS island?
+  const bubbleX = useSharedValue(0);
+  const bubbleW = useSharedValue(0);
+  const bubbleOpacity = useSharedValue(0);
+
+  const radius = height / 2;
+  const focusedHere = focusedName !== undefined && routes.some((r) => r.name === focusedName);
+
+  // Place the bubble: slide within the island, but snap+fade when arriving from the other island.
+  const place = (x: number, w: number) => {
+    if (visibleRef.current) {
+      bubbleX.value = withSpring(x, BUBBLE_SPRING);
+      bubbleW.value = withSpring(w, BUBBLE_SPRING);
+    } else {
+      // Arriving from the other island — snap into position (no slide across the gap) then fade in.
+      bubbleX.value = x;
+      bubbleW.value = w;
+      bubbleOpacity.value = withTiming(1, { duration: 200 });
+      visibleRef.current = true;
+    }
+  };
+
+  useEffect(() => {
+    if (focusedHere && focusedName) {
+      const l = layouts.current[focusedName];
+      if (l) place(l.x, l.width);
+    } else if (visibleRef.current) {
+      bubbleOpacity.value = withTiming(0, { duration: 160 });
+      visibleRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedHere, focusedName]);
+
+  const bubbleStyle = useAnimatedStyle(() => ({
+    position: "absolute",
+    left: bubbleX.value + 6,
+    width: Math.max(bubbleW.value - 12, 0),
+    top: 6,
+    bottom: 6,
+    opacity: bubbleOpacity.value,
+  }));
+
+  return (
+    <View
+      style={{
+        width,
+        height,
+        borderRadius: radius,
+        shadowColor: "#000",
+        shadowOpacity: isDark ? 0.35 : 0.12,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 6 },
+      }}
+    >
+      {/* Glass base + bubble fused via GlassContainer (iOS 26 liquid morph). */}
+      <GlassSurfaceContainer spacing={14} style={StyleSheet.absoluteFill}>
+        <GlassSurface style={{ flex: 1, borderRadius: radius }} />
+        <Animated.View style={bubbleStyle} pointerEvents="none">
+          <GlassSurface
+            isInteractive
+            tintColor={isDark ? "rgba(194,251,126,0.20)" : "rgba(106,196,0,0.18)"}
+            style={{ flex: 1, borderRadius: radius - 6 }}
+          />
+        </Animated.View>
+      </GlassSurfaceContainer>
+
+      {/* Tab buttons overlaid on the glass. */}
+      <View style={[StyleSheet.absoluteFill, { flexDirection: "row", alignItems: "center" }]}>
+        {routes.map((route) => {
+          const focused = route.name === focusedName;
+          return (
+            <TabButton
+              key={route.key}
+              route={route}
+              focused={focused}
+              isDark={isDark}
+              onPress={onPress}
+              onMeasure={(x, w) => {
+                layouts.current[route.name] = { x, width: w };
+                // First measure of the already-focused tab → show the bubble immediately.
+                if (focused && !visibleRef.current) place(x, w);
+              }}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// Cuadra tab bar — two liquid-glass islands ([News · Insights] and [Save · Config]) with the raised
+// "iM" logo (AISpace) floating in the gap between them. The iridescent Siri orb springs up over the
+// logo. Geometry scales from the design viewBox so the composition stays faithful at any width.
 export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const { colorScheme } = useColorScheme();
   const insets = useSafeAreaInsets();
@@ -94,13 +273,18 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
 
   const barWidth = Math.min(width - 24, 380);
   const scale = barWidth / NAVBAR_VIEWBOX.width; // viewBox→px (uniform)
-  const navHeight = NAVBAR_VIEWBOX.height * scale; // full composition (bar body + dip headroom)
-  // "iM" logo nests LOW inside the dip valley (viewBox units). The iridescent sphere (future)
-  // appears above on press, concentric with the dip.
-  const logoHeight = 30 * scale;
-  const logoCenterY = 86 * scale; // cradled low inside the bar body (top sits at the dip line)
+  const navHeight = NAVBAR_VIEWBOX.height * scale; // full composition (islands + orb headroom)
 
-  // Iridescent Siri-style orb. Swipe UP on the empty notch space above the logo reveals it (+buzz);
+  // Two islands flanking a center gap that holds the "iM" logo.
+  const centerGap = barWidth * 0.24;
+  const islandWidth = (barWidth - centerGap) / 2;
+  const islandHeight = Math.round(navHeight * 0.56);
+
+  // "iM" logo, vertically centered with the island tabs; the orb springs up above it.
+  const logoHeight = 32 * scale;
+  const logoCenterY = navHeight - islandHeight / 2;
+
+  // Iridescent Siri-style orb. Swipe UP on the empty space above the logo reveals it (+buzz);
   // press/hold the orb to make it wobble; swipe DOWN on the orb (or 8s idle) hides it. The "iM"
   // logo just navigates to chat. See orb-store for the full gesture model.
   const orbVisible = useOrbStore((s) => s.active);
@@ -109,9 +293,9 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const bumpOrb = useOrbStore((s) => s.bump);
   const setPressing = useOrbStore((s) => s.setPressing);
   const orbSize = NAVBAR_CIRCLE.r * 2 * scale * 1.35; // oval width
-  const orbTop = NAVBAR_CIRCLE.cy * scale - (orbSize * 0.86) / 2; // oval (h = w·0.86), centred on the dip
+  const orbTop = logoCenterY - logoHeight / 2 - orbSize * 0.86; // floats just above the logo
 
-  const onPress = (routeName: string, routeKey: string, focused: boolean) => {
+  const onPress: PressHandler = (routeName, routeKey, focused) => {
     const event = navigation.emit({ type: "tabPress", target: routeKey, canPreventDefault: true });
     if (!focused && !event.defaultPrevented) {
       navigation.navigate(routeName);
@@ -125,9 +309,6 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     if (aispace) onPress("aispace", aispace.key, state.routes[state.index]?.name === "aispace");
   };
 
-  // Gesture thresholds: travel (px) and flick velocity (px/ms) above which a pan is a real swipe;
-  // a release that stayed within TAP_SLOP counts as a tap. PanResponder (not RNGH) so it runs on
-  // the current dev client with no extra native module / rebuild.
   // Intro/close sound on every show/hide — covers swipe-up, swipe-down AND the 8s auto-hide
   // (which flips `active` from the store timer, not from a gesture).
   const prevVisibleRef = useRef(orbVisible);
@@ -142,7 +323,7 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const SWIPE_VY = 0.5;
   const SELECT_STEP = 26; // px of upward drag per selection "tick" (the future wheel selector)
 
-  // Swipe UP in the empty notch space above the logo → reveal the orb (bounces in, light haptic pop).
+  // Swipe UP in the empty space above the logo → reveal the orb (bounces in, light haptic pop).
   // Claims ONLY on an upward drag, so plain taps pass through to what's underneath.
   const revealResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => false,
@@ -167,9 +348,8 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     return Math.pow(Math.abs(nx), 2.2) + Math.pow(Math.abs(ny), 2.2) <= 0.9;
   };
 
-  // Orb: press/hold → wobble (visual, no haptic) + wave swell. Press + drag UP scrubs the (future)
-  // wheel selector → a selection "tick" per step (Haptics.selectionAsync, the date-picker feel).
-  // Swipe DOWN → hide. No navigation.
+  // Orb: press/hold → wobble (visual) + wave swell. Press + drag UP scrubs the (future) wheel
+  // selector → a selection "tick" per step. Swipe DOWN → hide. No navigation.
   const stepRef = useRef(0);
   const orbResponder = PanResponder.create({
     onStartShouldSetPanResponder: insideOrb,
@@ -196,42 +376,12 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     onPanResponderTerminate: () => setPressing(false),
   });
 
-  // Renders a single tab item (icon + label + optional badge).
-  const renderTabItem = (route: TabRoute) => {
-    const index = state.routes.indexOf(route);
-    const focused = state.index === index;
-    const meta = ROUTE_META[route.name];
-    if (!meta) return null;
+  const focusedName = state.routes[state.index]?.name;
+  const leftRoutes = state.routes.filter((r) => LEFT_ISLAND.includes(r.name as never));
+  const rightRoutes = state.routes.filter((r) => RIGHT_ISLAND.includes(r.name as never));
 
-    const iconColor = focused
-      ? isDark ? "#C2FB7E" : "#6AC400"
-      : isDark ? "#6AC400" : "#034842";
-    const textColor = focused
-      ? isDark ? "#FFFFFF" : "#034842"
-      : isDark ? "#FFFFFF" : "#000000";
-
-    return (
-      <Pressable
-        key={route.key}
-        accessibilityRole="button"
-        accessibilityState={focused ? { selected: true } : {}}
-        accessibilityLabel={t(meta.labelKey)}
-        onPress={() => onPress(route.name, route.key, focused)}
-        style={{ alignItems: "center", justifyContent: "center", gap: 3 }}
-      >
-        <View style={{ height: 30, alignItems: "center", justifyContent: "center" }}>
-          <AnimatedTabIcon icon={meta.icon} color={iconColor} focused={focused} />
-          {meta.badge ? (
-            <View
-              style={{ position: "absolute", top: -4, right: -4 }}
-              className="h-2 w-2 rounded-full bg-[#FF2828]"
-            />
-          ) : null}
-        </View>
-        <Text style={{ color: textColor, fontSize: 11 }}>{t(meta.labelKey)}</Text>
-      </Pressable>
-    );
-  };
+  // Height of the swipe-up catch zone above the logo (the empty space where the orb reveals).
+  const swipeZoneHeight = Math.max(logoCenterY - logoHeight / 2, 0);
 
   return (
     <View
@@ -245,64 +395,41 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
         paddingBottom: Math.max((insets.bottom || 12) - 16, 6) + 14,
       }}
     >
-      <View
-        pointerEvents="box-none"
-        style={{ width: barWidth, height: navHeight }}
-      >
-        {/* Glass bar — fills the exact silhouette; the top headroom (around the logo) is transparent.
-            isInteractive: native iOS 26 touch response (glass lights up on tap). */}
+      <View pointerEvents="box-none" style={{ width: barWidth, height: navHeight }}>
+        {/* Two glass islands at the bottom; space-between leaves the center gap for the logo. */}
         <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            shadowColor: "#000",
-            shadowOpacity: isDark ? 0.4 : 0.12,
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 6 },
-          }}
-        >
-          <NotchedGlass width={barWidth} isInteractive />
-        </View>
-
-        {/* Tab items, laid out across the bar body (lower portion, below the hills).
-            Three-section layout: left group (News+Insights), center logo spacer, right group (Save+Config).
-            Each group uses space-around so items spread within their half. */}
-        <View
+          pointerEvents="box-none"
           style={{
             position: "absolute",
             left: 0,
             right: 0,
             bottom: 0,
-            height: navHeight * 0.54,
+            height: islandHeight,
             flexDirection: "row",
             alignItems: "center",
+            justifyContent: "space-between",
           }}
         >
-          {/* Left group: News + Insights */}
-          <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
-            {state.routes
-              .filter((r) => r.name === "index" || r.name === "insights")
-              .map((route) => renderTabItem(route))}
-          </View>
-
-          {/* Center spacer for the logo */}
-          <View style={{ width: barWidth * 0.22 }} />
-
-          {/* Right group: Save + Config */}
-          <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
-            {state.routes
-              .filter((r) => r.name === "save" || r.name === "config")
-              .map((route) => renderTabItem(route))}
-          </View>
+          <TabIsland
+            routes={leftRoutes}
+            focusedName={focusedName}
+            isDark={isDark}
+            width={islandWidth}
+            height={islandHeight}
+            onPress={onPress}
+          />
+          <TabIsland
+            routes={rightRoutes}
+            focusedName={focusedName}
+            isDark={isDark}
+            width={islandWidth}
+            height={islandHeight}
+            onPress={onPress}
+          />
         </View>
 
-        {/* Swipe-up catch zone — the empty notch space ABOVE the logo (where the orb appears).
-            Active only while hidden; an upward drag here reveals the orb. Claims on upward drag
-            only, so it never blocks taps. */}
-        {/* Swipe-up zone: covers ONLY the center dip circle (exact diameter, no multiplier).
-            The dip circle = 63 viewBox units ≈ 71px at max bar width, safely within the center
-            slot (one slot = barWidth/5). Previously 55% of bar → blocked Insights and Save. */}
+        {/* Swipe-up catch zone — the empty space ABOVE the logo (where the orb appears). Active only
+            while hidden; an upward drag here reveals the orb. Claims on upward drag only. */}
         <View
           pointerEvents={orbVisible ? "none" : "auto"}
           style={{
@@ -310,12 +437,12 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
             top: 0,
             alignSelf: "center",
             width: NAVBAR_CIRCLE.r * 2 * scale,
-            height: logoCenterY - logoHeight / 2,
+            height: swipeZoneHeight,
           }}
           {...revealResponder.panHandlers}
         />
 
-        {/* Iridescent orb — springs up over the dip. Press/hold → wobble; swipe down hides it. Only
+        {/* Iridescent orb — springs up over the gap. Press/hold → wobble; swipe down hides it. Only
             interactive while visible so it never steals touches when hidden. */}
         <View
           pointerEvents={orbVisible ? "box-none" : "none"}
@@ -334,7 +461,7 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           </View>
         </View>
 
-        {/* Center "iM" logo — tap navigates to the AISpace chat (reveal lives in the notch zone above). */}
+        {/* Center "iM" logo — tap navigates to the AISpace chat (reveal lives in the zone above). */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="AISpace"

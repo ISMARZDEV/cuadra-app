@@ -30,9 +30,10 @@ const themes = {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { colorScheme } = useColorScheme();
+  const scheme = colorScheme === "dark" ? "dark" : "light";
   return (
-    <View style={themes[colorScheme === "dark" ? "dark" : "light"]} className="flex-1">
-      <AppBackground />
+    <View style={themes[scheme]} className="flex-1">
+      <AppBackground colorScheme={scheme} />
       {children}
     </View>
   );

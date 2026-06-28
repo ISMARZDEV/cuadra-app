@@ -1,6 +1,7 @@
 import { Construction } from "lucide-react-native";
 import { Text, View } from "react-native";
 
+import { AppBackground } from "@/components/ui/app-background";
 import { Icon } from "@/components/ui/icon";
 import { palette } from "@/theme";
 
@@ -9,6 +10,7 @@ import { palette } from "@/theme";
 export function Placeholder({ title }: { title: string }) {
   return (
     <View className="flex-1 items-center justify-center gap-3">
+      <AppBackground />
       <Icon as={Construction} size={48} color={palette.primary} />
       <Text className="text-2xl font-bold text-primary">{title}</Text>
       <Text className="text-muted">Esqueleto · sin lógica aún</Text>

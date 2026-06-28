@@ -6,6 +6,7 @@ import { Stack } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
+import { OrbOverlay } from "@/components/navigation/orb-overlay";
 import { useAuthStore } from "@/features/auth/use-auth-store";
 import { queryClient } from "@/lib/api/query-client";
 import { sounds } from "@/lib/sounds";
@@ -43,6 +44,8 @@ export default function RootLayout() {
             </Stack.Protected>
           </Stack>
         )}
+        {/* Floating Siri orb above the native tab bar (self-gates to the (tabs) group). */}
+        <OrbOverlay />
       </ThemeProvider>
     </QueryClientProvider>
   );
