@@ -24,7 +24,7 @@ export const theme = {
   },
   dark: {
     bg: "#0B1410",
-    bgGradient: ["#082323", "#050608"], // vertical top → bottom (deep teal → near-black)
+    bgGradient: ["#050608", "#082323"], // vertical top → bottom (deep teal → near-black)
     surface: "#12201A",
     text: "#F7FAF7",
     muted: "#9CA3AF",

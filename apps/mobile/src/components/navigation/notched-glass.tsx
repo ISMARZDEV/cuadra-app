@@ -26,19 +26,36 @@ export function NotchedGlass({ width, isInteractive = false }: { width: number; 
   const viewBox = `0 0 ${NAVBAR_VIEWBOX.width} ${NAVBAR_VIEWBOX.height}`;
   const rim = isDark ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.9)";
 
+  // The glass silhouette only occupies the LOWER band of the viewBox — the hills top sits at
+  // y≈41, leaving y0..41 as empty headroom (where the orb/logo float). On iOS a native
+  // interactive GlassView is touch-responsive across its WHOLE rectangle (MaskedView clips the
+  // visuals, not the hit area), so that transparent headroom would steal taps meant for content
+  // floating just above the bar — e.g. the AISpace chat input. We clip the interactive glass to
+  // its visible band with an overflow-hidden container, so the headroom is no longer a touch
+  // target. Purely-decorative pieces (the rim) stay full-size with pointerEvents="none".
+  const HEADROOM_VB = 41; // path min-y (hills top) in viewBox units
+  const headroom = height * (HEADROOM_VB / NAVBAR_VIEWBOX.height);
+  const bandHeight = height - headroom;
+
   return (
-    <View style={{ width, height }}>
-      <MaskedView
-        style={{ width, height }}
-        maskElement={
-          <Svg width={width} height={height} viewBox={viewBox}>
-            <Path d={NAVBAR_PATH} fill="#ffffff" />
-          </Svg>
-        }
-      >
-        <GlassSurface style={{ width, height }} isInteractive={isInteractive} />
-      </MaskedView>
-      {/* Glass rim — restores the bright edge the mask clips off. */}
+    <View style={{ width, height }} pointerEvents="box-none">
+      {/* Interactive glass, clipped to the visible silhouette band (transparent headroom is
+          rendered but not hit-testable, since it sits outside this container's bounds). */}
+      <View style={{ position: "absolute", bottom: 0, width, height: bandHeight, overflow: "hidden" }}>
+        <View style={{ position: "absolute", bottom: 0, width, height }}>
+          <MaskedView
+            style={{ width, height }}
+            maskElement={
+              <Svg width={width} height={height} viewBox={viewBox}>
+                <Path d={NAVBAR_PATH} fill="#ffffff" />
+              </Svg>
+            }
+          >
+            <GlassSurface style={{ width, height }} isInteractive={isInteractive} />
+          </MaskedView>
+        </View>
+      </View>
+      {/* Glass rim — restores the bright edge the mask clips off. Decorative only. */}
       <Svg
         width={width}
         height={height}

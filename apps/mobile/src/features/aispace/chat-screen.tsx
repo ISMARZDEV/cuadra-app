@@ -4,6 +4,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -136,7 +137,11 @@ export function ChatScreen() {
   });
 
   return (
-    <SafeAreaView className="flex-1" edges={["top"]}>
+    // Tap anywhere outside the input (empty card areas) dismisses the keyboard on any device.
+    // The ScrollView below uses keyboardShouldPersistTaps="handled" so taps on the message area
+    // dismiss too, while the input's own Pressable keeps focusing on a single tap.
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <SafeAreaView className="flex-1" edges={["top"]}>
       {/* Background color squares to test liquid glass blur effect */}
       <View
         style={{
@@ -213,6 +218,8 @@ export function ChatScreen() {
               className="flex-1"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 8 }}
+              keyboardShouldPersistTaps="handled"
+              onScrollBeginDrag={Keyboard.dismiss}
             >
               {CHAT_THREAD.map((item) => {
                 switch (item.kind) {
@@ -236,7 +243,8 @@ export function ChatScreen() {
           </View>
         </GlassSurface>
       </Animated.View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 }
 

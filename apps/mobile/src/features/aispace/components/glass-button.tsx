@@ -3,7 +3,6 @@ import { Pressable, View } from "react-native";
 
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
-import { palette } from "@/theme";
 
 // Round liquid-glass symbol button (Figma "Button - Liquid Glass - Symbol").
 // `glass` = native iOS 26 liquid glass (expo-glass-effect, falls back to a plain rounded view
@@ -36,8 +35,8 @@ export function GlassButton({
           <Icon as={icon} size={iconSize} color="#034842" />
         </View>
       ) : (
-        <GlassSurface style={{ ...shape, alignItems: "center", justifyContent: "center" }}>
-          <Icon as={icon} size={iconSize} color={palette.primary} />
+        <GlassSurface isInteractive style={{ ...shape, alignItems: "center", justifyContent: "center" }}>
+          <Icon as={icon} size={iconSize} color="#C2FB7E" />
         </GlassSurface>
       )}
     </Pressable>

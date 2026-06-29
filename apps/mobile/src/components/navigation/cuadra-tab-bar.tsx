@@ -265,6 +265,30 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           <NotchedGlass width={barWidth} isInteractive />
         </View>
 
+        {/* Iridescent orb — springs up over the dip. Press/hold → wobble; swipe down hides it.
+            Rendered BEFORE the tab items so it sits BEHIND them in z-order: the orb's ~96px frame
+            slightly overlaps the inner edge of Insights/Save, and a top view that declines the
+            responder does NOT let the touch fall through to the tabs underneath. Keeping the orb
+            beneath the tabs lets Insights/Save stay fully tappable while the orb is active; the
+            orb's own body (centred over the logo spacer) has no tab over it, so press/hold/swipe
+            still work. Only interactive while visible so it never steals touches when hidden. */}
+        <View
+          pointerEvents={orbVisible ? "box-none" : "none"}
+          style={{ position: "absolute", alignSelf: "center", top: orbTop }}
+        >
+          <View
+            onLayout={(e) => {
+              orbBox.current = {
+                w: e.nativeEvent.layout.width,
+                h: e.nativeEvent.layout.height,
+              };
+            }}
+            {...orbResponder.panHandlers}
+          >
+            <OrbSphere size={orbSize} visible={orbVisible} />
+          </View>
+        </View>
+
         {/* Tab items, laid out across the bar body (lower portion, below the hills).
             Three-section layout: left group (News+Insights), center logo spacer, right group (Save+Config).
             Each group uses space-around so items spread within their half. */}
@@ -314,25 +338,6 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           }}
           {...revealResponder.panHandlers}
         />
-
-        {/* Iridescent orb — springs up over the dip. Press/hold → wobble; swipe down hides it. Only
-            interactive while visible so it never steals touches when hidden. */}
-        <View
-          pointerEvents={orbVisible ? "box-none" : "none"}
-          style={{ position: "absolute", alignSelf: "center", top: orbTop }}
-        >
-          <View
-            onLayout={(e) => {
-              orbBox.current = {
-                w: e.nativeEvent.layout.width,
-                h: e.nativeEvent.layout.height,
-              };
-            }}
-            {...orbResponder.panHandlers}
-          >
-            <OrbSphere size={orbSize} visible={orbVisible} />
-          </View>
-        </View>
 
         {/* Center "iM" logo — tap navigates to the AISpace chat (reveal lives in the notch zone above). */}
         <Pressable
