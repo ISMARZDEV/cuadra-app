@@ -47,6 +47,18 @@ class FakeReadAgent:
         raise AssertionError("una lectura no debe commitear")
 
 
+class FakeGeneralAgent:
+    """run() conversa de inmediato (sin escritura, sin HITL) — como el GeneralAgent real."""
+
+    intents = ("general",)
+
+    def run(self, state) -> dict:  # type: ignore[no-untyped-def]
+        return {"messages": [AIMessage("¡Hola! ¿Listo para cuidar tu plata? 🎉")], "pending_action": None}
+
+    def commit(self, state) -> str:  # type: ignore[no-untyped-def]
+        return ""
+
+
 def _classifier_other(text: str, capabilities: list[str]) -> str:
     return "other"
 
@@ -107,3 +119,16 @@ def test_non_finance_intent_responds_canned() -> None:
     out = graph.invoke(_msg("hola, cómo estás"), cfg)
     assert "__interrupt__" not in out
     assert out["messages"][-1].content
+
+
+def test_general_intent_routes_to_agent_not_canned() -> None:
+    """Smalltalk → intent 'general' → el GeneralAgent CONVERSA (no el string fijo respond_other)."""
+    graph = build_graph(
+        MemorySaver(), classifier=lambda t, c: "general",
+        registry={"general": FakeGeneralAgent()},
+    )
+    cfg = {"configurable": {"thread_id": "g1"}}
+    out = graph.invoke(_msg("hola"), cfg)
+
+    assert "__interrupt__" not in out                     # conversación: sin HITL
+    assert "Hola" in out["messages"][-1].content          # respondió el agente, no t("other")
