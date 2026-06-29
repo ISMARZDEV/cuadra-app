@@ -18,11 +18,33 @@ login con **cualquier email** (el dev-login crea el usuario al vuelo) → listo.
 > Datos de ejemplo (opcional, una vez): `make seed`. El login NO lo necesita (crea el user solo),
 > pero algunas pantallas (Insights, etc.) se ven vacías sin datos sembrados.
 
-## Por qué NO Expo Go
+## Atajo: simulador con Expo Go (iteración rápida de UI)
 
-El orbe usa **`@shopify/react-native-skia`**, un módulo nativo que **Expo Go no incluye**.
-Por eso se necesita un **development build** (o EAS). El simulador del Mac sí corre sin firma
-(`npx expo run:ios` sin `--device`), pero para device físico hay que firmar.
+Para iterar UI sin compilar nada nativo (no necesita Xcode build ni firma), corré la app en el
+**simulador** con **Expo Go**:
+
+```bash
+pnpm mobile:sim                 # = ./scripts/sim-up.sh
+./scripts/sim-up.sh "iPhone 17" # forzar un device por nombre
+./scripts/sim-up.sh --clear     # flags extra van a `expo start`
+```
+
+El script **bootea un simulador** si no hay ninguno, **instala Expo Go si falta** (vía
+`expo start --go --ios`) y abre la app. El simulador comparte la red de la Mac, así que `localhost`
+alcanza la API local — no hace falta IP LAN ni dev-client.
+
+> **Caveat de fidelidad:** Expo Go (SDK 56) **sí** incluye Skia y Reanimated, así que el orbe y las
+> animaciones cargan. Pero módulos que Expo Go NO trae degradan a su fallback — sobre todo
+> **`expo-glass-effect`** (el liquid-glass nativo de iOS 26): en Expo Go se ve el fallback
+> blur+gradiente, no el cristal real. Para fidelidad nativa COMPLETA usá el dev-build (abajo).
+
+## Por qué dev-build (no Expo Go) para fidelidad y device físico
+
+Expo Go sirve para iterar rápido en el simulador, pero tiene dos límites: (1) **`expo-glass-effect`**
+no está → el liquid glass cae a fallback; (2) en **device físico** hay que **firmar**. Por eso, para
+ver el look nativo real o correr en iPhone/iPad, se usa un **development build** (o EAS). El simulador
+también corre el dev-build sin firma (`npx expo run:ios` sin `--device`); el device físico sí requiere
+firma.
 
 ## Primera vez: instalar el dev-build en un device
 

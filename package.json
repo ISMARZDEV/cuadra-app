@@ -6,6 +6,7 @@
   "packageManager": "pnpm@9.0.0",
   "scripts": {
     "mobile": "pnpm --filter @cuadra/mobile start",
+    "mobile:sim": "./scripts/sim-up.sh",
     "api:gen": "pnpm --filter @cuadra/api-client generate",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck"
