@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
   Keyboard,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   PanResponder,
   Platform,
   Pressable,
@@ -194,6 +196,18 @@ export function ChatScreen() {
     scrollRef.current?.scrollToEnd({ animated });
   }, []);
 
+  // Track whether the user is at (or near) the bottom. Auto-scroll only follows new content when
+  // they're already down there — so scrolling UP to read history isn't yanked back down (ChatGPT).
+  const nearBottomRef = useRef(true);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    nearBottomRef.current = distanceFromBottom < 80;
+  }, []);
+  const followIfAtBottom = useCallback(() => {
+    if (nearBottomRef.current) scrollToBottom(false);
+  }, [scrollToBottom]);
+
   useEffect(() => {
     const onShow = Keyboard.addListener(KB_SHOW, (e) => {
       // iOS reports the keyboard's own animation duration in the event — use it so the card
@@ -280,13 +294,19 @@ export function ChatScreen() {
               ref={scrollRef}
               className="flex-1"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 8 }}
+              contentContainerStyle={{ paddingBottom: 8, flexGrow: 1, justifyContent: "flex-end" }}
               keyboardShouldPersistTaps="handled"
               onScrollBeginDrag={Keyboard.dismiss}
-              // Pin to the latest message: on mount, when the viewport resizes (keyboard open/close),
-              // and whenever content grows (a message is sent) — so recent messages stay visible.
-              onLayout={() => scrollToBottom(false)}
-              onContentSizeChange={() => scrollToBottom(false)}
+              // Elastic rubber-band at top AND bottom even when the content fits (ChatGPT/iMessage).
+              alwaysBounceVertical
+              bounces
+              overScrollMode="always"
+              scrollEventThrottle={16}
+              onScroll={onScroll}
+              // Follow new content only when already at the bottom — never yank the user down while
+              // they've scrolled up to read history.
+              onLayout={followIfAtBottom}
+              onContentSizeChange={followIfAtBottom}
             >
               {chat.messages.map((m) =>
                 m.role === ChatRole.User ? (
