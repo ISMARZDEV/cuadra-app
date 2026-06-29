@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ChevronRight, Moon, Sparkles } from "lucide-react-native";
+import { ChevronRight, Languages, Moon, Sparkles } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { Pressable, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -42,6 +42,19 @@ export function ConfigScreen() {
           <View className="flex-row items-center gap-3">
             <Icon as={Sparkles} size={22} color={palette.primary} />
             <Text className="text-base text-text">{t("config.personality")}</Text>
+          </View>
+          <Icon as={ChevronRight} size={22} color="#9CA3AF" />
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("config.language")}
+          onPress={() => router.push("/config/language")}
+          className="mt-3 flex-row items-center justify-between rounded-2xl border border-border bg-surface px-4 py-4"
+        >
+          <View className="flex-row items-center gap-3">
+            <Icon as={Languages} size={22} color={palette.primary} />
+            <Text className="text-base text-text">{t("config.language")}</Text>
           </View>
           <Icon as={ChevronRight} size={22} color="#9CA3AF" />
         </Pressable>

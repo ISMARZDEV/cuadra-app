@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { useAuthStore } from "@/features/auth/use-auth-store";
+import { useLanguageStore } from "@/features/settings/use-language-store";
 import { queryClient } from "@/lib/api/query-client";
 import { sounds } from "@/lib/sounds";
 import { ThemeProvider } from "@/lib/theme/theme-provider";
@@ -17,10 +18,12 @@ import { palette } from "@/theme";
 export default function RootLayout() {
   const status = useAuthStore((s) => s.status);
   const restore = useAuthStore((s) => s.restore);
+  const restoreLanguage = useLanguageStore((s) => s.restore);
 
   useEffect(() => {
     restore();
-  }, [restore]);
+    restoreLanguage(); // apply the persisted language choice (or follow the device when auto)
+  }, [restore, restoreLanguage]);
 
   useEffect(() => {
     sounds.startup(); // app-launch sound (once per app open)
