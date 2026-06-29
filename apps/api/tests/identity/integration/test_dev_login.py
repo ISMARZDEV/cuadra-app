@@ -5,7 +5,6 @@ En producción (app_env != dev) responde 404. Producción real = IdP externo (§
 """
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
