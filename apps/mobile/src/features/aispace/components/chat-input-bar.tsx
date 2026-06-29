@@ -1,16 +1,19 @@
 import { Mic, Plus, SendHorizontal } from "lucide-react-native";
-import { useRef, useState, type RefObject } from "react";
+import { useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 
 import { t } from "@/i18n";
 import { useColorScheme } from "nativewind";
 
+import type { ChatInputBarProps } from "../interfaces";
+
 import { GlassButton } from "./glass-button";
 
 // `inputRef` is optional — the screen passes one in so it can dismiss/restore the keyboard around
-// the sessions drawer (hide on open, refocus on close).
-export function ChatInputBar({ inputRef: externalRef }: { inputRef?: RefObject<TextInput | null> }) {
+// the sessions drawer (hide on open, refocus on close). `onSend` receives the trimmed message when
+// the user taps send (the screen streams it to the chat); without it the bar just clears.
+export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const [value, setValue] = useState("");
@@ -27,8 +30,8 @@ export function ChatInputBar({ inputRef: externalRef }: { inputRef?: RefObject<T
 
   const handleSend = () => {
     if (!hasText) return;
-    // Static UI for now — clear the field (and revert the button back to the mic).
-    setValue("");
+    onSend?.(value.trim());
+    setValue(""); // clear the field (and revert the button back to the mic)
   };
 
   // Row is bottom-aligned so the buttons stay pinned to the bottom of the pill as it grows.

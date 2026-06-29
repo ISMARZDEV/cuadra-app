@@ -36,9 +36,10 @@ import { AgentBubble } from "./components/agent-bubble";
 import { ChatHeader } from "./components/chat-header";
 import { ChatInputBar } from "./components/chat-input-bar";
 import { ChatSessionsSidebar } from "./components/chat-sessions-sidebar";
-import { ReceiptAttachment } from "./components/receipt-attachment";
+import { ConfirmActionCard } from "./components/confirm-action-card";
 import { UserBubble } from "./components/user-bubble";
-import { CHAT_THREAD } from "./mock";
+import { ChatRole } from "./enums";
+import { useChat } from "./use-chat";
 
 // SVG gradient overlay — Figma "Siri AI" card: dark 85% at top → 18% at bottom.
 function CardGradient({ isDark }: { isDark: boolean }) {
@@ -81,6 +82,9 @@ export function ChatScreen() {
   const isDark = colorScheme === "dark";
   const orbActive = useOrbStore((s) => s.active);
   const scrollRef = useRef<ScrollView>(null);
+
+  // Live chat — streams turns from the agent (SSE) and stages HITL writes (§7.4).
+  const chat = useChat();
 
   // ── Sessions drawer ───────────────────────────────────────────────────────
   // Swipe the chat aside (or tap the header menu) to reveal the sessions sidebar. The chat card
@@ -284,25 +288,25 @@ export function ChatScreen() {
               onLayout={() => scrollToBottom(false)}
               onContentSizeChange={() => scrollToBottom(false)}
             >
-              {CHAT_THREAD.map((item) => {
-                switch (item.kind) {
-                  case "agent":
-                    return (
-                      <AgentBubble
-                        key={item.id}
-                        title={item.title}
-                        segments={item.segments}
-                      />
-                    );
-                  case "user":
-                    return <UserBubble key={item.id} text={item.text} />;
-                  case "receipt":
-                    return <ReceiptAttachment key={item.id} />;
-                }
-              })}
+              {chat.messages.map((m) =>
+                m.role === ChatRole.User ? (
+                  <UserBubble key={m.id} text={m.text} />
+                ) : (
+                  <AgentBubble key={m.id} segments={[{ text: m.text }]} />
+                ),
+              )}
             </ScrollView>
 
-            <ChatInputBar inputRef={chatInputRef} />
+            {/* HITL (§7.4): a staged write awaits confirmation before /chat/resume runs it. */}
+            {chat.pending ? (
+              <ConfirmActionCard
+                summary={chat.pending.summary ?? ""}
+                onConfirm={() => chat.confirm(true)}
+                onCancel={() => chat.confirm(false)}
+              />
+            ) : null}
+
+            <ChatInputBar inputRef={chatInputRef} onSend={chat.send} />
 
             {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}
             {drawerOpen ? (

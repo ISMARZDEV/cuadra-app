@@ -10,5 +10,7 @@
   "chat.a11y.expand": "Expand",
   "chat.a11y.send": "Send",
   "chat.a11y.attach": "Attach",
-  "chat.a11y.voice": "Voice message"
+  "chat.a11y.voice": "Voice message",
+  "chat.confirm.approve": "Confirm",
+  "chat.confirm.cancel": "Cancel"
 }
