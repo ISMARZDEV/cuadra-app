@@ -15,9 +15,11 @@ from langchain_core.messages import AIMessageChunk, HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel
 
-from src.api.composition_root import get_aispace_graph
+from src.api.composition_root import get_aispace_graph, get_preference_repository
 from src.api.extensions.security import get_current_user_id
 from src.api.problem_detail import ProblemDetailDto
+from src.contexts.aispace.preferences.enums import Personality
+from src.contexts.aispace.preferences.ports import PreferenceRepository
 from src.shared.i18n import t
 from src.shared.ids import new_id
 from src.shared.lang import resolve_language
@@ -34,6 +36,14 @@ class ChatRequest(BaseModel):
 class ResumeRequest(BaseModel):
     thread_id: str
     approved: bool
+
+
+class PersonalityResponse(BaseModel):
+    personality: Personality       # tono actual del copiloto (neutral/coach/roast)
+
+
+class UpdatePersonalityRequest(BaseModel):
+    personality: Personality       # set cerrado → un valor inválido da 422 automáticamente
 
 
 class ChatResponse(BaseModel):
@@ -63,6 +73,7 @@ def chat(
     body: ChatRequest,
     user_id: str = Depends(get_current_user_id),
     graph=Depends(get_aispace_graph),  # type: ignore[no-untyped-def]
+    prefs: PreferenceRepository = Depends(get_preference_repository),
 ) -> ChatResponse:
     thread_id = body.thread_id or new_id()
     cfg = {"configurable": {"thread_id": thread_id}}
@@ -73,6 +84,7 @@ def chat(
             "user_id": user_id,
             "capabilities": [],
             "language": language,
+            "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
         },
         cfg,
     )
@@ -125,6 +137,7 @@ def chat_stream(
     body: ChatRequest,
     user_id: str = Depends(get_current_user_id),
     graph=Depends(get_aispace_graph),  # type: ignore[no-untyped-def]
+    prefs: PreferenceRepository = Depends(get_preference_repository),
 ) -> StreamingResponse:
     thread_id = body.thread_id or new_id()
     cfg = {"configurable": {"thread_id": thread_id}}
@@ -134,6 +147,7 @@ def chat_stream(
         "user_id": user_id,
         "capabilities": [],
         "language": language,
+        "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
     }
     return StreamingResponse(
         _stream_events(graph, inputs, cfg, thread_id),
@@ -156,3 +170,34 @@ def resume(
     cfg = {"configurable": {"thread_id": body.thread_id}}
     result = graph.invoke(Command(resume="sí" if body.approved else "no"), cfg)
     return _respond(body.thread_id, result, graph, cfg)
+
+
+@router.get(
+    "/preferences",
+    response_model=PersonalityResponse,
+    summary="Personalidad actual del copiloto (default COACH si no se eligió)",
+    responses={401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"}},
+)
+def get_preferences(
+    user_id: str = Depends(get_current_user_id),
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+) -> PersonalityResponse:
+    return PersonalityResponse(personality=prefs.get_personality(user_id))
+
+
+@router.put(
+    "/preferences",
+    response_model=PersonalityResponse,
+    summary="Elegir la personalidad del copiloto (neutral/coach/roast)",
+    responses={
+        401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"},
+        422: {"model": ProblemDetailDto, "description": "Personalidad inválida"},
+    },
+)
+def put_preferences(
+    body: UpdatePersonalityRequest,
+    user_id: str = Depends(get_current_user_id),
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+) -> PersonalityResponse:
+    prefs.set_personality(user_id, body.personality)
+    return PersonalityResponse(personality=body.personality)

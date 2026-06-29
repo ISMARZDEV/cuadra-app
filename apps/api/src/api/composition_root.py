@@ -70,6 +70,14 @@ def get_get_me(session: Session = Depends(get_session)) -> GetMe:
     return GetMe(SqlUserRepository(session), SqlCapabilityGatingRepository(session))
 
 
+def get_preference_repository(
+    session: Session = Depends(get_session),
+):  # type: ignore[no-untyped-def]
+    from src.contexts.aispace.infrastructure.repositories import SqlPreferenceRepository
+
+    return SqlPreferenceRepository(session)
+
+
 def get_record_transaction(
     session: Session = Depends(get_session),
 ) -> RecordTransaction:
