@@ -1,6 +1,7 @@
-import { Mic, Plus } from "lucide-react-native";
+import { Mic, Plus, SendHorizontal } from "lucide-react-native";
 import { useRef, useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 
 import { t } from "@/i18n";
 import { useColorScheme } from "nativewind";
@@ -12,6 +13,7 @@ export function ChatInputBar() {
   const isDark = colorScheme === "dark";
   const [value, setValue] = useState("");
   const inputRef = useRef<TextInput>(null);
+  const hasText = value.trim().length > 0;
 
   const inputBg = isDark ? "#282928" : "#FFFFFF";
   const inputBorder = isDark ? "#464646" : "#DEFFB7";
@@ -20,28 +22,43 @@ export function ChatInputBar() {
   // Cursor + selection color — lime accent in dark, brand green in light.
   const cursorColor = isDark ? "#DEFFB7" : "#034842";
 
+  const handleSend = () => {
+    if (!hasText) return;
+    // Static UI for now — clear the field (and revert the button back to the mic).
+    setValue("");
+  };
+
+  // Row is bottom-aligned so the buttons stay pinned to the bottom of the pill as it grows.
   return (
-    <View className="flex-row items-center gap-2 px-5 pb-4 pt-2">
+    <View className="flex-row items-end gap-2 px-5 pb-4 pt-2">
       <GlassButton icon={Plus} label={t("chat.a11y.attach")} size={42} iconSize={22} />
-      {/* Pressable wrapper ensures a single tap on the pill always focuses the TextInput,
-          even when the View intercepts the touch before the TextInput receives it. */}
+      {/* Auto-growing pill: a multiline TextInput that wraps onto new lines and expands the pill
+          downward up to maxHeight, then scrolls internally. Pressable wrapper guarantees a single
+          tap focuses the input even when the View intercepts the touch first. */}
       <Pressable
         style={{
           flex: 1,
-          height: 42,
+          minHeight: 42,
           borderRadius: 21,
           backgroundColor: inputBg,
           borderWidth: 0.5,
           borderColor: inputBorder,
-          flexDirection: "row",
-          alignItems: "center",
+          justifyContent: "center",
           paddingHorizontal: 16,
+          paddingVertical: 6,
         }}
         onPress={() => inputRef.current?.focus()}
       >
         <TextInput
           ref={inputRef}
-          style={{ flex: 1, fontSize: 14, color: inputColor }}
+          multiline
+          style={{
+            fontSize: 14,
+            lineHeight: 20,
+            color: inputColor,
+            maxHeight: 110,
+            padding: 0,
+          }}
           placeholder={t("chat.inputPlaceholder")}
           placeholderTextColor={placeholderColor}
           selectionColor={cursorColor}
@@ -50,7 +67,36 @@ export function ChatInputBar() {
           onChangeText={setValue}
         />
       </Pressable>
-      <GlassButton icon={Mic} label={t("chat.a11y.voice")} size={42} iconSize={22} />
+      {/* Mic ⇄ Send: empty field shows the mic; once there's text it animates (zoom) to the send
+          button (WhatsApp-style). Fixed 42×42 box so the swap never shifts the layout. */}
+      <View style={{ width: 42, height: 42 }}>
+        {hasText ? (
+          <Animated.View
+            key="send"
+            entering={ZoomIn.duration(180)}
+            exiting={ZoomOut.duration(150)}
+            style={StyleSheet.absoluteFill}
+          >
+            <GlassButton
+              icon={SendHorizontal}
+              label={t("chat.a11y.send")}
+              accent
+              size={42}
+              iconSize={22}
+              onPress={handleSend}
+            />
+          </Animated.View>
+        ) : (
+          <Animated.View
+            key="mic"
+            entering={ZoomIn.duration(180)}
+            exiting={ZoomOut.duration(150)}
+            style={StyleSheet.absoluteFill}
+          >
+            <GlassButton icon={Mic} label={t("chat.a11y.voice")} size={42} iconSize={22} />
+          </Animated.View>
+        )}
+      </View>
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   Keyboard,
   Platform,
@@ -107,6 +107,13 @@ export function ChatScreen() {
     });
   }, [orbActive, lift]);
 
+  // Keep the latest message pinned to the bottom (WhatsApp/ChatGPT behaviour). Called on every
+  // content/viewport change AND when the keyboard finishes animating, so the freshest messages
+  // are never hidden behind the input as the scroll viewport shrinks.
+  const scrollToBottom = useCallback((animated = false) => {
+    scrollRef.current?.scrollToEnd({ animated });
+  }, []);
+
   useEffect(() => {
     const onShow = Keyboard.addListener(KB_SHOW, (e) => {
       // iOS reports the keyboard's own animation duration in the event — use it so the card
@@ -116,7 +123,10 @@ export function ChatScreen() {
         duration: dur,
         easing: EASE_OUT,
       });
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+      // Pin to the bottom RIGHT AFTER the viewport finishes shrinking (a single early scroll fires
+      // before there's any scroll range and ends up a no-op, leaving recent messages hidden).
+      // onLayout/onContentSizeChange handle the in-between frames; this settles the final position.
+      setTimeout(() => scrollToBottom(true), dur + 20);
     });
     const onHide = Keyboard.addListener(KB_HIDE, (e) => {
       const dur = e.duration > 0 ? e.duration : 250;
@@ -126,13 +136,15 @@ export function ChatScreen() {
       onShow.remove();
       onHide.remove();
     };
-  }, [keyboardH]);
+  }, [keyboardH, scrollToBottom]);
 
-  // marginBottom = max(orb margin, keyboard height).
-  // When the keyboard is open it always wins because it's ~291 px vs ~100-165 px for the orb.
+  // marginBottom = max(orb margin, keyboard height + gap).
+  // When the keyboard is open it always wins; the gap keeps the card from sitting flush on the
+  // keyboard (a small breathing space, like WhatsApp/iMessage).
+  const KEYBOARD_GAP = 12;
   const shadowStyle = useAnimatedStyle(() => {
     const orbMargin = marginHidden + lift.value * (marginActive - marginHidden);
-    const kbMargin = keyboardH.value;
+    const kbMargin = keyboardH.value > 0 ? keyboardH.value + KEYBOARD_GAP : 0;
     return { marginBottom: kbMargin > orbMargin ? kbMargin : orbMargin };
   });
 
@@ -142,63 +154,6 @@ export function ChatScreen() {
     // dismiss too, while the input's own Pressable keeps focusing on a single tap.
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <SafeAreaView className="flex-1" edges={["top"]}>
-      {/* Background color squares to test liquid glass blur effect */}
-      <View
-        style={{
-          position: "absolute",
-          top: 80,
-          left: 20,
-          width: 120,
-          height: 120,
-          backgroundColor: "#FF6B6B",
-          borderRadius: 16,
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          top: 160,
-          right: 30,
-          width: 100,
-          height: 100,
-          backgroundColor: "#4ECDC4",
-          borderRadius: 16,
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          bottom: 200,
-          left: 40,
-          width: 90,
-          height: 90,
-          backgroundColor: "#FFE66D",
-          borderRadius: 16,
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          bottom: 280,
-          right: 50,
-          width: 110,
-          height: 110,
-          backgroundColor: "#95E1D3",
-          borderRadius: 16,
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          top: 300,
-          left: "50%",
-          width: 80,
-          height: 80,
-          backgroundColor: "#F38181",
-          borderRadius: 16,
-        }}
-      />
-
       {/* Shadow holder — no overflow:hidden on iOS or shadows are clipped. */}
       <Animated.View style={[styles.shadowWrap, shadowStyle]}>
         {/* Liquid Glass card with gradient border: iOS 26 → GlassView, older/Android → BlurView + SquircleView + gradient border. */}
@@ -220,6 +175,10 @@ export function ChatScreen() {
               contentContainerStyle={{ paddingBottom: 8 }}
               keyboardShouldPersistTaps="handled"
               onScrollBeginDrag={Keyboard.dismiss}
+              // Pin to the latest message: on mount, when the viewport resizes (keyboard open/close),
+              // and whenever content grows (a message is sent) — so recent messages stay visible.
+              onLayout={() => scrollToBottom(false)}
+              onContentSizeChange={() => scrollToBottom(false)}
             >
               {CHAT_THREAD.map((item) => {
                 switch (item.kind) {
