@@ -25,8 +25,8 @@ import {
 //     read neon and clip to white under the blur, so we go richer + more aquatic (UX call).
 // The blobs overlap under blendMode="screen": where two greens meet they ADD and brighten toward
 // cyan-white — that's the luminous aurora core in the reference shots, not flat discs.
-const LIGHT_A = "#8EF33A";
-const LIGHT_B = "#C3FA7E";
+const LIGHT_A = "#8EF33A"; // brand lime
+const LIGHT_B = "#C3FA7E"; // pale lime
 const LIGHT_CORE = "#E6FFB0"; // pale lime hotspot
 // Dark mode rides much deeper now: the base is a near-black teal so the aurora EMERGES from the dark
 // (ref shot 4) instead of glowing bright green. Under blendMode="screen" a near-black source adds
@@ -91,8 +91,12 @@ export function ChatLavaBackground({
 
   useEffect(() => {
     const drift = (sv: SharedValue<number>, period: number) => {
+      // Easing MUST be a direct worklet (Easing.sin), NOT Easing.ease: `ease` builds a cubic Bezier
+      // internally, and a bezier/factory easing assigned to a shared value FROM THE JS THREAD produces
+      // a malformed animation → "animation.onStart is undefined" crash (reanimated v4 gotcha; the orb's
+      // withRepeat proves Easing.sin is safe). This was the chat-only crash.
       sv.value = withRepeat(
-        withTiming(1, { duration: period, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: period, easing: Easing.inOut(Easing.sin) }),
         -1,
         true, // reverse → smooth back-and-forth, like rising/sinking light
       );
@@ -134,7 +138,8 @@ export function ChatLavaBackground({
   const colorA = isDark ? DARK_A : LIGHT_A;
   const colorB = isDark ? DARK_B : LIGHT_B;
   const colorCore = isDark ? DARK_CORE : LIGHT_CORE;
-  const baseOpacity = opacity ?? (isDark ? 0.35 : 0.45);
+  // Light rides a touch softer than dark (the limes are bright on the off-white card).
+  const baseOpacity = opacity ?? (isDark ? 0.35 : 0.36);
   // Breathing opacity for the aurora group — drifts between 82% and 100% of the base.
   const auroraOpacity = useDerivedValue(() => baseOpacity * (0.82 + 0.18 * breath.value));
 
