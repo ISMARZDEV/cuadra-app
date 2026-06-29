@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { Text, View } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 interface StreamingTextProps {
   text: string;
@@ -8,10 +9,39 @@ interface StreamingTextProps {
   duration?: number;
 }
 
+// One word that fades + rises in once, on mount. Driven by useSharedValue + useAnimatedStyle +
+// withTiming (the primitives that work reliably in this app) — NOT reanimated `entering` layout
+// animations, which don't fire dependably on the New Architecture here.
+function FadingWord({
+  word,
+  textClassName,
+  duration,
+}: {
+  word: string;
+  textClassName?: string;
+  duration: number;
+}) {
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withTiming(1, { duration });
+  }, [progress, duration]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * 6 }], // subtle rise into place
+  }));
+
+  return (
+    <Animated.View style={style}>
+      <Text className={textClassName}>{word}{" "}</Text>
+    </Animated.View>
+  );
+}
+
 // Streamed agent text with a soft per-WORD fade-in. As SSE tokens arrive the text grows; only the
-// newly-added words mount, so only they animate (earlier words stay put — React reuses them by
-// key). Words are laid out as wrapping inline views: reanimated `entering` fires reliably on a
-// mounting <Animated.View>, whereas animating nested inline <Text> runs does not on native.
+// newly-added words mount (React reuses earlier words by key) → only they run their fade. Words are
+// wrapping inline views so each can animate independently.
 export function StreamingText({ text, textClassName, duration = 400 }: StreamingTextProps) {
   const lines = text.split("\n");
   return (
@@ -19,9 +49,12 @@ export function StreamingText({ text, textClassName, duration = 400 }: Streaming
       {lines.map((line, lineIndex) => (
         <View key={lineIndex} className="flex-row flex-wrap">
           {line.split(" ").map((word, wordIndex) => (
-            <Animated.View key={`${lineIndex}-${wordIndex}`} entering={FadeIn.duration(duration)}>
-              <Text className={textClassName}>{word}{" "}</Text>
-            </Animated.View>
+            <FadingWord
+              key={`${lineIndex}-${wordIndex}`}
+              word={word}
+              textClassName={textClassName}
+              duration={duration}
+            />
           ))}
         </View>
       ))}
