@@ -40,7 +40,7 @@ function OptionPill({ option, onPress }: { option: DockOption; onPress: () => vo
   );
 }
 
-// Round icon-only avatar — a white disc with the category emoji (Img 10).
+// Round icon-only avatar — a white disc with the category emoji + a soft ring & shadow (Img 10).
 function IconChip({ option, onPress }: { option: DockOption; onPress: () => void }) {
   return (
     <Pressable
@@ -48,23 +48,51 @@ function IconChip({ option, onPress }: { option: DockOption; onPress: () => void
       accessibilityLabel={option.value}
       onPress={onPress}
       style={{
-        width: 48,
-        height: 48,
-        borderRadius: 24,
+        width: 50,
+        height: 50,
+        borderRadius: 25,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: "#FFFFFF",
+        borderWidth: 2,
+        borderColor: "rgba(255,255,255,0.85)", // soft ring (per-category color would need a contract field)
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.22,
+        shadowRadius: 5,
+        elevation: 4,
       }}
     >
-      <Text style={{ fontSize: 22 }}>{option.icon}</Text>
+      <Text style={{ fontSize: 24 }}>{option.icon}</Text>
     </Pressable>
   );
 }
 
+// Render a prompt, highlighting **…** spans in lime (the money amount, Img 8): "…de **$500 USD**?".
+function PromptText({ prompt, accent }: { prompt: string; accent: string }) {
+  const parts = prompt.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <Text className="mb-3 text-center text-lg leading-6 text-text">
+      {parts.map((part, i) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <Text key={i} style={{ color: accent, fontWeight: "800" }}>
+            {part.slice(2, -2)}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </Text>
+  );
+}
+
 export function DockInteractionView({ interaction, onSelect }: DockInteractionViewProps) {
+  const { colorScheme } = useColorScheme();
+  // Readable lime: brand lime on dark, a deeper green on the off-white card.
+  const accent = colorScheme === "dark" ? "#C2FB7E" : "#16A34A";
   return (
     <View className="px-4 py-2">
-      <Text className="mb-3 text-center text-lg leading-6 text-text">{interaction.prompt}</Text>
+      <PromptText prompt={interaction.prompt} accent={accent} />
       <View className="flex-row flex-wrap items-center justify-center gap-3">
         {interaction.options.map((option) =>
           option.kind === "chip" ? (

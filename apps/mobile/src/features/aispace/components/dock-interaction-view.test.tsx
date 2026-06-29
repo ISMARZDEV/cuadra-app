@@ -28,6 +28,17 @@ describe("DockInteractionView", () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ value: "yes", label: "Sí, confirmar" }));
   });
 
+  test("highlights the **amount** span (lime) inside the prompt", () => {
+    const withAmount: DockInteraction = {
+      prompt: "¿Registrar este gasto de **$500 USD**?",
+      options: [{ label: "Sí", value: "yes", variant: "primary", kind: "pill" }],
+    };
+    render(<DockInteractionView interaction={withAmount} onSelect={vi.fn()} />);
+    // the highlighted segment renders WITHOUT the ** markers, as its own node
+    expect(screen.getByText("$500 USD")).toBeInTheDocument();
+    expect(screen.queryByText(/\*\*/)).toBeNull();
+  });
+
   test("renders icon-only chips (suggestions) and reports them on tap", () => {
     const onSelect = vi.fn();
     const suggestions: DockInteraction = {
