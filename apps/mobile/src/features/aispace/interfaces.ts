@@ -1,19 +1,20 @@
 import type { ReactNode, RefObject } from "react";
 import type { TextInput } from "react-native";
-import type { LucideIcon } from "lucide-react-native";
 
 import type { ChatRole } from "./enums";
-import type { ChatStreamEvent, DockOptionVariant } from "./types";
+import type { ChatStreamEvent, DockOptionKind, DockOptionVariant } from "./types";
 
 // AISpace chat interfaces (feature-local; structure §3 → features/{…, interfaces}). Kept apart from
 // the components/hook so the transport, the hook, the screen and the bubbles share one definition.
 
 // One chat turn. Agent replies are plain streamed text (tokens) — no rich segments yet (the static
-// mock used AgentSegment[]; real replies arrive as a token stream).
+// mock used AgentSegment[]; real replies arrive as a token stream). `href` (when present) makes the
+// message a tappable deep link (e.g. "Ver en Insight" → Insights, Img 11).
 export interface ChatMessage {
   id: string;
   role: ChatRole;
   text: string;
+  href?: string;
 }
 
 // SSE event protocol (one JSON object per `data:` frame), mirrors the controller. Discriminants stay
@@ -23,9 +24,16 @@ export interface ChatTokenEvent {
   type: "token";
   content: string;
 }
-export interface ChatPendingEvent {
-  type: "pending";
-  action: Record<string, unknown>;
+// A HITL step: the graph paused at an interrupt() carrying the next interaction to render.
+export interface ChatInteractionEvent {
+  type: "interaction";
+  interaction: DockInteraction;
+}
+// A deep link the flow emitted (e.g. "Ver en Insight" → insights). Rendered as a tappable message.
+export interface ChatLinkEvent {
+  type: "link";
+  text: string;
+  href: string;
 }
 export interface ChatDoneEvent {
   type: "done";
@@ -51,20 +59,17 @@ export interface ChatInputBarProps {
   onSend?: (text: string) => void;
 }
 
-export interface ConfirmActionCardProps {
-  summary: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
 // ── Glass dock (collapsible panel above the input) ──────────────────────────
-// One selectable option inside a dock interaction. `value` is what we send back (to /chat/resume in
-// Fase 2); `variant` styles the pill; `icon` is an optional leading lucide glyph (category chips).
+// One selectable option inside a dock interaction, mirroring the backend wire shape. `value` is what
+// we send back to /chat/resume; `variant` styles it; `kind` picks pill (text) vs chip (round
+// icon-only); `icon` is an emoji (chips, or an optional leading glyph on a pill). `label` is null for
+// icon-only chips.
 export interface DockOption {
-  label: string;
   value: string;
+  label?: string | null;
   variant: DockOptionVariant;
-  icon?: LucideIcon;
+  kind?: DockOptionKind;
+  icon?: string | null;
 }
 
 // A single human-in-the-loop step the dock renders: a prompt + the options to pick from. Generic on
@@ -82,7 +87,9 @@ export interface QuickActionsProps {
 
 export interface DockInteractionViewProps {
   interaction: DockInteraction;
-  onSelect: (value: string) => void;
+  // Reports the whole option (not just its value): the hook needs `label`/`icon` to echo the choice
+  // as a user bubble ("Sí, confirmar 😉" / "🎵 música") before resuming.
+  onSelect: (option: DockOption) => void;
 }
 
 export interface ChatDockProps {

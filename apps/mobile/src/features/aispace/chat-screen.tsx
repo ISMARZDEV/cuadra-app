@@ -26,7 +26,6 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useColorScheme } from "nativewind";
 
 import { GlassSurface } from "@/components/ui/glass-surface";
-import { t } from "@/i18n";
 import {
   NAVBAR_CIRCLE,
   NAVBAR_VIEWBOX,
@@ -41,11 +40,11 @@ import { ChatHeader } from "./components/chat-header";
 import { ChatInputBar } from "./components/chat-input-bar";
 import { ChatSessionsSidebar } from "./components/chat-sessions-sidebar";
 import { DockInteractionView } from "./components/dock-interaction-view";
+// (DockInteraction type comes from the hook's `interaction` — no local mapping needed.)
 import { QuickActions } from "./components/quick-actions";
 import { TypingIndicator } from "./components/typing-indicator";
 import { UserBubble } from "./components/user-bubble";
 import { ChatRole } from "./enums";
-import type { DockInteraction } from "./interfaces";
 import { useChat } from "./use-chat";
 
 // SVG gradient overlay — Figma "Siri AI" card: dark 85% at top → 18% at bottom.
@@ -100,23 +99,13 @@ export function ChatScreen() {
   // multi-step interactions over the same contract.
   const [dockOpen, setDockOpen] = useState(false);
   useEffect(() => {
-    setDockOpen(!!chat.pending);
-  }, [chat.pending]);
+    setDockOpen(!!chat.interaction); // auto-open on a HITL step, auto-close when it resolves
+  }, [chat.interaction]);
 
   // Height of the bottom zone (dock + input). The chat scrolls BEHIND it (so the translucent glass
   // has the chat to refract → it finally reads as glass, Figma); this height is reserved as the
   // ScrollView's bottom padding so the last message clears the overlay.
   const [bottomZoneH, setBottomZoneH] = useState(0);
-
-  const interaction: DockInteraction | null = chat.pending
-    ? {
-        prompt: chat.pending.summary ?? "",
-        options: [
-          { label: t("chat.confirm.cancel"), value: "no", variant: "secondary" },
-          { label: t("chat.confirm.approve"), value: "yes", variant: "primary" },
-        ],
-      }
-    : null;
 
   // ── Sessions drawer ───────────────────────────────────────────────────────
   // Swipe the chat aside (or tap the header menu) to reveal the sessions sidebar. The chat card
@@ -399,11 +388,8 @@ export function ChatScreen() {
                 borderWidth={0}
               >
                 <ChatDock open={dockOpen} onToggle={() => setDockOpen((o) => !o)}>
-                  {interaction ? (
-                    <DockInteractionView
-                      interaction={interaction}
-                      onSelect={(value) => chat.confirm(value === "yes")}
-                    />
+                  {chat.interaction ? (
+                    <DockInteractionView interaction={chat.interaction} onSelect={chat.select} />
                   ) : (
                     <QuickActions
                       onSelect={(prompt) => {
@@ -449,10 +435,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderRadius: 48,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.3,
-    shadowRadius: 25,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 6,
   },
   cardClip: {
     flex: 1,
