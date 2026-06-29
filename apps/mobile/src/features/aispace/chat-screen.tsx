@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
-  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -261,11 +260,10 @@ export function ChatScreen() {
   });
 
   return (
-    // Tap anywhere outside the input (empty card areas) dismisses the keyboard on any device.
-    // The ScrollView below uses keyboardShouldPersistTaps="handled" so taps on the message area
-    // dismiss too, while the input's own Pressable keeps focusing on a single tap.
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <SafeAreaView className="flex-1" edges={["top"]}>
+    // NOTE: do NOT wrap this tree in <TouchableWithoutFeedback> — it claims the touch responder on
+    // start and steals the ScrollView's vertical pan/bounce on the New Architecture. The keyboard is
+    // dismissed by the ScrollView itself (keyboardDismissMode="interactive" + keyboardShouldPersistTaps).
+    <SafeAreaView className="flex-1" edges={["top"]}>
       {/* Sessions sidebar — sits behind the card on the left, revealed as the chat slides away. */}
       <Animated.View
         pointerEvents={drawerOpen ? "auto" : "none"}
@@ -296,6 +294,7 @@ export function ChatScreen() {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 8 }}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
               onScrollBeginDrag={Keyboard.dismiss}
               // Elastic rubber-band at top AND bottom even when the content fits (ChatGPT/iMessage).
               alwaysBounceVertical
@@ -348,8 +347,7 @@ export function ChatScreen() {
           {...edgePanResponder.panHandlers}
         />
       ) : null}
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
+    </SafeAreaView>
   );
 }
 
