@@ -63,11 +63,14 @@ def _events(frames: list[str]) -> list[dict]:
     return out
 
 
-def test_stream_emits_interaction_then_done() -> None:
+def test_stream_emits_coach_message_then_interaction_then_done() -> None:
     graph = _build()
     cfg = {"configurable": {"thread_id": "s1"}}
     evs = _events(list(stream_events(graph, _inputs(), cfg, "s1")))
     kinds = [e["type"] for e in evs]
+    # The ReAct agent's coach reaction lives in state (not streamed) — it must still reach the chat,
+    # EVEN though the confirm interaction follows it.
+    assert any(e["type"] == "token" and "Wow" in e["content"] for e in evs)
     assert "interaction" in kinds
     inter = next(e for e in evs if e["type"] == "interaction")["interaction"]
     assert [o["value"] for o in inter["options"]] == ["cancel", "confirm"]

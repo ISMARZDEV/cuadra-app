@@ -71,15 +71,20 @@ def stream_events(graph, inputs: dict, cfg: dict, thread_id: str) -> Iterator[st
     snapshot = graph.get_state(cfg)
     state = snapshot.values
     interaction = pending_interaction(snapshot)
-    if interaction:
-        yield sse_frame({"type": "interaction", "interaction": interaction})
-    elif not emitted:
-        # Deterministic nodes (respond_other, flow commit) don't stream token chunks — fall back to
-        # the final assistant message so the client still renders a reply.
+
+    # Emit the latest assistant message when nothing streamed. ReAct agents (FinanceAgent via
+    # create_agent) run a NESTED graph whose LLM tokens do NOT surface in this stream_mode="messages"
+    # loop; deterministic nodes (respond_other, flow commit) don't stream either. So the reply (e.g.
+    # the coach reaction) only lives in state — emit it here. Crucially do this EVEN when an
+    # interaction follows (the confirm step), or the coach message would be swallowed by the dock.
+    if not emitted:
         messages = state.get("messages", [])
         content = messages[-1].content if messages else None
         if content:
             yield sse_frame({"type": "token", "content": content})
+
+    if interaction:
+        yield sse_frame({"type": "interaction", "interaction": interaction})
 
     for link in links(state):
         yield sse_frame({"type": "link", "text": link["text"], "href": link["href"]})
