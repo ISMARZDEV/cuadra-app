@@ -26,6 +26,11 @@ export function setLanguage(next: Lang): void {
   lang = next;
 }
 
+/** The app's CHOSEN language (es/en/pt) — the correct primary signal to send the chat backend. */
+export function getLanguage(): Lang {
+  return lang;
+}
+
 export function t(key: TranslationKey): string {
   return dictionaries[lang][key] ?? dictionaries.es[key] ?? key;
 }

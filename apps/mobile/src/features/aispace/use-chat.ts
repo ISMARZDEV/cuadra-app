@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from "react";
 
 import { resume } from "@cuadra/api-client";
 
+import { getLanguage } from "@/i18n";
+
 import { streamChat } from "./chat-stream";
 import { ChatRole } from "./enums";
 import type { ChatMessage } from "./interfaces";
@@ -9,14 +11,6 @@ import type { PendingAction } from "./types";
 
 let _seq = 0;
 const uid = () => `m${++_seq}`;
-
-function deviceLocale(): string | undefined {
-  try {
-    return new Intl.DateTimeFormat().resolvedOptions().locale;
-  } catch {
-    return undefined;
-  }
-}
 
 // Chat state machine over the SSE transport. Owns the message list, the live thread_id and the
 // pending HITL action. `send` streams a turn (tokens append to one agent bubble); `confirm`
@@ -40,7 +34,7 @@ export function useChat() {
     await streamChat({
       message: trimmed,
       threadId: threadRef.current,
-      locale: deviceLocale(),
+      locale: getLanguage(), // the APP's chosen language (i18n), not the device locale (cuadra-mobile §5)
       onEvent: (e) => {
         if (e.type === "token") {
           setMessages((m) => {
