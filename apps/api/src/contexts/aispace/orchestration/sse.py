@@ -58,9 +58,11 @@ def stream_events(graph, inputs: dict, cfg: dict, thread_id: str) -> Iterator[st
     """Drive the graph and translate it into SSE frames (see module docstring)."""
     emitted = False
     for chunk, meta in graph.stream(inputs, cfg, stream_mode="messages"):
-        # The router/classifier runs its OWN LLM inside `classify_intent`; its tokens (e.g.
-        # `{"intent":"other"}`) must NOT leak — stream only the agents' replies.
-        if meta.get("langgraph_node") == "classify_intent":
+        # stream_mode="messages" yields token chunks from EVERY LLM in the graph. Only the
+        # user-facing agent (`agent_run`) should reach the chat — the classifier (`classify_intent`,
+        # e.g. `{"intent":"other"}`) AND the flow's internal LLMs (`prepare_flow`, the category
+        # suggestion `{"items":[…]}`) must NOT leak. Allowlist agent_run; everything else is internal.
+        if meta.get("langgraph_node") != "agent_run":
             continue
         if isinstance(chunk, AIMessageChunk) and chunk.content:
             emitted = True
