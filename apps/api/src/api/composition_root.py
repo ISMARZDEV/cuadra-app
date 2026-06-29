@@ -50,6 +50,7 @@ from src.contexts.insights.infrastructure.repositories import (
     SqlLedgerRepository,
     SqlTransactionRepository,
 )
+from src.config import settings
 from src.shared.db.base import SessionLocal
 
 
