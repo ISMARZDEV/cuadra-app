@@ -22,6 +22,7 @@ class Option:
     variant: OptionVariant = "primary"  # primary = lime fill; secondary = translucent green
     kind: OptionKind = "pill"          # pill = text button; chip = round icon-only
     icon: str | None = None            # emoji / icon name for chips
+    color: str | None = None           # chip ring color (hex) — per-category accent (Img 10)
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +31,7 @@ class Option:
             "variant": self.variant,
             "kind": self.kind,
             "icon": self.icon,
+            "color": self.color,
         }
 
 

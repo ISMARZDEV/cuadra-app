@@ -14,8 +14,8 @@ from src.shared.llm import get_chat_model
 
 # Patrón cuadra-agent-prompts: instrucciones en inglés, NOMBRES de categoría en el idioma del usuario
 # (son user-facing → se muestran como chips).
-_PROMPT = """Suggest 2-3 spending categories for this expense, each with ONE emoji that fits it.
-Expense: merchant="{merchant}", current category="{category}", amount={amount}.
+_PROMPT = """Suggest 2-3 spending categories for this expense, each with ONE emoji and a vivid ring
+color that fits it. Expense: merchant="{merchant}", current category="{category}", amount={amount}.
 Write the category names in {language}, short (1-2 words), DISTINCT, ranked most-likely first."""
 
 _LANG = {"es": "Spanish", "en": "English", "pt": "Portuguese"}
@@ -24,6 +24,7 @@ _LANG = {"es": "Spanish", "en": "English", "pt": "Portuguese"}
 class _Suggestion(BaseModel):
     name: str = Field(description="short category name, in the user's language")
     icon: str = Field(description="a single emoji representing the category")
+    color: str = Field(description="a vivid hex color (#RRGGBB) that fits the category, for its ring")
 
 
 class _Suggestions(BaseModel):
@@ -43,10 +44,14 @@ def suggest_expense_categories(state: dict) -> list[dict]:
                 language=language,
             )
         )
-        out = [{"value": s.name.strip(), "icon": s.icon} for s in result.items[:3] if s.name.strip()]
+        out = [
+            {"value": s.name.strip(), "icon": s.icon, "color": s.color}
+            for s in result.items[:3]
+            if s.name.strip()
+        ]
         if out:
             return out
     except Exception:  # noqa: BLE001 — categorías son un nice-to-have; nunca bloquean el flujo
         pass
     staged = (pa.get("category") or "").strip()
-    return [{"value": staged, "icon": "💸"}] if staged else []
+    return [{"value": staged, "icon": "💸", "color": "#16A34A"}] if staged else []

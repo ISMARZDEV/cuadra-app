@@ -70,6 +70,7 @@ export interface DockOption {
   variant: DockOptionVariant;
   kind?: DockOptionKind;
   icon?: string | null;
+  color?: string | null; // chip ring color (per-category accent, Img 10)
 }
 
 // A single human-in-the-loop step the dock renders: a prompt + the options to pick from. Generic on

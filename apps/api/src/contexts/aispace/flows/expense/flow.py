@@ -58,7 +58,10 @@ def build_expense_flow(
         lang = state.get("language", "es")
         # Read the suggestions memoized by `prepare` (pure, no LLM here — this re-runs every resume).
         suggestions = state["pending_action"].get("suggested_categories", [])
-        chips = [Option(s["value"], None, "primary", "chip", s.get("icon")) for s in suggestions]
+        chips = [
+            Option(s["value"], None, "primary", "chip", s.get("icon"), s.get("color"))
+            for s in suggestions
+        ]
         return Interaction(
             prompt=t("expense.suggestions", lang),
             options=[Option("none", t("expense.forget_category", lang), "secondary", "pill"), *chips],

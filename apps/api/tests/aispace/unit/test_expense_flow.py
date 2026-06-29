@@ -39,7 +39,10 @@ class _SuggestSpy:
 
     def __call__(self, state) -> list[dict]:  # type: ignore[no-untyped-def]
         self.calls += 1
-        return [{"value": "music", "icon": "🎵"}, {"value": "fuel", "icon": "⛽"}]
+        return [
+            {"value": "music", "icon": "🎵", "color": "#E8A33D"},
+            {"value": "fuel", "icon": "⛽", "color": "#E0492F"},
+        ]
 
 
 def _build(committed: dict, suggest):  # type: ignore[no-untyped-def]
@@ -88,7 +91,7 @@ def test_full_happy_path_with_category_and_deeplink() -> None:
     assert opts[0]["value"] == "none" and opts[0]["kind"] == "pill"
     chips = [o for o in opts if o["kind"] == "chip"]
     assert [c["value"] for c in chips] == ["music", "fuel"]
-    assert chips[0]["icon"] == "🎵"
+    assert chips[0]["icon"] == "🎵" and chips[0]["color"] == "#E8A33D"
 
     out = graph.invoke(Command(resume="music"), cfg)
     assert "__interrupt__" not in out

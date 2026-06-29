@@ -54,8 +54,8 @@ function IconChip({ option, onPress }: { option: DockOption; onPress: () => void
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: "#FFFFFF",
-        borderWidth: 2,
-        borderColor: "rgba(255,255,255,0.85)", // soft ring (per-category color would need a contract field)
+        borderWidth: 2.5,
+        borderColor: option.color ?? "rgba(255,255,255,0.85)", // per-category ring (Img 10)
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 3 },
         shadowOpacity: 0.22,
