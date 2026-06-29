@@ -295,6 +295,12 @@ export function ChatScreen() {
     // start and steals the ScrollView's vertical pan/bounce on the New Architecture. The keyboard is
     // dismissed by the ScrollView itself (keyboardDismissMode="interactive" + keyboardShouldPersistTaps).
     <SafeAreaView className="flex-1" edges={["top"]}>
+      {/* Aquatic aurora — lowest layer, behind everything. The card's glass refracts it and it bleeds
+          softly around the card's 10px margins (Cleo-style). pointerEvents:none inside the component. */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <ChatLavaBackground />
+      </View>
+
       {/* Sessions sidebar — sits behind the card on the left, revealed as the chat slides away. */}
       <Animated.View
         pointerEvents={drawerOpen ? "auto" : "none"}
