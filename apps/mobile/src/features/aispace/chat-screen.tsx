@@ -32,7 +32,7 @@ import {
 import { useOrbStore } from "@/store/orb-store";
 import { useDrawer } from "@/store/drawer-store";
 
-import { AgentBubble } from "./components/agent-bubble";
+import { AgentMessage } from "./components/agent-message";
 import { ChatHeader } from "./components/chat-header";
 import { ChatInputBar } from "./components/chat-input-bar";
 import { ChatSessionsSidebar } from "./components/chat-sessions-sidebar";
@@ -292,7 +292,7 @@ export function ChatScreen() {
                 m.role === ChatRole.User ? (
                   <UserBubble key={m.id} text={m.text} />
                 ) : (
-                  <AgentBubble key={m.id} segments={[{ text: m.text }]} />
+                  <AgentMessage key={m.id} text={m.text} />
                 ),
               )}
             </ScrollView>
