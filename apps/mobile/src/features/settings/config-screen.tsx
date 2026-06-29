@@ -1,15 +1,17 @@
-import { Moon } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { ChevronRight, Moon, Sparkles } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
-import { Switch, Text, View } from "react-native";
+import { Pressable, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
 import { palette } from "@/theme";
 
-// Config screen. For now: a quick dark/light theme toggle (NativeWind setColorScheme overrides the
-// system scheme app-wide for the session).
+// Config screen: dark/light toggle + a row that opens the copilot personality selector (a nested
+// screen in the Config stack, so the tab bar stays — back via its arrow OR the Config tab).
 export function ConfigScreen() {
+  const router = useRouter();
   const { colorScheme, setColorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
 
@@ -30,6 +32,19 @@ export function ConfigScreen() {
             thumbColor="#FFFFFF"
           />
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("config.personality")}
+          onPress={() => router.push("/config/personality")}
+          className="mt-3 flex-row items-center justify-between rounded-2xl border border-border bg-surface px-4 py-4"
+        >
+          <View className="flex-row items-center gap-3">
+            <Icon as={Sparkles} size={22} color={palette.primary} />
+            <Text className="text-base text-text">{t("config.personality")}</Text>
+          </View>
+          <Icon as={ChevronRight} size={22} color="#9CA3AF" />
+        </Pressable>
       </View>
     </SafeAreaView>
   );
