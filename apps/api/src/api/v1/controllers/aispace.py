@@ -91,7 +91,12 @@ def _stream_events(graph, inputs: dict, cfg: dict, thread_id: str) -> Iterator[s
       done    — terminal frame carrying the thread_id (so the client can resume/continue)
     """
     emitted = False
-    for chunk, _meta in graph.stream(inputs, cfg, stream_mode="messages"):
+    for chunk, meta in graph.stream(inputs, cfg, stream_mode="messages"):
+        # The router/classifier runs its OWN LLM (structured output) inside the `classify_intent`
+        # node; its tokens (e.g. `{"intent":"other"}`) must NOT leak to the user — stream only the
+        # agents' replies. `stream_mode="messages"` tags every chunk with its originating node.
+        if meta.get("langgraph_node") == "classify_intent":
+            continue
         if isinstance(chunk, AIMessageChunk) and chunk.content:
             emitted = True
             yield _sse({"type": "token", "content": chunk.content})
