@@ -69,6 +69,21 @@ the hook by `vi.mock("./chat-stream")` and driving its `onEvent` callback synchr
 (`onEvent({type:"token",content})` → `done` → assert messages); mock `@cuadra/api-client` `resume`
 for the HITL confirm path. The transport itself (expo/fetch) is the untestable boundary in jsdom.
 
+**7. Stores, navigation & i18n — mock at the module boundary.**
+- **zustand store with a selector:** `vi.mock("./use-language-store", () => ({ useLanguageStore:
+  (sel) => sel(state) }))` where `state` is a mutable object you reset per test — drive selected
+  values + stub the actions (`setLang: vi.fn()`).
+- **expo-router:** `vi.mock("expo-router", () => ({ useRouter: () => ({ back: mockBack }) }))`.
+- **react-native-safe-area-context** in a screen test: passthrough `SafeAreaView` (`({children}) =>
+  children`) — no provider in jsdom.
+- **Force the language** for deterministic copy: `setLanguage("es")` in `beforeEach` (jsdom's device
+  locale resolves to en, so labels would otherwise be English).
+
+**8. Selectable rows / aria — `accessibilityState` does NOT map to `aria-*` in RN-Web for
+`role="button"`.** A "Coach"/"Roast" radio asserting `aria-checked` will read `null`. Fix at the
+SOURCE with the unified RN ARIA props (`role="radio"` + `aria-checked={selected}` + `aria-label`),
+which map on web AND native; then `getByLabelText(label).getAttribute("aria-checked")` works.
+
 > **CI does NOT run vitest.** The mobile CI job runs `typecheck` only — broken tests won't fail CI.
 > Run `pnpm --filter @cuadra/mobile test` locally before committing.
 

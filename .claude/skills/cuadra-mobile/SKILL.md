@@ -76,10 +76,47 @@ metadata:
 
 **5. i18n — localize UI strings (es/en/pt), consistent with the backend.**
 - App copy in `src/i18n/{es,en,pt}.json`. The CHAT replies come already localized from the agent (backend handles language); the app passes a `locale` to the chat endpoints.
-- **Gotcha:** send the app's CHOSEN language (`src/i18n`), NOT the raw device locale
-  (`Intl…resolvedOptions().locale`). The backend uses the client locale as the PRIMARY signal and only
-  overrides on a high-confidence per-message detection — so a Spanish user on an English phone gets
-  English replies. (See `docs/sdd/aispace-general-agent.md` §4.)
+- **Gotcha:** send the app's CHOSEN language (`getLanguage()` from `src/i18n`), NOT the raw device
+  locale (`Intl…resolvedOptions().locale`). The backend uses the client locale as the PRIMARY signal
+  and only overrides on high-confidence per-message detection — so a Spanish user on an English phone
+  got English replies. (See `docs/sdd/aispace-general-agent.md` §4.)
+- **Language is a user PREFERENCE, not the device's.** `features/settings/use-language-store.tsx`
+  (zustand, persisted via SecureStore) holds `{auto, lang}`: `auto` (default) follows
+  `deviceLanguage()`, OFF pins es/en/pt. It calls i18n `setLanguage` (the whole app) and the chat
+  reads `getLanguage()`. Selector lives in Config → Idioma (a Switch reveals the picker). Root
+  `_layout` calls its `restore()` on mount. **Reactivity caveat:** `t()` reads a module global —
+  the screen that changes language re-renders (subscribes to the store) and the chat is correct
+  (reads at send), but other static copy updates only on remount/navigation. Acceptable for MVP.
+
+**6. Native / New-Architecture (Fabric) gotchas — learned the hard way.**
+- **Reanimated `entering`/layout animations are UNRELIABLE here** (don't fire on the New
+  Architecture). For per-element animation (e.g. the chat's per-word fade-in, `streaming-text.tsx`)
+  use the primitives that DO work app-wide: `useSharedValue` + `useAnimatedStyle` + `withTiming`,
+  kicked off in a `useEffect` on mount. Animate words as wrapping inline `<Animated.View>` (not
+  nested inline `<Text>` runs). Only newly-mounted items animate (React reuses earlier ones by key).
+- **NEVER wrap a `ScrollView` in `<TouchableWithoutFeedback>`** (a common keyboard-dismiss hack): it
+  claims the touch responder on start and STEALS the ScrollView's vertical pan + rubber-band bounce.
+  Dismiss the keyboard via the ScrollView itself: `keyboardDismissMode="interactive"` (also gives the
+  iMessage drag-down-to-dismiss) + `keyboardShouldPersistTaps="handled"`.
+- **ChatGPT-style chat scroll recipe:** `alwaysBounceVertical` + `bounces` + `overScrollMode="always"`
+  (elastic bounce even when content fits) · content **top-aligned** (default container; do NOT
+  `justifyContent:flex-end` — that's WhatsApp, leaves a gap above) · **smart auto-follow**: track
+  near-bottom in `onScroll` and only `scrollToEnd` on new/streaming content when already at the
+  bottom, so scrolling up to read history isn't yanked down.
+- **Selectable rows (radio):** RN-Web does NOT map `accessibilityState={{selected/checked}}` →
+  `aria-*` for `role="button"`. Use the unified RN ARIA props directly — `role="radio"` +
+  `aria-checked={selected}` + `aria-label` — which map on BOTH native and web (and are testable).
+  Shared `SelectableRow` powers the personality + language pickers.
+
+**7. Sub-screens inside a tab (Config → detail, back via arrow OR the tab).**
+- Turn the tab leaf into a NESTED STACK: `app/(tabs)/config/{_layout.tsx (Stack, headerShown:false),
+  index.tsx, <detail>.tsx}`. The tab bar stays (it belongs to `(tabs)`), so the detail is reachable
+  back via its own arrow (`router.back()`) OR by tapping the Config tab (pops to index). The custom
+  tab bar filters routes by `name` so the `config` route still works unchanged.
+- **Typed routes** (`experiments.typedRoutes`) live in gitignored `.expo/types/router.d.ts` — adding
+  a route makes `router.push("/config/...")` fail `typecheck` until regenerated. Regenerate by briefly
+  running Metro (`npx expo start`, wait for the path to appear in the d.ts, kill it); CI regenerates
+  on build.
 
 ## Code Examples
 

@@ -43,7 +43,23 @@ metadata:
 - **Few-shot**: 2–3 concrete `user msg → tool_call(args)` examples (keep them short).
 - **Token-efficient**: concise — *more words ≠ better prompt*. Rely on prompt caching for the system block.
 
-**3. ALWAYS verify — do not assume.** Prompt-language effects are model-dependent. After ANY prompt change, re-run the eval and confirm no regression (ROUTING/MONTO stay at their bar). The eval is the safety net.
+**2b. Inject CONFIGURABLE traits as concrete values, exactly like `{language}`.** The conversational
+`GeneralAgent` has a user-selectable PERSONALITY (Cleo-style modes: neutral/coach/roast). Same
+pattern as language: a `# PERSONALITY` section with one `{personality}` block chosen per `Personality`
+enum value, formatted into the prompt (`...format(language=..., personality=_BLOCKS[p])`). The trait
+flows controller → `AispaceState.personality` → agent, mirroring `language`. Keep the personality
+blocks about TONE only — never let them fight the safety BOUNDARIES (e.g. roast stays "kind
+underneath, never cruel"; the FTC tone risk is real for a money app).
+
+**2c. Enforce LENGTH explicitly or small models ramble.** "(1-3 sentences)" tucked in ROLE is
+ignored — the model writes walls of text + trailing "shall I help with X?" filler. Use a dedicated
+`# LENGTH — STRICT` section near the top: "1-2 short sentences, punchy, no lists/filler, at most ONE
+brief follow-up." Verified: this dropped GeneralAgent replies from ~350 → ~70-130 chars.
+
+**3. ALWAYS verify — do not assume.** Prompt-language effects are model-dependent. After ANY prompt
+change, re-run the eval and confirm no regression (ROUTING/MONTO stay at their bar). The eval is the
+safety net. (Eval covers FinanceAgent routing/amounts — a change to only the GeneralAgent reply
+prompt doesn't touch it; verify those LIVE instead, e.g. a quick `GeneralAgent().run(...)` length/tone check.)
 
 ## Code Examples
 

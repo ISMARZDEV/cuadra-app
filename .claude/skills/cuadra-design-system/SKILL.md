@@ -57,7 +57,7 @@ metadata:
 
 - **Insights (Home):** the **wheel** — circular gauge (Total Expense vs Budget, green→red arc w/ category markers) + center `ScallopFab` "Add" + 7 satellite `IconButton`s (wallet, reports/pie, budget/$, alerts/bell, ⊕ category, ☆ goals, metrics toggle). Below: carousel of cards — Accounts (4 `MetricTile` + Recent `TxRow`s), Spaces, Daily Diary (wallet stack + DOP/USD `SegmentedTabs` + Daily Target / You spent today + ring + ⭐).
 - **News:** masonry feed of `Card`s — @handle + verified, title, body, ❤️ Likes, bookmark, expand. (Pinterest/X vibe.)
-- **Chat (AISpace):** `Bubble` list + input pill ("Ask me Something…") with send + `+` (attach) + mic; menu/expand top. Receipt/image cards inline.
+- **Chat (AISpace):** `Bubble` list + input pill ("Ask me Something…") with send + `+` (attach) + mic; menu/expand top. Receipt/image cards inline. **Feel = Cleo/ChatGPT:** agent replies stream with a soft **per-word fade-in** (`StreamingText`: each word `opacity 0→1` + 6px rise via `useSharedValue`+`withTiming`, NOT reanimated `entering`). Scroll is **top-aligned** with **elastic bounce** (`alwaysBounceVertical`) and **smart auto-follow** (only sticks to bottom if already there). A configurable **personality** (😐 Neutro / 🎉 Coach / 🔥 Roast) sets the agent's voice (Config → Personalidad). Engineering details + gotchas: `cuadra-mobile` §6.
 - **Save:** Uber-Eats/Walmart marketplace — category chips, featured carousel, product cards, search pill. (Supermarkets / products / financial products.)
 - **Tab bar:** News · Insights (red dot) · [center scallop `iAM` logo] · Save · Config, with a wavy notch around the center FAB.
 
