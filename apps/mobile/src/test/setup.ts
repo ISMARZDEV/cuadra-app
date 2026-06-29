@@ -47,4 +47,10 @@ vi.mock("expo-glass-effect", async () => {
 
 vi.mock("expo-blur", async () => ({ BlurView: await viewPassthrough() }));
 
+// GlassSurface's non-iOS fallback path renders these (LinearGradient + SquircleView); their native
+// sources don't survive vitest's transform → pass children through to a plain View.
+vi.mock("expo-linear-gradient", async () => ({ LinearGradient: await viewPassthrough() }));
+
+vi.mock("react-native-squircle-view", async () => ({ SquircleView: await viewPassthrough() }));
+
 vi.mock("@react-native-masked-view/masked-view", async () => ({ default: await viewPassthrough() }));
