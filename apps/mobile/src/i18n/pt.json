@@ -26,6 +26,13 @@
   "chat.a11y.send": "Enviar",
   "chat.a11y.attach": "Anexar",
   "chat.a11y.voice": "Mensagem de voz",
+  "chat.a11y.loading": "Carregando resposta…",
+  "chat.dock.open": "Mostrar sugestões",
+  "chat.dock.close": "Ocultar sugestões",
+  "chat.quickActions.spentThisMonth": "Quanto gastei este mês 📅?",
+  "chat.quickActions.registerIncome": "Quero registrar uma receita 📈📊",
+  "chat.quickActions.shoppingList": "Me ajuda com a lista de compras 🛒🛍️",
+  "chat.quickActions.availableMoney": "Quanto dinheiro tenho disponível 💸?",
   "chat.confirm.approve": "Confirmar",
   "chat.confirm.cancel": "Cancelar"
 }

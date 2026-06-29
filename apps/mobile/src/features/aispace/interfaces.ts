@@ -1,8 +1,9 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { TextInput } from "react-native";
+import type { LucideIcon } from "lucide-react-native";
 
 import type { ChatRole } from "./enums";
-import type { ChatStreamEvent } from "./types";
+import type { ChatStreamEvent, DockOptionVariant } from "./types";
 
 // AISpace chat interfaces (feature-local; structure §3 → features/{…, interfaces}). Kept apart from
 // the components/hook so the transport, the hook, the screen and the bubbles share one definition.
@@ -54,4 +55,38 @@ export interface ConfirmActionCardProps {
   summary: string;
   onConfirm: () => void;
   onCancel: () => void;
+}
+
+// ── Glass dock (collapsible panel above the input) ──────────────────────────
+// One selectable option inside a dock interaction. `value` is what we send back (to /chat/resume in
+// Fase 2); `variant` styles the pill; `icon` is an optional leading lucide glyph (category chips).
+export interface DockOption {
+  label: string;
+  value: string;
+  variant: DockOptionVariant;
+  icon?: LucideIcon;
+}
+
+// A single human-in-the-loop step the dock renders: a prompt + the options to pick from. Generic on
+// purpose — the backend (Fase 2) emits these and the dock paints them, so any flow works unchanged.
+// In Fase 1 we map the current single-step `pending` (summary + approve/cancel) into this shape.
+export interface DockInteraction {
+  prompt: string;
+  options: DockOption[];
+}
+
+export interface QuickActionsProps {
+  // Tapping a suggestion chip sends that prompt to the chat.
+  onSelect: (prompt: string) => void;
+}
+
+export interface DockInteractionViewProps {
+  interaction: DockInteraction;
+  onSelect: (value: string) => void;
+}
+
+export interface ChatDockProps {
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
 }

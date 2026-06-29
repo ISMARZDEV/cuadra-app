@@ -19,6 +19,9 @@ export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  // `isThinking` = a turn is in flight but the agent hasn't produced anything yet (no token, no
+  // pending). Drives the typing-dots indicator; cleared the moment the first output arrives.
+  const [isThinking, setIsThinking] = useState(false);
   const threadRef = useRef<string | null>(null);
   const streamingRef = useRef(false); // re-entry guard (read synchronously, unlike state)
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -28,6 +31,7 @@ export function useChat() {
     if (!trimmed || streamingRef.current) return;
     streamingRef.current = true;
     setIsStreaming(true);
+    setIsThinking(true);
     setMessages((m) => [...m, { id: uid(), role: ChatRole.User, text: trimmed }]);
 
     let agentId: string | null = null;
@@ -37,6 +41,7 @@ export function useChat() {
       locale: getLanguage(), // the APP's chosen language (i18n), not the device locale (cuadra-mobile §5)
       onEvent: (e) => {
         if (e.type === "token") {
+          setIsThinking(false);
           setMessages((m) => {
             if (!agentId) {
               agentId = uid();
@@ -45,11 +50,13 @@ export function useChat() {
             return m.map((msg) => (msg.id === agentId ? { ...msg, text: msg.text + e.content } : msg));
           });
         } else if (e.type === "pending") {
+          setIsThinking(false);
           setPending(e.action as PendingAction);
         } else if (e.type === "done") {
           threadRef.current = e.thread_id;
           setThreadId(e.thread_id);
         } else if (e.type === "error") {
+          setIsThinking(false);
           setMessages((m) => [
             ...m,
             { id: uid(), role: ChatRole.Agent, text: "⚠️ No pude responder. Intenta de nuevo." },
@@ -60,16 +67,19 @@ export function useChat() {
 
     streamingRef.current = false;
     setIsStreaming(false);
+    setIsThinking(false);
   }, []);
 
   const confirm = useCallback(async (approved: boolean) => {
     const tid = threadRef.current;
     if (!tid) return;
     setPending(null);
+    setIsThinking(true); // the backend resumes the graph and writes — show the dots meanwhile
     const res = await resume({ body: { thread_id: tid, approved } });
+    setIsThinking(false);
     const reply = res.data?.reply;
     if (reply) setMessages((m) => [...m, { id: uid(), role: ChatRole.Agent, text: reply }]);
   }, []);
 
-  return { messages, pending, isStreaming, threadId, send, confirm };
+  return { messages, pending, isStreaming, isThinking, threadId, send, confirm };
 }

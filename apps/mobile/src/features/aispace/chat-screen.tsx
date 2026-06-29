@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
   type NativeScrollEvent,
@@ -26,6 +26,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useColorScheme } from "nativewind";
 
 import { GlassSurface } from "@/components/ui/glass-surface";
+import { t } from "@/i18n";
 import {
   NAVBAR_CIRCLE,
   NAVBAR_VIEWBOX,
@@ -34,12 +35,17 @@ import { useOrbStore } from "@/store/orb-store";
 import { useDrawer } from "@/store/drawer-store";
 
 import { AgentMessage } from "./components/agent-message";
+import { ChatDock } from "./components/chat-dock";
+import { ChatLavaBackground } from "./components/chat-lava-background";
 import { ChatHeader } from "./components/chat-header";
 import { ChatInputBar } from "./components/chat-input-bar";
 import { ChatSessionsSidebar } from "./components/chat-sessions-sidebar";
-import { ConfirmActionCard } from "./components/confirm-action-card";
+import { DockInteractionView } from "./components/dock-interaction-view";
+import { QuickActions } from "./components/quick-actions";
+import { TypingIndicator } from "./components/typing-indicator";
 import { UserBubble } from "./components/user-bubble";
 import { ChatRole } from "./enums";
+import type { DockInteraction } from "./interfaces";
 import { useChat } from "./use-chat";
 
 // SVG gradient overlay — Figma "Siri AI" card: dark 85% at top → 18% at bottom.
@@ -86,6 +92,31 @@ export function ChatScreen() {
 
   // Live chat — streams turns from the agent (SSE) and stages HITL writes (§7.4).
   const chat = useChat();
+
+  // ── Glass dock (collapsible panel above the input) ─────────────────────────
+  // Open manually to show quick-action suggestions; auto-opens when a HITL step (`pending`) arrives
+  // and auto-closes when it resolves (Figma flow). Fase 1 maps the single-step `pending` (summary +
+  // approve/cancel) onto the generic {prompt, options} the dock renders; Fase 2 will emit richer
+  // multi-step interactions over the same contract.
+  const [dockOpen, setDockOpen] = useState(false);
+  useEffect(() => {
+    setDockOpen(!!chat.pending);
+  }, [chat.pending]);
+
+  // Height of the bottom zone (dock + input). The chat scrolls BEHIND it (so the translucent glass
+  // has the chat to refract → it finally reads as glass, Figma); this height is reserved as the
+  // ScrollView's bottom padding so the last message clears the overlay.
+  const [bottomZoneH, setBottomZoneH] = useState(0);
+
+  const interaction: DockInteraction | null = chat.pending
+    ? {
+        prompt: chat.pending.summary ?? "",
+        options: [
+          { label: t("chat.confirm.cancel"), value: "no", variant: "secondary" },
+          { label: t("chat.confirm.approve"), value: "yes", variant: "primary" },
+        ],
+      }
+    : null;
 
   // ── Sessions drawer ───────────────────────────────────────────────────────
   // Swipe the chat aside (or tap the header menu) to reveal the sessions sidebar. The chat card
@@ -278,7 +309,16 @@ export function ChatScreen() {
       <Animated.View style={[styles.shadowWrap, shadowStyle]} {...panResponder.panHandlers}>
         {/* Liquid Glass card with gradient border: iOS 26 → GlassView, older/Android → BlurView + SquircleView + gradient border. */}
         <GlassSurface
-          style={[StyleSheet.absoluteFill, { borderRadius: 48 }]}
+          // Real RN border (style) — the native GlassView honors it; its `borderWidth` PROP (the
+          // fallback gradient) is a no-op on the device. This is what makes the contour visible.
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: 48,
+              borderWidth: 1.5,
+              borderColor: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.18)",
+            },
+          ]}
           intensity={5}
           borderWidth={5.5}
         >
@@ -292,7 +332,15 @@ export function ChatScreen() {
               ref={scrollRef}
               className="flex-1"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 8 }}
+              // Side gutter for the whole conversation — THE single knob for how far the text sits
+              // from the card edges (each row adds its own px-3 = 12px on top, so total ≈ 22px).
+              // paddingBottom reserves the overlaid bottom zone so the last message clears the glass.
+              contentContainerStyle={{ paddingBottom: 8 + bottomZoneH, paddingHorizontal: 6 }}
+              // "handled": a tap on a HANDLER (the TextInput) focuses it in one tap and keeps the
+              // keyboard; a tap on a NON-handler (a message, empty space) dismisses the keyboard.
+              // This gives tap-outside-to-dismiss WITHOUT a TouchableWithoutFeedback wrapper (which
+              // steals the ScrollView's pan/bounce — cuadra-mobile §6). The multi-tap was the input's
+              // Pressable wrapper, removed there — not this prop.
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
               onScrollBeginDrag={Keyboard.dismiss}
@@ -314,18 +362,55 @@ export function ChatScreen() {
                   <AgentMessage key={m.id} text={m.text} />
                 ),
               )}
+              {/* Loading wave — three dots while a turn is in flight (no token/pending yet). Fades
+                  out and hands off to the first agent word as soon as output arrives. */}
+              <TypingIndicator visible={chat.isThinking} />
             </ScrollView>
 
-            {/* HITL (§7.4): a staged write awaits confirmation before /chat/resume runs it. */}
-            {chat.pending ? (
-              <ConfirmActionCard
-                summary={chat.pending.summary ?? ""}
-                onConfirm={() => chat.confirm(true)}
-                onCancel={() => chat.confirm(false)}
-              />
-            ) : null}
+            {/* Bottom zone — OVERLAYS the scroll (absolute, on top in z-order) so the chat shows
+                through its translucent glass (Figma bleed-through). Its measured height feeds the
+                ScrollView's paddingBottom above. Glass dock = quick actions (manual) or the HITL
+                step (§7.4); the chevron is always visible; the body grows above the input. */}
+            <View
+              style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
+              onLayout={(e) => setBottomZoneH(e.nativeEvent.layout.height)}
+            >
+              {/* Contour identical to the card: SAME GlassSurface gradient border (the `borderWidth`
+                  prop — bright top fading down), not a flat line. FLUSH top (square, meets the chat)
+                  + bottom corners rounded to the card's 48 radius so the edge continues the card. */}
+              <GlassSurface
+                // Real RN border (native GlassView honors it). The TOP edge is the divider between
+                // the chat and the input zone (full width, above the chevron — como estaba arriba);
+                // bottom corners follow the card's 48 radius so the contour continues the card.
+                style={{
+                  borderWidth: 1.5,
+                  borderColor: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.18)",
+                  borderBottomLeftRadius: 48,
+                  borderBottomRightRadius: 48,
+                  overflow: "hidden",
+                }}
+                intensity={50}
+                borderWidth={0}
+              >
+                <ChatDock open={dockOpen} onToggle={() => setDockOpen((o) => !o)}>
+                  {interaction ? (
+                    <DockInteractionView
+                      interaction={interaction}
+                      onSelect={(value) => chat.confirm(value === "yes")}
+                    />
+                  ) : (
+                    <QuickActions
+                      onSelect={(prompt) => {
+                        chat.send(prompt);
+                        setDockOpen(false);
+                      }}
+                    />
+                  )}
+                </ChatDock>
 
-            <ChatInputBar inputRef={chatInputRef} onSend={chat.send} />
+                <ChatInputBar inputRef={chatInputRef} onSend={chat.send} />
+              </GlassSurface>
+            </View>
 
             {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}
             {drawerOpen ? (

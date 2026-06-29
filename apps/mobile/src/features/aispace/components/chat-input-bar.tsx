@@ -1,6 +1,6 @@
 import { Mic, Plus, SendHorizontal } from "lucide-react-native";
 import { useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 
 import { t } from "@/i18n";
@@ -39,9 +39,11 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
     <View className="flex-row items-end gap-2 px-5 pb-4 pt-2">
       <GlassButton icon={Plus} label={t("chat.a11y.attach")} size={42} iconSize={22} />
       {/* Auto-growing pill: a multiline TextInput that wraps onto new lines and expands the pill
-          downward up to maxHeight, then scrolls internally. Pressable wrapper guarantees a single
-          tap focuses the input even when the View intercepts the touch first. */}
-      <Pressable
+          downward up to maxHeight, then scrolls internally. Plain View (NOT Pressable): the
+          TextInput receives the native tap directly so a SINGLE tap focuses it. A Pressable wrapper
+          here intercepted the touch and focused programmatically, which raced with multiline focus
+          and cost extra taps (the real first-tap fix was clipping the navbar glass hit-area). */}
+      <View
         style={{
           flex: 1,
           minHeight: 42,
@@ -53,16 +55,19 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
           paddingHorizontal: 16,
           paddingVertical: 6,
         }}
-        onPress={() => inputRef.current?.focus()}
       >
         <TextInput
           ref={inputRef}
           multiline
+          // No fixed `lineHeight`: on iOS a multiline TextInput anchors the glyph to the top of an
+          // oversized line box, so a single line looks high/off-centre. Natural line height + the
+          // wrapper's justifyContent:center keeps the text vertically centred; textAlignVertical
+          // does the same on Android.
+          textAlignVertical="center"
           style={{
-            fontSize: 14,
-            lineHeight: 20,
+            fontSize: 16,
             color: inputColor,
-            maxHeight: 110,
+            maxHeight: 120,
             padding: 0,
           }}
           placeholder={t("chat.inputPlaceholder")}
@@ -72,7 +77,7 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
           value={value}
           onChangeText={setValue}
         />
-      </Pressable>
+      </View>
       {/* Mic ⇄ Send: empty field shows the mic; once there's text it animates (zoom) to the send
           button (WhatsApp-style). Fixed 42×42 box so the swap never shifts the layout. */}
       <View style={{ width: 42, height: 42 }}>

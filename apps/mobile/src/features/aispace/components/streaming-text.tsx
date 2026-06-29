@@ -42,7 +42,7 @@ function FadingWord({
 // Streamed agent text with a soft per-WORD fade-in. As SSE tokens arrive the text grows; only the
 // newly-added words mount (React reuses earlier words by key) → only they run their fade. Words are
 // wrapping inline views so each can animate independently.
-export function StreamingText({ text, textClassName, duration = 400 }: StreamingTextProps) {
+export function StreamingText({ text, textClassName, duration = 600 }: StreamingTextProps) {
   const lines = text.split("\n");
   return (
     <View>

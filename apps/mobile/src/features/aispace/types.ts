@@ -15,3 +15,8 @@ export type PendingAction = { summary?: string } & Record<string, unknown>;
 
 // Discriminated union of the SSE frames (members are interfaces in ./interfaces).
 export type ChatStreamEvent = ChatTokenEvent | ChatPendingEvent | ChatDoneEvent | ChatErrorEvent;
+
+// Visual weight of a dock option pill: `primary` = lime affirmative (Sí/confirmar), `secondary` =
+// translucent green (No/cancelar). A string-literal union (not a nominal enum) on purpose — these
+// are presentation hints the dock interaction protocol carries, kept ergonomic for props.
+export type DockOptionVariant = "primary" | "secondary";
