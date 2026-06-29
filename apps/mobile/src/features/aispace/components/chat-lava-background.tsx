@@ -28,9 +28,12 @@ import {
 const LIGHT_A = "#8EF33A";
 const LIGHT_B = "#C3FA7E";
 const LIGHT_CORE = "#E6FFB0"; // pale lime hotspot
-const DARK_A = "#0E7C5A"; // deep teal-emerald
-const DARK_B = "#1FAE7C"; // aquatic green
-const DARK_CORE = "#5AF0C8"; // bright cyan-teal hotspot
+// Dark mode rides much deeper now: the base is a near-black teal so the aurora EMERGES from the dark
+// (ref shot 4) instead of glowing bright green. Under blendMode="screen" a near-black source adds
+// almost nothing, so #001410 stays a whisper; the mid teal + the emerald core carry the visible glow.
+const DARK_A = "#001410"; // near-black deep teal — the base the aurora rises out of
+const DARK_B = "#0B5A42"; // deep teal — the visible-but-restrained glow
+const DARK_CORE = "#1FAE7C"; // emerald hotspot (no longer neon cyan)
 
 // Luminance desaturate — turns the RGBA turbulence into gray film grain (alpha kept).
 const GRAIN_DESATURATE = [
