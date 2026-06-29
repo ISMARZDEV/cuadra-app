@@ -22,6 +22,11 @@ type GlassSurfaceProps = ViewProps & {
   colorScheme?: "auto" | "light" | "dark";
   borderWidth?: number;
   isInteractive?: boolean;
+  // Optional color tint for the glass (e.g. brand green on the chat tool buttons). Applied as the
+  // native GlassView tintColor on iOS 26, and as a translucent overlay on the blur/web fallback so
+  // the same tint reads consistently in Expo Go and on unsupported OS.
+  tint?: string;
+  tintOpacity?: number;
 };
 
 export function GlassSurface({
@@ -29,6 +34,8 @@ export function GlassSurface({
   colorScheme: colorSchemeProp = "auto",
   borderWidth = 2.5,
   isInteractive = false,
+  tint,
+  tintOpacity = 0.7,
   style,
   children,
   ...rest
@@ -44,6 +51,7 @@ export function GlassSurface({
         glassEffectStyle="regular"
         colorScheme={colorSchemeProp}
         isInteractive={isInteractive}
+        tintColor={tint}
         style={style}
         {...rest}
       >
@@ -74,6 +82,20 @@ export function GlassSurface({
               experimentalBlurMethod="dimezisBlurView"
               style={{ flex: 1 }}
             >
+              {tint ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: tint,
+                    opacity: tintOpacity,
+                  }}
+                />
+              ) : null}
               {children}
             </BlurView>
           </SquircleView>
@@ -88,7 +110,7 @@ export function GlassSurface({
       style={[
         style,
         {
-          backgroundColor: isDark ? "rgba(18,32,26,0.72)" : "rgba(255,255,255,0.72)",
+          backgroundColor: tint ?? (isDark ? "rgba(18,32,26,0.72)" : "rgba(255,255,255,0.72)"),
           borderWidth: 1.5,
           borderColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.5)",
         },
