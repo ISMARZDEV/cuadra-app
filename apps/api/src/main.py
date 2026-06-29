@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from src.api.problem_detail import ProblemDetailDto
 from src.api.router import api_router
 from src.config import settings
+from src.observability import configure_langsmith
 
 
 def _operation_id(route: APIRoute) -> str:
@@ -22,6 +23,13 @@ def _operation_id(route: APIRoute) -> str:
 
 
 def create_app() -> FastAPI:
+    # Activa LangSmith tracing por entorno ANTES de armar el grafo (lazy) — ver observability.py.
+    # Banner de arranque: deja ver en la consola el estado REAL del proceso (no del .env en disco).
+    if configure_langsmith(settings):
+        print(f"[observability] LangSmith tracing ON → project '{settings.langsmith_project}'", flush=True)
+    else:
+        print("[observability] LangSmith tracing OFF (necesita langsmith_tracing=true + key)", flush=True)
+
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
