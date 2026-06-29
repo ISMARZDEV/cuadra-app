@@ -32,13 +32,20 @@ metadata:
 | Folder | Holds | Rule |
 |---|---|---|
 | `app/` | Expo Router **routes only** | A route just re-exports a feature screen: `export { ChatScreen as default } from "@/features/aispace/chat-screen"` |
-| `src/features/<f>/` | `<f>-screen.tsx`, `api.ts` (Query hooks), `use-*-store.tsx` (zustand), `components/` | Feature is self-contained |
+| `src/features/<f>/` | `<f>-screen.tsx`, `api.ts` (Query hooks), `use-*-store.tsx` (zustand), `components/`, **`enums.ts` · `interfaces.ts` · `types.ts`** | Feature is self-contained |
 | `src/components/ui/` | Shared design-system primitives (Button, Input, Bubble…) | Promote here only when used in 2+ features |
 | `src/lib/` | Infra: `api/` (client config), `auth/` (token storage), `hooks/` | Cross-cutting |
 | `src/i18n/` | Translation files es/en/pt | UI strings localized (same languages as backend) |
 
 - **Absolute imports** `@/...` (alias → `src/`); **no barrel exports** (`index.ts` breaks fast-refresh); relative imports within the same feature.
 - **Keep screens lean**: composition + navigation only; sections own their state/Query hooks.
+- **Types in DEDICATED files, never inline** (structure §3): `interface` for object/prop shapes,
+  `enum` for closed value sets (e.g. `ChatRole`), `type` only for genuine aliases/unions. Per
+  feature → `enums.ts` / `interfaces.ts` / `types.ts`; cross-feature → `src/shared/{interfaces,enums,types}`.
+  Components import their props from `../interfaces`. (A types-only file is erased at build → NOT a
+  barrel, so it's fast-refresh safe.) **Exception:** keep a WIRE/JSON discriminated union as a
+  string-literal union (e.g. SSE `{type:"token"}`), not a nominal enum — an enum fights the values
+  that arrive off the network.
 
 **2. Styling — NativeWind + react-native-reusables + own components.**
 - **NativeWind** (Tailwind for RN) via `className`; dark/light via Tailwind `dark:` + `useColorScheme()`. Brand green `#16A34A`. Tokens in `tailwind.config.js` (see `cuadra-design-system` skill).
@@ -53,12 +60,26 @@ metadata:
 - Configure the generated client ONCE in `src/lib/api/` (base URL from env + auth header from the token).
 - Query/mutation hooks live in `features/<f>/api.ts` and call the SDK functions (`getMetrics`, `chat`, `resume`, `devLogin`). Screens consume the hooks.
 
+**3b. Streaming (SSE) — hand-rolled over `expo/fetch`, NOT the generated SDK.**
+- The hey-api SDK can't model a token stream. For SSE endpoints (the chat `POST /aispace/chat/stream`)
+  write a transport on **`expo/fetch`** (SDK-56 WinterCG fetch with real `ReadableStream` on native —
+  **do NOT add `react-native-sse`**; the native `EventSource` also can't send the `Authorization`
+  header). Read base URL + token via `API_BASE_URL` / `getApiAuthToken()` exported from
+  `lib/api/client.ts` (the transport bypasses the SDK interceptor, so it sets its own Bearer).
+- Parse `data:` frames; surface a small event union (`token`/`pending`/`done`/`error`). A hook
+  (`use-chat`) owns state + drives the transport; the screen consumes the hook. (HITL confirm still
+  uses the generated `resume`.)
+
 **4. Auth — zustand store + dev-login (no external IdP yet).**
 - Login screen calls `devLogin({ body: { email } })` → store `access_token` in a zustand auth store (+ secure storage for persistence) → inject as `Authorization: Bearer` in the api-client config. Root `_layout` gates `(auth)` vs `(tabs)` on token presence.
 - Prod swaps dev-login for the external IdP (§E.2). Never hardcode tokens in committed code.
 
 **5. i18n — localize UI strings (es/en/pt), consistent with the backend.**
-- App copy in `src/i18n/{es,en,pt}.json`. The CHAT replies come already localized from the agent (backend handles language); the app passes the device `locale` to `POST /chat`.
+- App copy in `src/i18n/{es,en,pt}.json`. The CHAT replies come already localized from the agent (backend handles language); the app passes a `locale` to the chat endpoints.
+- **Gotcha:** send the app's CHOSEN language (`src/i18n`), NOT the raw device locale
+  (`Intl…resolvedOptions().locale`). The backend uses the client locale as the PRIMARY signal and only
+  overrides on a high-confidence per-message detection — so a Spanish user on an English phone gets
+  English replies. (See `docs/sdd/aispace-general-agent.md` §4.)
 
 ## Code Examples
 
