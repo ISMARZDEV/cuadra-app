@@ -294,7 +294,7 @@ export function ChatScreen() {
               ref={scrollRef}
               className="flex-1"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 8, flexGrow: 1, justifyContent: "flex-end" }}
+              contentContainerStyle={{ paddingBottom: 8 }}
               keyboardShouldPersistTaps="handled"
               onScrollBeginDrag={Keyboard.dismiss}
               // Elastic rubber-band at top AND bottom even when the content fits (ChatGPT/iMessage).
