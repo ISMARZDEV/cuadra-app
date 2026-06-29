@@ -45,6 +45,9 @@ chore/<scope>
    `feat/fix → developer` is part of the normal flow and does not need a separate go-ahead.
 6. **Conventional commits** (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`). No AI
    attribution / no `Co-Authored-By`.
+7. **NEVER delete REMOTE branches.** After a merge, delete ONLY the local branch (`git branch -d`).
+   Do NOT pass `--delete-branch` to `gh pr merge`, and do NOT run `git push origin --delete`. The
+   remote branch stays on GitHub (history/reference); only the local copy is cleaned up.
 
 ## A. Start a work branch
 
@@ -79,10 +82,12 @@ git push -u origin feat/<scope>
    ```
    If anything fails → report it and STOP. Fix on the branch, push, re-check. Do NOT merge red/pending.
 5. **ASK the user the merge strategy** (`AskUserQuestion`: `Squash` vs `Rebase`).
-6. **Merge** with the chosen strategy, then clean up:
+6. **Merge** with the chosen strategy, then clean up the LOCAL branch only (the remote branch stays
+   on GitHub — never `--delete-branch`):
    ```bash
-   gh pr merge <number> --squash --delete-branch   # or --rebase --delete-branch
+   gh pr merge <number> --squash    # or --rebase  — do NOT pass --delete-branch
    git checkout developer && git pull origin developer
+   git branch -d <branch>           # delete the LOCAL branch only; origin/<branch> remains
    ```
 
 ## C. Release developer → main (ONLY when the user says so)
@@ -112,6 +117,7 @@ Do NOT do this proactively — wait for an explicit instruction ("merge a main",
 | Merge strategy (squash/rebase) | ALWAYS `AskUserQuestion` before merging |
 | Merge to `main` | Only on EXPLICIT user instruction |
 | CI red or pending | STOP, report, do not merge |
+| Branch cleanup after merge | Delete LOCAL only (`git branch -d`). NEVER delete the remote branch |
 
 ## Related skills
 
