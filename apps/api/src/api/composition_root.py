@@ -191,11 +191,26 @@ def get_aispace_checkpointer() -> object:
 
 
 def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):  # type: ignore[no-untyped-def]
+    from src.contexts.aispace.flows.expense.categories import suggest_expense_categories
+    from src.contexts.aispace.flows.expense.flow import build_expense_flow
     from src.contexts.aispace.orchestration.graph import build_graph
     from src.contexts.aispace.orchestration.registry import build_registry
     from src.contexts.aispace.orchestration.router import llm_classifier
 
     # session_factory = SessionLocal: cada tool abre su propia UoW (D1, sobrevive el HITL).
+    registry = build_registry(SessionLocal)
+
+    # register_expense corre el flow multi-step (confirm → ¿categoría? → sugerencias → commit + deep
+    # link). commit_action reusa el commit del FinanceAgent con la acción enriquecida con la categoría
+    # que eligió el usuario; las sugerencias salen de un LLM (memoizado por `prepare`).
+    finance = registry["register_expense"]
+    expense_flow = build_expense_flow(
+        commit_action=lambda state, action: finance.commit({**state, "pending_action": action}),
+        suggest_categories=suggest_expense_categories,
+    )
     return build_graph(
-        checkpointer, classifier=llm_classifier, registry=build_registry(SessionLocal)
+        checkpointer,
+        classifier=llm_classifier,
+        registry=registry,
+        flow_registry={"register_expense": expense_flow},
     )

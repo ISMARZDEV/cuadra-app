@@ -6,21 +6,18 @@ interrupt); `POST /chat/resume` lo aprueba/cancela. El `thread_id` liga la conve
 """
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
-
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessageChunk, HumanMessage
+from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel
 
 from src.api.composition_root import get_aispace_graph, get_preference_repository
 from src.api.extensions.security import get_current_user_id
 from src.api.problem_detail import ProblemDetailDto
+from src.contexts.aispace.orchestration.sse import chat_result, stream_events
 from src.contexts.aispace.preferences.enums import Personality
 from src.contexts.aispace.preferences.ports import PreferenceRepository
-from src.shared.i18n import t
 from src.shared.ids import new_id
 from src.shared.lang import resolve_language
 
@@ -35,7 +32,8 @@ class ChatRequest(BaseModel):
 
 class ResumeRequest(BaseModel):
     thread_id: str
-    approved: bool
+    value: str | None = None    # opción elegida en un paso HITL ("confirm"/"yes"/"music"/"none"…)
+    approved: bool | None = None  # DEPRECATED — legacy sí/no (mapea a value para back-compat)
 
 
 class PersonalityResponse(BaseModel):
@@ -49,18 +47,22 @@ class UpdatePersonalityRequest(BaseModel):
 class ChatResponse(BaseModel):
     thread_id: str
     reply: str | None = None
-    pending_action: dict | None = None  # != null → grafo pausado esperando confirmación
+    interaction: dict | None = None     # próximo paso HITL multi-step → {prompt, options[]}
+    links: list[dict] = []              # deep links que dejó el flow (p. ej. "Ver en Insight")
+    pending_action: dict | None = None  # DEPRECATED — back-compat; != null → grafo pausado
 
 
-def _respond(thread_id: str, result: dict, graph, cfg: dict) -> ChatResponse:  # type: ignore[no-untyped-def]
-    state = graph.get_state(cfg).values
-    pending = state.get("pending_action") if "__interrupt__" in result else None
-    if pending:
-        reply = t("confirm_prompt", state.get("language", "es"), summary=pending["summary"])
-    else:
-        messages = state.get("messages", [])
-        reply = messages[-1].content if messages else None
-    return ChatResponse(thread_id=thread_id, reply=reply, pending_action=pending)
+def _respond(thread_id: str, graph, cfg: dict) -> ChatResponse:  # type: ignore[no-untyped-def]
+    snapshot = graph.get_state(cfg)
+    res = chat_result(snapshot, thread_id)
+    # reply: la respuesta final, o el prompt del paso pendiente (para clientes que aún no leen
+    # `interaction`). pending_action se mantiene mientras el grafo esté pausado (back-compat).
+    reply = res["reply"] or (res["interaction"]["prompt"] if res["interaction"] else None)
+    pending = snapshot.values.get("pending_action") if res["interaction"] else None
+    return ChatResponse(
+        thread_id=thread_id, reply=reply,
+        interaction=res["interaction"], links=res["links"], pending_action=pending,
+    )
 
 
 @router.post(
@@ -78,7 +80,7 @@ def chat(
     thread_id = body.thread_id or new_id()
     cfg = {"configurable": {"thread_id": thread_id}}
     language = resolve_language(body.message, body.locale)  # cliente primario + override
-    result = graph.invoke(
+    graph.invoke(
         {
             "messages": [HumanMessage(body.message)],
             "user_id": user_id,
@@ -88,44 +90,7 @@ def chat(
         },
         cfg,
     )
-    return _respond(thread_id, result, graph, cfg)
-
-
-def _sse(payload: dict) -> str:
-    """One SSE frame: `data: {json}\\n\\n` (UTF-8, no ASCII-escaping for es/pt)."""
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-def _stream_events(graph, inputs: dict, cfg: dict, thread_id: str) -> Iterator[str]:  # type: ignore[no-untyped-def]
-    """Drive the graph and translate it into the SSE event protocol (§7.6):
-      token   — each assistant token chunk (real agents stream via the LLM)
-      pending — the graph paused at an interrupt() with an action to confirm (HITL §7.4)
-      done    — terminal frame carrying the thread_id (so the client can resume/continue)
-    """
-    emitted = False
-    for chunk, meta in graph.stream(inputs, cfg, stream_mode="messages"):
-        # The router/classifier runs its OWN LLM (structured output) inside the `classify_intent`
-        # node; its tokens (e.g. `{"intent":"other"}`) must NOT leak to the user — stream only the
-        # agents' replies. `stream_mode="messages"` tags every chunk with its originating node.
-        if meta.get("langgraph_node") == "classify_intent":
-            continue
-        if isinstance(chunk, AIMessageChunk) and chunk.content:
-            emitted = True
-            yield _sse({"type": "token", "content": chunk.content})
-
-    state = graph.get_state(cfg).values
-    pending = state.get("pending_action")
-    if pending and pending.get("requires_confirmation"):
-        yield _sse({"type": "pending", "action": pending})
-    elif not emitted:
-        # Non-LLM nodes (respond_other, deterministic agents) don't stream token chunks —
-        # fall back to the final assistant message so the client still renders a reply.
-        messages = state.get("messages", [])
-        content = messages[-1].content if messages else None
-        if content:
-            yield _sse({"type": "token", "content": content})
-
-    yield _sse({"type": "done", "thread_id": thread_id})
+    return _respond(thread_id, graph, cfg)
 
 
 @router.post(
@@ -150,7 +115,7 @@ def chat_stream(
         "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
     }
     return StreamingResponse(
-        _stream_events(graph, inputs, cfg, thread_id),
+        stream_events(graph, inputs, cfg, thread_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -168,8 +133,10 @@ def resume(
     graph=Depends(get_aispace_graph),  # type: ignore[no-untyped-def]
 ) -> ChatResponse:
     cfg = {"configurable": {"thread_id": body.thread_id}}
-    result = graph.invoke(Command(resume="sí" if body.approved else "no"), cfg)
-    return _respond(body.thread_id, result, graph, cfg)
+    # Multi-step flows send the chosen option `value`; legacy clients send `approved` (sí/no).
+    resume_value = body.value if body.value is not None else ("sí" if body.approved else "no")
+    graph.invoke(Command(resume=resume_value), cfg)
+    return _respond(body.thread_id, graph, cfg)
 
 
 @router.get(

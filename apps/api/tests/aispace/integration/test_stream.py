@@ -3,7 +3,7 @@
 Grafo inyectado por override (MemorySaver + agentes stub deterministas, sin LLM). Verifica el
 PROTOCOLO de eventos SSE (líneas `data:` JSON):
   - lectura  → `token`(s) con el reply + `done`(thread_id).
-  - escritura → `pending`(action, HITL §7.4) + `done` — el grafo pausa en el interrupt.
+  - escritura → `interaction`({prompt, options}, HITL §7.4) + `done` — el grafo pausa en el interrupt.
   - sin token → 401 si falta el JWT.
 """
 from __future__ import annotations
@@ -68,7 +68,7 @@ def _graph(classifier):  # type: ignore[no-untyped-def]
     return build_graph(MemorySaver(), classifier=classifier, registry=registry)
 
 
-def test_stream_write_emits_pending_then_done() -> None:
+def test_stream_write_emits_interaction_then_done() -> None:
     user_id = str(uuid.uuid4())
     graph = _graph(lambda t, c: "other")  # "gasté…" cae en el cortocircuito → register_expense
     app.dependency_overrides[get_aispace_graph] = lambda: graph
@@ -82,10 +82,10 @@ def test_stream_write_emits_pending_then_done() -> None:
         assert res.headers["content-type"].startswith("text/event-stream")
         evs = _events(res.text)
         kinds = [e["type"] for e in evs]
-        assert "pending" in kinds
-        pending = next(e for e in evs if e["type"] == "pending")
-        assert pending["action"]["summary"] == "registrar RD$500 en Gasolina"
-        assert pending["action"]["requires_confirmation"] is True
+        assert "interaction" in kinds  # el grafo pausa en el interrupt → frame interaction genérico
+        inter = next(e for e in evs if e["type"] == "interaction")["interaction"]
+        assert "Gasolina" in inter["prompt"]  # confirm_prompt incluye el summary staged
+        assert [o["value"] for o in inter["options"]] == ["cancel", "confirm"]
         done = next(e for e in evs if e["type"] == "done")
         assert done["thread_id"]
     finally:
