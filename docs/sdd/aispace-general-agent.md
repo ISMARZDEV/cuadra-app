@@ -1,10 +1,15 @@
 # 🗣️ AISpace — Agente conversacional ("General") + fix de idioma
 
-> **Estado:** PLANIFICADO (no implementado). Para una sesión futura.
+> **Estado:** ✅ IMPLEMENTADO (2026-06-29, rama `feat/chat-mvp-integration`) — **con una extensión:
+> la personalidad es CONFIGURABLE** (modos estilo Cleo: 😐 Neutro · 🎉 Coach · 🔥 Roast), no un único
+> tono fijo. Default **Coach**. Persistida en backend (tabla `aispace.user_preference`) y elegible
+> desde el móvil (Config → "Personalidad del copiloto"). Ver §9.
 > **Deriva de:** [`arquitectura-mvp.md`](../arquitectura-mvp.md) §7 (orquestador router-a-nodos),
-> §7.11 (multilenguaje) · [`aispace-orquestador.md`](./aispace-orquestador.md).
+> §7.11 (multilenguaje) · [`aispace-orquestador.md`](./aispace-orquestador.md) ·
+> [`../research/cleo-analisis.md`](../research/cleo-analisis.md) §6 (la personalidad como producto).
 > **Decisión del usuario (2026-06-29):** habilitar la conversación con un **agente dedicado**
-> (`AgentSpec` en el registry), NO un fallback canned ni un simple branch.
+> (`AgentSpec` en el registry), NO un fallback canned ni un simple branch; **personalidad
+> configurable** (el usuario elige el tono, como los modos Roast/Hype de Cleo).
 > **Al implementar, cargar la skill `cuadra-agent-prompts`** (instrucciones en INGLÉS, responder en
 > el idioma del usuario).
 
@@ -153,3 +158,35 @@ Que "Hola" responda en español. Opciones (elegir, no excluyentes):
 - **Scope creep a chatbot general** → mitigado por el prompt (BOUNDARIES) + identidad financiera.
 - **Handoff explícito** (§3.5) — decidir si MVP o fase (recomendado: por-turno basta al inicio).
 - **Idioma:** confirmar si el mobile ya tiene preferencia de idioma persistida o usa el del device.
+
+---
+
+## 9. Estado de implementación (2026-06-29) ✅
+
+Implementado en `feat/chat-mvp-integration` en 4 slices RED-first. **Extensión sobre el plan
+original:** la personalidad es CONFIGURABLE (3 modos estilo Cleo), no un tono fijo.
+
+**Personalidad configurable (decisión del usuario):**
+- Modos: `Personality` enum = NEUTRAL 😐 / COACH 🎉 / ROAST 🔥. **Default COACH** (cálido con carácter,
+  sin el sarcasmo del Roast — más seguro para el público RD/LatAm; el Roast es opt-in).
+- Persistida en backend: tabla `aispace.user_preference` (`user_id` PK ref. por ID a identity, SIN
+  FK cross-context; sin fila → default COACH). Sub-dominio `contexts/aispace/preferences/`.
+- El prompt del `GeneralAgent` inyecta `{language}` + `{personality}` (un bloque de tono por modo),
+  mismo patrón que `{language}`. BOUNDARIES financieros en los 3 modos.
+
+**Slices:**
+- **A** — `GeneralAgent` (LLM simple, tier fast, modelo inyectable), `Personality` enum,
+  `AispaceState.personality`, registry, router (`_IntentOut += "general"` + prompt clasificador),
+  `respond_other` = red de seguridad. Tests unit (modelo falso) + integración (LLM real).
+- **B** — Persistencia: `PreferenceRepository` (puerto) + `SqlPreferenceRepository` (upsert) +
+  modelo + migración `e7a1c9d4b2f0`; endpoints `GET/PUT /v1/aispace/preferences` (Personality enum
+  → 422 inválido); `/chat` y `/chat/stream` cargan la personalidad al estado.
+- **C** — Fix de idioma: el móvil manda el idioma de la app (`getLanguage()` de i18n) como `locale`,
+  NO el del device (`Intl`). `resolve_language` ya lo trataba como señal primaria.
+- **D** — Móvil: selector en **Config → "Personalidad del copiloto"** (stack anidado en el tab
+  Config → vuelta atrás por flecha O tocando el tab Config). Radio group de los 3 modos sobre
+  `GET/PUT /aispace/preferences` (TanStack Query, update optimista). Además: texto del chat más
+  grande (`text-base` → `text-lg`).
+
+**Pendiente / futuro:** handoff explícito (§3.5) sigue siendo fase; el ROAST en producción conviene
+vigilarlo con LLM-as-judge de tono (cleo-analisis §4.3, FTC §8).
