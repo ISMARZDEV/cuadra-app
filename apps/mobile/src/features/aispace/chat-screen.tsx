@@ -354,7 +354,7 @@ export function ChatScreen() {
                 m.role === ChatRole.User ? (
                   <UserBubble key={m.id} text={m.text} />
                 ) : (
-                  <AgentMessage key={m.id} text={m.text} />
+                  <AgentMessage key={m.id} text={m.text} href={m.href} />
                 ),
               )}
               {/* Loading wave — three dots while a turn is in flight (no token/pending yet). Fades
