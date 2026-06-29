@@ -3,8 +3,9 @@ name: cuadra-glass-button
 description: >
   Cuadra's round liquid-glass symbol button (the chat +/mic/menu buttons): tinted iOS-26
   GlassView with a colorless depth gradient, theme-inverted brand colors, and a springy press.
-  Encodes the hard gotchas — react-native-svg (NOT expo-linear-gradient) for the gradient, and
-  no overflow:hidden under a scale transform.
+  Encodes the hard gotchas — react-native-svg (NOT expo-linear-gradient) for the gradient,
+  no overflow:hidden under a scale transform, and never SCALE an ancestor of a native GlassView
+  (it distorts/saturates the liquid glass).
   Trigger: Building or editing round glass/symbol buttons in apps/mobile (chat tool bar, headers),
   or any GlassSurface-based control that needs a tint, a depth gradient, or a press animation.
 license: Apache-2.0
@@ -22,8 +23,9 @@ metadata:
 - Building/editing a round **symbol button** (icon-only) on a glass surface — chat `+` / mic, header
   menu / maximize, or any `GlassButton`.
 - Adding a **tint**, a **depth gradient**, or a **press animation** to a `GlassSurface` control.
-- Debugging a glass control that shows **"Unable to get the view config … ExpoLinearGradient"** or a
-  **clipping/"mask cut" artifact while pressing**.
+- Debugging a glass control that shows **"Unable to get the view config … ExpoLinearGradient"**, a
+  **clipping/"mask cut" artifact while pressing**, or a **saturated / distorted-texture flash** on a
+  glass button while a parent animates (e.g. a drawer/sheet reveal).
 
 ## Critical Patterns (the gotchas — read these FIRST)
 
@@ -46,6 +48,16 @@ metadata:
 
 5. **Tint via `GlassSurface`'s `tint` prop**, not a background View — it maps to the native GlassView
    `tintColor` on iOS 26 and to a translucent overlay on the blur/web fallback (Expo Go / Android).
+
+6. **NEVER animate a `transform: scale` on an ANCESTOR of a native GlassView.** iOS 26 rasterises the
+   liquid-glass effect and then GPU-stretches that bitmap, so any `scale` on a parent makes the glass
+   **over-saturate its tint and show a grainy/distorted texture for the whole animation**, then snap
+   back when it settles. **Translation (`translateX`/`translateY`) is safe; scale is not.** This bit us
+   on the AISpace sessions drawer: the chat card's reveal used `transform: [{ translateX }, { scale: 1 - p*0.05 }]`
+   and the `scale` distorted the header's glass buttons (`chat-screen.tsx` `shadowStyle`). Fix = drop
+   the `scale`, keep only `translateX`. If you truly need a depth/push-back cue while a glass surface is
+   on screen, fake it with translate or opacity — not scale. (NB: the button's OWN brief press-scale on
+   its glass is tolerable because it's <400ms; a sustained/ancestor scale is what reads as broken.)
 
 ## Colors — theme-inverted brand pair
 
