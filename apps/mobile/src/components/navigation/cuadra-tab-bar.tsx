@@ -28,6 +28,7 @@ import { Icon } from "@/components/ui/icon";
 import { OrbSphere } from "@/components/ui/orb-sphere";
 import { t, type TranslationKey } from "@/i18n";
 import { sounds } from "@/lib/sounds";
+import { useDrawer } from "@/store/drawer-store";
 import { useOrbStore } from "@/store/orb-store";
 
 import { NAVBAR_CIRCLE, NAVBAR_VIEWBOX, NotchedGlass } from "./notched-glass";
@@ -233,17 +234,28 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     );
   };
 
+  // Slide the whole bar DOWN + fade out while the AISpace sessions drawer is open (driven by the
+  // shared drawer progress so it stays in sync with the chat sliding aside).
+  const { progress: drawerProgress } = useDrawer();
+  const drawerHideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: drawerProgress.value * (navHeight + (insets.bottom || 0) + 40) }],
+    opacity: 1 - drawerProgress.value,
+  }));
+
   return (
-    <View
+    <Animated.View
       pointerEvents="box-none"
-      style={{
-        position: "absolute",
-        left: 0,
-        right: 0,
-        bottom: 0,
-        alignItems: "center",
-        paddingBottom: Math.max((insets.bottom || 12) - 16, 6) + 14,
-      }}
+      style={[
+        {
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          alignItems: "center",
+          paddingBottom: Math.max((insets.bottom || 12) - 16, 6) + 14,
+        },
+        drawerHideStyle,
+      ]}
     >
       <View
         pointerEvents="box-none"
@@ -353,6 +365,6 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           <BrandLogo height={logoHeight} />
         </Pressable>
       </View>
-    </View>
+    </Animated.View>
   );
 }

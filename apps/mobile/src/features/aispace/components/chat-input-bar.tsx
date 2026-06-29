@@ -1,5 +1,5 @@
 import { Mic, Plus, SendHorizontal } from "lucide-react-native";
-import { useRef, useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 
@@ -8,11 +8,14 @@ import { useColorScheme } from "nativewind";
 
 import { GlassButton } from "./glass-button";
 
-export function ChatInputBar() {
+// `inputRef` is optional — the screen passes one in so it can dismiss/restore the keyboard around
+// the sessions drawer (hide on open, refocus on close).
+export function ChatInputBar({ inputRef: externalRef }: { inputRef?: RefObject<TextInput | null> }) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const [value, setValue] = useState("");
-  const inputRef = useRef<TextInput>(null);
+  const localRef = useRef<TextInput>(null);
+  const inputRef = externalRef ?? localRef;
   const hasText = value.trim().length > 0;
 
   const inputBg = isDark ? "#282928" : "#FFFFFF";

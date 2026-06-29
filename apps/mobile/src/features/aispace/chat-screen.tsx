@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
   Keyboard,
+  PanResponder,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
   TouchableWithoutFeedback,
   View,
   useWindowDimensions,
@@ -27,10 +30,12 @@ import {
   NAVBAR_VIEWBOX,
 } from "@/components/navigation/notched-glass";
 import { useOrbStore } from "@/store/orb-store";
+import { useDrawer } from "@/store/drawer-store";
 
 import { AgentBubble } from "./components/agent-bubble";
 import { ChatHeader } from "./components/chat-header";
 import { ChatInputBar } from "./components/chat-input-bar";
+import { ChatSessionsSidebar } from "./components/chat-sessions-sidebar";
 import { ReceiptAttachment } from "./components/receipt-attachment";
 import { UserBubble } from "./components/user-bubble";
 import { CHAT_THREAD } from "./mock";
@@ -76,6 +81,77 @@ export function ChatScreen() {
   const isDark = colorScheme === "dark";
   const orbActive = useOrbStore((s) => s.active);
   const scrollRef = useRef<ScrollView>(null);
+
+  // ── Sessions drawer ───────────────────────────────────────────────────────
+  // Swipe the chat aside (or tap the header menu) to reveal the sessions sidebar. The chat card
+  // slides ~80% to the right + scales down a touch; the sidebar parallaxes in behind it; the tab
+  // bar slides down (handled in cuadra-tab-bar.tsx). All off the shared `drawerProgress` (0→1).
+  const { progress: drawerProgress, open: drawerOpen, setOpen: setDrawerOpen } = useDrawer();
+  const chatInputRef = useRef<TextInput>(null);
+  const restoreKbRef = useRef(false);
+  const OPEN_X = width * 0.8; // how far the chat slides → leaves a ~20% sliver (like the reference)
+  const SIDEBAR_W = width * 0.82;
+  const openXRef = useRef(OPEN_X);
+  openXRef.current = OPEN_X;
+  const dragStart = useRef(0);
+
+  const trackDrag = (dx: number) => {
+    drawerProgress.value = Math.min(1, Math.max(0, dragStart.current + dx / openXRef.current));
+  };
+  const settleDrag = (vx: number) => {
+    const p = drawerProgress.value;
+    setDrawerOpen(vx > 0.4 ? true : vx < -0.4 ? false : p > 0.5);
+  };
+
+  // Pan on the card itself. Uses the CAPTURE phase so it intercepts clearly-horizontal drags BEFORE
+  // the inner ScrollView grabs them (bubble-phase PanResponder loses to a native ScrollView).
+  // Vertical drags fail the check → scrolling still works.
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        Math.abs(g.dx) > Math.abs(g.dy) * 1.4 && Math.abs(g.dx) > 14,
+      onPanResponderGrant: () => {
+        dragStart.current = drawerProgress.value;
+      },
+      onPanResponderMove: (_, g) => trackDrag(g.dx),
+      onPanResponderRelease: (_, g) => settleDrag(g.vx),
+      onPanResponderTerminate: () => settleDrag(0),
+    }),
+  ).current;
+
+  // LEFT-EDGE pan catcher — the card has a 10px side margin, so an edge swipe never reaches the card
+  // pan above. This thin strip on the very left edge CLAIMS on touch start (nothing interactive sits
+  // there) so a rightward edge-swipe always opens the drawer (ChatGPT/iOS drawer gesture), with no
+  // competition from the ScrollView.
+  const edgePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        dragStart.current = drawerProgress.value;
+      },
+      onPanResponderMove: (_, g) => trackDrag(g.dx),
+      onPanResponderRelease: (_, g) => settleDrag(g.vx),
+      onPanResponderTerminate: () => settleDrag(0),
+    }),
+  ).current;
+
+  // Reset the drawer when the screen unmounts so the tab bar never stays hidden.
+  useEffect(() => () => setDrawerOpen(false), [setDrawerOpen]);
+
+  // Keyboard ↔ drawer: if you were typing and open the drawer, hide the keyboard; when you come back
+  // (close the drawer or pick a session) restore the keyboard so you continue where you left off.
+  useEffect(() => {
+    if (drawerOpen) {
+      restoreKbRef.current = chatInputRef.current?.isFocused() ?? false;
+      if (restoreKbRef.current) Keyboard.dismiss();
+    } else if (restoreKbRef.current) {
+      restoreKbRef.current = false;
+      const id = setTimeout(() => chatInputRef.current?.focus(), 280);
+      return () => clearTimeout(id);
+    }
+  }, [drawerOpen]);
 
   // ── Navbar geometry (mirrors cuadra-tab-bar.tsx) ──────────────────────────
   const barWidth = Math.min(width - 24, 380);
@@ -145,7 +221,25 @@ export function ChatScreen() {
   const shadowStyle = useAnimatedStyle(() => {
     const orbMargin = marginHidden + lift.value * (marginActive - marginHidden);
     const kbMargin = keyboardH.value > 0 ? keyboardH.value + KEYBOARD_GAP : 0;
-    return { marginBottom: kbMargin > orbMargin ? kbMargin : orbMargin };
+    const closedMargin = kbMargin > orbMargin ? kbMargin : orbMargin;
+    const p = drawerProgress.value;
+    // As the drawer opens, the card slides right AND grows DOWN into the (now hidden) navbar's
+    // space — same progress, so it's one coordinated motion, not navbar-then-card.
+    // NOTE: translateX ONLY — do NOT add a `scale` here. The card holds native iOS-26 GlassViews
+    // (the card border + the header glass buttons); scaling a GlassView makes iOS stretch the
+    // rasterised liquid-glass, which saturates the tint and shows a distorted texture during the
+    // animation. Translation is safe; scaling is not.
+    return {
+      marginBottom: closedMargin + (navBottomPad - closedMargin) * p,
+      transform: [{ translateX: p * OPEN_X }],
+    };
+  });
+
+  // Sidebar: parallaxes in from the left and fades up. Opacity ramps faster than the slide so it's
+  // already visible while the chat is still moving (appears WITH the navbar hiding, not after).
+  const sidebarStyle = useAnimatedStyle(() => {
+    const p = drawerProgress.value;
+    return { opacity: Math.min(1, p * 1.8), transform: [{ translateX: (1 - p) * -28 }] };
   });
 
   return (
@@ -154,8 +248,18 @@ export function ChatScreen() {
     // dismiss too, while the input's own Pressable keeps focusing on a single tap.
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <SafeAreaView className="flex-1" edges={["top"]}>
-      {/* Shadow holder — no overflow:hidden on iOS or shadows are clipped. */}
-      <Animated.View style={[styles.shadowWrap, shadowStyle]}>
+      {/* Sessions sidebar — sits behind the card on the left, revealed as the chat slides away. */}
+      <Animated.View
+        pointerEvents={drawerOpen ? "auto" : "none"}
+        style={[{ position: "absolute", left: 0, top: 0, bottom: 0, width: SIDEBAR_W }, sidebarStyle]}
+      >
+        <ChatSessionsSidebar />
+      </Animated.View>
+
+      {/* Shadow holder — no overflow:hidden on iOS or shadows are clipped. Horizontal pan here
+          drives the drawer; the gesture only claims clearly-horizontal drags so vertical scroll
+          still works. */}
+      <Animated.View style={[styles.shadowWrap, shadowStyle]} {...panResponder.panHandlers}>
         {/* Liquid Glass card with gradient border: iOS 26 → GlassView, older/Android → BlurView + SquircleView + gradient border. */}
         <GlassSurface
           style={[StyleSheet.absoluteFill, { borderRadius: 48 }]}
@@ -198,10 +302,28 @@ export function ChatScreen() {
               })}
             </ScrollView>
 
-            <ChatInputBar />
+            <ChatInputBar inputRef={chatInputRef} />
+
+            {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}
+            {drawerOpen ? (
+              <Pressable
+                accessibilityLabel="Cerrar sesiones"
+                onPress={() => setDrawerOpen(false)}
+                style={StyleSheet.absoluteFill}
+              />
+            ) : null}
           </View>
         </GlassSurface>
       </Animated.View>
+
+      {/* Left-edge swipe zone (only while closed): a thin strip on the very edge that opens the
+          drawer on a rightward edge-pan, since the card's 10px margin leaves the edge unreachable. */}
+      {!drawerOpen ? (
+        <View
+          style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 24, zIndex: 30 }}
+          {...edgePanResponder.panHandlers}
+        />
+      ) : null}
       </SafeAreaView>
     </TouchableWithoutFeedback>
   );

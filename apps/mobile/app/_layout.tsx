@@ -10,6 +10,7 @@ import { useAuthStore } from "@/features/auth/use-auth-store";
 import { queryClient } from "@/lib/api/query-client";
 import { sounds } from "@/lib/sounds";
 import { ThemeProvider } from "@/lib/theme/theme-provider";
+import { DrawerProvider } from "@/store/drawer-store";
 import { palette } from "@/theme";
 
 // Root layout — gates (auth) vs (tabs) on session presence (cuadra-mobile skill §4).
@@ -34,14 +35,17 @@ export default function RootLayout() {
           </View>
         ) : (
           // contentStyle transparent → the root AppBackground gradient shows through every screen.
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
-            <Stack.Protected guard={status === "authenticated"}>
-              <Stack.Screen name="(tabs)" />
-            </Stack.Protected>
-            <Stack.Protected guard={status === "unauthenticated"}>
-              <Stack.Screen name="(auth)" />
-            </Stack.Protected>
-          </Stack>
+          // DrawerProvider holds the AISpace sessions-drawer progress (chat screen + tab bar share it).
+          <DrawerProvider>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
+              <Stack.Protected guard={status === "authenticated"}>
+                <Stack.Screen name="(tabs)" />
+              </Stack.Protected>
+              <Stack.Protected guard={status === "unauthenticated"}>
+                <Stack.Screen name="(auth)" />
+              </Stack.Protected>
+            </Stack>
+          </DrawerProvider>
         )}
       </ThemeProvider>
     </QueryClientProvider>
