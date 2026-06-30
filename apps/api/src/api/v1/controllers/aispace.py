@@ -87,6 +87,7 @@ def chat(
             "capabilities": [],
             "language": language,
             "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
+            "ui_actions": [],  # reset per turn → links don't carry over to later messages
         },
         cfg,
     )
@@ -113,6 +114,7 @@ def chat_stream(
         "capabilities": [],
         "language": language,
         "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
+        "ui_actions": [],  # reset per turn → links don't carry over to later messages
     }
     return StreamingResponse(
         stream_events(graph, inputs, cfg, thread_id),

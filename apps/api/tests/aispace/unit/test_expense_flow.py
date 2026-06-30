@@ -115,6 +115,22 @@ def test_skip_category_commits_without_category() -> None:
     assert committed["category"] is None and committed["amount"] == 500
 
 
+def test_ui_actions_reset_per_turn_so_links_dont_carry_over() -> None:
+    """ui_actions OVERWRITES (not accumulates): a new turn with ui_actions=[] clears the previous
+    flow's deep link, so 'Ver en Insight' isn't re-emitted on every later message."""
+    committed: dict = {}
+    graph = _build(committed, _SuggestSpy())
+    cfg = {"configurable": {"thread_id": "f5"}}
+    graph.invoke(_msg("gasté 500 en spotify"), cfg)
+    graph.invoke(Command(resume="confirm"), cfg)
+    graph.invoke(Command(resume="none"), cfg)  # commit → link in ui_actions
+    assert graph.get_state(cfg).values["ui_actions"]  # link present this turn
+
+    # A NEW message resets ui_actions; it pauses at confirm again (no commit yet) → no carried link.
+    graph.invoke({**_msg("gasté 200 en uber"), "ui_actions": []}, cfg)
+    assert graph.get_state(cfg).values["ui_actions"] == []
+
+
 def test_cancel_at_confirm_does_not_commit() -> None:
     committed: dict = {}
     graph = _build(committed, _SuggestSpy())

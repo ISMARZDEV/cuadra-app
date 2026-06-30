@@ -6,9 +6,6 @@ campos de un solo valor que cada nodo sobrescribe.
 """
 from __future__ import annotations
 
-from operator import add
-from typing import Annotated
-
 from langgraph.graph import MessagesState
 
 
@@ -19,6 +16,7 @@ class AispaceState(MessagesState):
     personality: str                     # tono del GeneralAgent (neutral/coach/roast) — pref. aispace
     intent: str
     pending_action: dict | None          # acción a confirmar (HITL §7.4)
-    # ui_actions: tarjetas/links que el flow emite (p. ej. "Ver en Insight"). Reducer `add` para que
-    # se acumulen entre nodos (default sobreescribe → se perderían); el slice de streaming los emite.
-    ui_actions: Annotated[list, add]
+    # ui_actions: tarjetas/links que el flow emite ESTE turno (p. ej. "Ver en Insight"). OVERWRITE
+    # (no `add`): si acumulara, el link viejo se re-emitiría en cada turno siguiente. Se resetea a []
+    # en los inputs de cada /chat nuevo; el commit del flow lo setea; el streaming lo emite.
+    ui_actions: list
