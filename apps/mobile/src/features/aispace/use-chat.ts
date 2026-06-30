@@ -18,12 +18,7 @@ const uid = () => `m${++_seq}`;
 // between steps.
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [interaction, setInteractionState] = useState<DockInteraction | null>(null);
-  const interactionRef = useRef<DockInteraction | null>(null);
-  const setInteraction = useCallback((next: DockInteraction | null) => {
-    interactionRef.current = next; // ref mirrors state so `select` can read the question synchronously
-    setInteractionState(next);
-  }, []);
+  const [interaction, setInteraction] = useState<DockInteraction | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   // `isThinking` = a turn is in flight but the agent hasn't produced anything yet. Drives the
   // typing-dots; cleared the moment the first output arrives.
@@ -79,14 +74,16 @@ export function useChat() {
       setIsStreaming(false);
       setIsThinking(false);
     },
-    [appendAgent, setInteraction],
+    [appendAgent],
   );
 
+  // `question` = the prompt of the step being answered, passed by the screen (which holds the live
+  // interaction). Passing it explicitly — instead of reading hook state — keeps the Q+A push robust
+  // regardless of render/closure timing.
   const select = useCallback(
-    async (option: DockOption) => {
+    async (option: DockOption, question?: string) => {
       const tid = threadRef.current;
       if (!tid) return;
-      const question = interactionRef.current?.prompt; // the step being answered
       // A pill echoes its label; an icon-only chip echoes "🎵 value".
       const echo = option.label ?? `${option.icon ?? ""} ${option.value}`.trim();
       // Move the answered step into the chat: its question (agent) + the chosen answer (user bubble).
@@ -110,7 +107,7 @@ export function useChat() {
         setIsThinking(false);
       }
     },
-    [appendAgent, setInteraction],
+    [appendAgent],
   );
 
   return { messages, interaction, isStreaming, isThinking, threadId, send, select };

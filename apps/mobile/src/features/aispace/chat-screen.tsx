@@ -398,7 +398,10 @@ export function ChatScreen() {
                   }}
                 >
                   {chat.interaction ? (
-                    <DockInteractionView interaction={chat.interaction} onSelect={chat.select} />
+                    <DockInteractionView
+                      interaction={chat.interaction}
+                      onSelect={(opt) => chat.select(opt, chat.interaction?.prompt)}
+                    />
                   ) : manualOpen ? (
                     <QuickActions
                       onSelect={(prompt) => {

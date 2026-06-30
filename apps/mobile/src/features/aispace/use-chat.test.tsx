@@ -97,11 +97,11 @@ describe("useChat — multi-step HITL", () => {
       await result.current.send("gasté 500");
     });
     await act(async () => {
-      await result.current.select(pill("confirm", "Sí, confirmar 😉", "primary"));
+      await result.current.select(pill("confirm", "Sí, confirmar 😉", "primary"), "confirm?");
     });
 
     expect(resumeChat).toHaveBeenCalledWith("t1", "confirm");
-    // the answered step's QUESTION is pushed to the chat (agent) alongside the answer (user bubble)
+    // the answered step's QUESTION (passed by the screen) is pushed to the chat (agent) alongside the answer
     expect(result.current.messages.some((m) => m.role === ChatRole.Agent && m.text === "confirm?")).toBe(true);
     expect(
       result.current.messages.some((m) => m.role === ChatRole.User && m.text === "Sí, confirmar 😉"),
