@@ -35,7 +35,7 @@ export function ChatDock({ open, onToggle, children }: ChatDockProps) {
     // On open (the false→true edge): a light haptic + a tick, like the orb reveal.
     if (open && !wasOpen.current) {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      sounds.tick();
+      sounds.dock();
     }
     wasOpen.current = open;
     reveal.value = withSpring(

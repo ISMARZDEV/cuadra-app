@@ -6,7 +6,7 @@ import { setLanguage } from "@/i18n";
 
 // Native side-effects (haptics + audio) — stub so the component imports in jsdom.
 vi.mock("expo-haptics", () => ({ impactAsync: vi.fn(), ImpactFeedbackStyle: { Light: "light" } }));
-vi.mock("@/lib/sounds", () => ({ sounds: { tick: vi.fn() } }));
+vi.mock("@/lib/sounds", () => ({ sounds: { dock: vi.fn() } }));
 
 import { ChatDock } from "./chat-dock";
 
