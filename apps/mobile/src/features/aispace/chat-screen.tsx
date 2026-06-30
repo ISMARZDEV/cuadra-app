@@ -386,6 +386,16 @@ export function ChatScreen() {
                 intensity={50}
                 borderWidth={0}
               >
+                {/* Chat-dock tint — black on dark, white on light. Explicit overlay (the native
+                    GlassView's own tintColor is too subtle and ignores opacity). Bump the opacity
+                    values to make it stronger. Sits BEHIND the dock + input content. */}
+                <View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { backgroundColor: isDark ? "#000000" : "#FFFFFF", opacity: isDark ? 0.55 : 0.6 },
+                  ]}
+                />
                 <ChatDock
                   open={dockOpen}
                   onToggle={() => {

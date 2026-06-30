@@ -57,22 +57,23 @@ export function ChatDock({ open, onToggle, children }: ChatDockProps) {
     ],
   }));
   const chevronStyle = useAnimatedStyle(() => ({
-    // Stretched horizontally (scaleX) for the wide, flat `^` in the design; rotates 180° on open.
-    transform: [{ scaleX: 1.7 }, { rotate: `${progress.value * 180}deg` }],
+    // Normal proportions (no horizontal stretch) — just rotates 180° on open.
+    transform: [{ rotate: `${progress.value * 180}deg` }],
   }));
 
   return (
     <View>
-      {/* Toggle — centered chevron that rotates to indicate open/closed. */}
+      {/* Toggle — small, dim, centered chevron that rotates to indicate open/closed. Extra top
+          padding lowers it a touch within the bottom zone. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t(open ? "chat.dock.close" : "chat.dock.open")}
         onPress={onToggle}
         hitSlop={12}
-        style={{ alignSelf: "center", paddingVertical: 6, paddingHorizontal: 24 }}
+        style={{ alignSelf: "center", paddingTop: 16, paddingBottom: 6, paddingHorizontal: 24 }}
       >
-        <Animated.View style={chevronStyle}>
-          <Icon as={ChevronUp} size={28} color={chevronColor} />
+        <Animated.View style={[chevronStyle, { opacity: 0.5 }]}>
+          <Icon as={ChevronUp} size={20} color={chevronColor} />
         </Animated.View>
       </Pressable>
 
