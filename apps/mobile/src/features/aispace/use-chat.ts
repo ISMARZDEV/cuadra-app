@@ -11,15 +11,22 @@ const uid = () => `m${++_seq}`;
 
 // Chat state machine over the SSE transport. Owns the message list, the live thread_id and the
 // current HITL step (`interaction`). `send` streams a turn (tokens append to one agent bubble);
-// `select` picks an option of the current step — it echoes the choice as a user bubble, resumes the
-// graph (POST /chat/resume with the option value), then renders either the NEXT step or the final
-// reply + deep links (the multi-step expense flow: confirm → ¿categoría? → sugerencias → done).
+// `select` picks an option of the current step — it pushes that step's QUESTION + the chosen answer
+// into the chat history (so the conversation keeps the Q&A), resumes the graph, and either SWAPS the
+// dock to the next step or renders the final reply + deep links. The interaction is kept set through
+// the resume (swapped, never nulled mid-flight) so the dock doesn't flash the quick-actions menu
+// between steps.
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [interaction, setInteraction] = useState<DockInteraction | null>(null);
+  const [interaction, setInteractionState] = useState<DockInteraction | null>(null);
+  const interactionRef = useRef<DockInteraction | null>(null);
+  const setInteraction = useCallback((next: DockInteraction | null) => {
+    interactionRef.current = next; // ref mirrors state so `select` can read the question synchronously
+    setInteractionState(next);
+  }, []);
   const [isStreaming, setIsStreaming] = useState(false);
-  // `isThinking` = a turn is in flight but the agent hasn't produced anything yet (no token, no
-  // interaction). Drives the typing-dots indicator; cleared the moment the first output arrives.
+  // `isThinking` = a turn is in flight but the agent hasn't produced anything yet. Drives the
+  // typing-dots; cleared the moment the first output arrives.
   const [isThinking, setIsThinking] = useState(false);
   const threadRef = useRef<string | null>(null);
   const streamingRef = useRef(false); // re-entry guard (read synchronously, unlike state)
@@ -72,33 +79,38 @@ export function useChat() {
       setIsStreaming(false);
       setIsThinking(false);
     },
-    [appendAgent],
+    [appendAgent, setInteraction],
   );
 
   const select = useCallback(
     async (option: DockOption) => {
       const tid = threadRef.current;
       if (!tid) return;
-      // Echo the choice as a user bubble: a pill shows its label, an icon-only chip shows "🎵 música".
+      const question = interactionRef.current?.prompt; // the step being answered
+      // A pill echoes its label; an icon-only chip echoes "🎵 value".
       const echo = option.label ?? `${option.icon ?? ""} ${option.value}`.trim();
-      setMessages((m) => [...m, { id: uid(), role: ChatRole.User, text: echo }]);
-      setInteraction(null);
-      setIsThinking(true); // the backend resumes the graph; show the dots meanwhile
+      // Move the answered step into the chat: its question (agent) + the chosen answer (user bubble).
+      setMessages((m) => [
+        ...m,
+        ...(question ? [{ id: uid(), role: ChatRole.Agent, text: question }] : []),
+        { id: uid(), role: ChatRole.User, text: echo },
+      ]);
+      setIsThinking(true); // keep the interaction set (dock stays open) until the next step swaps in
       try {
         const res = await resumeChat(tid, option.value);
-        if (res.interaction) {
-          setInteraction(res.interaction); // next step (¿categoría? → sugerencias)
-        } else {
+        setInteraction(res.interaction ?? null); // swap to the next step, or close when the flow ends
+        if (!res.interaction) {
           if (res.reply) appendAgent(res.reply); // final reply ("Listo, registrado ✅")
           res.links.forEach((l) => appendAgent(l.text, l.href)); // "Ver en Insight"
         }
       } catch {
+        setInteraction(null);
         appendAgent("⚠️ No pude completar la acción. Intenta de nuevo.");
       } finally {
         setIsThinking(false);
       }
     },
-    [appendAgent],
+    [appendAgent, setInteraction],
   );
 
   return { messages, interaction, isStreaming, isThinking, threadId, send, select };

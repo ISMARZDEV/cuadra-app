@@ -101,6 +101,8 @@ describe("useChat — multi-step HITL", () => {
     });
 
     expect(resumeChat).toHaveBeenCalledWith("t1", "confirm");
+    // the answered step's QUESTION is pushed to the chat (agent) alongside the answer (user bubble)
+    expect(result.current.messages.some((m) => m.role === ChatRole.Agent && m.text === "confirm?")).toBe(true);
     expect(
       result.current.messages.some((m) => m.role === ChatRole.User && m.text === "Sí, confirmar 😉"),
     ).toBe(true);

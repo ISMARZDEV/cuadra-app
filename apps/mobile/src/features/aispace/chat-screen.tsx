@@ -97,9 +97,13 @@ export function ChatScreen() {
   // and auto-closes when it resolves (Figma flow). Fase 1 maps the single-step `pending` (summary +
   // approve/cancel) onto the generic {prompt, options} the dock renders; Fase 2 will emit richer
   // multi-step interactions over the same contract.
-  const [dockOpen, setDockOpen] = useState(false);
+  // The dock is open when a HITL step is active OR the user manually opened the quick-actions menu.
+  // Deriving it (instead of a synced state) means the dock never flashes the quick-actions during a
+  // flow transition — between steps the interaction is swapped, never nulled, so it stays open.
+  const [manualOpen, setManualOpen] = useState(false);
+  const dockOpen = !!chat.interaction || manualOpen;
   useEffect(() => {
-    setDockOpen(!!chat.interaction); // auto-open on a HITL step, auto-close when it resolves
+    if (chat.interaction) setManualOpen(false); // a flow took over the dock → drop the manual menu
   }, [chat.interaction]);
 
   // Height of the bottom zone (dock + input). The chat scrolls BEHIND it (so the translucent glass
@@ -387,17 +391,22 @@ export function ChatScreen() {
                 intensity={50}
                 borderWidth={0}
               >
-                <ChatDock open={dockOpen} onToggle={() => setDockOpen((o) => !o)}>
+                <ChatDock
+                  open={dockOpen}
+                  onToggle={() => {
+                    if (!chat.interaction) setManualOpen((o) => !o); // chevron toggles the manual menu
+                  }}
+                >
                   {chat.interaction ? (
                     <DockInteractionView interaction={chat.interaction} onSelect={chat.select} />
-                  ) : (
+                  ) : manualOpen ? (
                     <QuickActions
                       onSelect={(prompt) => {
                         chat.send(prompt);
-                        setDockOpen(false);
+                        setManualOpen(false);
                       }}
                     />
-                  )}
+                  ) : null}
                 </ChatDock>
 
                 <ChatInputBar inputRef={chatInputRef} onSend={chat.send} />
