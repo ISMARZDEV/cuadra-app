@@ -35,7 +35,6 @@ import { useDrawer } from "@/store/drawer-store";
 
 import { AgentMessage } from "./components/agent-message";
 import { ChatDock } from "./components/chat-dock";
-import { ChatLavaBackground } from "./components/chat-lava-background";
 import { ChatHeader } from "./components/chat-header";
 import { ChatInputBar } from "./components/chat-input-bar";
 import { ChatSessionsSidebar } from "./components/chat-sessions-sidebar";
@@ -287,13 +286,9 @@ export function ChatScreen() {
     // NOTE: do NOT wrap this tree in <TouchableWithoutFeedback> — it claims the touch responder on
     // start and steals the ScrollView's vertical pan/bounce on the New Architecture. The keyboard is
     // dismissed by the ScrollView itself (keyboardDismissMode="interactive" + keyboardShouldPersistTaps).
+    // Transparent → the root AppBackground gradient shows through, same as every other screen
+    // (Insights / News / Config). No screen-local background here.
     <SafeAreaView className="flex-1" edges={["top"]}>
-      {/* Aquatic aurora — lowest layer, behind everything. The card's glass refracts it and it bleeds
-          softly around the card's 10px margins (Cleo-style). pointerEvents:none inside the component. */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <ChatLavaBackground />
-      </View>
-
       {/* Sessions sidebar — sits behind the card on the left, revealed as the chat slides away. */}
       <Animated.View
         pointerEvents={drawerOpen ? "auto" : "none"}
