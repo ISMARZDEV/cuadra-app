@@ -43,12 +43,7 @@ export function QuickActions({ onSelect }: QuickActionsProps) {
               alignItems: "center",
             }}
           >
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
-              style={{ color: pillText, fontSize: 13, fontWeight: "700", textAlign: "center" }}
-            >
+            <Text style={{ color: pillText, fontSize: 14, fontWeight: "700", textAlign: "center" }}>
               {label}
             </Text>
           </Pressable>
