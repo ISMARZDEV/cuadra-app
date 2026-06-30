@@ -64,7 +64,7 @@ function play(p: Player, volume?: number) {
 export const sounds = {
   tick: () => play(players.tick), // selector scrub step
   nav: () => play(players.nav, 0.04), // nav item change
-  dock: () => play(players.dock), // chat dock opens
+  dock: () => play(players.dock, 0.25), // chat dock opens (quiet)
   reveal: () => play(players.reveal), // orb appears (swipe up)
   close: () => play(players.close), // orb hides (swipe down / auto-hide)
   startup: () => play(players.startup), // app launch
