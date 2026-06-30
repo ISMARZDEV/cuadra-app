@@ -1,42 +1,43 @@
-import { ChevronUp } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import * as Haptics from "expo-haptics";
+import { Minus } from "lucide-react-native";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import Animated, {
-  Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import { useColorScheme } from "nativewind";
 
 import { Icon } from "@/components/ui/icon";
+import { sounds } from "@/lib/sounds";
 import { t } from "@/i18n";
 
 import type { ChatDockProps } from "../interfaces";
 
 // Collapsible glass panel docked above the input bar (Figma). The translucent GlassSurface lets the
-// chat behind it show through. A chevron toggles it: `^` closed → `⌄` open (rotates 180°). The body
-// is CONTENT-FIT (natural height — manual height measurement clipped to 0 on the New Arch). The
-// reveal is a gentle SPRING (opacity + slide + a subtle scale-in) for a soft, natural open/close; the
-// chevron rotates on a timing curve (no overshoot). We keep the body mounted through the close, then
-// unmount. Direct spring/easing config only — a bezier/factory easing from the JS thread crashes
-// (reanimated v4 gotcha).
+// chat behind it show through. A small, dim MINUS handle toggles it (grabber style — no rotation).
+// The body is CONTENT-FIT (natural height — manual height measurement clipped to 0 on the New Arch).
+// The reveal is a gentle SPRING (opacity + slide + a subtle scale-in) for a soft, natural open/close;
+// we keep the body mounted through the close, then unmount. Direct spring config only — a
+// bezier/factory easing from the JS thread crashes (reanimated v4 gotcha).
 export function ChatDock({ open, onToggle, children }: ChatDockProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
-  const chevronColor = isDark ? "#C2FB7E" : "#034842";
+  const handleColor = isDark ? "#C2FB7E" : "#034842";
 
-  const progress = useSharedValue(open ? 1 : 0); // chevron rotation (timing → no overshoot)
   const reveal = useSharedValue(open ? 1 : 0); // body reveal (spring → natural settle)
   const [mounted, setMounted] = useState(open);
+  const wasOpen = useRef(open);
 
   useEffect(() => {
-    progress.value = withTiming(open ? 1 : 0, {
-      duration: open ? 260 : 200,
-      easing: open ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
-    });
+    // On open (the false→true edge): a light haptic + a tick, like the orb reveal.
+    if (open && !wasOpen.current) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      sounds.tick();
+    }
+    wasOpen.current = open;
     reveal.value = withSpring(
       open ? 1 : 0,
       open
@@ -47,7 +48,7 @@ export function ChatDock({ open, onToggle, children }: ChatDockProps) {
       },
     );
     if (open) setMounted(true);
-  }, [open, progress, reveal]);
+  }, [open, reveal]);
 
   const bodyStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, reveal.value), // spring can overshoot >1 → clamp so it never flashes
@@ -56,25 +57,20 @@ export function ChatDock({ open, onToggle, children }: ChatDockProps) {
       { scale: 0.96 + reveal.value * 0.04 }, // subtle scale-in (safe: no GlassView inside the body)
     ],
   }));
-  const chevronStyle = useAnimatedStyle(() => ({
-    // Normal proportions (no horizontal stretch) — just rotates 180° on open.
-    transform: [{ rotate: `${progress.value * 180}deg` }],
-  }));
 
   return (
     <View>
-      {/* Toggle — small, dim, centered chevron that rotates to indicate open/closed. Extra top
-          padding lowers it a touch within the bottom zone. */}
+      {/* Toggle — a small, dim minus handle (grabber style), no rotation. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t(open ? "chat.dock.close" : "chat.dock.open")}
         onPress={onToggle}
         hitSlop={12}
-        style={{ alignSelf: "center", paddingTop: 16, paddingBottom: 6, paddingHorizontal: 24 }}
+        style={{ alignSelf: "center", paddingTop: 10, paddingBottom: 4, paddingHorizontal: 24 }}
       >
-        <Animated.View style={[chevronStyle, { opacity: 0.5 }]}>
-          <Icon as={ChevronUp} size={20} color={chevronColor} />
-        </Animated.View>
+        <View style={{ opacity: 0.5 }}>
+          <Icon as={Minus} size={22} color={handleColor} />
+        </View>
       </Pressable>
 
       {/* Body — content-fit (natural height), springs in. No glass of its own (sits on the bottom
