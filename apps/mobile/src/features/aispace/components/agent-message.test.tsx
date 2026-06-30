@@ -13,6 +13,13 @@ describe("AgentMessage", () => {
     expect(screen.getByText("registrado")).toBeInTheDocument();
   });
 
+  test("a markdown reply renders the **opener** as a heading + normal coaching, no ** markers", () => {
+    render(<AgentMessage text={"**Wow!!! 🫣**\nEso es mucho dinero Ismael"} />);
+    expect(screen.getByText("Wow!!! 🫣")).toBeInTheDocument();
+    expect(screen.getByText("Eso es mucho dinero Ismael")).toBeInTheDocument();
+    expect(screen.queryByText(/\*\*/)).toBeNull();
+  });
+
   test("an href turns the message into a deep link that navigates", () => {
     push.mockClear();
     render(<AgentMessage text="Ver en Insight" href="insights" />);
