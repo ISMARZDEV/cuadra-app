@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from "react-native";
 
-import { t } from "@/i18n";
+import { t, useLang } from "@/i18n";
 
 import type { QuickActionsProps } from "../interfaces";
 
@@ -18,6 +18,7 @@ const QUICK_ACTION_KEYS = [
 // buttons): the pale-lime/dark-green pair from the HITL dock's "secondary" pills, light values
 // (dock-interaction-view's pillColors, e.g. Cancel / "sin categoría").
 export function QuickActions({ onSelect }: QuickActionsProps) {
+  useLang(); // re-render on a language change — t() alone reads a module var, invisible to React
   const pillBg = "#D9F5C2";
   const pillText = "#034842";
 

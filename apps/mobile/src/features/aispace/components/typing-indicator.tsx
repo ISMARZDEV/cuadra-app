@@ -11,7 +11,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useColorScheme } from "nativewind";
 
-import { t } from "@/i18n";
+import { t, useLang } from "@/i18n";
 
 const DOT_COUNT = 3;
 const DOT_SIZE = 8;
@@ -60,6 +60,7 @@ function WaveDot({ index, color }: { index: number; color: string }) {
 // appears and fades out when it leaves — we keep it mounted for the fade-out (deferred unmount via
 // setTimeout, NOT runOnJS) so BOTH transitions read smoothly and hand off to the first agent word.
 export function TypingIndicator({ visible }: { visible: boolean }) {
+  useLang(); // re-render on a language change — t() alone reads a module var, invisible to React
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const dotColor = isDark ? "#9CA3AF" : "#6B7280"; // muted, matches the agent text tone

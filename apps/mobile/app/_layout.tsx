@@ -19,6 +19,7 @@ export default function RootLayout() {
   const status = useAuthStore((s) => s.status);
   const restore = useAuthStore((s) => s.restore);
   const restoreLanguage = useLanguageStore((s) => s.restore);
+  const languageRestored = useLanguageStore((s) => s.restored);
 
   useEffect(() => {
     restore();
@@ -29,10 +30,16 @@ export default function RootLayout() {
     sounds.startup(); // app-launch sound (once per app open)
   }, []);
 
+  // Wait for the language restore too, not just auth — otherwise the home screen (chat, mounted
+  // immediately on launch) renders once with whatever deviceLanguage() resolved to at JS
+  // module-init time, and only self-corrects on a LATER change (relies on src/i18n's useLang()
+  // reactivity firing again, which isn't guaranteed to happen soon, or at all, in one session).
+  const ready = status !== "loading" && languageRestored;
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        {status === "loading" ? (
+        {!ready ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator color={palette.primary} />
           </View>

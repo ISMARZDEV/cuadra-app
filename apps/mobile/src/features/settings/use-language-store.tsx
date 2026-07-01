@@ -14,6 +14,14 @@ interface PersistedLanguage {
 }
 
 interface LanguageState extends PersistedLanguage {
+  // False until `restore()` resolves — the root layout gates rendering the authenticated app on
+  // this (same as it already does for auth `status === "loading"`) so NOTHING renders on the
+  // user's pinned language before it's actually applied. Without this gate, the home screen (now
+  // the chat, mounted immediately on launch — see (tabs)/_layout.tsx) rendered with whatever
+  // `deviceLanguage()` resolved to at JS module-init time, and needed a LATER re-render (a
+  // subsequent language change, or the fix in src/i18n's useLang()) to ever correct itself — on a
+  // device where that never happened to fire again, it just stayed wrong indefinitely.
+  restored: boolean;
   /** Load the persisted choice on app start (or fall back to auto/device). */
   restore: () => Promise<void>;
   /** Toggle following the system language. */
@@ -34,6 +42,7 @@ async function persist(value: PersistedLanguage): Promise<void> {
 export const useLanguageStore = create<LanguageState>((set, get) => ({
   auto: true,
   lang: deviceLanguage(),
+  restored: false,
 
   restore: async () => {
     const raw = await SecureStore.getItemAsync(LANGUAGE_KEY);
@@ -41,7 +50,7 @@ export const useLanguageStore = create<LanguageState>((set, get) => ({
       ? (JSON.parse(raw) as PersistedLanguage)
       : { auto: true, lang: deviceLanguage() };
     applyLanguage(value.auto, value.lang);
-    set(value);
+    set({ ...value, restored: true });
   },
 
   setAuto: async (auto) => {

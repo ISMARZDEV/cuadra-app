@@ -12,7 +12,7 @@ import { useColorScheme } from "nativewind";
 
 import { Icon } from "@/components/ui/icon";
 import { sounds } from "@/lib/sounds";
-import { t } from "@/i18n";
+import { t, useLang } from "@/i18n";
 
 import type { ChatDockProps } from "../interfaces";
 
@@ -23,6 +23,7 @@ import type { ChatDockProps } from "../interfaces";
 // we keep the body mounted through the close, then unmount. Direct spring config only — a
 // bezier/factory easing from the JS thread crashes (reanimated v4 gotcha).
 export function ChatDock({ open, onToggle, children }: ChatDockProps) {
+  useLang(); // re-render on a language change — t() alone reads a module var, invisible to React
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const handleColor = isDark ? "#C2FB7E" : "#034842";
