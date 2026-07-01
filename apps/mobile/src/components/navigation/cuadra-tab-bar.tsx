@@ -20,6 +20,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -28,6 +29,7 @@ import { Icon } from "@/components/ui/icon";
 import { OrbSphere } from "@/components/ui/orb-sphere";
 import { t, type TranslationKey } from "@/i18n";
 import { sounds } from "@/lib/sounds";
+import { useChatExpandStore } from "@/store/chat-expand-store";
 import { useDrawer } from "@/store/drawer-store";
 import { useOrbStore } from "@/store/orb-store";
 
@@ -46,9 +48,10 @@ type CuadraTabBarProps = {
   };
 };
 
-// Per-route presentation. The center route (aispace) renders the brand logo instead of an icon.
+// Per-route presentation. The center route (aispace — the literal `index.tsx` file, so it's HOME;
+// see (tabs)/_layout.tsx) renders the brand logo instead of an icon, so it's not listed here.
 const ROUTE_META: Record<string, { icon: LucideIcon; labelKey: TranslationKey; badge?: boolean }> = {
-  index: { icon: Newspaper, labelKey: "tabs.news" },
+  news: { icon: Newspaper, labelKey: "tabs.news" },
   insights: { icon: ChartColumnIncreasing, labelKey: "tabs.insights", badge: true },
   save: { icon: BadgePercent, labelKey: "tabs.save" },
   config: { icon: Settings, labelKey: "tabs.config" },
@@ -120,10 +123,11 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     }
   };
 
-  // TAP on the "iM" logo navigates to the AISpace chat (the orb tap does NOT navigate).
+  // TAP on the "iM" logo navigates to the AISpace chat (the orb tap does NOT navigate). AISpace is
+  // the literal `index.tsx` route now (it's home — (tabs)/_layout.tsx), not a route named "aispace".
   const goToAispace = () => {
-    const aispace = state.routes.find((r) => r.name === "aispace");
-    if (aispace) onPress("aispace", aispace.key, state.routes[state.index]?.name === "aispace");
+    const aispace = state.routes.find((r) => r.name === "index");
+    if (aispace) onPress("index", aispace.key, state.routes[state.index]?.name === "index");
   };
 
   // Gesture thresholds: travel (px) and flick velocity (px/ms) above which a pan is a real swipe;
@@ -206,9 +210,9 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
 
     const iconColor = focused
       ? isDark ? "#C2FB7E" : "#6AC400"
-      : isDark ? "#6AC400" : "#034842";
+      : isDark ? "#FFFFFF" : "#034842";
     const textColor = focused
-      ? isDark ? "#FFFFFF" : "#034842"
+      ? isDark ? "#E0FFBB" : "#034842"
       : isDark ? "#FFFFFF" : "#000000";
 
     return (
@@ -235,12 +239,23 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   };
 
   // Slide the whole bar DOWN + fade out while the AISpace sessions drawer is open (driven by the
-  // shared drawer progress so it stays in sync with the chat sliding aside).
+  // shared drawer progress so it stays in sync with the chat sliding aside) OR while the chat is
+  // expanded full-screen (chat-header.tsx's Maximize2/Minimize2 toggle, chat-screen.tsx animates
+  // the card). Two independent triggers, same hide motion — max() so neither double-shifts the bar
+  // if both were somehow true at once.
   const { progress: drawerProgress } = useDrawer();
-  const drawerHideStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: drawerProgress.value * (navHeight + (insets.bottom || 0) + 40) }],
-    opacity: 1 - drawerProgress.value,
-  }));
+  const chatExpanded = useChatExpandStore((s) => s.expanded);
+  const expandProgress = useSharedValue(chatExpanded ? 1 : 0);
+  useEffect(() => {
+    expandProgress.value = withTiming(chatExpanded ? 1 : 0, { duration: 300 });
+  }, [chatExpanded, expandProgress]);
+  const drawerHideStyle = useAnimatedStyle(() => {
+    const p = Math.max(drawerProgress.value, expandProgress.value);
+    return {
+      transform: [{ translateY: p * (navHeight + (insets.bottom || 0) + 40) }],
+      opacity: 1 - p,
+    };
+  });
 
   return (
     <Animated.View
@@ -318,7 +333,7 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
           {/* Left group: News + Insights */}
           <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
             {state.routes
-              .filter((r) => r.name === "index" || r.name === "insights")
+              .filter((r) => r.name === "news" || r.name === "insights")
               .map((route) => renderTabItem(route))}
           </View>
 

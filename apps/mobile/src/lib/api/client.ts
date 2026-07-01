@@ -12,12 +12,18 @@ export function setApiAuthToken(token: string | null) {
   authToken = token;
 }
 
-const baseUrl = process.env.EXPO_PUBLIC_API_URL;
-if (!baseUrl && __DEV__) {
+// Read the current token for callers OUTSIDE the SDK interceptor — e.g. the SSE chat stream
+// (expo/fetch), which doesn't go through the generated client and must set its own Authorization.
+export function getApiAuthToken(): string | null {
+  return authToken;
+}
+
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+if (!API_BASE_URL && __DEV__) {
   console.warn("[api] EXPO_PUBLIC_API_URL is not set — requests will fail.");
 }
 
-client.setConfig({ baseUrl });
+client.setConfig({ baseUrl: API_BASE_URL });
 
 client.interceptors.request.use((request) => {
   if (authToken) {

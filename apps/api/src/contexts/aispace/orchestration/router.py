@@ -33,13 +33,24 @@ def make_classify_intent(classifier: Classifier):  # type: ignore[no-untyped-def
 
 
 class _IntentOut(BaseModel):
-    intent: Literal["register_expense", "query_metrics", "other"]
+    intent: Literal["register_expense", "query_metrics", "general"]
+
+
+# English prompt (cuadra-agent-prompts skill). `general` is the CONVERSATIONAL bucket (greetings,
+# smalltalk, thanks, off-topic) — handled by the GeneralAgent, NOT the canned respond_other.
+_CLASSIFY_PROMPT = """Classify the user's message into ONE intent for a personal-finance assistant.
+
+- register_expense — the user reports money moving (spent, paid, bought, got paid, earned).
+- query_metrics — the user asks about their money (balance, how much spent, safe to spend, budget).
+- general — greetings, small talk, thanks, how-are-you, or anything not about their own finances.
+
+Message: {text!r}"""
 
 
 def llm_classifier(text: str, capabilities: list[str]) -> str:
     """Real classifier (cheap LLM, structured output). English prompt — cuadra-agent-prompts skill."""
     model = get_chat_model("fast")
     out = model.with_structured_output(_IntentOut).invoke(
-        [HumanMessage(f"Classify the user's financial intent: {text!r}")]
+        [HumanMessage(_CLASSIFY_PROMPT.format(text=text))]
     )
     return out.intent

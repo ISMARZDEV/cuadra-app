@@ -23,7 +23,6 @@ from src.contexts.insights.domain.ledger import (
     Account,
     AccountType,
     Ledger,
-    UnbalancedEntryError,
 )
 from src.shared.money import Currency, Money
 

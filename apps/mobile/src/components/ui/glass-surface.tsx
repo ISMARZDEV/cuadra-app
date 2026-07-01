@@ -27,6 +27,9 @@ type GlassSurfaceProps = ViewProps & {
   // the same tint reads consistently in Expo Go and on unsupported OS.
   tint?: string;
   tintOpacity?: number;
+  // Override the edge-reflection gradient [top, bottom]. Use to make the contour MORE visible on a
+  // specific surface (e.g. the chat card + dock) without changing every glass surface app-wide.
+  borderColors?: [string, string];
 };
 
 export function GlassSurface({
@@ -36,6 +39,7 @@ export function GlassSurface({
   isInteractive = false,
   tint,
   tintOpacity = 0.7,
+  borderColors: borderColorsProp,
   style,
   children,
   ...rest
@@ -62,10 +66,13 @@ export function GlassSurface({
 
   // Android / older iOS: blur + squircle + liquid glass gradient border.
   if (Platform.OS !== "web") {
-    // Glass edge: bright at top (light reflection), fading to transparent at bottom.
-    const borderColors: [string, string] = isDark
-      ? ["rgba(255,255,255,0.25)", "rgba(255,255,255,0.05)"]
-      : ["rgba(255,255,255,0.9)", "rgba(255,255,255,0.15)"];
+    // Glass edge: bright at top (light reflection), fading to transparent at bottom. Caller can
+    // override (borderColors prop) to make the contour stronger on a specific surface.
+    const borderColors: [string, string] =
+      borderColorsProp ??
+      (isDark
+        ? ["rgba(255,255,255,0.25)", "rgba(255,255,255,0.05)"]
+        : ["rgba(255,255,255,0.9)", "rgba(255,255,255,0.15)"]);
 
     return (
       <View style={[style, { overflow: "hidden" }]}>

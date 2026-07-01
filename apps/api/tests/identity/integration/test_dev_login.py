@@ -5,7 +5,6 @@ En producción (app_env != dev) responde 404. Producción real = IdP externo (§
 """
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -16,6 +15,12 @@ from src.main import app
 
 
 def test_dev_login_issues_usable_token(db_session: Session) -> None:
+    from seeds.identity_seed import seed_identity
+
+    # The controller assigns role_key="normal_user" on get-or-create — that FK target only
+    # exists once the identity reference data (roles/capabilities) has been seeded, which in
+    # a real deploy happens once at setup time, long before any user signs up.
+    seed_identity(db_session)
     app.dependency_overrides[get_session] = lambda: db_session
     try:
         client = TestClient(app)

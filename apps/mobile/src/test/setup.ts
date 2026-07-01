@@ -47,4 +47,20 @@ vi.mock("expo-glass-effect", async () => {
 
 vi.mock("expo-blur", async () => ({ BlurView: await viewPassthrough() }));
 
-vi.mock("@react-native-masked-view/masked-view", async () => ({ default: await viewPassthrough() }));
+// GlassSurface's non-iOS fallback path renders these (LinearGradient + SquircleView); their native
+// sources don't survive vitest's transform → pass children through to a plain View.
+vi.mock("expo-linear-gradient", async () => ({ LinearGradient: await viewPassthrough() }));
+
+vi.mock("react-native-squircle-view", async () => ({ SquircleView: await viewPassthrough() }));
+
+// MaskedView's REAL visible/queryable content is `maskElement` (the gradient `children` just fill
+// its shape) — unlike the other passthroughs above, rendering `children` here would make gradient
+// text (chat-empty-state.tsx) untestable (its actual copy lives in maskElement, not children).
+vi.mock("@react-native-masked-view/masked-view", async () => {
+  const React = await import("react");
+  const { View } = await import("react-native");
+  return {
+    default: ({ maskElement }: { maskElement?: unknown }) =>
+      React.createElement(View, null, maskElement as never),
+  };
+});

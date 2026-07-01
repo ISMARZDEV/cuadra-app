@@ -6,17 +6,30 @@ interrupt); `POST /chat/resume` lo aprueba/cancela. El `thread_id` liga la conve
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
-from src.api.composition_root import get_aispace_graph
+from src.api.composition_root import (
+    get_aispace_graph,
+    get_preference_repository,
+    get_user_repository,
+)
 from src.api.extensions.security import get_current_user_id
 from src.api.problem_detail import ProblemDetailDto
-from src.shared.i18n import t
+from src.contexts.aispace.orchestration.sse import chat_result, stream_events
+from src.contexts.aispace.preferences.currency_options import (
+    CurrencyOptions,
+    resolve_currency_options,
+)
+from src.contexts.aispace.preferences.enums import Personality
+from src.contexts.aispace.preferences.ports import PreferenceRepository
+from src.contexts.identity.domain.ports import UserRepository
 from src.shared.ids import new_id
-from src.shared.lang import resolve_language
+from src.shared.lang import client_language, resolve_language
+from src.shared.money import ACTIVE_CURRENCIES
 
 router = APIRouter(prefix="/aispace", tags=["aispace"])
 
@@ -29,24 +42,59 @@ class ChatRequest(BaseModel):
 
 class ResumeRequest(BaseModel):
     thread_id: str
-    approved: bool
+    value: str | None = None    # opción elegida en un paso HITL ("confirm"/"yes"/"music"/"none"…)
+    approved: bool | None = None  # DEPRECATED — legacy sí/no (mapea a value para back-compat)
+
+
+class PersonalityResponse(BaseModel):
+    personality: Personality       # tono actual del copiloto (neutral/coach/roast)
+
+
+class UpdatePersonalityRequest(BaseModel):
+    personality: Personality       # set cerrado → un valor inválido da 422 automáticamente
+
+
+class CurrencyPreferencesResponse(BaseModel):
+    primary: str        # derivada de identity.home_market — no editable aquí
+    extra: list[str]    # hasta 3, elegidas por el usuario
+    all: list[str]       # primary + extra sin duplicados, para el picker del flow de gastos
+
+    @classmethod
+    def from_options(cls, opts: CurrencyOptions) -> "CurrencyPreferencesResponse":
+        return cls(primary=opts.primary, extra=opts.extra, all=opts.all)
+
+
+class UpdateCurrencyPreferencesRequest(BaseModel):
+    extra: list[str] = Field(max_length=3)   # más de 3 → 422 automático (igual que Personality)
+
+    @field_validator("extra")
+    @classmethod
+    def _only_active_currencies(cls, codes: list[str]) -> list[str]:
+        for code in codes:
+            if code.strip().upper() not in ACTIVE_CURRENCIES:
+                raise ValueError(f"moneda no activa: {code!r}")
+        return codes
 
 
 class ChatResponse(BaseModel):
     thread_id: str
     reply: str | None = None
-    pending_action: dict | None = None  # != null → grafo pausado esperando confirmación
+    interaction: dict | None = None     # próximo paso HITL multi-step → {prompt, options[]}
+    links: list[dict] = []              # deep links que dejó el flow (p. ej. "Ver en Insight")
+    pending_action: dict | None = None  # DEPRECATED — back-compat; != null → grafo pausado
 
 
-def _respond(thread_id: str, result: dict, graph, cfg: dict) -> ChatResponse:  # type: ignore[no-untyped-def]
-    state = graph.get_state(cfg).values
-    pending = state.get("pending_action") if "__interrupt__" in result else None
-    if pending:
-        reply = t("confirm_prompt", state.get("language", "es"), summary=pending["summary"])
-    else:
-        messages = state.get("messages", [])
-        reply = messages[-1].content if messages else None
-    return ChatResponse(thread_id=thread_id, reply=reply, pending_action=pending)
+def _respond(thread_id: str, graph, cfg: dict) -> ChatResponse:  # type: ignore[no-untyped-def]
+    snapshot = graph.get_state(cfg)
+    res = chat_result(snapshot, thread_id)
+    # reply: la respuesta final, o el prompt del paso pendiente (para clientes que aún no leen
+    # `interaction`). pending_action se mantiene mientras el grafo esté pausado (back-compat).
+    reply = res["reply"] or (res["interaction"]["prompt"] if res["interaction"] else None)
+    pending = snapshot.values.get("pending_action") if res["interaction"] else None
+    return ChatResponse(
+        thread_id=thread_id, reply=reply,
+        interaction=res["interaction"], links=res["links"], pending_action=pending,
+    )
 
 
 @router.post(
@@ -59,20 +107,60 @@ def chat(
     body: ChatRequest,
     user_id: str = Depends(get_current_user_id),
     graph=Depends(get_aispace_graph),  # type: ignore[no-untyped-def]
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+    users: UserRepository = Depends(get_user_repository),
 ) -> ChatResponse:
     thread_id = body.thread_id or new_id()
     cfg = {"configurable": {"thread_id": thread_id}}
     language = resolve_language(body.message, body.locale)  # cliente primario + override
-    result = graph.invoke(
+    opts = _currency_options(user_id, users, prefs)
+    graph.invoke(
         {
             "messages": [HumanMessage(body.message)],
             "user_id": user_id,
             "capabilities": [],
             "language": language,
+            "ui_language": client_language(body.locale),  # workflow chrome — nunca override
+            "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
+            "currency_options": {"primary": opts.primary, "extra": opts.extra, "all": opts.all},
+            "ui_actions": [],  # reset per turn → links don't carry over to later messages
         },
         cfg,
     )
-    return _respond(thread_id, result, graph, cfg)
+    return _respond(thread_id, graph, cfg)
+
+
+@router.post(
+    "/chat/stream",
+    summary="Enviar un mensaje al chat IA con streaming de tokens (SSE · §7.6)",
+    responses={401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"}},
+)
+def chat_stream(
+    body: ChatRequest,
+    user_id: str = Depends(get_current_user_id),
+    graph=Depends(get_aispace_graph),  # type: ignore[no-untyped-def]
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+    users: UserRepository = Depends(get_user_repository),
+) -> StreamingResponse:
+    thread_id = body.thread_id or new_id()
+    cfg = {"configurable": {"thread_id": thread_id}}
+    language = resolve_language(body.message, body.locale)  # cliente primario + override
+    opts = _currency_options(user_id, users, prefs)
+    inputs = {
+        "messages": [HumanMessage(body.message)],
+        "user_id": user_id,
+        "capabilities": [],
+        "language": language,
+        "ui_language": client_language(body.locale),  # workflow chrome — nunca override
+        "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
+        "currency_options": {"primary": opts.primary, "extra": opts.extra, "all": opts.all},
+        "ui_actions": [],  # reset per turn → links don't carry over to later messages
+    }
+    return StreamingResponse(
+        stream_events(graph, inputs, cfg, thread_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post(
@@ -87,5 +175,79 @@ def resume(
     graph=Depends(get_aispace_graph),  # type: ignore[no-untyped-def]
 ) -> ChatResponse:
     cfg = {"configurable": {"thread_id": body.thread_id}}
-    result = graph.invoke(Command(resume="sí" if body.approved else "no"), cfg)
-    return _respond(body.thread_id, result, graph, cfg)
+    # Multi-step flows send the chosen option `value`; legacy clients send `approved` (sí/no).
+    resume_value = body.value if body.value is not None else ("sí" if body.approved else "no")
+    graph.invoke(Command(resume=resume_value), cfg)
+    return _respond(body.thread_id, graph, cfg)
+
+
+@router.get(
+    "/preferences",
+    response_model=PersonalityResponse,
+    summary="Personalidad actual del copiloto (default COACH si no se eligió)",
+    responses={401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"}},
+)
+def get_preferences(
+    user_id: str = Depends(get_current_user_id),
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+) -> PersonalityResponse:
+    return PersonalityResponse(personality=prefs.get_personality(user_id))
+
+
+@router.put(
+    "/preferences",
+    response_model=PersonalityResponse,
+    summary="Elegir la personalidad del copiloto (neutral/coach/roast)",
+    responses={
+        401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"},
+        422: {"model": ProblemDetailDto, "description": "Personalidad inválida"},
+    },
+)
+def put_preferences(
+    body: UpdatePersonalityRequest,
+    user_id: str = Depends(get_current_user_id),
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+) -> PersonalityResponse:
+    prefs.set_personality(user_id, body.personality)
+    return PersonalityResponse(personality=body.personality)
+
+
+def _currency_options(user_id: str, users: UserRepository, prefs: PreferenceRepository) -> CurrencyOptions:
+    user = users.get_by_id(user_id)
+    home_market = str(user.home_market) if user else ""  # sin user → cae a USD (§currency-preferences)
+    return resolve_currency_options(
+        home_market=home_market, extra_currencies=prefs.get_extra_currencies(user_id)
+    )
+
+
+@router.get(
+    "/preferences/currencies",
+    response_model=CurrencyPreferencesResponse,
+    summary="Monedas del usuario: principal (de su mercado) + hasta 3 extra elegidas",
+    responses={401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"}},
+)
+def get_currency_preferences(
+    user_id: str = Depends(get_current_user_id),
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+    users: UserRepository = Depends(get_user_repository),
+) -> CurrencyPreferencesResponse:
+    return CurrencyPreferencesResponse.from_options(_currency_options(user_id, users, prefs))
+
+
+@router.put(
+    "/preferences/currencies",
+    response_model=CurrencyPreferencesResponse,
+    summary="Elegir hasta 3 monedas adicionales (la principal se deriva del mercado, no se edita aquí)",
+    responses={
+        401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"},
+        422: {"model": ProblemDetailDto, "description": "Más de 3 monedas, o una moneda no activa"},
+    },
+)
+def put_currency_preferences(
+    body: UpdateCurrencyPreferencesRequest,
+    user_id: str = Depends(get_current_user_id),
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+    users: UserRepository = Depends(get_user_repository),
+) -> CurrencyPreferencesResponse:
+    prefs.set_extra_currencies(user_id, body.extra)
+    return CurrencyPreferencesResponse.from_options(_currency_options(user_id, users, prefs))

@@ -13,9 +13,13 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "src"),
       "react-native": "react-native-web",
-      // Heavy icon/SVG packages → no-op stub (real lucide has ~1500 modules and hangs Vite).
+      // Heavy icon package → no-op stub (real lucide has ~1500 modules and hangs Vite).
       "lucide-react-native": path.resolve(__dirname, "src/test/icon-stub.cjs"),
-      "react-native-svg": path.resolve(__dirname, "src/test/icon-stub.cjs"),
+      // react-native-svg → passthrough stub (containers keep their children; native source unparseable).
+      "react-native-svg": path.resolve(__dirname, "src/test/svg-stub.tsx"),
+      // reanimated → stub: its source can't pass vitest's SSR transform and needs Metro-only
+      // globals; the stub exposes Animated.* + inert hooks/helpers so components still render.
+      "react-native-reanimated": path.resolve(__dirname, "src/test/reanimated-stub.tsx"),
     },
     extensions: [".web.tsx", ".web.ts", ".tsx", ".ts", ".web.jsx", ".web.js", ".jsx", ".js"],
   },

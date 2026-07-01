@@ -1,0 +1,122 @@
+"""The register-expense `FlowSpec` (Img 8-11), built from injected callables so it stays testable
+and agent-agnostic:
+
+  - `commit_action(state, action)` — registers the (now category-enriched) transaction, returns the
+    confirmation text. Wired to the FinanceAgent in the graph; a fake in unit tests.
+  - `suggest_categories(state)` — returns icon-only chip `Option`s for the suggestions step (Img 10).
+
+Steps: ¿currency? (only if the user didn't name one AND there's more than one to pick from,
+§currency-preferences) → confirm (Img 8) → ¿category? yes/no (Img 9) → suggestions, skipped if
+"no" (Img 10) → commit + "Ver en Insight" deep link via `ui_actions` (Img 11). Adding/removing a
+step = editing this tuple.
+"""
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from langchain_core.messages import AIMessage
+
+from src.shared.i18n import t
+
+from ..base import FlowSpec, Interaction, Option, Step
+
+CommitAction = Callable[[dict, dict], str]
+# Returns serializable dicts (memoized into pending_action — must survive the checkpoint), each
+# {"value": category-name, "icon": emoji}. The LLM call lives here; called ONCE in `prepare`.
+SuggestCategories = Callable[[dict], list[dict]]
+
+# Flag per active currency (shared/money.ACTIVE_CURRENCIES) — cosmetic only, on the currency_pick
+# pills (Option.icon works on pills, not just chips). A currency added there without an entry here
+# just shows no flag — never breaks.
+_CURRENCY_FLAG = {"DOP": "🇩🇴", "USD": "🇺🇸", "COP": "🇨🇴", "BRL": "🇧🇷", "EUR": "🇪🇺"}
+
+
+def _amount(pa: dict, currency: str | None = None) -> str:
+    cur = currency if currency is not None else pa.get("currency")
+    return f"${pa['amount']} {cur}".strip() if cur else f"${pa['amount']}"
+
+
+def build_expense_flow(
+    *, commit_action: CommitAction, suggest_categories: SuggestCategories
+) -> FlowSpec:
+    def currency_pick_step(state: dict, answers: dict) -> Interaction | None:
+        if state["pending_action"].get("currency"):
+            return None  # user named it in the message ("50 dollars") → nothing to ask
+        options = (state.get("currency_options") or {}).get("all", [])
+        if len(options) <= 1:
+            return None  # only the primary currency configured → keep default-wallet behavior
+        lang = state.get("ui_language") or state.get("language", "es")
+        return Interaction(
+            prompt=t("expense.currency_q", lang),
+            options=[
+                *(Option(c, c, "primary", "pill", _CURRENCY_FLAG.get(c)) for c in options),
+                Option("cancel", t("confirm.cancel", lang), "secondary"),
+            ],
+        )
+
+    def confirm_step(state: dict, answers: dict) -> Interaction:
+        lang = state.get("ui_language") or state.get("language", "es")
+        currency = answers.get("currency_pick") or state["pending_action"].get("currency")
+        return Interaction(
+            prompt=t("expense.confirm", lang, amount=_amount(state["pending_action"], currency)),
+            options=[
+                Option("cancel", t("confirm.cancel", lang), "secondary"),
+                Option("confirm", t("confirm.approve", lang), "primary"),
+            ],
+        )
+
+    def category_yesno_step(state: dict, answers: dict) -> Interaction:
+        lang = state.get("ui_language") or state.get("language", "es")
+        return Interaction(
+            prompt=t("expense.category_q", lang),
+            options=[
+                Option("none", t("expense.no_category", lang), "secondary"),
+                Option("yes", t("expense.yes_please", lang), "primary"),
+            ],
+        )
+
+    def category_pick_step(state: dict, answers: dict) -> Interaction | None:
+        if answers.get("category_yesno") != "yes":
+            return None  # user declined → skip suggestions
+        lang = state.get("ui_language") or state.get("language", "es")
+        # Read the suggestions memoized by `prepare` (pure, no LLM here — this re-runs every resume).
+        suggestions = state["pending_action"].get("suggested_categories", [])
+        chips = [
+            Option(s["value"], None, "primary", "chip", s.get("icon"), s.get("color"))
+            for s in suggestions
+        ]
+        return Interaction(
+            prompt=t("expense.suggestions", lang),
+            options=[Option("none", t("expense.forget_category", lang), "secondary", "pill"), *chips],
+        )
+
+    def prepare(state: dict) -> dict:
+        # Runs ONCE (own node) → compute the LLM category suggestions and memoize them so the step
+        # loop can re-run freely without re-calling the LLM.
+        pa = state["pending_action"]
+        return {"pending_action": {**pa, "suggested_categories": suggest_categories(state)}}
+
+    def commit(state: dict, answers: dict) -> dict:
+        lang = state.get("ui_language") or state.get("language", "es")
+        pick = answers.get("category_pick")
+        category = pick if pick and pick != "none" else None
+        currency = answers.get("currency_pick") or state["pending_action"].get("currency")
+        reply = commit_action(
+            state, {**state["pending_action"], "category": category, "currency": currency}
+        )
+        return {
+            "pending_action": None,
+            "messages": [AIMessage(reply)],
+            "ui_actions": [{"type": "link", "text": t("see_in_insight", lang), "href": "insights"}],
+        }
+
+    return FlowSpec(
+        steps=(
+            Step("currency_pick", currency_pick_step),
+            Step("confirm", confirm_step),
+            Step("category_yesno", category_yesno_step),
+            Step("category_pick", category_pick_step),
+        ),
+        commit=commit,
+        prepare=prepare,
+    )
