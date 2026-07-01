@@ -59,8 +59,9 @@ def build_graph(  # type: ignore[no-untyped-def]
         flow = flows.get(state["intent"])
         if flow is not None:
             return drive_flow(flow, state)  # multi-step (Img 8-11)
-        # Legacy single-step confirm + commit (intents sin FlowSpec — backward-compat).
-        lang = state.get("language", "es")
+        # Legacy single-step confirm + commit (intents sin FlowSpec — backward-compat). Strings
+        # deterministas (chrome, no charla libre) → siguen `ui_language`, no la detección.
+        lang = state.get("ui_language") or state.get("language", "es")
         interaction = Interaction(
             prompt=t("confirm_prompt", lang, summary=pa["summary"]),
             options=[
@@ -75,7 +76,8 @@ def build_graph(  # type: ignore[no-untyped-def]
         return {"messages": [AIMessage(reply)], "pending_action": None}
 
     def respond_other(state: dict) -> dict:
-        return {"messages": [AIMessage(t("other", state.get("language", "es")))]}
+        lang = state.get("ui_language") or state.get("language", "es")
+        return {"messages": [AIMessage(t("other", lang))]}
 
     g = StateGraph(AispaceState)
     g.add_node("classify_intent", make_classify_intent(classifier))

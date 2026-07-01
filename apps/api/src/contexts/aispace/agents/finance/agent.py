@@ -94,7 +94,9 @@ class FinanceAgent:
 
     def commit(self, state: dict) -> str:
         action = state["pending_action"]
-        lang = state.get("language", "es")
+        # Deterministic catalog strings (error/success) → `ui_language`, unlike `run()`'s LLM prompt
+        # above (line ~78) which stays detection-aware for the agent's own free-text reaction.
+        lang = state.get("ui_language") or state.get("language", "es")
         try:
             r = execute_register_transaction(
                 state["user_id"], self._sf,

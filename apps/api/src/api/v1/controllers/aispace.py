@@ -19,7 +19,7 @@ from src.contexts.aispace.orchestration.sse import chat_result, stream_events
 from src.contexts.aispace.preferences.enums import Personality
 from src.contexts.aispace.preferences.ports import PreferenceRepository
 from src.shared.ids import new_id
-from src.shared.lang import resolve_language
+from src.shared.lang import client_language, resolve_language
 
 router = APIRouter(prefix="/aispace", tags=["aispace"])
 
@@ -86,6 +86,7 @@ def chat(
             "user_id": user_id,
             "capabilities": [],
             "language": language,
+            "ui_language": client_language(body.locale),  # workflow chrome — nunca override
             "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
             "ui_actions": [],  # reset per turn → links don't carry over to later messages
         },
@@ -113,6 +114,7 @@ def chat_stream(
         "user_id": user_id,
         "capabilities": [],
         "language": language,
+        "ui_language": client_language(body.locale),  # workflow chrome — nunca override
         "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
         "ui_actions": [],  # reset per turn → links don't carry over to later messages
     }

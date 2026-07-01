@@ -26,6 +26,15 @@ _detector = (
 )
 
 
+def client_language(client_locale: str | None) -> str:
+    """Idioma de la UI determinista (workflow: confirmar/cancelar, prompts fijos). A diferencia de
+    `resolve_language`, NUNCA se override por el contenido del mensaje — son strings de catálogo
+    (chrome de la app), no texto libre del LLM, así que deben seguir el idioma QUE ELIGIÓ el usuario
+    en Config, sin importar en qué idioma tipeó ese turno."""
+    code = (client_locale or "")[:2].lower()
+    return code if code in SUPPORTED else DEFAULT
+
+
 def language_name(code: str) -> str:
     """Nombre del idioma para inyectar en el prompt ('English', 'español', 'português')."""
     return _LANG_NAMES.get((code or "")[:2].lower(), _LANG_NAMES[DEFAULT])

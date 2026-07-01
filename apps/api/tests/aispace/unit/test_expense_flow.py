@@ -131,6 +131,20 @@ def test_ui_actions_reset_per_turn_so_links_dont_carry_over() -> None:
     assert graph.get_state(cfg).values["ui_actions"] == []
 
 
+def test_workflow_strings_follow_ui_language_not_message_text() -> None:
+    """Deterministic workflow strings (confirm/cancel, prompts) are fixed UI chrome — they must
+    follow `ui_language` (the app's configured language) even when the user's message is written
+    in a different language. `language` (message-detection-aware) is untouched here; it only feeds
+    the agent's own free-text reply, not these catalog strings."""
+    graph = _build({}, _SuggestSpy())
+    cfg = {"configurable": {"thread_id": "f7"}}
+    out = graph.invoke({**_msg("gasté 500 en spotify"), "ui_language": "en"}, cfg)
+    inter = _interaction(out)
+    assert "Want me to log this" in inter["prompt"]
+    assert inter["options"][0]["label"] == "No, cancel 🙌"
+    assert inter["options"][1]["label"] == "Yes, confirm 😉"
+
+
 def test_cancel_at_confirm_does_not_commit() -> None:
     committed: dict = {}
     graph = _build(committed, _SuggestSpy())

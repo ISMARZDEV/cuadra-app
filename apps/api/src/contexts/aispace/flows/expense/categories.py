@@ -33,7 +33,10 @@ class _Suggestions(BaseModel):
 
 def suggest_expense_categories(state: dict) -> list[dict]:
     pa = state.get("pending_action") or {}
-    language = _LANG.get((state.get("language") or "es")[:2].lower(), "Spanish")
+    # These chip labels sit inside the workflow dock alongside the other deterministic strings —
+    # `ui_language` (app locale) so they don't randomly mismatch the confirm/cancel buttons.
+    lang_code = state.get("ui_language") or state.get("language") or "es"
+    language = _LANG.get(lang_code[:2].lower(), "Spanish")
     try:
         model = get_chat_model("fast").with_structured_output(_Suggestions)
         result = model.invoke(

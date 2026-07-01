@@ -33,7 +33,7 @@ def build_expense_flow(
     *, commit_action: CommitAction, suggest_categories: SuggestCategories
 ) -> FlowSpec:
     def confirm_step(state: dict, answers: dict) -> Interaction:
-        lang = state.get("language", "es")
+        lang = state.get("ui_language") or state.get("language", "es")
         return Interaction(
             prompt=t("expense.confirm", lang, amount=_amount(state["pending_action"])),
             options=[
@@ -43,7 +43,7 @@ def build_expense_flow(
         )
 
     def category_yesno_step(state: dict, answers: dict) -> Interaction:
-        lang = state.get("language", "es")
+        lang = state.get("ui_language") or state.get("language", "es")
         return Interaction(
             prompt=t("expense.category_q", lang),
             options=[
@@ -55,7 +55,7 @@ def build_expense_flow(
     def category_pick_step(state: dict, answers: dict) -> Interaction | None:
         if answers.get("category_yesno") != "yes":
             return None  # user declined → skip suggestions
-        lang = state.get("language", "es")
+        lang = state.get("ui_language") or state.get("language", "es")
         # Read the suggestions memoized by `prepare` (pure, no LLM here — this re-runs every resume).
         suggestions = state["pending_action"].get("suggested_categories", [])
         chips = [
@@ -74,7 +74,7 @@ def build_expense_flow(
         return {"pending_action": {**pa, "suggested_categories": suggest_categories(state)}}
 
     def commit(state: dict, answers: dict) -> dict:
-        lang = state.get("language", "es")
+        lang = state.get("ui_language") or state.get("language", "es")
         pick = answers.get("category_pick")
         category = pick if pick and pick != "none" else None
         reply = commit_action(state, {**state["pending_action"], "category": category})

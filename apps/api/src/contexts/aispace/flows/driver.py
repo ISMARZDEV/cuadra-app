@@ -27,7 +27,7 @@ def drive_flow(flow: FlowSpec, state: dict) -> dict:
             continue  # skipped (e.g. user declined a category → no suggestions step)
         answer = str(interrupt(interaction.to_dict())).strip()
         if answer.lower() in CANCEL_VALUES:
-            lang = state.get("language", "es")
+            lang = state.get("ui_language") or state.get("language", "es")
             return {"pending_action": None, "messages": [AIMessage(t("cancelled", lang))]}
         answers[step.id] = answer
     return flow.commit(state, answers)
