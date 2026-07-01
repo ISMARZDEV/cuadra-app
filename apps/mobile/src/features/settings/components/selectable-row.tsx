@@ -11,21 +11,34 @@ interface SelectableRowProps {
   desc?: string;
   selected: boolean;
   onPress: () => void;
+  // "radio" (default) = single-choice (personality/language). "checkbox" = multi-choice (currency
+  // extras). Both map to RN's unified ARIA props on web AND native — accessible + testable either way.
+  role?: "radio" | "checkbox";
+  disabled?: boolean; // non-interactive: the fixed primary currency, or a checkbox at its cap
 }
 
-// Single-choice row (a radio): leading visual + label (+ optional description), with a check when
-// active. Shared by the personality and language selectors. Uses RN's unified ARIA props
-// (role="radio" + aria-checked) which map on web AND native — accessible + testable.
-export function SelectableRow({ leading, label, desc, selected, onPress }: SelectableRowProps) {
+// One selectable row: leading visual + label (+ optional description), with a check when active.
+// Shared by the personality, language, and currency selectors.
+export function SelectableRow({
+  leading,
+  label,
+  desc,
+  selected,
+  onPress,
+  role = "radio",
+  disabled = false,
+}: SelectableRowProps) {
   return (
     <Pressable
-      role="radio"
+      role={role}
       aria-label={label}
       aria-checked={selected}
+      aria-disabled={disabled}
+      disabled={disabled}
       onPress={onPress}
       className={`mb-3 flex-row items-center gap-3 rounded-2xl border px-4 py-4 ${
         selected ? "border-primary bg-primary/10" : "border-border bg-surface"
-      }`}
+      } ${disabled && !selected ? "opacity-40" : ""}`}
     >
       {leading}
       <View className="flex-1">

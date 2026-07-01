@@ -12,3 +12,11 @@ export interface PersonalityOptionMeta {
   descKey: TranslationKey;
   icon: LucideIcon;
 }
+
+// Presentation metadata for one active currency (§currency-preferences). `code` is the ISO 4217
+// wire value; `flag` is cosmetic (mirrors the backend's per-currency emoji on the HITL picker).
+export interface CurrencyOptionMeta {
+  code: string;
+  flag: string;
+  labelKey: TranslationKey;
+}

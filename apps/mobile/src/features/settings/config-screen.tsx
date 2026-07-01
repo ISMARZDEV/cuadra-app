@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ChevronRight, Languages, Moon, Sparkles } from "lucide-react-native";
+import { ChevronRight, CircleDollarSign, Languages, Moon, Sparkles } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { Pressable, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -55,6 +55,19 @@ export function ConfigScreen() {
           <View className="flex-row items-center gap-3">
             <Icon as={Languages} size={22} color={palette.primary} />
             <Text className="text-base text-text">{t("config.language")}</Text>
+          </View>
+          <Icon as={ChevronRight} size={22} color="#9CA3AF" />
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("config.currencies")}
+          onPress={() => router.push("/config/currencies")}
+          className="mt-3 flex-row items-center justify-between rounded-2xl border border-border bg-surface px-4 py-4"
+        >
+          <View className="flex-row items-center gap-3">
+            <Icon as={CircleDollarSign} size={22} color={palette.primary} />
+            <Text className="text-base text-text">{t("config.currencies")}</Text>
           </View>
           <Icon as={ChevronRight} size={22} color="#9CA3AF" />
         </Pressable>
