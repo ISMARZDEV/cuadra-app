@@ -34,7 +34,12 @@ function FadingWord({
 
   return (
     <Animated.View style={style}>
-      <Text className={textClassName}>{word}{" "}</Text>
+      {/* selectable: long-press → copy. Each word is its own Text node (per-word fade — cuadra-mobile
+          skill §6: wrapping Animated.View, NOT nested inline Text runs, is the only animation shape
+          that reliably fires here), so native selection is scoped to ONE word per gesture — dragging
+          across word boundaries doesn't extend the selection. Good enough to grab a specific word or
+          amount; not a full-paragraph drag-select. */}
+      <Text selectable className={textClassName}>{word}{" "}</Text>
     </Animated.View>
   );
 }

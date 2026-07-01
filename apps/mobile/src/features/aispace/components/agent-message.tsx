@@ -29,13 +29,18 @@ function RichText({ text }: { text: string }) {
         if (!trimmed) return <View key={i} style={{ height: 6 }} />;
         if (/^\*\*[^*]+\*\*$/.test(trimmed)) {
           return (
-            <Text key={i} className="mb-1 text-text" style={{ fontSize: 24, fontWeight: "800", lineHeight: 30 }}>
+            <Text
+              key={i}
+              selectable
+              className="mb-1 text-text"
+              style={{ fontSize: 24, fontWeight: "800", lineHeight: 30 }}
+            >
               {trimmed.slice(2, -2)}
             </Text>
           );
         }
         return (
-          <Text key={i} className="text-lg leading-6 text-text">
+          <Text key={i} selectable className="text-lg leading-6 text-text">
             {inlineBold(line)}
           </Text>
         );
