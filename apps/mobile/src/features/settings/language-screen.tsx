@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react-native";
 import { Pressable, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AppBackground } from "@/components/ui/app-background";
 import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
 import { palette } from "@/theme";
@@ -22,6 +23,11 @@ export function LanguageScreen() {
 
   return (
     <SafeAreaView className="flex-1" edges={["top"]}>
+      {/* Self-paints the shared gradient (not just relying on the root layer showing through) —
+          react-native-screens' native stack doesn't hide the outgoing screen behind a transparent
+          incoming one during push/pop, so both screens' content ghosts together mid-transition
+          (expo/expo#33040, unresolved upstream). Each pushed screen must be visually self-contained. */}
+      <AppBackground />
       <View className="flex-row items-center gap-1 px-3 pt-2">
         <Pressable
           accessibilityRole="button"

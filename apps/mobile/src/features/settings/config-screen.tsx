@@ -4,6 +4,7 @@ import { useColorScheme } from "nativewind";
 import { Pressable, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AppBackground } from "@/components/ui/app-background";
 import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
 import { palette } from "@/theme";
@@ -17,6 +18,9 @@ export function ConfigScreen() {
 
   return (
     <SafeAreaView className="flex-1" edges={["top"]}>
+      {/* Self-paints the shared gradient — the OTHER end of every push/pop in this stack, so it
+          needs the same fix (expo/expo#33040, see language-screen.tsx). */}
+      <AppBackground />
       <View className="px-5 pt-4">
         <Text className="mb-5 text-2xl font-bold text-text">{t("config.title")}</Text>
 

@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AppBackground } from "@/components/ui/app-background";
 import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
 import { palette } from "@/theme";
@@ -20,6 +21,8 @@ export function PersonalityScreen() {
 
   return (
     <SafeAreaView className="flex-1" edges={["top"]}>
+      {/* Self-paints the shared gradient — see language-screen.tsx for why (expo/expo#33040). */}
+      <AppBackground />
       <View className="flex-row items-center gap-1 px-3 pt-2">
         <Pressable
           accessibilityRole="button"
