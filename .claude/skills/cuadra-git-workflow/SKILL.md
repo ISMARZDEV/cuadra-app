@@ -97,10 +97,38 @@ Do NOT do this proactively — wait for an explicit instruction ("merge a main",
 1. Confirm with the user this is a production release.
 2. Open the PR: `gh pr create --base main --head developer --title "release: <summary>" --body "..."`.
 3. **Verify CI green**: `gh pr checks <number> --watch` — STOP if red/pending.
-4. **ASK squash vs rebase** (`AskUserQuestion`). For releases, prefer **rebase/merge-commit** over
-   squash so developer's history is preserved on main — but still ASK and follow the user.
-5. Merge: `gh pr merge <number> --rebase` (or per the user's choice). Then sync local:
-   `git checkout main && git pull origin main && git checkout developer && git merge --ff-only main`.
+4. **ASK squash vs rebase** (`AskUserQuestion`). Still ask every time — but know that **`--rebase`
+   only works ONCE**: GitHub's rebase-merge rewrites the commits it applies to `main` with NEW
+   hashes. From then on, `developer`'s own commit objects (old hashes) and `main`'s (new hashes)
+   never match again for the same content, so the NEXT `developer → main` rebase-merge fails with
+   `GraphQL: This branch can't be rebased`. Confirmed in practice (cuadra-app PR #6, right after
+   PR #4 was rebase-merged). If that happens, tell the user and fall back to **squash** — don't
+   just retry rebase. Given this, **squash is the practical default for this repo's releases**
+   going forward; only use rebase/merge-commit if the user explicitly wants preserved history and
+   this is the FIRST release ever (nothing to diverge from yet).
+5. Merge: `gh pr merge <number> --squash` (or `--rebase`/`--merge` per the user's choice). Then
+   sync local: `git checkout main && git pull origin main && git checkout developer && git pull
+   origin developer`. Do NOT assume `git merge --ff-only main` into `developer` will work after a
+   rebase-merge release — it won't (diverged history, same reason as above); a plain `git pull` on
+   each branch is enough, they don't need to be literally fast-forwardable from one another.
+6. **Realign `developer` onto `main` right after EVERY release, regardless of merge strategy.**
+   Squash has the SAME divergence problem as rebase — it also creates a new commit hash on `main`
+   that doesn't match `developer`'s. Left unfixed across releases, this compounds: eventually
+   GitHub computes an absurd PR diff for the NEXT `developer → main` PR (every historical commit,
+   even ones long since released) and may not even trigger CI on it — happened for real (PR #8,
+   closed instead of merged). The fix, safe because `main`'s tree and `developer`'s tree are
+   content-identical right after a release (verify with `git diff origin/developer HEAD --stat` —
+   must be EMPTY before pushing):
+   ```bash
+   git fetch origin main developer
+   git checkout -B developer origin/main
+   # cherry-pick anything that landed on developer but not yet in this release (rare — usually none)
+   git diff origin/developer HEAD --stat   # MUST be empty — if not, STOP, don't force-push
+   git push --force-with-lease origin developer
+   ```
+   `--force-with-lease` (not plain `--force`) — it refuses if `origin/developer` moved since your
+   last fetch, so it can't silently clobber someone else's push. This rewrites a SHARED branch's
+   history, so treat it with the same care as any other force-push: confirm with the user first.
 
 ## CI reference (`.github/workflows/ci.yml`)
 
