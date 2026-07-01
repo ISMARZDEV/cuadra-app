@@ -1,5 +1,4 @@
 import { ScrollView, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { pickByCurrency, useCurrencyPrimary, useDailyTarget } from "./api";
 import { AccountsCard } from "./components/accounts-card";
@@ -23,23 +22,21 @@ export function InsightsScreen() {
   const hasActivity = targetForPrimary !== undefined;
 
   return (
-    <SafeAreaView className="flex-1" edges={["top"]}>
-      <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 32 }}>
-        <InsightsWheel
-          variant={hasActivity ? "populated" : "empty"}
-          totalExpenseMinor={targetForPrimary?.spent_month_minor ?? 0}
-          budgetMinor={targetForPrimary?.monthly_limit_minor ?? 0}
-          currency={targetForPrimary?.currency ?? primary ?? "USD"}
-          onAddPress={() => {}} // TODO(insights-mvp): Add income/expense/transfer form
-        />
-        <View style={{ width: "100%", marginTop: 24, paddingHorizontal: 12 }}>
-          <InsightsCarousel>
-            <AccountsCard />
-            <SpacesCard />
-            <DailyDiaryCard />
-          </InsightsCarousel>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+    <ScrollView contentContainerStyle={{ alignItems: "center", paddingTop: 40, paddingBottom: 32 }}>
+      <InsightsWheel
+        variant={hasActivity ? "populated" : "empty"}
+        totalExpenseMinor={targetForPrimary?.spent_month_minor ?? 0}
+        budgetMinor={targetForPrimary?.monthly_limit_minor ?? 0}
+        currency={targetForPrimary?.currency ?? primary ?? "USD"}
+        onAddPress={() => {}} // TODO(insights-mvp): Add income/expense/transfer form
+      />
+      <View style={{ width: "100%", marginTop: 12, paddingHorizontal: 12 }}>
+        <InsightsCarousel>
+          <AccountsCard />
+          <SpacesCard />
+          <DailyDiaryCard />
+        </InsightsCarousel>
+      </View>
+    </ScrollView>
   );
 }

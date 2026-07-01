@@ -35,7 +35,7 @@ export function InsightsCardShell({ children }: { children: ReactNode }) {
           <Rect width="100%" height="100%" fill="url(#cardShellGradient)" />
         </Svg>
       )}
-      <View style={{ padding: 20 }}>{children}</View>
+      <View style={{ padding: 14 }}>{children}</View>
     </View>
   );
 }

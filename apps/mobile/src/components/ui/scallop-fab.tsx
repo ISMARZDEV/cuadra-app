@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { useColorScheme } from "nativewind";
 import { useId } from "react";
 import { Pressable } from "react-native";
@@ -54,7 +55,10 @@ export function ScallopFab({ label, onPress, size = 64 }: ScallopFabProps) {
     <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      onPress={onPress}
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress?.();
+      }}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
       style={[{ width: size, height: size }, animStyle]}

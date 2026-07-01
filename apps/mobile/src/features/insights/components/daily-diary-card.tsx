@@ -1,6 +1,10 @@
-import { Sparkles, Star } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
+import { PencilSparkles, Star } from "lucide-react-native";
 import { Image, Pressable, Text, View } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 import { Icon } from "@/components/ui/icon";
 import { ScallopFab } from "@/components/ui/scallop-fab";
@@ -20,6 +24,43 @@ const RING_SIZE = 44;
 const RING_STROKE = 5;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+function EditButton({ onPress }: { onPress?: () => void }) {
+  const pressScale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: pressScale.value }] }));
+  const onPressIn = () => {
+    pressScale.value = withSpring(0.88, { damping: 15, stiffness: 320, mass: 0.6 });
+  };
+  const onPressOut = () => {
+    pressScale.value = withSpring(1, { damping: 11, stiffness: 220, mass: 0.7 });
+  };
+
+  return (
+    <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityLabel="Edit"
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress?.();
+      }}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      style={[
+        {
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: "#C2FB7E",
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        animStyle,
+      ]}
+    >
+      <Icon as={PencilSparkles} size={22} color="#034842" strokeWidth={2.5} />
+    </AnimatedPressable>
+  );
+}
 
 function TargetRing({ percent }: { percent: number }) {
   const clamped = Math.min(100, Math.max(0, percent));
@@ -49,7 +90,7 @@ function TargetRing({ percent }: { percent: number }) {
           transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
         />
       </Svg>
-      <Icon as={Star} size={16} color="#C2FB7E" />
+      <Icon as={Star} size={18} color="#C2FB7E" strokeWidth={2.5} />
     </View>
   );
 }
@@ -114,26 +155,12 @@ export function DailyDiaryCard() {
               <Text style={{ color: "#034842", fontSize: 10, fontWeight: "700" }}>USD</Text>
             </View>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t("insights.accounts.editAssisted")}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              backgroundColor: "#C2FB7E",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            onPress={() => {}} // TODO(insights-mvp): AI-assisted capture
-          >
-            <Icon as={Sparkles} size={15} color="#034842" />
-          </Pressable>
+          <EditButton onPress={() => {}} />
         </View>
       </View>
 
       {hasWallets ? (
-        <View style={{ marginTop: 16 }}>
+        <View style={{ marginTop: 12 }}>
           <WalletStack />
           <View>
             <Text className="text-text" style={{ fontSize: 13, fontWeight: "500" }}>
@@ -153,7 +180,7 @@ export function DailyDiaryCard() {
             </Text>
           </View>
 
-          <View style={{ marginTop: 14 }}>
+          <View style={{ marginTop: 10 }}>
             <PeriodSelector />
           </View>
 
@@ -162,7 +189,7 @@ export function DailyDiaryCard() {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              marginTop: 14,
+              marginTop: 10,
             }}
           >
             <View>
@@ -190,19 +217,19 @@ export function DailyDiaryCard() {
           </View>
         </View>
       ) : (
-        <View style={{ alignItems: "center", gap: 8, marginTop: 16 }}>
+        <View style={{ alignItems: "center", gap: 6, marginTop: 12 }}>
           <ScallopFab
             label={t("insights.dailyDiary.emptyTitle")}
-            size={48}
+            size={52}
             onPress={() => {}} // TODO(insights-mvp): Add Wallet form (cuadra-mobile-forms)
           />
           <Text className="text-accent" style={{ fontSize: 15, fontWeight: "700" }}>
             {t("insights.dailyDiary.emptyTitle")}
           </Text>
-          <Text className="text-center text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+          <Text className="text-center text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
             {t("insights.dailyDiary.emptyDescription")}
           </Text>
-          <Image source={illustration} style={{ width: 192, height: 135 }} resizeMode="contain" />
+          <Image source={illustration} style={{ width: 160, height: 110 }} resizeMode="contain" />
         </View>
       )}
     </InsightsCardShell>

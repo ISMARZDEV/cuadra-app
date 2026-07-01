@@ -71,7 +71,7 @@
   "insights.accounts.infoLabel": "More info",
   "insights.accounts.infoMessage": "Your income, expenses, savings, and balance for the selected period.",
   "insights.accounts.totalIncome": "Total Income",
-  "insights.accounts.totalBills": "Total Bills / Expenses",
+  "insights.accounts.totalBills": "Total Bills",
   "insights.accounts.savings": "Savings",
   "insights.accounts.balance": "Balance",
   "insights.accounts.recentTransactions": "Recent Transactions",

@@ -36,7 +36,7 @@ export function PeriodSelector() {
           </Text>
         </View>
       ))}
-      <Icon as={Calendar} size={16} color="#C2FB7E" />
+      <Icon as={Calendar} size={18} color="#C2FB7E" strokeWidth={2.5} />
     </View>
   );
 }

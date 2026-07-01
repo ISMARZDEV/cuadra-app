@@ -89,7 +89,7 @@ export function TxRow({
               {t("insights.accounts.spent")}
             </Text>
           </View>
-          <Icon as={ChevronRight} size={16} color={isDark ? "#7DE996" : "#034842"} />
+          <Icon as={ChevronRight} size={18} color={isDark ? "#7DE996" : "#034842"} strokeWidth={2.5} />
         </View>
       </View>
     </View>

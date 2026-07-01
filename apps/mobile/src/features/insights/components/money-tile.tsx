@@ -42,16 +42,19 @@ export function MoneyTile({
         alignItems: "center",
         justifyContent: "space-between",
         paddingHorizontal: 10,
+        overflow: "hidden",
       }}
     >
       <View style={{ flexShrink: 1 }}>
-        <Text style={{ color: fg, fontSize: 10, fontWeight: "500" }}>{label}</Text>
-        <Text style={{ color: fg, fontFamily: AKSHAR_SEMIBOLD, fontSize: 14 }}>
+        <Text style={{ color: fg, fontSize: 12, fontWeight: "600" }} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={{ color: fg, fontFamily: AKSHAR_SEMIBOLD, fontSize: 16 }}>
           {sign}
           {formatMoney(amountMinor, currency)}
         </Text>
       </View>
-      <Icon as={icon} size={22} color={fg} />
+      <Icon as={icon} size={24} color={fg} strokeWidth={2.5} />
     </View>
   );
 }

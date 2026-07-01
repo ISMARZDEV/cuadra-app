@@ -109,7 +109,7 @@ export function InsightsCarousel({ children }: { children: ReactNode }) {
         <DotIndicator scrollX={scrollX} count={cards.length} cardWidth={cardWidth} />
         {/* Trailing "+" (Figma) — no 4th card exists yet, so it's a static disabled glyph, not a
             functional "add a card" affordance. */}
-        <Icon as={Plus} size={14} color="#6B7280" />
+        <Icon as={Plus} size={16} color="#6B7280" strokeWidth={2.5} />
       </View>
     </View>
   );

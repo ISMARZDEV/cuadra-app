@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import {
   ChartPie,
   CircleDollarSign,
@@ -10,7 +11,8 @@ import {
 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { Pressable, Text, View } from "react-native";
-import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import Svg, { Defs, FeDropShadow, Filter, LinearGradient, Path, Stop } from "react-native-svg";
 
 import { Icon } from "@/components/ui/icon";
 import { ScallopFab } from "@/components/ui/scallop-fab";
@@ -36,7 +38,7 @@ import { InsightsWheelTexture } from "./insights-wheel-texture";
 // per-badge rotation matrices — visually equivalent, meaningfully more maintainable.
 const REF_W = 351;
 const REF_H = 345;
-const SIZE = 320;
+const SIZE = 360;
 const SCALE = SIZE / REF_W;
 const HEIGHT = REF_H * SCALE;
 
@@ -44,13 +46,24 @@ const HEIGHT = REF_H * SCALE;
 // (x=48.63,y=44.82,w=253.09,rx=126.54 ⇒ center 175.17,171.36 ⇒ radius 126.54).
 const RING_CENTER_X = 175.17 * SCALE;
 const RING_CENTER_Y = 171.36 * SCALE;
-const RING_RADIUS = 126.54 * SCALE;
-const RING_STROKE = 14;
+const RING_RADIUS = 126.54 * SCALE; // thin lime accent ring (reference rect, stroke-width 3)
+const RING_STROKE = 3 * SCALE;
+
+// The THICK muted/colored band ring is a SEPARATE, larger ring in the reference — its own masked
+// stroke path (wheel-reference-desing svg) with a centerline averaging ≈150.4 ref units from
+// center (vs the accent ring's 126.54) and stroke-width="38.9171". Reusing RING_RADIUS/a 14px
+// stroke here (as before) made the band ring both too small and 3x too thin vs the reference.
+const TRACK_RADIUS = RING_RADIUS * 1.180;
+const TRACK_STROKE = 10.92 * SCALE;
+
+// Decorative trend squiggle radius — kept relative to the thin accent ring's interior, independent
+// of TRACK_STROKE now that the band ring is much thicker.
+const TREND_INNER_RADIUS = RING_RADIUS * 0.78;
 
 // Gauge opens at the bottom — wide enough to clear the 7-icon fan below it (angle convention:
 // 0°=3 o'clock, increasing clockwise since screen y grows downward).
-const ARC_START_DEG = 165;
-const ARC_END_DEG = 375; // 210° sweep
+const ARC_START_DEG = 168;
+const ARC_END_DEG = 372; // 210° sweep
 
 const DEFAULT_BANDS: WheelBand[] = [
   { colorHex: "#3DBE64", weight: 1 }, // green
@@ -79,19 +92,31 @@ const TREND_POINTS: readonly [number, number][] = [
   [0.08, 0.55], [0.22, 0.62], [0.36, 0.4], [0.5, 0.5], [0.64, 0.3], [0.78, 0.42], [0.92, 0.36],
 ];
 
-function trendPath(innerRadius: number): string {
+function trendPoints(innerRadius: number) {
   const box = innerRadius * 1.5;
   const originX = RING_CENTER_X - box / 2;
   const originY = RING_CENTER_Y - box / 2.6;
-  return TREND_POINTS.map(([nx, ny], i) => {
-    const x = originX + nx * box;
-    const y = originY + ny * box * 0.6;
-    return `${i === 0 ? "M" : "L"} ${x} ${y}`;
-  }).join(" ");
+  return TREND_POINTS.map(([nx, ny]) => ({
+    x: originX + nx * box,
+    y: originY + ny * box * 0.6,
+  }));
+}
+
+function trendLinePath(innerRadius: number): string {
+  return trendPoints(innerRadius)
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+    .join(" ");
+}
+
+function trendAreaPath(innerRadius: number): string {
+  const pts = trendPoints(innerRadius);
+  const bottomY = RING_CENTER_Y + innerRadius * 0.5;
+  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  return `${line} L ${pts[pts.length - 1].x} ${bottomY} L ${pts[0].x} ${bottomY} Z`;
 }
 
 function CategoryMarkerDot({ marker }: { marker: CategoryMarker }) {
-  const { x, y } = polarPoint(RING_CENTER_X, RING_CENTER_Y, RING_RADIUS, marker.angleDeg);
+  const { x, y } = polarPoint(RING_CENTER_X, RING_CENTER_Y, TRACK_RADIUS, marker.angleDeg);
   const badgeSize = 26;
   return (
     <View
@@ -152,8 +177,16 @@ const FAN_RADIUS: Record<NavButtonSpec["role"], number> = {
 };
 const HOME_PILL_W = 64.6 * SCALE;
 const HOME_PILL_H = 34 * SCALE;
-const SATELLITE_SIZE = 42 * SCALE;
-const SIDE_BUTTON_SIZE = 27.5 * SCALE;
+// Satellite buttons: pills traced from the reference SVG (45.9973×33.9504, rx=16.9752).
+// Rotated to align tangent to the arc (angleDeg - 90°).
+const SATELLITE_W = 45.9973 * SCALE;
+const SATELLITE_H = 33.9504 * SCALE;
+const SATELLITE_RX = 16.9752 * SCALE;
+// Side buttons: rounded squares from reference (27.4868×27.4868, rx=13.7434) — near-circles.
+const SIDE_BUTTON_SIZE = 27.4868 * SCALE;
+const SIDE_BUTTON_RX = 13.7434 * SCALE;
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 function NavButton({ spec, isDark }: { spec: NavButtonSpec; isDark: boolean }) {
   const { x, y } = polarPoint(RING_CENTER_X, RING_CENTER_Y, FAN_RADIUS[spec.role], spec.angleDeg);
@@ -163,28 +196,53 @@ function NavButton({ spec, isDark }: { spec: NavButtonSpec; isDark: boolean }) {
     spec.role === "side" ? "#C2FB7E" : spec.role === "home" ? (isDark ? "#034842" : "#C2FB7E") : isDark ? "#C2FB7E" : "#034842";
   const fg = spec.role === "side" ? "#034842" : spec.role === "home" ? (isDark ? "#C2FB7E" : "#034842") : isDark ? "#034842" : "#C2FB7E";
   const isPill = spec.role === "home";
-  const w = isPill ? HOME_PILL_W : spec.role === "satellite" ? SATELLITE_SIZE : SIDE_BUTTON_SIZE;
-  const h = isPill ? HOME_PILL_H : w;
+  const isSatellite = spec.role === "satellite";
+
+  // Satellite buttons: pills rotated tangent to the arc (angleDeg - 90°).
+  // Side buttons: rounded squares (near-circles), no rotation needed.
+  // Home pill: horizontal pill at the bottom, no rotation.
+  const w = isPill ? HOME_PILL_W : isSatellite ? SATELLITE_W : SIDE_BUTTON_SIZE;
+  const h = isPill ? HOME_PILL_H : isSatellite ? SATELLITE_H : SIDE_BUTTON_SIZE;
+  const borderRadius = isPill ? HOME_PILL_H / 2 : isSatellite ? SATELLITE_RX : SIDE_BUTTON_RX;
+  const rotation = isSatellite ? spec.angleDeg - 90 : 0;
+
+  const pressScale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation}deg` }, { scale: pressScale.value }],
+  }));
+  const onPressIn = () => {
+    pressScale.value = withSpring(0.88, { damping: 15, stiffness: 320, mass: 0.6 });
+  };
+  const onPressOut = () => {
+    pressScale.value = withSpring(1, { damping: 11, stiffness: 220, mass: 0.7 });
+  };
 
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={t(spec.labelKey)}
-      onPress={() => {}} // TODO(insights-mvp): only "home" is a real section this pass — see docs/sdd/insights-home-mvp.md
-      style={{
-        position: "absolute",
-        left: x - w / 2,
-        top: y - h / 2,
-        width: w,
-        height: h,
-        borderRadius: h / 2,
-        backgroundColor: bg,
-        alignItems: "center",
-        justifyContent: "center",
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      style={[
+        {
+          position: "absolute",
+          left: x - w / 2,
+          top: y - h / 2,
+          width: w,
+          height: h,
+          borderRadius,
+          backgroundColor: bg,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        animStyle,
+      ]}
     >
-      <Icon as={spec.icon} size={isPill ? 20 : spec.role === "side" ? 15 : 18} color={fg} />
-    </Pressable>
+      <Icon as={spec.icon} size={isPill ? 24 : spec.role === "side" ? 18 : 22} color={fg} strokeWidth={2.5} />
+    </AnimatedPressable>
   );
 }
 
@@ -215,50 +273,44 @@ export function InsightsWheel({
 
   return (
     <View style={{ width: SIZE, height: HEIGHT }}>
-      {/* Drop-shadow caster — the reference's blob has a `feGaussianBlur` drop shadow (dy≈3.8,
-          blur≈8, opacity 0.25 dark / 0.12 light) that reanimated-svg can't reproduce as an SVG
-          filter cross-platform. A transparent, roughly-blob-sized rounded View casting a modern
-          CSS boxShadow gets the same "lifted off the page" effect — critical in light mode, where
-          the blob's own fill is flat white and otherwise invisible against a white background. */}
-      <View
-        style={{
-          position: "absolute",
-          left: RING_CENTER_X - RING_RADIUS - 15,
-          top: RING_CENTER_Y - RING_RADIUS - 5,
-          width: (RING_RADIUS + 15) * 2,
-          height: (RING_RADIUS + 15) * 2,
-          borderRadius: RING_RADIUS + 15,
-          backgroundColor: "transparent",
-          boxShadow: isDark ? "0px 6px 14px rgba(0,0,0,0.35)" : "0px 6px 14px rgba(0,0,0,0.14)",
-        }}
-      />
-      <Svg width={SIZE} height={HEIGHT} viewBox={`0 0 ${REF_W} ${REF_H}`} style={{ position: "absolute" }}>
-        <Defs>
-          {/* Light: a soft lime top → white (the shadow keeps the white bottom from vanishing on a
-              white page). Dark: near-black teal → deeper teal (the reference's own blob gradient). */}
-          <LinearGradient id="wheelBlob" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={isDark ? "#00160D" : "#DCF6B0"} />
-            <Stop offset="0.534" stopColor={isDark ? "#012623" : "#FBFFF6"} />
-            <Stop offset="0.976" stopColor={isDark ? "#014640" : "#FFFFFF"} />
-          </LinearGradient>
-        </Defs>
-        <Path d={BLOB_PATH} fill="url(#wheelBlob)" />
-      </Svg>
+
+        <Svg width={SIZE} height={HEIGHT} viewBox={`0 0 ${REF_W} ${REF_H}`} style={{ position: "absolute" }}>
+          <Defs>
+            <Filter id="blobShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <FeDropShadow
+              dx="0"
+              dy={3.8 * SCALE}
+              stdDeviation={3.9 * SCALE}
+              floodColor="#000000"
+              floodOpacity={isDark ? 0.35 : 0.14}
+            />
+            </Filter>
+            {/* Light: a soft lime top → white (the shadow keeps the white bottom from vanishing on a
+                white page). Dark: near-black teal → deeper teal (the reference's own blob gradient). */}
+            <LinearGradient id="wheelBlob" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={isDark ? "#00160D" : "#FFFFF5"} />
+              <Stop offset="0.6" stopColor={isDark ? "#012623" : "#FBFFF6"} />
+              <Stop offset="0.95" stopColor={isDark ? "#014640" : "#DCF6B0"} />
+            </LinearGradient>
+          </Defs>
+          <Path d={BLOB_PATH} fill="url(#wheelBlob)" filter="url(#blobShadow)" />
+        </Svg>
 
       <InsightsWheelTexture
         cx={RING_CENTER_X}
         cy={RING_CENTER_Y}
-        radius={RING_RADIUS - RING_STROKE / 2 - 2}
+        radius={RING_RADIUS - 6}
         isDark={isDark}
       />
 
       <Svg width={SIZE} height={HEIGHT} style={{ position: "absolute" }}>
+        
         {/* Muted background track — always visible, both variants. */}
         <Path
-          d={arcPath(RING_CENTER_X, RING_CENTER_Y, RING_RADIUS, ARC_START_DEG, ARC_END_DEG)}
+          d={arcPath(RING_CENTER_X, RING_CENTER_Y, TRACK_RADIUS, ARC_START_DEG, ARC_END_DEG)}
           stroke="#E1E3EA"
           strokeOpacity={isDark ? 0.25 : 0.6}
-          strokeWidth={RING_STROKE}
+          strokeWidth={TRACK_STROKE}
           strokeLinecap="round"
           fill="none"
         />
@@ -266,33 +318,46 @@ export function InsightsWheel({
           bandArcs.map((band, i) => (
             <Path
               key={i}
-              d={arcPath(RING_CENTER_X, RING_CENTER_Y, RING_RADIUS, band.start, band.end)}
+              d={arcPath(RING_CENTER_X, RING_CENTER_Y, TRACK_RADIUS, band.start, band.end)}
               stroke={band.colorHex}
-              strokeWidth={RING_STROKE}
+              strokeWidth={TRACK_STROKE}
               strokeLinecap={i === 0 || i === bandArcs.length - 1 ? "round" : "butt"}
               fill="none"
             />
           ))}
         {variant === "populated" && (
-          <Path
-            d={trendPath(RING_RADIUS - RING_STROKE * 2)}
-            stroke="#3DBE64"
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            fill="none"
-          />
+          <>
+            <Defs>
+              <LinearGradient id="trendFillGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#3DBE64" stopOpacity="0.35" />
+                <Stop offset="1" stopColor="#3DBE64" stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
+            <Path
+              d={trendAreaPath(TREND_INNER_RADIUS)}
+              fill="url(#trendFillGrad)"
+            />
+            <Path
+              d={trendLinePath(TREND_INNER_RADIUS)}
+              stroke="#3DBE64"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </>
         )}
-        {/* Thin inner ring, fading from a lime top — the reference's exact gradient stroke. */}
+        {/* Thin inner ring, fading from a lime top — the reference's exact gradient stroke (~2.7dp scaled). */}
         <Defs>
           <LinearGradient id="innerRingGrad" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor="#C2FB7E" />
-            <Stop offset={isDark ? "0.707" : "0.76"} stopColor={isDark ? "#C2FB7E" : "#FFFFFF"} stopOpacity={isDark ? 0 : 1} />
+            <Stop offset={isDark ? "0.707" : "0.76"} stopColor={isDark ? "#C2FB7E" : "#FFFFFF"} stopOpacity={0} />
           </LinearGradient>
         </Defs>
         <Path
-          d={arcPath(RING_CENTER_X, RING_CENTER_Y, RING_RADIUS - RING_STROKE / 2 - 2, 0, 359.9)}
+          d={arcPath(RING_CENTER_X, RING_CENTER_Y, RING_RADIUS, 0, 359.9)}
           stroke="url(#innerRingGrad)"
-          strokeWidth={1.5}
+          strokeWidth={RING_STROKE}
           fill="none"
         />
       </Svg>
@@ -304,17 +369,21 @@ export function InsightsWheel({
         <View
           style={{
             position: "absolute",
-            left: 0,
-            right: 0,
-            top: RING_CENTER_Y - RING_RADIUS * 0.55,
+            left: RING_CENTER_X - RING_RADIUS,
+            right: RING_CENTER_X - RING_RADIUS,
+            top: RING_CENTER_Y - 55,
             alignItems: "center",
-            paddingHorizontal: 32,
             gap: 14,
           }}
         >
-          <Text className="text-center text-base text-text">{t("insights.wheel.emptyState")}</Text>
+          <Text
+            className="text-center text-text"
+            style={{ fontSize: 14, fontWeight: "700", width: 200, lineHeight: 18 }}
+          >
+            {t("insights.wheel.emptyState")}
+          </Text>
           <ScallopFab label={t("insights.wheel.addLabel")} onPress={onAddPress} />
-          <Text className="text-accent" style={{ fontSize: 15, fontWeight: "700", marginTop: -6 }}>
+          <Text className="text-text" style={{ fontSize: 15, fontWeight: "700", marginTop: -14 }}>
             {t("insights.wheel.addLabel")}
           </Text>
         </View>

@@ -18,19 +18,19 @@ export function SpacesCard() {
 
   return (
     <InsightsCardShell>
-      <View style={{ alignItems: "center", gap: 8 }}>
+      <View style={{ alignItems: "center", gap: 6 }}>
         <ScallopFab
           label={t("insights.spaces.emptyTitle")}
-          size={48}
+          size={52}
           onPress={() => {}} // TODO(insights-mvp): Add Space form (cuadra-mobile-forms)
         />
         <Text className="text-accent" style={{ fontSize: 15, fontWeight: "700" }}>
           {t("insights.spaces.emptyTitle")}
         </Text>
-        <Text className="text-center text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+        <Text className="text-center text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
           {t("insights.spaces.emptyDescription")}
         </Text>
-        <Image source={illustration} style={{ width: 190, height: 170 }} resizeMode="contain" />
+        <Image source={illustration} style={{ width: 160, height: 140 }} resizeMode="contain" />
       </View>
     </InsightsCardShell>
   );
