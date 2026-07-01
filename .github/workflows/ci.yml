@@ -64,10 +64,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # @cuadra/api-client's generated/ is gitignored (make openapi) — mobile typecheck imports
+      # it, so it has to exist before tsc runs. No DB/server needed: openapi_dump introspects
+      # the FastAPI app statically.
+      - run: cd apps/api && uv sync && uv run python -m src.openapi_dump > openapi.json
+      - run: pnpm --filter @cuadra/api-client generate
       - run: pnpm --filter @cuadra/mobile typecheck

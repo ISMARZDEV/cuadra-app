@@ -15,6 +15,12 @@ from src.main import app
 
 
 def test_dev_login_issues_usable_token(db_session: Session) -> None:
+    from seeds.identity_seed import seed_identity
+
+    # The controller assigns role_key="normal_user" on get-or-create — that FK target only
+    # exists once the identity reference data (roles/capabilities) has been seeded, which in
+    # a real deploy happens once at setup time, long before any user signs up.
+    seed_identity(db_session)
     app.dependency_overrides[get_session] = lambda: db_session
     try:
         client = TestClient(app)
