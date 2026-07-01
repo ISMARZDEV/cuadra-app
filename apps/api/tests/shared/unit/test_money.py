@@ -12,7 +12,13 @@ from decimal import Decimal
 
 import pytest
 
-from src.shared.money import Currency, CurrencyMismatchError, Money
+from src.shared.money import (
+    ACTIVE_CURRENCIES,
+    Currency,
+    CurrencyMismatchError,
+    Money,
+    primary_currency_for_market,
+)
 
 
 def test_currency_normalizes_uppercase() -> None:
@@ -111,5 +117,28 @@ def test_money_to_major_roundtrips() -> None:
 
 def test_money_format_uses_currency_decimals() -> None:
     assert Money(4550, Currency("USD")).format() == "USD 45.50"
+
+
+# ── Moneda principal por mercado (país→ISO4217) — §currency-preferences ────────
+def test_active_currencies_are_the_five_launched() -> None:
+    assert set(ACTIVE_CURRENCIES) == {"DOP", "USD", "COP", "BRL", "EUR"}
+
+
+@pytest.mark.parametrize(
+    ("market", "currency"),
+    [
+        ("DO", "DOP"), ("US", "USD"), ("CO", "COP"), ("BR", "BRL"),
+        ("ES", "EUR"), ("PT", "EUR"), ("FR", "EUR"), ("DE", "EUR"), ("IT", "EUR"),
+        ("do", "DOP"),  # normaliza case, como MarketId
+    ],
+)
+def test_primary_currency_for_market(market: str, currency: str) -> None:
+    assert primary_currency_for_market(market) == currency
+
+
+def test_primary_currency_for_unmapped_market_falls_back_to_usd() -> None:
+    # Mercado sin mapear aún (roadmap de mercados > monedas activas) → USD, neutral/universal,
+    # NUNCA forzar DOP a un usuario de otro país por default.
+    assert primary_currency_for_market("JP") == "USD"
     assert Money(500, Currency("JPY")).format() == "JPY 500"       # 0 decimales
     assert Money(1234, Currency("KWD")).format() == "KWD 1.234"    # 3 decimales

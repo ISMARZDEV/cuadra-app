@@ -20,8 +20,11 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
 
-    # Observabilidad (ADR 28)
+    # Observabilidad (ADR 28). LangSmith se auto-instrumenta por entorno: `langsmith_tracing`
+    # activa el trazado y la key se exporta a os.environ en el arranque (ver src/observability.py).
     langsmith_api_key: str = ""
+    langsmith_tracing: bool = False
+    langsmith_project: str = "cuadra-api"
     sentry_dsn: str = ""
 
     # Auth (§12·E E.2) — el JWT lo emite/valida el proveedor; aquí solo la verificación de firma

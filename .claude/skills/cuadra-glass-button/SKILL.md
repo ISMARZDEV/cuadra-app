@@ -4,10 +4,15 @@ description: >
   Cuadra's round liquid-glass symbol button (the chat +/mic/menu buttons): tinted iOS-26
   GlassView with a colorless depth gradient, theme-inverted brand colors, and a springy press.
   Encodes the hard gotchas — react-native-svg (NOT expo-linear-gradient) for the gradient,
-  no overflow:hidden under a scale transform, and never SCALE an ancestor of a native GlassView
-  (it distorts/saturates the liquid glass).
+  no overflow:hidden under a scale transform, never SCALE an ancestor of a native GlassView
+  (it distorts/saturates the liquid glass), a visible border needs a REAL RN style border (the
+  native GlassView ignores the borderWidth/borderColors/intensity props), glass only reads
+  when it OVERLAYS content (else it looks flat), and a GlassSurface must never auto-size to
+  growing content (it mis-measures on Fabric and the whole zone silently detaches/drifts).
   Trigger: Building or editing round glass/symbol buttons in apps/mobile (chat tool bar, headers),
-  or any GlassSurface-based control that needs a tint, a depth gradient, or a press animation.
+  or any GlassSurface-based control that needs a tint, a depth gradient, a press animation, a
+  visible border/stroke, the see-through "bleed" look, or that seems to drift/detach from where
+  it should be pinned when its content changes size.
 license: Apache-2.0
 metadata:
   author: aispace
@@ -26,6 +31,8 @@ metadata:
 - Debugging a glass control that shows **"Unable to get the view config … ExpoLinearGradient"**, a
   **clipping/"mask cut" artifact while pressing**, or a **saturated / distorted-texture flash** on a
   glass button while a parent animates (e.g. a drawer/sheet reveal).
+- Debugging a glass surface whose **border/stroke won't show on device** (gotcha 7) or that **looks
+  flat / "doesn't look like glass"** (gotcha 8).
 
 ## Critical Patterns (the gotchas — read these FIRST)
 
@@ -58,6 +65,39 @@ metadata:
    the `scale`, keep only `translateX`. If you truly need a depth/push-back cue while a glass surface is
    on screen, fake it with translate or opacity — not scale. (NB: the button's OWN brief press-scale on
    its glass is tolerable because it's <400ms; a sustained/ancestor scale is what reads as broken.)
+
+7. **A visible border/stroke needs a REAL RN border in `style` — the native GlassView IGNORES the
+   `borderWidth` prop, `borderColors`, and `intensity`.** Those three only drive the **fallback**
+   (BlurView + gradient-frame, Expo Go / Android / older iOS). On the iOS-26 dev-build `GlassSurface`
+   renders a native `GlassView`, which honors `style.borderWidth` / `borderColor` / `borderRadius`
+   (RN border) but NOT the prop-driven gradient frame nor `intensity`. **Symptom:** you bump
+   `borderWidth={5.5}` / pass `borderColors` / change `intensity` and **nothing changes on the
+   device**, yet a faint `style={{ borderWidth: 1 }}` DOES show. Fix = put the stroke in `style`
+   (`borderWidth` + `borderColor`), which works on BOTH paths. This is how the chat **card + dock**
+   contour was made visible (`chat-screen.tsx`, ~1.5px `rgba(255,255,255,0.45)` dark / `rgba(0,0,0,0.18)`
+   light). The added `borderColors` prop on `GlassSurface` only helps the fallback — it's a no-op on
+   device.
+
+8. **Glass only "reads" when there's CONTENT with contrast BEHIND it.** A `GlassView` is a backdrop
+   effect — over a flat dark surface it looks like nothing ("no se ve glass"). To get the bleed-through
+   look (e.g. the chat showing softly behind the input dock), the glass surface must **OVERLAY**
+   scrollable content (absolute, on top in z-order), not sit in-flow above a plain background. We made
+   the AISpace bottom zone (dock + input) an absolute overlay over the `ScrollView`, with a dynamic
+   `paddingBottom` reserving its measured height so the last message clears it. The dock body itself
+   uses NO own `GlassSurface` (stacking two native GlassViews over-darkens) — one glass layer per zone.
+
+9. **A `GlassSurface` must NEVER be the element that auto-sizes to CHANGING content.** If it WRAPS
+   content whose height grows (a collapsible panel opening inside it), the native `GlassView`
+   mis-measures on re-layout under Fabric — the whole zone silently drifts/detaches from wherever it
+   should be pinned (e.g. from the card's bottom edge), even with nothing else animating and the
+   keyboard closed. **Symptom:** a bottom-anchored glass zone "floats up" and leaves a gap the moment
+   its content grows. **Fix:** make the `GlassSurface` an `absoluteFill` BACKGROUND — style
+   `[StyleSheet.absoluteFill, {border/radius/...}]`, with only the tint overlay as its child — and
+   put the REAL content (whatever should drive the container's height) as a plain-RN **sibling**
+   AFTER it, not inside it. This is exactly how the chat card's own contour already worked
+   (`GlassSurface` = `StyleSheet.absoluteFill` background, a separate `View` sizes `cardClip`); the
+   bottom dock zone in gotcha 8 was fixed to follow the same pattern after it started drifting when
+   the collapsible dock (`ChatDock`) opened.
 
 ## Colors — theme-inverted brand pair
 

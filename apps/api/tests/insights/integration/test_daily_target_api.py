@@ -6,7 +6,7 @@ Reproduce un mes con presupuesto y gastos, y verifica que el endpoint deriva del
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 
 import jwt
 from fastapi.testclient import TestClient

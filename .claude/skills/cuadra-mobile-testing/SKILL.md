@@ -1,9 +1,10 @@
 ---
 name: cuadra-mobile-testing
 description: >
-  Testing conventions for the Cuadra Expo app — vitest + @testing-library/react-native:
-  what to test (components, hooks, screens), how to mock the @cuadra/api-client and the auth
-  store, and the RED-first discipline mirrored from the backend.
+  Testing conventions for the Cuadra Expo app — vitest + jsdom + react-native-web (alias) +
+  @testing-library/react (NOT react-native-testing-library): what to test (components, hooks,
+  screens), how to mock the @cuadra/api-client and native deps, the harness stubs (reanimated,
+  react-native-svg), and the RED-first discipline mirrored from the backend.
   Trigger: Writing or editing tests under apps/mobile, or adding a component/hook/screen that
   needs coverage.
 license: Apache-2.0
@@ -15,7 +16,13 @@ metadata:
 ## When to Use
 
 - Adding/changing a component, hook, screen, or form in `apps/mobile`.
-- Setting up the test harness (vitest + RNTL).
+- Setting up / debugging the test harness (vitest + jsdom + `react-native-web` + `@testing-library/react`).
+
+> **The harness is DOM-based, NOT react-native-testing-library.** `react-native` is aliased to
+> `react-native-web` and rendered in jsdom (`vitest.config.ts`). So: `@testing-library/react`,
+> `fireEvent.click`/`fireEvent.change` (NOT `.press`/`.changeText`), and queries by `getByText` /
+> `getByLabelText` (RN `accessibilityLabel` → aria-label) / `getByPlaceholderText`. Don't reach for
+> `@testing-library/react-native` — it isn't installed.
 
 ## Critical Patterns
 
@@ -39,26 +46,83 @@ metadata:
 **4. Money & i18n assertions.**
 - Assert formatted money strings exactly ("USD 45.50", "JPY 500") to catch exponent bugs. Assert copy by i18n key/value for the active language.
 
+**5. Harness gotchas (a component that won't even COLLECT is almost always this).**
+Native modules that can't pass vitest's transform must be **aliased to stubs** (`vitest.config.ts`)
+or **mocked** (`src/test/setup.ts`). If you add a component that pulls a new native dep, stub it —
+don't fight the error. Already handled:
+- **react-native-reanimated** → alias to `src/test/reanimated-stub.tsx` (its source fails the SSR
+  transform AND needs Metro-only globals `__DEV__`/`matchMedia`). Stub = `Animated.*` host
+  components + inert hooks (`useSharedValue` → `{value}`) + identity `withX` + chainable layout
+  builders (`ZoomIn`…).
+- **react-native-svg** → alias to `src/test/svg-stub.tsx`. Unlike the lucide icon-stub (renders
+  `null`), svg containers must **pass children through** (a View passthrough), or the subtree
+  disappears. **Stubs must be ESM `.tsx`, NOT `.cjs`** — a `.cjs` that `require()`s an aliased
+  module (react-native→react-native-web) throws "Unexpected token 'typeof'".
+- **GlassSurface fallback deps** → `vi.mock` as View passthroughs in `setup.ts`: `expo-glass-effect`
+  (GlassView, `isLiquidGlassAvailable: () => false`), `expo-blur`, `expo-linear-gradient`,
+  `react-native-squircle-view`, `@react-native-masked-view/masked-view`. Also `nativewind` and the
+  `@/components/ui/icon` wrapper are mocked.
+
+**6. Streaming / SSE hooks — mock the TRANSPORT module, not the network.**
+The chat hook (`use-chat`) streams over a transport module (`chat-stream.ts`, `expo/fetch`). Test
+the hook by `vi.mock("./chat-stream")` and driving its `onEvent` callback synchronously
+(`onEvent({type:"token",content})` → `done` → assert messages); mock `@cuadra/api-client` `resume`
+for the HITL confirm path. The transport itself (expo/fetch) is the untestable boundary in jsdom.
+
+**7. Stores, navigation & i18n — mock at the module boundary.**
+- **zustand store with a selector:** `vi.mock("./use-language-store", () => ({ useLanguageStore:
+  (sel) => sel(state) }))` where `state` is a mutable object you reset per test — drive selected
+  values + stub the actions (`setLang: vi.fn()`).
+- **expo-router:** `vi.mock("expo-router", () => ({ useRouter: () => ({ back: mockBack }) }))`.
+- **react-native-safe-area-context** in a screen test: passthrough `SafeAreaView` (`({children}) =>
+  children`) — no provider in jsdom.
+- **Force the language** for deterministic copy: `setLanguage("es")` in `beforeEach` (jsdom's device
+  locale resolves to en, so labels would otherwise be English).
+
+**8. Selectable rows / aria — `accessibilityState` does NOT map to `aria-*` in RN-Web for
+`role="button"`.** A "Coach"/"Roast" radio asserting `aria-checked` will read `null`. Fix at the
+SOURCE with the unified RN ARIA props (`role="radio"` + `aria-checked={selected}` + `aria-label`),
+which map on web AND native; then `getByLabelText(label).getAttribute("aria-checked")` works.
+
+**9. Reproduce a native-event RACE by firing a second event after the action, not with timers.**
+For "a late native callback undoes what our handler just did" bugs (e.g. iOS autocorrect
+committing AFTER a controlled `TextInput`'s `value` was cleared on Send), don't reach for
+`vi.useFakeTimers()`/`setTimeout` — jsdom has no such native event to wait for. Instead, fire the
+SAME event the native side would deliver, manually, right after the action: `fireEvent.click(send)`
+then a follow-up `fireEvent.change(input, {target:{value: staleCorrectedText}})`, and assert the
+guard swallowed it (field stays empty) while a genuinely different follow-up change is NOT
+swallowed. This tests the fix's actual DECISION logic (content-based guard), not a timing
+coincidence — see `chat-input-bar.test.tsx`.
+
+> **CI does NOT run vitest.** The mobile CI job runs `typecheck` only — broken tests won't fail CI.
+> Run `pnpm --filter @cuadra/mobile test` locally before committing.
+
 ## Code Examples
 
 ```tsx
-import { render, screen, fireEvent } from "@testing-library/react-native";
+// Component: DOM harness — fireEvent.change/click, queries by aria-label/placeholder.
+import { fireEvent, render, screen } from "@testing-library/react";
 import { vi } from "vitest";
-vi.mock("@cuadra/api-client", () => ({ chat: vi.fn(() => Promise.resolve({ data: { reply: "ok" } })) }));
 
-test("send calls the chat mutation", async () => {
-  render(<ChatScreen />, { wrapper: TestQueryProvider });
-  fireEvent.changeText(screen.getByPlaceholderText(/ask/i), "gasté 500 en gas");
-  fireEvent.press(screen.getByLabelText("send"));
-  // assert the mocked chat was called with the message
+test("typing reveals send; pressing it calls onSend", () => {
+  const onSend = vi.fn();
+  render(<ChatInputBar onSend={onSend} />);
+  fireEvent.change(screen.getByPlaceholderText(/.+/), { target: { value: "gasté 500 en gas" } });
+  fireEvent.click(screen.getByLabelText("Enviar")); // accessibilityLabel → aria-label
+  expect(onSend).toHaveBeenCalledWith("gasté 500 en gas");
 });
+
+// Streaming hook: mock the transport + the SDK; drive events through the mock.
+import { act, renderHook } from "@testing-library/react";
+vi.mock("./chat-stream", () => ({ streamChat: vi.fn() }));
+vi.mock("@cuadra/api-client", () => ({ resume: vi.fn() }));
 ```
 
 ## Commands
 
 ```bash
-pnpm --filter @cuadra/mobile add -D @testing-library/react-native @testing-library/jest-native
-pnpm --filter @cuadra/mobile test            # vitest run
+pnpm --filter @cuadra/mobile test        # vitest run (NOT gated by CI — run it yourself)
+pnpm --filter @cuadra/mobile typecheck   # the actual mobile CI gate
 ```
 
 ## Resources

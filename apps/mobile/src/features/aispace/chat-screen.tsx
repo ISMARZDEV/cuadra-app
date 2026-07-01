@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   PanResponder,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
-  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -31,14 +33,21 @@ import {
 } from "@/components/navigation/notched-glass";
 import { useOrbStore } from "@/store/orb-store";
 import { useDrawer } from "@/store/drawer-store";
+import { useChatExpandStore } from "@/store/chat-expand-store";
 
-import { AgentBubble } from "./components/agent-bubble";
+import { AgentMessage } from "./components/agent-message";
+import { ChatDock } from "./components/chat-dock";
+import { ChatEmptyState } from "./components/chat-empty-state";
 import { ChatHeader } from "./components/chat-header";
 import { ChatInputBar } from "./components/chat-input-bar";
 import { ChatSessionsSidebar } from "./components/chat-sessions-sidebar";
-import { ReceiptAttachment } from "./components/receipt-attachment";
+import { DockInteractionView } from "./components/dock-interaction-view";
+// (DockInteraction type comes from the hook's `interaction` — no local mapping needed.)
+import { QuickActions } from "./components/quick-actions";
+import { TypingIndicator } from "./components/typing-indicator";
 import { UserBubble } from "./components/user-bubble";
-import { CHAT_THREAD } from "./mock";
+import { ChatRole } from "./enums";
+import { useChat } from "./use-chat";
 
 // SVG gradient overlay — Figma "Siri AI" card: dark 85% at top → 18% at bottom.
 function CardGradient({ isDark }: { isDark: boolean }) {
@@ -57,6 +66,29 @@ function CardGradient({ isDark }: { isDark: boolean }) {
         </LinearGradient>
       </Defs>
       <Rect x="0" y="0" width="100%" height="100%" fill="url(#chatCardGrad)" />
+    </Svg>
+  );
+}
+
+// Scroll fade mask — sits IN FRONT of the ScrollView (unlike CardGradient, which is a background
+// wash behind it), so text scrolling up under the header FADES OUT instead of hard-clipping the
+// instant it crosses the ScrollView's top edge. Opaque (matches the card bg) right at the header,
+// transparent by the bottom of the band. pointerEvents none — purely visual, never blocks touches.
+function TopScrollFade({ isDark, top }: { isDark: boolean; top: number }) {
+  const color = isDark ? "#000000" : "#ffffff";
+  return (
+    <Svg
+      style={{ position: "absolute", top, left: 0, right: 0, height: 36 }}
+      preserveAspectRatio="none"
+      pointerEvents="none"
+    >
+      <Defs>
+        <LinearGradient id="topScrollFade" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={color} stopOpacity="0.95" />
+          <Stop offset="1" stopColor={color} stopOpacity="0" />
+        </LinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#topScrollFade)" />
     </Svg>
   );
 }
@@ -80,7 +112,36 @@ export function ChatScreen() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const orbActive = useOrbStore((s) => s.active);
+  // Expand hides the tab bar (cuadra-tab-bar.tsx) AND grows the card DOWN to reclaim that space —
+  // side margins/corner radius stay exactly as-is (a full-bleed "cover everything" take didn't
+  // read well, see git log; this is just "the card gets taller", not "the card becomes the screen").
+  const expanded = useChatExpandStore((s) => s.expanded);
+  const setExpanded = useChatExpandStore((s) => s.setExpanded);
   const scrollRef = useRef<ScrollView>(null);
+
+  // Live chat — streams turns from the agent (SSE) and stages HITL writes (§7.4).
+  const chat = useChat();
+
+  // ── Glass dock (collapsible panel above the input) ─────────────────────────
+  // Open manually to show quick-action suggestions; auto-opens when a HITL step (`pending`) arrives
+  // and auto-closes when it resolves (Figma flow). Fase 1 maps the single-step `pending` (summary +
+  // approve/cancel) onto the generic {prompt, options} the dock renders; Fase 2 will emit richer
+  // multi-step interactions over the same contract.
+  // The dock is open when a HITL step is active OR the user manually opened the quick-actions menu.
+  // Deriving it (instead of a synced state) means the dock never flashes the quick-actions during a
+  // flow transition — between steps the interaction is swapped, never nulled, so it stays open.
+  const [manualOpen, setManualOpen] = useState(false);
+  const dockOpen = !!chat.interaction || manualOpen;
+  useEffect(() => {
+    if (chat.interaction) setManualOpen(false); // a flow took over the dock → drop the manual menu
+  }, [chat.interaction]);
+
+  // Height of the bottom zone (dock + input). The chat scrolls BEHIND it (so the translucent glass
+  // has the chat to refract → it finally reads as glass, Figma); this height is reserved as the
+  // ScrollView's bottom padding so the last message clears the overlay.
+  const [bottomZoneH, setBottomZoneH] = useState(0);
+  // Header's measured height — positions the TopScrollFade right where it ends (below the buttons).
+  const [headerH, setHeaderH] = useState(0);
 
   // ── Sessions drawer ───────────────────────────────────────────────────────
   // Swipe the chat aside (or tap the header menu) to reveal the sessions sidebar. The chat card
@@ -139,6 +200,8 @@ export function ChatScreen() {
 
   // Reset the drawer when the screen unmounts so the tab bar never stays hidden.
   useEffect(() => () => setDrawerOpen(false), [setDrawerOpen]);
+  // Same for expand — otherwise leaving the tab while full-screen would leave the navbar hidden.
+  useEffect(() => () => setExpanded(false), [setExpanded]);
 
   // Keyboard ↔ drawer: if you were typing and open the drawer, hide the keyboard; when you come back
   // (close the drawer or pick a session) restore the keyboard so you continue where you left off.
@@ -172,6 +235,7 @@ export function ChatScreen() {
   // ── Animated values ───────────────────────────────────────────────────────
   const lift = useSharedValue(orbActive ? 1 : 0);
   const keyboardH = useSharedValue(0);
+  const expandLift = useSharedValue(expanded ? 1 : 0);
 
   // Natural ease-out curve — matches iOS system transitions (no bounce, no overshoot).
   const EASE_OUT = Easing.out(Easing.cubic);
@@ -183,12 +247,42 @@ export function ChatScreen() {
     });
   }, [orbActive, lift]);
 
+  // Same 300ms curve as the tab bar's own hide animation (cuadra-tab-bar.tsx) so the card growing
+  // down and the navbar sliding away read as ONE coordinated motion.
+  useEffect(() => {
+    expandLift.value = withTiming(expanded ? 1 : 0, { duration: 300, easing: EASE_OUT });
+  }, [expanded, expandLift]);
+
   // Keep the latest message pinned to the bottom (WhatsApp/ChatGPT behaviour). Called on every
   // content/viewport change AND when the keyboard finishes animating, so the freshest messages
   // are never hidden behind the input as the scroll viewport shrinks.
   const scrollToBottom = useCallback((animated = false) => {
     scrollRef.current?.scrollToEnd({ animated });
   }, []);
+
+  // Track whether the user is at (or near) the bottom. Auto-scroll only follows new content when
+  // they're already down there — so scrolling UP to read history isn't yanked back down (ChatGPT).
+  const nearBottomRef = useRef(true);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    nearBottomRef.current = distanceFromBottom < 80;
+  }, []);
+  const followIfAtBottom = useCallback(() => {
+    if (nearBottomRef.current) scrollToBottom(false);
+  }, [scrollToBottom]);
+
+  // Scroll viewport's own height (not content) — feeds ChatEmptyState's center→top dock entrance
+  // (it needs to know the available space to compute where "centered" is). Piggybacks on the
+  // ScrollView's existing onLayout (same event already used for followIfAtBottom).
+  const [scrollViewportH, setScrollViewportH] = useState(0);
+  const onScrollViewLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      setScrollViewportH(e.nativeEvent.layout.height);
+      followIfAtBottom();
+    },
+    [followIfAtBottom],
+  );
 
   useEffect(() => {
     const onShow = Keyboard.addListener(KB_SHOW, (e) => {
@@ -214,14 +308,36 @@ export function ChatScreen() {
     };
   }, [keyboardH, scrollToBottom]);
 
+  // Same idea as the keyboard above: the orb showing/hiding resizes the card (via `lift`'s
+  // marginBottom, 300ms) exactly like the keyboard does, so it needs the SAME "pin to bottom once
+  // the resize settles" treatment — otherwise the conversation stays scrolled wherever it was and
+  // the latest message ends up hidden behind the (now smaller or bigger) visible area.
+  useEffect(() => {
+    const id = setTimeout(() => scrollToBottom(true), 300 + 20);
+    return () => clearTimeout(id);
+  }, [orbActive, scrollToBottom]);
+
   // marginBottom = max(orb margin, keyboard height + gap).
   // When the keyboard is open it always wins; the gap keeps the card from sitting flush on the
   // keyboard (a small breathing space, like WhatsApp/iMessage).
+  //
+  // kbMargin is UNCONDITIONAL (keyboardH.value + KEYBOARD_GAP, no `> 0` branch) on purpose: a hard
+  // branch on `keyboardH.value > 0` snaps to a DIFFERENT value the instant the keyboard-close
+  // animation lands on exactly 0 — invisible in the normal path (orbMargin, ~100px+, always wins
+  // over that final ~12px either way) but a visible "bounce" in the expanded path below, where
+  // nothing else was there to mask it. Math.max() of two continuous values has no such snap.
   const KEYBOARD_GAP = 12;
+  const bottomInset = insets.bottom || 0;
   const shadowStyle = useAnimatedStyle(() => {
     const orbMargin = marginHidden + lift.value * (marginActive - marginHidden);
-    const kbMargin = keyboardH.value > 0 ? keyboardH.value + KEYBOARD_GAP : 0;
-    const closedMargin = kbMargin > orbMargin ? kbMargin : orbMargin;
+    const kbMargin = keyboardH.value + KEYBOARD_GAP;
+    const normalClosedMargin = Math.max(kbMargin, orbMargin);
+    // Expanded: the tab bar is hidden, so the card doesn't need to clear it anymore — grow down to
+    // just the keyboard gap, or (keyboard closed) the home-indicator inset so the input pill isn't
+    // flush against it.
+    const expandedClosedMargin = Math.max(kbMargin, bottomInset);
+    const e = expandLift.value;
+    const closedMargin = normalClosedMargin + (expandedClosedMargin - normalClosedMargin) * e;
     const p = drawerProgress.value;
     // As the drawer opens, the card slides right AND grows DOWN into the (now hidden) navbar's
     // space — same progress, so it's one coordinated motion, not navbar-then-card.
@@ -243,11 +359,12 @@ export function ChatScreen() {
   });
 
   return (
-    // Tap anywhere outside the input (empty card areas) dismisses the keyboard on any device.
-    // The ScrollView below uses keyboardShouldPersistTaps="handled" so taps on the message area
-    // dismiss too, while the input's own Pressable keeps focusing on a single tap.
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <SafeAreaView className="flex-1" edges={["top"]}>
+    // NOTE: do NOT wrap this tree in <TouchableWithoutFeedback> — it claims the touch responder on
+    // start and steals the ScrollView's vertical pan/bounce on the New Architecture. The keyboard is
+    // dismissed by the ScrollView itself (keyboardDismissMode="interactive" + keyboardShouldPersistTaps).
+    // Transparent → the root AppBackground gradient shows through, same as every other screen
+    // (Insights / News / Config). No screen-local background here.
+    <SafeAreaView className="flex-1" edges={["top"]}>
       {/* Sessions sidebar — sits behind the card on the left, revealed as the chat slides away. */}
       <Animated.View
         pointerEvents={drawerOpen ? "auto" : "none"}
@@ -262,7 +379,16 @@ export function ChatScreen() {
       <Animated.View style={[styles.shadowWrap, shadowStyle]} {...panResponder.panHandlers}>
         {/* Liquid Glass card with gradient border: iOS 26 → GlassView, older/Android → BlurView + SquircleView + gradient border. */}
         <GlassSurface
-          style={[StyleSheet.absoluteFill, { borderRadius: 48 }]}
+          // Real RN border (style) — the native GlassView honors it; its `borderWidth` PROP (the
+          // fallback gradient) is a no-op on the device. This is what makes the contour visible.
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: 48,
+              borderWidth: 1.5,
+              borderColor: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.18)",
+            },
+          ]}
           intensity={5}
           borderWidth={5.5}
         >
@@ -271,38 +397,143 @@ export function ChatScreen() {
             {/* Gradient overlay — sits above blur, below content. */}
             <CardGradient isDark={isDark} />
 
-            <ChatHeader />
+            <View onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
+              <ChatHeader />
+            </View>
             <ScrollView
               ref={scrollRef}
               className="flex-1"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 8 }}
+              // Side gutter for the whole conversation — THE single knob for how far the text sits
+              // from the card edges (each row adds its own px-3 = 12px on top, so total ≈ 22px).
+              // paddingBottom reserves the overlaid bottom zone so the last message clears the glass.
+              // paddingTop clears TopScrollFade's 36px band (below): without it, the very FIRST
+              // message sits right under the header with barely any gap, so the fade — meant to mask
+              // text scrolling OUT of view — visibly darkens it too, even though nothing has
+              // scrolled yet. Top-aligned always (messages AND the empty state) — same as a normal
+              // chat, no centering. flexGrow keeps the container at least viewport-tall (a no-op
+              // once there's enough content to scroll).
+              contentContainerStyle={{
+                paddingTop: 40,
+                paddingBottom: 8 + bottomZoneH,
+                paddingHorizontal: 6,
+                flexGrow: 1,
+              }}
+              // "handled": a tap on a HANDLER (the TextInput) focuses it in one tap and keeps the
+              // keyboard; a tap on a NON-handler (a message, empty space) dismisses the keyboard.
+              // This gives tap-outside-to-dismiss WITHOUT a TouchableWithoutFeedback wrapper (which
+              // steals the ScrollView's pan/bounce — cuadra-mobile §6). The multi-tap was the input's
+              // Pressable wrapper, removed there — not this prop.
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
               onScrollBeginDrag={Keyboard.dismiss}
-              // Pin to the latest message: on mount, when the viewport resizes (keyboard open/close),
-              // and whenever content grows (a message is sent) — so recent messages stay visible.
-              onLayout={() => scrollToBottom(false)}
-              onContentSizeChange={() => scrollToBottom(false)}
+              // Elastic rubber-band at top AND bottom even when the content fits (ChatGPT/iMessage).
+              alwaysBounceVertical
+              bounces
+              overScrollMode="always"
+              scrollEventThrottle={16}
+              onScroll={onScroll}
+              // Follow new content only when already at the bottom — never yank the user down while
+              // they've scrolled up to read history.
+              onLayout={onScrollViewLayout}
+              onContentSizeChange={followIfAtBottom}
             >
-              {CHAT_THREAD.map((item) => {
-                switch (item.kind) {
-                  case "agent":
-                    return (
-                      <AgentBubble
-                        key={item.id}
-                        title={item.title}
-                        segments={item.segments}
-                      />
-                    );
-                  case "user":
-                    return <UserBubble key={item.id} text={item.text} />;
-                  case "receipt":
-                    return <ReceiptAttachment key={item.id} />;
-                }
-              })}
+              {chat.messages.length === 0 ? (
+                <ChatEmptyState onSelect={chat.send} viewportHeight={scrollViewportH} />
+              ) : (
+                <>
+                  {chat.messages.map((m) =>
+                    m.role === ChatRole.User ? (
+                      <UserBubble key={m.id} text={m.text} />
+                    ) : (
+                      <AgentMessage key={m.id} text={m.text} href={m.href} />
+                    ),
+                  )}
+                  {/* Loading wave — three dots while a turn is in flight (no token/pending yet).
+                      Fades out and hands off to the first agent word as soon as output arrives. */}
+                  <TypingIndicator visible={chat.isThinking} />
+                </>
+              )}
             </ScrollView>
 
-            <ChatInputBar inputRef={chatInputRef} />
+            {/* AFTER the ScrollView in render order → draws IN FRONT of it, so scrolled text fades
+                into this instead of hard-clipping the instant it crosses the scroll viewport's top
+                edge (which sits right where the header ends). */}
+            <TopScrollFade isDark={isDark} top={headerH} />
+
+            {/* Bottom zone — OVERLAYS the scroll (absolute, on top in z-order) so the chat shows
+                through its translucent glass (Figma bleed-through). Its measured height feeds the
+                ScrollView's paddingBottom above. Glass dock = quick actions (manual) or the HITL
+                step (§7.4); the chevron is always visible; the body grows above the input. */}
+            <View
+              style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
+              onLayout={(e) => setBottomZoneH(e.nativeEvent.layout.height)}
+            >
+              {/* Glass + tint as a FILL BACKGROUND (absoluteFill) — NOT a wrapper around the content.
+                  Why: on Fabric a native GlassView that AUTO-SIZES to its children mis-anchors when
+                  that content grows (the dock opening) — it re-measures from the top, so the whole
+                  zone drifts up and the input detaches from the card's bottom edge (even with the
+                  keyboard closed). Same proven pattern as the card itself (GlassSurface = absoluteFill
+                  background; a plain-RN View sizes the container): the glass never drives the layout,
+                  so the input stays glued to `bottom: 0` and the dock body grows UPWARD above it.
+                  Contour: FLUSH square top (the divider that meets the chat) + bottom corners rounded
+                  to the card's 48 radius so the edge continues the card. */}
+              <GlassSurface
+                // Real RN border (native GlassView honors it). The TOP edge is the divider between
+                // the chat and the input zone (full width, above the chevron — como estaba arriba);
+                // bottom corners follow the card's 48 radius so the contour continues the card.
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    borderWidth: 0.5,
+                    borderColor: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.18)",
+                    borderBottomLeftRadius: 48,
+                    borderBottomRightRadius: 48,
+                    overflow: "hidden",
+                  },
+                ]}
+                intensity={50}
+                borderWidth={0}
+              >
+                {/* Chat-dock tint — black on dark, white on light. Explicit overlay (the native
+                    GlassView's own tintColor is too subtle and ignores opacity). Bump the opacity
+                    values to make it stronger. Sits BEHIND the dock + input content. */}
+                <View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { backgroundColor: isDark ? "#060808" : "#FFFFFF", opacity: isDark ? 0.4 : 0.6 },
+                  ]}
+                />
+              </GlassSurface>
+
+              {/* Content — pure RN flow; THIS is what measures the zone height and bottom-pins the
+                  input. The dock body mounts ABOVE the input and grows the zone upward; the input row
+                  stays welded to the card's bottom edge. Bottom corners are clipped by the card's own
+                  cardClip (radius 48), so no rounding is needed here. */}
+              <ChatDock
+                open={dockOpen}
+                onToggle={() => {
+                  if (!chat.interaction) setManualOpen((o) => !o); // chevron toggles the manual menu
+                }}
+              >
+                {chat.interaction ? (
+                  <DockInteractionView
+                    interaction={chat.interaction}
+                    onSelect={(opt) => chat.select(opt, chat.interaction?.prompt)}
+                  />
+                ) : manualOpen ? (
+                  <QuickActions
+                    onSelect={(prompt) => {
+                      chat.send(prompt);
+                      setManualOpen(false);
+                    }}
+                  />
+                ) : null}
+              </ChatDock>
+
+              <ChatInputBar inputRef={chatInputRef} onSend={chat.send} />
+            </View>
 
             {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}
             {drawerOpen ? (
@@ -324,8 +555,7 @@ export function ChatScreen() {
           {...edgePanResponder.panHandlers}
         />
       ) : null}
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
+    </SafeAreaView>
   );
 }
 
@@ -336,10 +566,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderRadius: 48,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.3,
-    shadowRadius: 25,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 6,
   },
   cardClip: {
     flex: 1,

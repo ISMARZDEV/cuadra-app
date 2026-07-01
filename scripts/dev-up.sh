@@ -41,15 +41,40 @@ echo "▶ Migraciones (alembic upgrade head)…"
 make -C "${ROOT}" migrate >/dev/null
 
 # ── 4. API atada a 0.0.0.0 (alcanzable desde la LAN) ───────────────────────────
-API_LOG="$(mktemp -t cuadra-api.XXXXXX.log)"
+# Libera el puerto PRIMERO: un API viejo zombi en :${API_PORT} haría fallar el bind del nuevo
+# ("address already in use") Y respondería el health de abajo, dejándonos servir desde el proceso
+# viejo sin enterarnos (p. ej. con observabilidad apagada).
+if lsof -nP -tiTCP:"${API_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "▶ Liberando el puerto ${API_PORT} (había un proceso previo)…"
+  lsof -nP -tiTCP:"${API_PORT}" -sTCP:LISTEN | xargs kill 2>/dev/null || true
+  sleep 1
+fi
+
+# `$$` = PID del script → nombre único por corrida y limpio, sin las rarezas de `mktemp` entre
+# macOS (BSD, exige las X al final) y Linux (GNU).
+API_LOG="${TMPDIR:-/tmp}/cuadra-api.$$.log"
 echo "▶ API en http://${IP}:${API_PORT}  (logs: ${API_LOG})"
 ( cd "${ROOT}/apps/api" && uv run uvicorn src.main:app --host 0.0.0.0 --port "${API_PORT}" ) >"${API_LOG}" 2>&1 &
 API_PID=$!
-cleanup() { echo; echo "▶ Cerrando API (pid ${API_PID})…"; kill "${API_PID}" 2>/dev/null || true; }
+# Al salir, mata el árbol y libera el puerto (kill al PID del subshell NO basta: uv/uvicorn son
+# nietos y sobreviven → de ahí los zombis). Limpiar por puerto garantiza que quede libre.
+cleanup() {
+  echo; echo "▶ Cerrando API…"
+  kill "${API_PID}" 2>/dev/null || true
+  lsof -nP -tiTCP:"${API_PORT}" -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
+}
 trap cleanup EXIT INT TERM
 
 echo -n "  esperando health"
 for _ in $(seq 1 30); do
+  # Si NUESTRO proceso murió (p. ej. bind fallido), aborta con el log — NO te fíes del health,
+  # que podría estar respondiéndolo otro proceso.
+  if ! kill -0 "${API_PID}" 2>/dev/null; then
+    echo " ✖"
+    echo "✖ La API murió al arrancar. Últimas líneas del log:" >&2
+    tail -n 20 "${API_LOG}" >&2
+    exit 1
+  fi
   if curl -fsS -m 2 "http://${IP}:${API_PORT}/v1/health" >/dev/null 2>&1; then echo " ✓"; break; fi
   echo -n "."; sleep 1
 done

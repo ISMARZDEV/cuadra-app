@@ -6,7 +6,7 @@ idioma. Acotado a es/en/pt (lingua es preciso en texto corto dentro de un set ch
 """
 from __future__ import annotations
 
-from src.shared.lang import language_name, resolve_language
+from src.shared.lang import client_language, language_name, resolve_language
 
 
 def test_matches_client_locale_when_user_writes_same_language() -> None:
@@ -34,6 +34,15 @@ def test_no_client_locale_uses_detection() -> None:
 def test_empty_or_unknown_falls_back() -> None:
     assert resolve_language("", "en") == "en"          # sin texto → locale cliente
     assert resolve_language("123 456", None) == "es"   # sin señal → default es
+
+
+def test_client_language_ignores_message_content() -> None:
+    # No message-detection override here — deterministic UI chrome (confirm/cancel, workflow
+    # prompts) must follow the app's CHOSEN language exactly, never what the user happened to type.
+    assert client_language("en") == "en"
+    assert client_language("pt-BR") == "pt"
+    assert client_language(None) == "es"          # no locale sent → default
+    assert client_language("fr") == "es"           # unsupported → default
 
 
 def test_language_name_for_prompt() -> None:
