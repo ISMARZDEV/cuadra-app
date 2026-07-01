@@ -84,6 +84,16 @@ for the HITL confirm path. The transport itself (expo/fetch) is the untestable b
 SOURCE with the unified RN ARIA props (`role="radio"` + `aria-checked={selected}` + `aria-label`),
 which map on web AND native; then `getByLabelText(label).getAttribute("aria-checked")` works.
 
+**9. Reproduce a native-event RACE by firing a second event after the action, not with timers.**
+For "a late native callback undoes what our handler just did" bugs (e.g. iOS autocorrect
+committing AFTER a controlled `TextInput`'s `value` was cleared on Send), don't reach for
+`vi.useFakeTimers()`/`setTimeout` — jsdom has no such native event to wait for. Instead, fire the
+SAME event the native side would deliver, manually, right after the action: `fireEvent.click(send)`
+then a follow-up `fireEvent.change(input, {target:{value: staleCorrectedText}})`, and assert the
+guard swallowed it (field stays empty) while a genuinely different follow-up change is NOT
+swallowed. This tests the fix's actual DECISION logic (content-based guard), not a timing
+coincidence — see `chat-input-bar.test.tsx`.
+
 > **CI does NOT run vitest.** The mobile CI job runs `typecheck` only — broken tests won't fail CI.
 > Run `pnpm --filter @cuadra/mobile test` locally before committing.
 

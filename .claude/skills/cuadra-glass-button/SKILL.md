@@ -6,11 +6,13 @@ description: >
   Encodes the hard gotchas — react-native-svg (NOT expo-linear-gradient) for the gradient,
   no overflow:hidden under a scale transform, never SCALE an ancestor of a native GlassView
   (it distorts/saturates the liquid glass), a visible border needs a REAL RN style border (the
-  native GlassView ignores the borderWidth/borderColors/intensity props), and glass only reads
-  when it OVERLAYS content (else it looks flat).
+  native GlassView ignores the borderWidth/borderColors/intensity props), glass only reads
+  when it OVERLAYS content (else it looks flat), and a GlassSurface must never auto-size to
+  growing content (it mis-measures on Fabric and the whole zone silently detaches/drifts).
   Trigger: Building or editing round glass/symbol buttons in apps/mobile (chat tool bar, headers),
   or any GlassSurface-based control that needs a tint, a depth gradient, a press animation, a
-  visible border/stroke, or the see-through "bleed" look.
+  visible border/stroke, the see-through "bleed" look, or that seems to drift/detach from where
+  it should be pinned when its content changes size.
 license: Apache-2.0
 metadata:
   author: aispace
@@ -83,6 +85,19 @@ metadata:
    the AISpace bottom zone (dock + input) an absolute overlay over the `ScrollView`, with a dynamic
    `paddingBottom` reserving its measured height so the last message clears it. The dock body itself
    uses NO own `GlassSurface` (stacking two native GlassViews over-darkens) — one glass layer per zone.
+
+9. **A `GlassSurface` must NEVER be the element that auto-sizes to CHANGING content.** If it WRAPS
+   content whose height grows (a collapsible panel opening inside it), the native `GlassView`
+   mis-measures on re-layout under Fabric — the whole zone silently drifts/detaches from wherever it
+   should be pinned (e.g. from the card's bottom edge), even with nothing else animating and the
+   keyboard closed. **Symptom:** a bottom-anchored glass zone "floats up" and leaves a gap the moment
+   its content grows. **Fix:** make the `GlassSurface` an `absoluteFill` BACKGROUND — style
+   `[StyleSheet.absoluteFill, {border/radius/...}]`, with only the tint overlay as its child — and
+   put the REAL content (whatever should drive the container's height) as a plain-RN **sibling**
+   AFTER it, not inside it. This is exactly how the chat card's own contour already worked
+   (`GlassSurface` = `StyleSheet.absoluteFill` background, a separate `View` sizes `cardClip`); the
+   bottom dock zone in gotcha 8 was fixed to follow the same pattern after it started drifting when
+   the collapsible dock (`ChatDock`) opened.
 
 ## Colors — theme-inverted brand pair
 

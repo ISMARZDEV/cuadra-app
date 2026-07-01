@@ -87,6 +87,12 @@ metadata:
   `_layout` calls its `restore()` on mount. **Reactivity caveat:** `t()` reads a module global —
   the screen that changes language re-renders (subscribes to the store) and the chat is correct
   (reads at send), but other static copy updates only on remount/navigation. Acceptable for MVP.
+- **Backend splits "workflow chrome" vs. "free reply" language** (`ui_language` vs `language` in
+  `AispaceState`) — the HITL dock's confirm/cancel/prompts ALWAYS follow the app's chosen locale
+  you send (never overridden by what the user typed that turn), while the agent's own free-text
+  reply can still adapt to a clearly-different message language. Mobile doesn't need to do
+  anything extra for this (still just send `getLanguage()`) — noted here so it's clear why the
+  dock's buttons never "flip" language mid-conversation the way a reply might.
 
 **6. Native / New-Architecture (Fabric) gotchas — learned the hard way.**
 - **Reanimated `entering`/layout animations are UNRELIABLE here** (don't fire on the New
@@ -103,10 +109,26 @@ metadata:
   `justifyContent:flex-end` — that's WhatsApp, leaves a gap above) · **smart auto-follow**: track
   near-bottom in `onScroll` and only `scrollToEnd` on new/streaming content when already at the
   bottom, so scrolling up to read history isn't yanked down.
-- **Selectable rows (radio):** RN-Web does NOT map `accessibilityState={{selected/checked}}` →
-  `aria-*` for `role="button"`. Use the unified RN ARIA props directly — `role="radio"` +
-  `aria-checked={selected}` + `aria-label` — which map on BOTH native and web (and are testable).
-  Shared `SelectableRow` powers the personality + language pickers.
+- **Selectable rows (radio/checkbox):** RN-Web does NOT map `accessibilityState={{selected/checked}}`
+  → `aria-*` for `role="button"`. Use the unified RN ARIA props directly — `role="radio"` (or
+  `"checkbox"` for multi-select) + `aria-checked={selected}` + `aria-label` — which map on BOTH
+  native and web (and are testable). Shared `SelectableRow` (`features/settings/components/`)
+  powers personality/language (radio) and currency prefs (checkbox, capped selection) — pass
+  `role`/`disabled`, don't fork the component.
+- **A native `GlassView`/`GlassSurface` must never auto-size to CHANGING content.** If a glass
+  surface WRAPS content whose height grows (e.g. a collapsible panel opening), Fabric mis-measures
+  on re-layout — the whole zone drifts/detaches from where it should be pinned, even with nothing
+  else animating. Fix: make the glass an `absoluteFill` BACKGROUND (only the tint/border live
+  inside it) and let a plain sibling `View` in normal RN flow size the container and anchor
+  edges — same pattern the chat card and its bottom dock both use.
+- **A multiline `TextInput`'s controlled `value` can "resurrect" after you clear it.** On iOS, a
+  pending autocorrect/predictive-text candidate can commit on a NATIVE event that fires AFTER your
+  send handler already ran `setValue("")` — a synchronous clear (state or `.clear()`) in that same
+  handler doesn't reliably win the race, so the old (now autocorrected) text briefly reappears.
+  Fix by intercepting the specific late event instead of racing it: remember the (lowercased) text
+  you just sent, and in `onChangeText`, if the incoming text matches it case-insensitively, treat
+  it as that echo and clear again — any OTHER incoming text clears the guard so real typing right
+  after Send is never eaten (`features/aispace/components/chat-input-bar.tsx`).
 
 **7. Sub-screens inside a tab (Config → detail, back via arrow OR the tab).**
 - Turn the tab leaf into a NESTED STACK: `app/(tabs)/config/{_layout.tsx (Stack, headerShown:false),
@@ -117,6 +139,15 @@ metadata:
   a route makes `router.push("/config/...")` fail `typecheck` until regenerated. Regenerate by briefly
   running Metro (`npx expo start`, wait for the path to appear in the d.ts, kill it); CI regenerates
   on build.
+- **Every screen in a nested Stack MUST self-paint `<AppBackground/>`, not rely on the root layer
+  showing through.** The root `contentStyle:{backgroundColor:"transparent"}` (so the ONE
+  `<AppBackground/>` mounted in `theme-provider.tsx` shows through everywhere) looks fine at rest
+  but breaks push/pop: `react-native-screens`' native stack never properly hides a transparent
+  OUTGOING screen mid-transition, so its live content visibly ghosts/overlaps under the incoming
+  screen (documented, unresolved upstream — expo/expo#33040). Add `<AppBackground/>` as the first
+  child inside every new sub-screen's root `SafeAreaView` (see `features/settings/*-screen.tsx` for
+  the 4 Config sub-screens that need it) — visually identical at rest, but each screen is now
+  self-contained during the slide so nothing bleeds through.
 
 ## Code Examples
 
