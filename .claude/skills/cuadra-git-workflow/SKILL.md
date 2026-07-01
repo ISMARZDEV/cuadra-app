@@ -111,6 +111,24 @@ Do NOT do this proactively — wait for an explicit instruction ("merge a main",
    origin developer`. Do NOT assume `git merge --ff-only main` into `developer` will work after a
    rebase-merge release — it won't (diverged history, same reason as above); a plain `git pull` on
    each branch is enough, they don't need to be literally fast-forwardable from one another.
+6. **Realign `developer` onto `main` right after EVERY release, regardless of merge strategy.**
+   Squash has the SAME divergence problem as rebase — it also creates a new commit hash on `main`
+   that doesn't match `developer`'s. Left unfixed across releases, this compounds: eventually
+   GitHub computes an absurd PR diff for the NEXT `developer → main` PR (every historical commit,
+   even ones long since released) and may not even trigger CI on it — happened for real (PR #8,
+   closed instead of merged). The fix, safe because `main`'s tree and `developer`'s tree are
+   content-identical right after a release (verify with `git diff origin/developer HEAD --stat` —
+   must be EMPTY before pushing):
+   ```bash
+   git fetch origin main developer
+   git checkout -B developer origin/main
+   # cherry-pick anything that landed on developer but not yet in this release (rare — usually none)
+   git diff origin/developer HEAD --stat   # MUST be empty — if not, STOP, don't force-push
+   git push --force-with-lease origin developer
+   ```
+   `--force-with-lease` (not plain `--force`) — it refuses if `origin/developer` moved since your
+   last fetch, so it can't silently clobber someone else's push. This rewrites a SHARED branch's
+   history, so treat it with the same care as any other force-push: confirm with the user first.
 
 ## CI reference (`.github/workflows/ci.yml`)
 
