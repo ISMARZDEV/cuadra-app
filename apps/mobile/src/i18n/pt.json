@@ -33,6 +33,7 @@
   "chat.inputPlaceholder": "Pergunte-me algo...",
   "chat.a11y.menu": "Abrir menu",
   "chat.a11y.expand": "Expandir",
+  "chat.a11y.collapse": "Minimizar",
   "chat.a11y.send": "Enviar",
   "chat.a11y.attach": "Anexar",
   "chat.a11y.voice": "Mensagem de voz",
@@ -44,5 +45,15 @@
   "chat.quickActions.shoppingList": "Me ajuda com a lista de compras 🛒🛍️",
   "chat.quickActions.availableMoney": "Quanto dinheiro tenho disponível 💸?",
   "chat.confirm.approve": "Confirmar",
-  "chat.confirm.cancel": "Cancelar"
+  "chat.confirm.cancel": "Cancelar",
+  "chat.emptyState.greetingLine1": "Hey, What's up",
+  "chat.emptyState.subtitle": "Vamos organizar suas finanças pessoais",
+  "chat.emptyState.income.label": "Registrar\nreceita",
+  "chat.emptyState.income.prompt": "Quero registrar uma receita",
+  "chat.emptyState.expense.label": "Registrar\ngasto",
+  "chat.emptyState.expense.prompt": "Quero registrar um gasto",
+  "chat.emptyState.savings.label": "Registrar\npoupança",
+  "chat.emptyState.savings.prompt": "Quero registrar uma poupança",
+  "chat.emptyState.balance.label": "Mostrar\nsaldo",
+  "chat.emptyState.balance.prompt": "Mostre meu saldo"
 }

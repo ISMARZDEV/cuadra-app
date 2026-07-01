@@ -86,6 +86,15 @@ export interface QuickActionsProps {
   onSelect: (prompt: string) => void;
 }
 
+export interface ChatEmptyStateProps {
+  // Tapping a widget sends its canned prompt to the chat, same contract as QuickActions — for now
+  // just a plain message (see chat-empty-state.tsx TODOs for the real catalog + flow wiring).
+  onSelect: (prompt: string) => void;
+  // The scroll viewport's measured height (chat-screen.tsx) — drives the center→top dock entrance.
+  // Omit/0 to skip the dock animation (renders in place).
+  viewportHeight?: number;
+}
+
 export interface DockInteractionViewProps {
   interaction: DockInteraction;
   // Reports the whole option (not just its value): the hook needs `label`/`icon` to echo the choice

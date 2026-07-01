@@ -33,6 +33,7 @@
   "chat.inputPlaceholder": "Ask me something...",
   "chat.a11y.menu": "Open menu",
   "chat.a11y.expand": "Expand",
+  "chat.a11y.collapse": "Minimize",
   "chat.a11y.send": "Send",
   "chat.a11y.attach": "Attach",
   "chat.a11y.voice": "Voice message",
@@ -44,5 +45,15 @@
   "chat.quickActions.shoppingList": "Help me with the shopping list 🛒🛍️",
   "chat.quickActions.availableMoney": "How much money do I have available 💸?",
   "chat.confirm.approve": "Confirm",
-  "chat.confirm.cancel": "Cancel"
+  "chat.confirm.cancel": "Cancel",
+  "chat.emptyState.greetingLine1": "Hey, What's up",
+  "chat.emptyState.subtitle": "Let's square up your personal finances",
+  "chat.emptyState.income.label": "Log\nincome",
+  "chat.emptyState.income.prompt": "I want to log an income",
+  "chat.emptyState.expense.label": "Log\nexpense",
+  "chat.emptyState.expense.prompt": "I want to log an expense",
+  "chat.emptyState.savings.label": "Log\nsavings",
+  "chat.emptyState.savings.prompt": "I want to log savings",
+  "chat.emptyState.balance.label": "Show\nbalance",
+  "chat.emptyState.balance.prompt": "Show me my balance"
 }
