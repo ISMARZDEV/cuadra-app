@@ -1,5 +1,4 @@
 import { Pressable, Text, View } from "react-native";
-import { useColorScheme } from "nativewind";
 
 import { t } from "@/i18n";
 
@@ -15,13 +14,12 @@ const QUICK_ACTION_KEYS = [
   "chat.quickActions.availableMoney",
 ] as const;
 
-// Suggestion chips. Theme-inverted like the glass buttons: dark → lime pill + dark-green text;
-// light → dark-green pill + lime text, so the chip never washes out against the background.
+// Suggestion chips — SAME fixed palette in BOTH themes (not theme-inverted like the glass
+// buttons): the pale-lime/dark-green pair from the HITL dock's "secondary" pills, light values
+// (dock-interaction-view's pillColors, e.g. Cancel / "sin categoría").
 export function QuickActions({ onSelect }: QuickActionsProps) {
-  const { colorScheme } = useColorScheme();
-  const isDark = colorScheme === "dark";
-  const pillBg = isDark ? "#C2FB7E" : "#034842";
-  const pillText = isDark ? "#04392B" : "#C2FB7E";
+  const pillBg = "#D9F5C2";
+  const pillText = "#034842";
 
   return (
     // Two per row (Img 25): each pill ~half width, centered, smaller text that shrinks to fit.
@@ -43,7 +41,7 @@ export function QuickActions({ onSelect }: QuickActionsProps) {
               alignItems: "center",
             }}
           >
-            <Text style={{ color: pillText, fontSize: 14, fontWeight: "700", textAlign: "center" }}>
+            <Text style={{ color: pillText, fontSize: 13, fontWeight: "700", textAlign: "center" }}>
               {label}
             </Text>
           </Pressable>
