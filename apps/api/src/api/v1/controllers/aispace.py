@@ -10,16 +10,26 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
-from src.api.composition_root import get_aispace_graph, get_preference_repository
+from src.api.composition_root import (
+    get_aispace_graph,
+    get_preference_repository,
+    get_user_repository,
+)
 from src.api.extensions.security import get_current_user_id
 from src.api.problem_detail import ProblemDetailDto
 from src.contexts.aispace.orchestration.sse import chat_result, stream_events
+from src.contexts.aispace.preferences.currency_options import (
+    CurrencyOptions,
+    resolve_currency_options,
+)
 from src.contexts.aispace.preferences.enums import Personality
 from src.contexts.aispace.preferences.ports import PreferenceRepository
+from src.contexts.identity.domain.ports import UserRepository
 from src.shared.ids import new_id
 from src.shared.lang import client_language, resolve_language
+from src.shared.money import ACTIVE_CURRENCIES
 
 router = APIRouter(prefix="/aispace", tags=["aispace"])
 
@@ -42,6 +52,28 @@ class PersonalityResponse(BaseModel):
 
 class UpdatePersonalityRequest(BaseModel):
     personality: Personality       # set cerrado → un valor inválido da 422 automáticamente
+
+
+class CurrencyPreferencesResponse(BaseModel):
+    primary: str        # derivada de identity.home_market — no editable aquí
+    extra: list[str]    # hasta 3, elegidas por el usuario
+    all: list[str]       # primary + extra sin duplicados, para el picker del flow de gastos
+
+    @classmethod
+    def from_options(cls, opts: CurrencyOptions) -> "CurrencyPreferencesResponse":
+        return cls(primary=opts.primary, extra=opts.extra, all=opts.all)
+
+
+class UpdateCurrencyPreferencesRequest(BaseModel):
+    extra: list[str] = Field(max_length=3)   # más de 3 → 422 automático (igual que Personality)
+
+    @field_validator("extra")
+    @classmethod
+    def _only_active_currencies(cls, codes: list[str]) -> list[str]:
+        for code in codes:
+            if code.strip().upper() not in ACTIVE_CURRENCIES:
+                raise ValueError(f"moneda no activa: {code!r}")
+        return codes
 
 
 class ChatResponse(BaseModel):
@@ -172,3 +204,44 @@ def put_preferences(
 ) -> PersonalityResponse:
     prefs.set_personality(user_id, body.personality)
     return PersonalityResponse(personality=body.personality)
+
+
+def _currency_options(user_id: str, users: UserRepository, prefs: PreferenceRepository) -> CurrencyOptions:
+    user = users.get_by_id(user_id)
+    home_market = str(user.home_market) if user else ""  # sin user → cae a USD (§currency-preferences)
+    return resolve_currency_options(
+        home_market=home_market, extra_currencies=prefs.get_extra_currencies(user_id)
+    )
+
+
+@router.get(
+    "/preferences/currencies",
+    response_model=CurrencyPreferencesResponse,
+    summary="Monedas del usuario: principal (de su mercado) + hasta 3 extra elegidas",
+    responses={401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"}},
+)
+def get_currency_preferences(
+    user_id: str = Depends(get_current_user_id),
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+    users: UserRepository = Depends(get_user_repository),
+) -> CurrencyPreferencesResponse:
+    return CurrencyPreferencesResponse.from_options(_currency_options(user_id, users, prefs))
+
+
+@router.put(
+    "/preferences/currencies",
+    response_model=CurrencyPreferencesResponse,
+    summary="Elegir hasta 3 monedas adicionales (la principal se deriva del mercado, no se edita aquí)",
+    responses={
+        401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"},
+        422: {"model": ProblemDetailDto, "description": "Más de 3 monedas, o una moneda no activa"},
+    },
+)
+def put_currency_preferences(
+    body: UpdateCurrencyPreferencesRequest,
+    user_id: str = Depends(get_current_user_id),
+    prefs: PreferenceRepository = Depends(get_preference_repository),
+    users: UserRepository = Depends(get_user_repository),
+) -> CurrencyPreferencesResponse:
+    prefs.set_extra_currencies(user_id, body.extra)
+    return CurrencyPreferencesResponse.from_options(_currency_options(user_id, users, prefs))

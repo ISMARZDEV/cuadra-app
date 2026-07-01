@@ -78,6 +78,12 @@ def get_preference_repository(
     return SqlPreferenceRepository(session)
 
 
+def get_user_repository(session: Session = Depends(get_session)) -> SqlUserRepository:
+    """Lectura directa de identity (sin el resto de `GetMe`) — usada por aispace para derivar la
+    moneda principal de `home_market` (§currency-preferences)."""
+    return SqlUserRepository(session)
+
+
 def get_record_transaction(
     session: Session = Depends(get_session),
 ) -> RecordTransaction:

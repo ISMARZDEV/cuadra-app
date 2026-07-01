@@ -23,6 +23,24 @@ _MINOR_EXPONENT: dict[str, int] = {
     "KWD": 3, "BHD": 3, "OMR": 3, "TND": 3, "JOD": 3, "LYD": 3, "IQD": 3,
 }
 
+# Monedas ACTIVAS del MVP — las que el usuario puede tener como principal o elegir como
+# adicional (§currency-preferences). Escalable: agregar aquí + a MARKET_CURRENCY habilita
+# un mercado nuevo sin tocar el resto del sistema (Currency ya acepta cualquier ISO 4217).
+ACTIVE_CURRENCIES: tuple[str, ...] = ("DOP", "USD", "COP", "BRL", "EUR")
+
+# Mercado (ISO 3166-1 alpha-2, identity.MarketId) → moneda PRINCIPAL del usuario. Solo cubre
+# los mercados con moneda activa hoy; roadmap de mercados > roadmap de monedas activas.
+_MARKET_CURRENCY: dict[str, str] = {
+    "DO": "DOP", "US": "USD", "CO": "COP", "BR": "BRL",
+    "ES": "EUR", "PT": "EUR", "FR": "EUR", "DE": "EUR", "IT": "EUR",
+}
+
+
+def primary_currency_for_market(market_id: str) -> str:
+    """Moneda principal derivada del `home_market` del usuario (identity). Un mercado sin
+    mapear todavía cae a USD — NUNCA a DOP, que sesgaría a un usuario no-dominicano."""
+    return _MARKET_CURRENCY.get(market_id.strip().upper(), "USD")
+
 
 class CurrencyMismatchError(ValueError):
     """Intentar operar dos `Money` de monedas distintas (no se mezclan · §12·B)."""

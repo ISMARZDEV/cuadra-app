@@ -66,3 +66,75 @@ def test_put_invalid_personality_is_422(db_session: Session) -> None:
 
 def test_preferences_without_token_is_401() -> None:
     assert TestClient(app).get("/v1/aispace/preferences").status_code == 401
+
+
+# ── Monedas — principal (derivada de identity.home_market) + hasta 3 extra ─────────────────
+def _seed_user(db_session: Session, *, home_market: str = "DO") -> str:
+    """Crea el user en `identity.user` (currency_options lee `home_market` de ahí)."""
+    from src.contexts.identity.infrastructure.models import UserModel
+
+    user = UserModel(
+        email=None, name="Test", locale="es-DO",
+        home_market_id=home_market, current_market_id=home_market,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return str(user.id)
+
+
+def test_get_currencies_returns_primary_from_home_market_and_no_extra(db_session: Session) -> None:
+    uid = _seed_user(db_session, home_market="US")
+    try:
+        r = _client(db_session).get("/v1/aispace/preferences/currencies", headers=_bearer(uid))
+        assert r.status_code == 200, r.text
+        assert r.json() == {"primary": "USD", "extra": [], "all": ["USD"]}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_put_currencies_updates_extra_and_get_reflects(db_session: Session) -> None:
+    uid = _seed_user(db_session, home_market="DO")
+    try:
+        client = _client(db_session)
+        put = client.put(
+            "/v1/aispace/preferences/currencies",
+            json={"extra": ["USD", "EUR"]},
+            headers=_bearer(uid),
+        )
+        assert put.status_code == 200, put.text
+        assert put.json() == {"primary": "DOP", "extra": ["USD", "EUR"], "all": ["DOP", "USD", "EUR"]}
+
+        got = client.get("/v1/aispace/preferences/currencies", headers=_bearer(uid))
+        assert got.json()["extra"] == ["USD", "EUR"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_put_currencies_more_than_three_extra_is_422(db_session: Session) -> None:
+    uid = _seed_user(db_session)
+    try:
+        r = _client(db_session).put(
+            "/v1/aispace/preferences/currencies",
+            json={"extra": ["USD", "EUR", "COP", "BRL"]},
+            headers=_bearer(uid),
+        )
+        assert r.status_code == 422, r.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_put_currencies_inactive_currency_is_422(db_session: Session) -> None:
+    uid = _seed_user(db_session)
+    try:
+        r = _client(db_session).put(
+            "/v1/aispace/preferences/currencies",
+            json={"extra": ["JPY"]},
+            headers=_bearer(uid),
+        )
+        assert r.status_code == 422, r.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_currencies_without_token_is_401() -> None:
+    assert TestClient(app).get("/v1/aispace/preferences/currencies").status_code == 401
