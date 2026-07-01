@@ -16,6 +16,8 @@ class AispaceState(MessagesState):
     ui_language: str                     # idioma de strings DETERMINISTAS del workflow (locale de
                                           # la app, sin override por mensaje) — i18n
     personality: str                     # tono del GeneralAgent (neutral/coach/roast) — pref. aispace
+    currency_options: dict | None        # {"primary","extra","all"} — resolve_currency_options(),
+                                          # leído por el step currency_pick del expense flow
     intent: str
     pending_action: dict | None          # acción a confirmar (HITL §7.4)
     # ui_actions: tarjetas/links que el flow emite ESTE turno (p. ej. "Ver en Insight"). OVERWRITE

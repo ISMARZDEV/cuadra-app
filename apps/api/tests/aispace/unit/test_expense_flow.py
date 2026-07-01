@@ -31,6 +31,25 @@ class FakeWriteAgent:
         raise AssertionError("el flow commitea vía commit_action, no el agente")
 
 
+class FakeWriteAgentNoCurrency:
+    """El usuario NO nombró moneda en el mensaje ('gasté 500 en spotify') → el LLM real deja
+    `currency=None`; esto lo simula sin LLM para ejercitar el step `currency_pick`."""
+
+    intents = ("register_expense",)
+
+    def run(self, state) -> dict:  # type: ignore[no-untyped-def]
+        return {
+            "messages": [AIMessage("Wow!!! 🫣 casi al límite de tu presupuesto.")],
+            "pending_action": {
+                "amount": 500, "currency": None, "category": "Suscripciones música",
+                "merchant": "Spotify", "summary": "$500 en Spotify", "requires_confirmation": True,
+            },
+        }
+
+    def commit(self, state) -> str:  # type: ignore[no-untyped-def]
+        raise AssertionError("el flow commitea vía commit_action, no el agente")
+
+
 class _SuggestSpy:
     """Cuenta cuántas veces se llama (debe ser 1 → memoización), devuelve dicts serializables."""
 
@@ -45,7 +64,7 @@ class _SuggestSpy:
         ]
 
 
-def _build(committed: dict, suggest):  # type: ignore[no-untyped-def]
+def _build(committed: dict, suggest, agent=None):  # type: ignore[no-untyped-def]
     def commit_action(state, action) -> str:  # type: ignore[no-untyped-def]
         committed.update(action)
         return "Listo, tu gasto ha sido registrado ✅"
@@ -54,13 +73,16 @@ def _build(committed: dict, suggest):  # type: ignore[no-untyped-def]
     return build_graph(
         MemorySaver(),
         classifier=lambda t, c: "register_expense",
-        registry={"register_expense": FakeWriteAgent()},
+        registry={"register_expense": agent or FakeWriteAgent()},
         flow_registry={"register_expense": flow},
     )
 
 
-def _msg(text: str) -> dict:
-    return {"messages": [HumanMessage(text)], "user_id": "u1", "capabilities": []}
+def _msg(text: str, currency_options: dict | None = None) -> dict:
+    base = {"messages": [HumanMessage(text)], "user_id": "u1", "capabilities": []}
+    if currency_options is not None:
+        base["currency_options"] = currency_options
+    return base
 
 
 def _interaction(out: dict) -> dict:
@@ -150,6 +172,66 @@ def test_cancel_at_confirm_does_not_commit() -> None:
     graph = _build(committed, _SuggestSpy())
     cfg = {"configurable": {"thread_id": "f4"}}
     graph.invoke(_msg("gasté 500 en spotify"), cfg)
+    out = graph.invoke(Command(resume="cancel"), cfg)
+    assert "__interrupt__" not in out
+    assert committed == {}
+    assert graph.get_state(cfg).values["pending_action"] is None
+
+
+# ── currency_pick — nuevo primer step (§currency-preferences) ──────────────────────────────
+def test_currency_named_in_message_skips_currency_pick() -> None:
+    """El usuario dijo 'dólares' → currency ya viene set en pending_action → NO se pregunta,
+    confirm es la PRIMERA interacción (como antes de este step, back-compat)."""
+    graph = _build({}, _SuggestSpy())  # FakeWriteAgent por default → currency="USD"
+    cfg = {"configurable": {"thread_id": "c1"}}
+    out = graph.invoke(_msg("gasté 500 dólares en spotify"), cfg)
+    inter = _interaction(out)
+    assert "500" in inter["prompt"]  # es el prompt de confirm, no el de moneda
+    assert [o["value"] for o in inter["options"]] == ["cancel", "confirm"]
+
+
+def test_single_currency_option_skips_currency_pick() -> None:
+    """Solo la moneda principal (sin extras configuradas) → nada que elegir → no se pregunta."""
+    graph = _build({}, _SuggestSpy(), FakeWriteAgentNoCurrency())
+    cfg = {"configurable": {"thread_id": "c2"}}
+    out = graph.invoke(_msg("gasté 500 en spotify", {"primary": "DOP", "extra": [], "all": ["DOP"]}), cfg)
+    inter = _interaction(out)
+    assert "500" in inter["prompt"]
+    assert [o["value"] for o in inter["options"]] == ["cancel", "confirm"]
+
+
+def test_multiple_currency_options_asks_before_confirm() -> None:
+    graph = _build({}, _SuggestSpy(), FakeWriteAgentNoCurrency())
+    cfg = {"configurable": {"thread_id": "c3"}}
+    opts = {"primary": "DOP", "extra": ["USD", "EUR"], "all": ["DOP", "USD", "EUR"]}
+    out = graph.invoke(_msg("gasté 500 en spotify", opts), cfg)
+    inter = _interaction(out)
+    values = [o["value"] for o in inter["options"]]
+    assert values == ["DOP", "USD", "EUR", "cancel"]
+
+
+def test_picked_currency_flows_into_confirm_prompt_and_commit() -> None:
+    committed: dict = {}
+    graph = _build(committed, _SuggestSpy(), FakeWriteAgentNoCurrency())
+    cfg = {"configurable": {"thread_id": "c4"}}
+    opts = {"primary": "DOP", "extra": ["USD", "EUR"], "all": ["DOP", "USD", "EUR"]}
+    graph.invoke(_msg("gasté 500 en spotify", opts), cfg)
+
+    out = graph.invoke(Command(resume="EUR"), cfg)
+    inter = _interaction(out)
+    assert "EUR" in inter["prompt"]  # el monto del confirm ya refleja la moneda elegida
+
+    graph.invoke(Command(resume="confirm"), cfg)
+    graph.invoke(Command(resume="none"), cfg)  # sin categoría
+    assert committed["currency"] == "EUR" and committed["amount"] == 500
+
+
+def test_cancel_at_currency_pick_does_not_commit() -> None:
+    committed: dict = {}
+    graph = _build(committed, _SuggestSpy(), FakeWriteAgentNoCurrency())
+    cfg = {"configurable": {"thread_id": "c5"}}
+    opts = {"primary": "DOP", "extra": ["USD"], "all": ["DOP", "USD"]}
+    graph.invoke(_msg("gasté 500 en spotify", opts), cfg)
     out = graph.invoke(Command(resume="cancel"), cfg)
     assert "__interrupt__" not in out
     assert committed == {}

@@ -5,8 +5,10 @@ and agent-agnostic:
     confirmation text. Wired to the FinanceAgent in the graph; a fake in unit tests.
   - `suggest_categories(state)` — returns icon-only chip `Option`s for the suggestions step (Img 10).
 
-Steps: confirm (Img 8) → ¿category? yes/no (Img 9) → suggestions, skipped if "no" (Img 10) → commit
-+ "Ver en Insight" deep link via `ui_actions` (Img 11). Adding/removing a step = editing this tuple.
+Steps: ¿currency? (only if the user didn't name one AND there's more than one to pick from,
+§currency-preferences) → confirm (Img 8) → ¿category? yes/no (Img 9) → suggestions, skipped if
+"no" (Img 10) → commit + "Ver en Insight" deep link via `ui_actions` (Img 11). Adding/removing a
+step = editing this tuple.
 """
 from __future__ import annotations
 
@@ -23,19 +25,40 @@ CommitAction = Callable[[dict, dict], str]
 # {"value": category-name, "icon": emoji}. The LLM call lives here; called ONCE in `prepare`.
 SuggestCategories = Callable[[dict], list[dict]]
 
+# Flag per active currency (shared/money.ACTIVE_CURRENCIES) — cosmetic only, on the currency_pick
+# pills (Option.icon works on pills, not just chips). A currency added there without an entry here
+# just shows no flag — never breaks.
+_CURRENCY_FLAG = {"DOP": "🇩🇴", "USD": "🇺🇸", "COP": "🇨🇴", "BRL": "🇧🇷", "EUR": "🇪🇺"}
 
-def _amount(pa: dict) -> str:
-    currency = pa.get("currency")
-    return f"${pa['amount']} {currency}".strip() if currency else f"${pa['amount']}"
+
+def _amount(pa: dict, currency: str | None = None) -> str:
+    cur = currency if currency is not None else pa.get("currency")
+    return f"${pa['amount']} {cur}".strip() if cur else f"${pa['amount']}"
 
 
 def build_expense_flow(
     *, commit_action: CommitAction, suggest_categories: SuggestCategories
 ) -> FlowSpec:
-    def confirm_step(state: dict, answers: dict) -> Interaction:
+    def currency_pick_step(state: dict, answers: dict) -> Interaction | None:
+        if state["pending_action"].get("currency"):
+            return None  # user named it in the message ("50 dollars") → nothing to ask
+        options = (state.get("currency_options") or {}).get("all", [])
+        if len(options) <= 1:
+            return None  # only the primary currency configured → keep default-wallet behavior
         lang = state.get("ui_language") or state.get("language", "es")
         return Interaction(
-            prompt=t("expense.confirm", lang, amount=_amount(state["pending_action"])),
+            prompt=t("expense.currency_q", lang),
+            options=[
+                *(Option(c, c, "primary", "pill", _CURRENCY_FLAG.get(c)) for c in options),
+                Option("cancel", t("confirm.cancel", lang), "secondary"),
+            ],
+        )
+
+    def confirm_step(state: dict, answers: dict) -> Interaction:
+        lang = state.get("ui_language") or state.get("language", "es")
+        currency = answers.get("currency_pick") or state["pending_action"].get("currency")
+        return Interaction(
+            prompt=t("expense.confirm", lang, amount=_amount(state["pending_action"], currency)),
             options=[
                 Option("cancel", t("confirm.cancel", lang), "secondary"),
                 Option("confirm", t("confirm.approve", lang), "primary"),
@@ -77,7 +100,10 @@ def build_expense_flow(
         lang = state.get("ui_language") or state.get("language", "es")
         pick = answers.get("category_pick")
         category = pick if pick and pick != "none" else None
-        reply = commit_action(state, {**state["pending_action"], "category": category})
+        currency = answers.get("currency_pick") or state["pending_action"].get("currency")
+        reply = commit_action(
+            state, {**state["pending_action"], "category": category, "currency": currency}
+        )
         return {
             "pending_action": None,
             "messages": [AIMessage(reply)],
@@ -86,6 +112,7 @@ def build_expense_flow(
 
     return FlowSpec(
         steps=(
+            Step("currency_pick", currency_pick_step),
             Step("confirm", confirm_step),
             Step("category_yesno", category_yesno_step),
             Step("category_pick", category_pick_step),

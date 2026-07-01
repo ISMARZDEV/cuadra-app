@@ -108,10 +108,12 @@ def chat(
     user_id: str = Depends(get_current_user_id),
     graph=Depends(get_aispace_graph),  # type: ignore[no-untyped-def]
     prefs: PreferenceRepository = Depends(get_preference_repository),
+    users: UserRepository = Depends(get_user_repository),
 ) -> ChatResponse:
     thread_id = body.thread_id or new_id()
     cfg = {"configurable": {"thread_id": thread_id}}
     language = resolve_language(body.message, body.locale)  # cliente primario + override
+    opts = _currency_options(user_id, users, prefs)
     graph.invoke(
         {
             "messages": [HumanMessage(body.message)],
@@ -120,6 +122,7 @@ def chat(
             "language": language,
             "ui_language": client_language(body.locale),  # workflow chrome — nunca override
             "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
+            "currency_options": {"primary": opts.primary, "extra": opts.extra, "all": opts.all},
             "ui_actions": [],  # reset per turn → links don't carry over to later messages
         },
         cfg,
@@ -137,10 +140,12 @@ def chat_stream(
     user_id: str = Depends(get_current_user_id),
     graph=Depends(get_aispace_graph),  # type: ignore[no-untyped-def]
     prefs: PreferenceRepository = Depends(get_preference_repository),
+    users: UserRepository = Depends(get_user_repository),
 ) -> StreamingResponse:
     thread_id = body.thread_id or new_id()
     cfg = {"configurable": {"thread_id": thread_id}}
     language = resolve_language(body.message, body.locale)  # cliente primario + override
+    opts = _currency_options(user_id, users, prefs)
     inputs = {
         "messages": [HumanMessage(body.message)],
         "user_id": user_id,
@@ -148,6 +153,7 @@ def chat_stream(
         "language": language,
         "ui_language": client_language(body.locale),  # workflow chrome — nunca override
         "personality": prefs.get_personality(user_id).value,  # tono del GeneralAgent
+        "currency_options": {"primary": opts.primary, "extra": opts.extra, "all": opts.all},
         "ui_actions": [],  # reset per turn → links don't carry over to later messages
     }
     return StreamingResponse(
