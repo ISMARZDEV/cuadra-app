@@ -27,6 +27,10 @@ const players: Record<string, Player> = {
     require("../assets/sounds/tick-c-tock.wav"),
     KEEP_WARM,
   ),
+  send: createAudioPlayer(
+    require("../assets/sounds/tick-b-crisp.wav"),
+    KEEP_WARM,
+  ),
   reveal: createAudioPlayer(
     require("../assets/sounds/external-sounds/ai-intro-01.wav"),
     KEEP_WARM,
@@ -65,6 +69,7 @@ export const sounds = {
   tick: () => play(players.tick), // selector scrub step
   nav: () => play(players.nav, 0.04), // nav item change
   dock: () => play(players.dock, 0.25), // chat dock opens (quiet)
+  send: () => play(players.send), // message sent / a dock option chosen
   reveal: () => play(players.reveal), // orb appears (swipe up)
   close: () => play(players.close), // orb hides (swipe down / auto-hide)
   startup: () => play(players.startup), // app launch

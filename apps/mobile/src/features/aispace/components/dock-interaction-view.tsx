@@ -1,5 +1,8 @@
+import * as Haptics from "expo-haptics";
 import { Pressable, Text, View } from "react-native";
 import { useColorScheme } from "nativewind";
+
+import { sounds } from "@/lib/sounds";
 
 import type { DockInteractionViewProps, DockOption } from "../interfaces";
 
@@ -90,15 +93,23 @@ export function DockInteractionView({ interaction, onSelect }: DockInteractionVi
   const { colorScheme } = useColorScheme();
   // Readable lime: brand lime on dark, a deeper green on the off-white card.
   const accent = colorScheme === "dark" ? "#C2FB7E" : "#16A34A";
+  // Same cue as sending a message (chat-input-bar.tsx) — picking a dock option (confirm/cancel,
+  // category, currency…) is just as much a "commit" action. Centralized here (not per-component)
+  // so both pill and chip options get it without duplicating the call.
+  const handleSelect = (option: DockOption) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    sounds.send();
+    onSelect(option);
+  };
   return (
     <View className="px-4 py-2">
       <PromptText prompt={interaction.prompt} accent={accent} />
       <View className="flex-row flex-wrap items-center justify-center gap-3">
         {interaction.options.map((option) =>
           option.kind === "chip" ? (
-            <IconChip key={option.value} option={option} onPress={() => onSelect(option)} />
+            <IconChip key={option.value} option={option} onPress={() => handleSelect(option)} />
           ) : (
-            <OptionPill key={option.value} option={option} onPress={() => onSelect(option)} />
+            <OptionPill key={option.value} option={option} onPress={() => handleSelect(option)} />
           ),
         )}
       </View>

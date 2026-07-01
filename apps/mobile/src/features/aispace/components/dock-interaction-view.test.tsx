@@ -3,6 +3,10 @@ import { describe, expect, test, vi } from "vitest";
 
 import type { DockInteraction } from "../interfaces";
 
+// Native side-effects (haptics + audio) — stub so the component imports in jsdom.
+vi.mock("expo-haptics", () => ({ impactAsync: vi.fn(), ImpactFeedbackStyle: { Light: "light" } }));
+vi.mock("@/lib/sounds", () => ({ sounds: { send: vi.fn() } }));
+
 import { DockInteractionView } from "./dock-interaction-view";
 
 const interaction: DockInteraction = {

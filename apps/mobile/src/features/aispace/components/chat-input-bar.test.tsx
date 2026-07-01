@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { setLanguage } from "@/i18n";
 
+// Native side-effects (haptics + audio) — stub so the component imports in jsdom.
+vi.mock("expo-haptics", () => ({ impactAsync: vi.fn(), ImpactFeedbackStyle: { Light: "light" } }));
+vi.mock("@/lib/sounds", () => ({ sounds: { send: vi.fn() } }));
+
 import { ChatInputBar } from "./chat-input-bar";
 
 describe("ChatInputBar", () => {

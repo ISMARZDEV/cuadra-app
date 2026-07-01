@@ -1,9 +1,11 @@
+import * as Haptics from "expo-haptics";
 import { Mic, Plus, SendHorizontal } from "lucide-react-native";
 import { useRef, useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 
-import { t } from "@/i18n";
+import { t, useLang } from "@/i18n";
+import { sounds } from "@/lib/sounds";
 import { useColorScheme } from "nativewind";
 
 import type { ChatInputBarProps } from "../interfaces";
@@ -14,6 +16,7 @@ import { GlassButton } from "./glass-button";
 // the sessions drawer (hide on open, refocus on close). `onSend` receives the trimmed message when
 // the user taps send (the screen streams it to the chat); without it the bar just clears.
 export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProps) {
+  useLang(); // re-render on a language change — t() alone reads a module var, invisible to React
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const [value, setValue] = useState("");
@@ -34,6 +37,8 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
   const handleSend = () => {
     if (!hasText) return;
     const trimmed = value.trim();
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    sounds.send();
     onSend?.(trimmed);
     lastSentRef.current = trimmed.toLowerCase();
     setValue(""); // clear the field (and revert the button back to the mic)
