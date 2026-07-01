@@ -14,6 +14,7 @@ export const LinearGradient = Passthrough;
 export const RadialGradient = Passthrough;
 export const Stop = Passthrough;
 export const Rect = Passthrough;
+export const Pattern = Passthrough;
 export const Path = Passthrough;
 export const Circle = Passthrough;
 export const Ellipse = Passthrough;

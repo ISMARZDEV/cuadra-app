@@ -1,8 +1,10 @@
 import "../global.css";
 import "@/lib/api/client"; // side-effect: configure the SDK client (baseURL + Bearer)
 
+import { Akshar_500Medium, Akshar_600SemiBold } from "@expo-google-fonts/akshar";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
+import { useFonts } from "expo-font";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
@@ -20,6 +22,8 @@ export default function RootLayout() {
   const restore = useAuthStore((s) => s.restore);
   const restoreLanguage = useLanguageStore((s) => s.restore);
   const languageRestored = useLanguageStore((s) => s.restored);
+  // Akshar — the money-figure font (Insights wheel/tiles, Figma "Akshar:Medium"/"Akshar:Semibold").
+  const [fontsLoaded] = useFonts({ Akshar_500Medium, Akshar_600SemiBold });
 
   useEffect(() => {
     restore();
@@ -34,7 +38,8 @@ export default function RootLayout() {
   // immediately on launch) renders once with whatever deviceLanguage() resolved to at JS
   // module-init time, and only self-corrects on a LATER change (relies on src/i18n's useLang()
   // reactivity firing again, which isn't guaranteed to happen soon, or at all, in one session).
-  const ready = status !== "loading" && languageRestored;
+  // Also wait for Akshar so money figures never flash in the system font first.
+  const ready = status !== "loading" && languageRestored && fontsLoaded;
 
   return (
     <QueryClientProvider client={queryClient}>

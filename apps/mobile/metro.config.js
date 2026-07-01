@@ -16,4 +16,10 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
+// react-native-svg-transformer — lets `.svg` files be imported as React components (used for the
+// Insights wheel's halftone texture). Move svg out of assetExts (it's now source), add to sourceExts.
+config.transformer.babelTransformerPath = require.resolve("react-native-svg-transformer/expo");
+config.resolver.assetExts = config.resolver.assetExts.filter((ext) => ext !== "svg");
+config.resolver.sourceExts = [...config.resolver.sourceExts, "svg"];
+
 module.exports = withNativeWind(config, { input: "./global.css" });
