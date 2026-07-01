@@ -21,8 +21,8 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
   const inputRef = externalRef ?? localRef;
   const hasText = value.trim().length > 0;
 
-  const inputBg = isDark ? "#282928" : "#FFFFFF";
-  const inputBorder = isDark ? "#464646" : "#DEFFB7";
+  const inputBg = isDark ? "#0F1313" : "#FFFFFF";
+  const inputBorder = isDark ? "#1E2625" : "#B1B1B1";
   const inputColor = isDark ? "#FFFFFF" : "#034842";
   const placeholderColor = isDark ? "#8A8A8A" : "#BEC2C0";
   // Cursor + selection color — lime accent in dark, brand green in light.
@@ -32,6 +32,12 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
     if (!hasText) return;
     onSend?.(value.trim());
     setValue(""); // clear the field (and revert the button back to the mic)
+    // Imperative clear too: on iOS a multiline TextInput can still hold an uncommitted
+    // autocorrect/predictive-text candidate (native "marked text") when Send is tapped — the
+    // controlled `value` prop alone doesn't always force it out, so the native view briefly
+    // "resurrects" the old text right after we clear it. `.clear()` resets the native text
+    // directly, past any marked-text state.
+    inputRef.current?.clear();
   };
 
   // Row is bottom-aligned so the buttons stay pinned to the bottom of the pill as it grows.
@@ -49,7 +55,7 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
           minHeight: 42,
           borderRadius: 21,
           backgroundColor: inputBg,
-          borderWidth: 0.5,
+          borderWidth: 1,
           borderColor: inputBorder,
           justifyContent: "center",
           paddingHorizontal: 16,

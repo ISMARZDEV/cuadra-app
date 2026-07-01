@@ -369,20 +369,29 @@ export function ChatScreen() {
               style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
               onLayout={(e) => setBottomZoneH(e.nativeEvent.layout.height)}
             >
-              {/* Contour identical to the card: SAME GlassSurface gradient border (the `borderWidth`
-                  prop — bright top fading down), not a flat line. FLUSH top (square, meets the chat)
-                  + bottom corners rounded to the card's 48 radius so the edge continues the card. */}
+              {/* Glass + tint as a FILL BACKGROUND (absoluteFill) — NOT a wrapper around the content.
+                  Why: on Fabric a native GlassView that AUTO-SIZES to its children mis-anchors when
+                  that content grows (the dock opening) — it re-measures from the top, so the whole
+                  zone drifts up and the input detaches from the card's bottom edge (even with the
+                  keyboard closed). Same proven pattern as the card itself (GlassSurface = absoluteFill
+                  background; a plain-RN View sizes the container): the glass never drives the layout,
+                  so the input stays glued to `bottom: 0` and the dock body grows UPWARD above it.
+                  Contour: FLUSH square top (the divider that meets the chat) + bottom corners rounded
+                  to the card's 48 radius so the edge continues the card. */}
               <GlassSurface
                 // Real RN border (native GlassView honors it). The TOP edge is the divider between
                 // the chat and the input zone (full width, above the chevron — como estaba arriba);
                 // bottom corners follow the card's 48 radius so the contour continues the card.
-                style={{
-                  borderWidth: 1.5,
-                  borderColor: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.18)",
-                  borderBottomLeftRadius: 48,
-                  borderBottomRightRadius: 48,
-                  overflow: "hidden",
-                }}
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    borderWidth: 0.5,
+                    borderColor: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.18)",
+                    borderBottomLeftRadius: 48,
+                    borderBottomRightRadius: 48,
+                    overflow: "hidden",
+                  },
+                ]}
                 intensity={50}
                 borderWidth={0}
               >
@@ -393,32 +402,37 @@ export function ChatScreen() {
                   pointerEvents="none"
                   style={[
                     StyleSheet.absoluteFill,
-                    { backgroundColor: isDark ? "#000000" : "#FFFFFF", opacity: isDark ? 0.55 : 0.6 },
+                    { backgroundColor: isDark ? "#060808" : "#FFFFFF", opacity: isDark ? 0.4 : 0.6 },
                   ]}
                 />
-                <ChatDock
-                  open={dockOpen}
-                  onToggle={() => {
-                    if (!chat.interaction) setManualOpen((o) => !o); // chevron toggles the manual menu
-                  }}
-                >
-                  {chat.interaction ? (
-                    <DockInteractionView
-                      interaction={chat.interaction}
-                      onSelect={(opt) => chat.select(opt, chat.interaction?.prompt)}
-                    />
-                  ) : manualOpen ? (
-                    <QuickActions
-                      onSelect={(prompt) => {
-                        chat.send(prompt);
-                        setManualOpen(false);
-                      }}
-                    />
-                  ) : null}
-                </ChatDock>
-
-                <ChatInputBar inputRef={chatInputRef} onSend={chat.send} />
               </GlassSurface>
+
+              {/* Content — pure RN flow; THIS is what measures the zone height and bottom-pins the
+                  input. The dock body mounts ABOVE the input and grows the zone upward; the input row
+                  stays welded to the card's bottom edge. Bottom corners are clipped by the card's own
+                  cardClip (radius 48), so no rounding is needed here. */}
+              <ChatDock
+                open={dockOpen}
+                onToggle={() => {
+                  if (!chat.interaction) setManualOpen((o) => !o); // chevron toggles the manual menu
+                }}
+              >
+                {chat.interaction ? (
+                  <DockInteractionView
+                    interaction={chat.interaction}
+                    onSelect={(opt) => chat.select(opt, chat.interaction?.prompt)}
+                  />
+                ) : manualOpen ? (
+                  <QuickActions
+                    onSelect={(prompt) => {
+                      chat.send(prompt);
+                      setManualOpen(false);
+                    }}
+                  />
+                ) : null}
+              </ChatDock>
+
+              <ChatInputBar inputRef={chatInputRef} onSend={chat.send} />
             </View>
 
             {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}
