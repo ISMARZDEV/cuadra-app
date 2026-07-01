@@ -20,6 +20,9 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
   const localRef = useRef<TextInput>(null);
   const inputRef = externalRef ?? localRef;
   const hasText = value.trim().length > 0;
+  // The exact text we just sent (lowercased) — set on Send, cleared on the next real edit. See
+  // `handleChangeText` below for why this beats a synchronous clear() alone.
+  const lastSentRef = useRef<string | null>(null);
 
   const inputBg = isDark ? "#0F1313" : "#FFFFFF";
   const inputBorder = isDark ? "#1E2625" : "#B1B1B1";
@@ -30,14 +33,27 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
 
   const handleSend = () => {
     if (!hasText) return;
-    onSend?.(value.trim());
+    const trimmed = value.trim();
+    onSend?.(trimmed);
+    lastSentRef.current = trimmed.toLowerCase();
     setValue(""); // clear the field (and revert the button back to the mic)
-    // Imperative clear too: on iOS a multiline TextInput can still hold an uncommitted
-    // autocorrect/predictive-text candidate (native "marked text") when Send is tapped — the
-    // controlled `value` prop alone doesn't always force it out, so the native view briefly
-    // "resurrects" the old text right after we clear it. `.clear()` resets the native text
-    // directly, past any marked-text state.
     inputRef.current?.clear();
+  };
+
+  // iOS can commit a pending autocorrect/predictive-text candidate on a NATIVE event that fires
+  // AFTER handleSend already ran — a plain setValue("")/.clear() in handleSend loses that race, so
+  // the corrected text (e.g. "amazon" → "Amazon") reappears in the field right after sending. If
+  // the incoming text is (case-insensitively) the message we JUST sent, it's that late echo, not
+  // new typing — swallow it. Any OTHER change clears the guard so real typing is never eaten.
+  const handleChangeText = (text: string) => {
+    if (lastSentRef.current !== null && text.trim().toLowerCase() === lastSentRef.current) {
+      lastSentRef.current = null;
+      setValue("");
+      inputRef.current?.clear();
+      return;
+    }
+    lastSentRef.current = null;
+    setValue(text);
   };
 
   // Row is bottom-aligned so the buttons stay pinned to the bottom of the pill as it grows.
@@ -81,7 +97,7 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
           selectionColor={cursorColor}
           cursorColor={cursorColor}
           value={value}
-          onChangeText={setValue}
+          onChangeText={handleChangeText}
         />
       </View>
       {/* Mic ⇄ Send: empty field shows the mic; once there's text it animates (zoom) to the send
