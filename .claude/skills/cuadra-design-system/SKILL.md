@@ -14,8 +14,9 @@ metadata:
 > **Composes with the official Expo skills.** Use `building-native-ui` (styling, components,
 > navigation, **animations**) + `expo-tailwind-setup` (NativeWind) for the HOW; this skill defines
 > Cuadra's WHAT (palette, components, screen patterns). Charts (the wheel) & gamification motion:
-> build with `building-native-ui` + `react-native-svg`/reanimated, styled per the tokens below;
-> distill a `cuadra-mobile-charts` skill from the real wheel code once it exists.
+> build with `building-native-ui` + `react-native-svg`/reanimated, styled per the tokens below.
+> The Insights wheel's own recipe + hard-won gotchas (two separate rings, spend-ratio arc fill,
+> category-band overlap/z-order, the dev-mock preview toggle) are distilled in `cuadra-insights-wheel`.
 
 ## When to Use
 
@@ -75,5 +76,7 @@ pnpm --filter @cuadra/mobile typecheck
 ## Resources
 
 - **Engineering conventions**: load the `cuadra-mobile` skill (structure, NativeWind, data, auth).
+- **Insights wheel recipe + gotchas**: load the `cuadra-insights-wheel` skill before touching the
+  wheel component, its category bands, or its dev-mock preview toggle.
 - **Icons**: lucide.dev → `lucide-react-native`.
 - **UI spec of record**: `docs/sdd/insights-ui-navbar.md` (the wheel, carousel, 7 buttons).
