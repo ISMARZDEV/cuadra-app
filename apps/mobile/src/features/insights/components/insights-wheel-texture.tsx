@@ -22,6 +22,13 @@ export function InsightsWheelTexture({
 }) {
   const diameter = radius * 2;
   const Texture = isDark ? DarkTexture : LightTexture;
+  // The halftone is RADIAL — diamonds shrink toward the pattern's edges, so at 1:1 they fade out
+  // near the bottom/edges of the circle and leave it looking empty there. Render the texture LARGER
+  // than the clip circle and center it, so the dense central band is pushed outward to cover the
+  // whole visible circle and only the faint outer diamonds get cropped away.
+  const TEXTURE_SCALE = 1.25;
+  const scaled = diameter * TEXTURE_SCALE;
+  const inset = (scaled - diameter) / 2;
   return (
     <View
       pointerEvents="none"
@@ -33,10 +40,19 @@ export function InsightsWheelTexture({
         height: diameter,
         borderRadius: radius,
         overflow: "hidden",
+        // Solid fill BEHIND the halftone diamonds (theme-inverted): deep near-black teal on dark,
+        // plain white on light — a clean base the diamonds read against.
+        backgroundColor: isDark ? "#021B18" : "#FFFFFF",
       }}
     >
-      {/* "slice" = cover: fill the circle, crop overflow, keep the diamonds undistorted. */}
-      <Texture width={diameter} height={diameter} preserveAspectRatio="xMidYMid slice" />
+      {/* "slice" = cover: fill, crop overflow, keep the diamonds undistorted. Scaled up + centered
+          so the dense middle of the radial pattern reaches the circle's edges. */}
+      <Texture
+        width={scaled}
+        height={scaled}
+        preserveAspectRatio="xMidYMid slice"
+        style={{ position: "absolute", left: -inset, top: -inset }}
+      />
     </View>
   );
 }

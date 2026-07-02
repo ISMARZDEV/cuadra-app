@@ -60,6 +60,7 @@
   "insights.wheel.addLabel": "Agregar",
   "insights.wheel.totalExpense": "Gasto total",
   "insights.wheel.budget": "Presupuesto",
+  "insights.wheel.toggleVisibility": "Mostrar u ocultar montos",
   "insights.nav.movements": "Movimientos",
   "insights.nav.reports": "Reportes",
   "insights.nav.home": "Inicio",

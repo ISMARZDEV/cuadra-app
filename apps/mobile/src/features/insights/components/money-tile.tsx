@@ -45,11 +45,17 @@ export function MoneyTile({
         overflow: "hidden",
       }}
     >
-      <View style={{ flexShrink: 1 }}>
+      <View style={{ flexShrink: 1, minWidth: 0 }}>
         <Text style={{ color: fg, fontSize: 12, fontWeight: "600" }} numberOfLines={1}>
           {label}
         </Text>
-        <Text style={{ color: fg, fontFamily: AKSHAR_SEMIBOLD, fontSize: 16 }}>
+        {/* Tile height is fixed (42, above) — a long amount (big number, wide currency, large
+            system font size) must never wrap or push the tile taller. Truncate with "…" instead. */}
+        <Text
+          style={{ color: fg, fontFamily: AKSHAR_SEMIBOLD, fontSize: 16 }}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
           {sign}
           {formatMoney(amountMinor, currency)}
         </Text>

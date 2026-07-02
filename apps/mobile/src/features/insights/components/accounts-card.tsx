@@ -98,8 +98,12 @@ export function AccountsCard() {
         </View>
       </View>
 
+      {/* minWidth: 0 on each flex:1 wrapper is load-bearing — without it a tile whose amount is
+          longer (e.g. "+ $20,350.00" vs "-$16,000.00") grows to fit its content instead of holding
+          its exact half, making the two columns unequal. minWidth:0 forces each to shrink to its
+          flex share and let the amount truncate (MoneyTile's numberOfLines) instead. */}
       <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <MoneyTile
             role="income"
             icon={BanknoteArrowDown}
@@ -108,7 +112,7 @@ export function AccountsCard() {
             currency={currency}
           />
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <MoneyTile
             role="expense"
             icon={BanknoteArrowUp}
@@ -119,7 +123,7 @@ export function AccountsCard() {
         </View>
       </View>
       <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <MoneyTile
             role="savings"
             icon={PiggyBank}
@@ -128,7 +132,7 @@ export function AccountsCard() {
             currency={currency}
           />
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <MoneyTile
             role="balance"
             icon={Scale}
