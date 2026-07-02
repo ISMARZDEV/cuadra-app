@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { setLanguage } from "@/i18n";
 
+// EditButton pulls in expo-haptics transitively.
+vi.mock("expo-haptics", () => ({ impactAsync: vi.fn(), ImpactFeedbackStyle: { Light: "light" } }));
+
 let mockAccounts: unknown[] = [];
 
 vi.mock("../api", () => ({

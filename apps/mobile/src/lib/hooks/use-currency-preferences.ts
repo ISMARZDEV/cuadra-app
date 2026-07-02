@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // Currencies screen writes it, Insights reads it to pick which `by_currency[]` slice to show),
 // and this app keeps features hermetic (no cross-feature imports — cuadra-mobile skill), so a
 // hook needed by more than one feature belongs in the shared infra layer, not inside either one.
-const CURRENCY_PREFERENCES_KEY = ["aispace", "currencyPreferences"] as const;
+export const CURRENCY_PREFERENCES_KEY = ["aispace", "currencyPreferences"] as const;
 
 export function useCurrencyPreferences() {
   return useQuery({

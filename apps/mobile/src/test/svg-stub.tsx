@@ -26,3 +26,5 @@ export const Mask = Passthrough;
 export const ClipPath = Passthrough;
 export const Use = Passthrough;
 export const Text = Passthrough;
+export const Filter = Passthrough;
+export const FeDropShadow = Passthrough;

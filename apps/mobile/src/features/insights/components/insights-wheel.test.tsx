@@ -3,6 +3,14 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { setLanguage } from "@/i18n";
 
+// NavButton (the 7 surrounding buttons) pulls in expo-haptics transitively.
+vi.mock("expo-haptics", () => ({ impactAsync: vi.fn(), ImpactFeedbackStyle: { Light: "light" } }));
+
+// The dev-only mock-preview store transitively imports the real @cuadra/api-client SDK (via
+// dev-mock.ts → api.ts / use-currency-preferences.ts), which needs RN/Metro globals (`__DEV__`)
+// this jsdom harness doesn't provide — stub it out, same as other component tests mock `../api`.
+vi.mock("../use-dev-mock-store", () => ({ useDevMockStore: () => false }));
+
 import { InsightsWheel } from "./insights-wheel";
 
 describe("InsightsWheel", () => {
@@ -41,16 +49,16 @@ describe("InsightsWheel", () => {
     expect(screen.getByText("+75%")).toBeInTheDocument();
   });
 
-  test("renders one marker dot per entry in markers[]", () => {
+  test("renders one marker dot per band with an emoji, pinned at its own band's end", () => {
     render(
       <InsightsWheel
         variant="populated"
         totalExpenseMinor={135000}
         budgetMinor={1900000}
         currency="USD"
-        markers={[
-          { id: "music", emoji: "🎶", angleDeg: 200, ringColor: "#fea34d" },
-          { id: "gas", emoji: "⛽️", angleDeg: 280, ringColor: "#ff6568" },
+        bands={[
+          { colorHex: "#F2994A", weight: 1, emoji: "🎶", ringColor: "#fea34d" },
+          { colorHex: "#EB5757", weight: 1, emoji: "⛽️", ringColor: "#ff6568" },
         ]}
       />,
     );

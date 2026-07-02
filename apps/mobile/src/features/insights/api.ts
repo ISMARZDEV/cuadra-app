@@ -20,7 +20,7 @@ import { currentMonthRange } from "./date-range";
 // two independently-computed date windows. `useMetrics()` is reserved for the Accounts card's 4
 // tiles (income/expenses/savings/balance), a genuinely different, independently-selectable period.
 
-const METRICS_KEY = (since: string, until: string) => ["insights", "metrics", since, until] as const;
+export const METRICS_KEY = (since: string, until: string) => ["insights", "metrics", since, until] as const;
 export function useMetrics(range: { since: string; until: string } = currentMonthRange()) {
   return useQuery({
     queryKey: METRICS_KEY(range.since, range.until),
@@ -28,7 +28,7 @@ export function useMetrics(range: { since: string; until: string } = currentMont
   });
 }
 
-const DAILY_TARGET_KEY = ["insights", "dailyTarget"] as const;
+export const DAILY_TARGET_KEY = ["insights", "dailyTarget"] as const;
 export function useDailyTarget() {
   return useQuery({
     queryKey: DAILY_TARGET_KEY,
@@ -36,7 +36,7 @@ export function useDailyTarget() {
   });
 }
 
-const ACCOUNTS_KEY = ["insights", "accounts"] as const;
+export const ACCOUNTS_KEY = ["insights", "accounts"] as const;
 export function useAccounts() {
   return useQuery({
     queryKey: ACCOUNTS_KEY,
@@ -44,7 +44,7 @@ export function useAccounts() {
   });
 }
 
-const TRANSACTIONS_KEY = (limit: number) => ["insights", "transactions", limit] as const;
+export const TRANSACTIONS_KEY = (limit: number) => ["insights", "transactions", limit] as const;
 export function useTransactions(limit = 5) {
   return useQuery({
     queryKey: TRANSACTIONS_KEY(limit),
@@ -52,7 +52,7 @@ export function useTransactions(limit = 5) {
   });
 }
 
-const SPACES_KEY = ["insights", "spaces"] as const;
+export const SPACES_KEY = ["insights", "spaces"] as const;
 export function useSpaces() {
   return useQuery({
     queryKey: SPACES_KEY,

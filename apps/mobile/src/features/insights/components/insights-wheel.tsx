@@ -10,8 +10,15 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import Svg, { Defs, FeDropShadow, Filter, LinearGradient, Path, Stop } from "react-native-svg";
 
 import { Icon } from "@/components/ui/icon";
@@ -20,7 +27,9 @@ import { t, useLang } from "@/i18n";
 import { formatMoney } from "@/lib/money";
 import { AKSHAR_MEDIUM, AKSHAR_SEMIBOLD } from "@/theme/fonts";
 
-import type { CategoryMarker, InsightsWheelProps, WheelBand } from "../interfaces";
+import { MOCK_WHEEL_BANDS, MOCK_WHEEL_TREND_PERCENT } from "../dev-mock";
+import type { InsightsWheelProps, WheelBand } from "../interfaces";
+import { useDevMockStore } from "../use-dev-mock-store";
 import { InsightsWheelTexture } from "./insights-wheel-texture";
 
 // The Insights home "wheel" (insights-ui-navbar.md §1-2) — the persistent gauge PLUS its 7
@@ -53,7 +62,7 @@ const RING_STROKE = 3 * SCALE;
 // stroke path (wheel-reference-desing svg) with a centerline averaging ≈150.4 ref units from
 // center (vs the accent ring's 126.54) and stroke-width="38.9171". Reusing RING_RADIUS/a 14px
 // stroke here (as before) made the band ring both too small and 3x too thin vs the reference.
-const TRACK_RADIUS = RING_RADIUS * 1.180;
+const TRACK_RADIUS = RING_RADIUS * 1.165;
 const TRACK_STROKE = 10.92 * SCALE;
 
 // Decorative trend squiggle radius — kept relative to the thin accent ring's interior, independent
@@ -65,11 +74,20 @@ const TREND_INNER_RADIUS = RING_RADIUS * 0.78;
 const ARC_START_DEG = 168;
 const ARC_END_DEG = 372; // 210° sweep
 
+// Small angular OVERLAP between adjacent band segments — each subsequent category's rounded pill
+// slightly overlaps (paints OVER, since it's drawn later) the end of the PREVIOUS one, so the
+// earlier band visibly peeks out from behind it (Figma reference), rather than a clean gap or a
+// flush edge-to-edge touch. Not applied to the very first band's own start (the round-capped tip
+// marking the whole colored run's true start).
+const BAND_OVERLAP_DEG = 5;
+
+// Pastel palette — softer than the brand's vivid alert-style green→yellow→orange→red, but still
+// rich/saturated enough to read clearly against the dark blob (not washed-out/pale).
 const DEFAULT_BANDS: WheelBand[] = [
-  { colorHex: "#3DBE64", weight: 1 }, // green
-  { colorHex: "#E8D44D", weight: 1 }, // yellow
-  { colorHex: "#F2994A", weight: 1 }, // orange
-  { colorHex: "#EB5757", weight: 1 }, // red
+  { colorHex: "#6FD99A", weight: 1 }, // pastel green
+  { colorHex: "#F5D76E", weight: 1 }, // pastel yellow
+  { colorHex: "#F5A876", weight: 1 }, // pastel orange
+  { colorHex: "#F08080", weight: 1 }, // pastel red
 ];
 
 // Shared trig helper — also places category markers along the SAME arc (deferred data this
@@ -115,27 +133,82 @@ function trendAreaPath(innerRadius: number): string {
   return `${line} L ${pts[pts.length - 1].x} ${bottomY} L ${pts[0].x} ${bottomY} Z`;
 }
 
-function CategoryMarkerDot({ marker }: { marker: CategoryMarker }) {
-  const { x, y } = polarPoint(RING_CENTER_X, RING_CENTER_Y, TRACK_RADIUS, marker.angleDeg);
-  const badgeSize = 26;
+// Pinned at the END of its OWN band's arc segment (Figma: the badge marks where a category's
+// spending stops, never centered inside its color) — angleDeg is that band's own computed `end`.
+// It's a BUTTON (tap → that category's stats/details), same press-scale + haptic feel as
+// NavButton/EditButton below, not a static dot. Hidden by default — `visible` (driven by the
+// parent's tap-the-bar handler) reveals it with a left→right WAVE, staggered by `index` among the
+// other visible badges; it fades back out (no stagger) once the parent's auto-hide timer fires.
+function CategoryMarkerDot({
+  angleDeg,
+  emoji,
+  ringColor,
+  onPress,
+  visible,
+  index,
+}: {
+  angleDeg: number;
+  emoji: string;
+  ringColor: string;
+  onPress?: () => void;
+  visible: boolean;
+  index: number;
+}) {
+  const { x, y } = polarPoint(RING_CENTER_X, RING_CENTER_Y, TRACK_RADIUS, angleDeg);
+  const badgeSize = 34;
+
+  const pressScale = useSharedValue(1);
+  // Reanimated's `entering`/layout animations don't fire reliably on the New Architecture here
+  // (cuadra-mobile skill §6) — drive the wave manually: a shared value flipped in a plain
+  // useEffect on `visible` change, not a mount-transition preset.
+  const appear = useSharedValue(0);
+  useEffect(() => {
+    appear.value = visible
+      ? withDelay(index * 90, withSpring(1, { damping: 14, stiffness: 180 }))
+      : withTiming(0, { duration: 150 });
+  }, [visible, index, appear]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: appear.value,
+    transform: [{ scale: pressScale.value * (0.6 + appear.value * 0.4) }],
+  }));
+  const onPressIn = () => {
+    pressScale.value = withSpring(0.88, { damping: 15, stiffness: 320, mass: 0.6 });
+  };
+  const onPressOut = () => {
+    pressScale.value = withSpring(1, { damping: 11, stiffness: 220, mass: 0.7 });
+  };
+
   return (
-    <View
-      style={{
-        position: "absolute",
-        left: x - badgeSize / 2,
-        top: y - badgeSize / 2,
-        width: badgeSize,
-        height: badgeSize,
-        borderRadius: badgeSize / 2,
-        backgroundColor: "white",
-        borderWidth: 2,
-        borderColor: marker.ringColor,
-        alignItems: "center",
-        justifyContent: "center",
+    <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityLabel={emoji}
+      pointerEvents={visible ? "auto" : "none"}
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress?.();
       }}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      style={[
+        {
+          position: "absolute",
+          left: x - badgeSize / 2,
+          top: y - badgeSize / 2,
+          width: badgeSize,
+          height: badgeSize,
+          borderRadius: badgeSize / 2,
+          backgroundColor: "white",
+          borderWidth: 2,
+          borderColor: ringColor,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        animStyle,
+      ]}
     >
-      <Text style={{ fontSize: 14 }}>{marker.emoji}</Text>
-    </View>
+      <Text style={{ fontSize: 18 }}>{emoji}</Text>
+    </AnimatedPressable>
   );
 }
 
@@ -252,45 +325,85 @@ export function InsightsWheel({
   budgetMinor,
   currency,
   trendPercent,
-  bands = DEFAULT_BANDS,
-  markers = [],
+  bands,
   onAddPress,
 }: InsightsWheelProps) {
   useLang(); // re-render on a language change — t() alone reads a module var, invisible to React
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
 
-  const totalWeight = bands.reduce((sum, b) => sum + b.weight, 0);
-  const sweep = ARC_END_DEG - ARC_START_DEG;
+  // Category bands/trend have no backend endpoint yet (interfaces.ts: "deferred data this
+  // pass") — fall back to the dev-only mock preview when it's switched on, so this card
+  // shows something richer than DEFAULT_BANDS while iterating on the design. Real data (once it
+  // exists) is passed explicitly as a prop and always wins over the mock.
+  const mockPreview = useDevMockStore((s) => s.enabled);
+  const effectiveBands = bands ?? (mockPreview ? MOCK_WHEEL_BANDS : DEFAULT_BANDS);
+  const effectiveTrendPercent = trendPercent ?? (mockPreview ? MOCK_WHEEL_TREND_PERCENT : undefined);
+
+  // The colored arc is a gauge of budget CONSUMPTION, not a pie chart of the bands themselves — it
+  // only fills up to totalExpense/budget of the full sweep (capped at 100%: the ring closes
+  // completely only once spending reaches or exceeds the budget). The rest of the sweep stays the
+  // plain muted track underneath (rendered separately, full width, always).
+  const spentRatio = budgetMinor > 0 ? Math.min(Math.max(totalExpenseMinor / budgetMinor, 0), 1) : 0;
+  const totalWeight = effectiveBands.reduce((sum, b) => sum + b.weight, 0);
+  const sweep = (ARC_END_DEG - ARC_START_DEG) * spentRatio;
   let cursor = ARC_START_DEG;
-  const bandArcs = bands.map((band) => {
-    const bandSweep = (band.weight / totalWeight) * sweep;
+  const bandArcs = effectiveBands.map((band, i) => {
+    const bandSweep = totalWeight > 0 ? (band.weight / totalWeight) * sweep : 0;
     const start = cursor;
     const end = cursor + bandSweep;
     cursor = end;
-    return { ...band, start, end };
+    // Visual (rendered/badge) end — extended FORWARD into the NEXT band for every band but the
+    // last, so THIS (earlier) band's round cap overlaps and paints over that next band's start —
+    // the band closer to the '+' button always sits on top at a junction, never the other way.
+    // `visualStart` stays the true boundary; it's the PREVIOUS band that overlaps onto it.
+    const isLast = i === effectiveBands.length - 1;
+    const visualStart = start;
+    const visualEnd = isLast ? end : end + BAND_OVERLAP_DEG;
+    return { ...band, start, end, visualStart, visualEnd };
   });
+
+  // Category badges are hidden by default — tapping the ring's bar reveals them (a left→right
+  // wave, staggered per-badge in CategoryMarkerDot), auto-hides them again after a few seconds,
+  // AND tapping the bar again while they're showing hides them immediately (a toggle, not just a
+  // re-trigger) — rather than always showing (keeps the ring clean until the user wants detail).
+  const [showCategories, setShowCategories] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+  }, []);
+  const handleBarPress = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    if (showCategories) {
+      // Already showing — tapping the bar again is a toggle-off, not a re-trigger.
+      setShowCategories(false);
+      return;
+    }
+    setShowCategories(true);
+    hideTimer.current = setTimeout(() => setShowCategories(false), 20000);
+  };
 
   return (
     <View style={{ width: SIZE, height: HEIGHT }}>
 
         <Svg width={SIZE} height={HEIGHT} viewBox={`0 0 ${REF_W} ${REF_H}`} style={{ position: "absolute" }}>
           <Defs>
-            <Filter id="blobShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <Filter id="blobShadow" x="-20%" y="-25%" width="140%" height="140%">
             <FeDropShadow
               dx="0"
-              dy={3.8 * SCALE}
-              stdDeviation={3.9 * SCALE}
+              dy={2 * SCALE}
+              stdDeviation={5 * SCALE}
               floodColor="#000000"
-              floodOpacity={isDark ? 0.35 : 0.14}
+              floodOpacity={isDark ? 0.35 : 0.16}
             />
             </Filter>
             {/* Light: a soft lime top → white (the shadow keeps the white bottom from vanishing on a
                 white page). Dark: near-black teal → deeper teal (the reference's own blob gradient). */}
             <LinearGradient id="wheelBlob" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={isDark ? "#00160D" : "#FFFFF5"} />
+              <Stop offset="0" stopColor={isDark ? "#00160D" : "#FBFFF6"} />
               <Stop offset="0.6" stopColor={isDark ? "#012623" : "#FBFFF6"} />
-              <Stop offset="0.95" stopColor={isDark ? "#014640" : "#DCF6B0"} />
+              <Stop offset="0.95" stopColor={isDark ? "#014640" : "#FFFFFF"} />
             </LinearGradient>
           </Defs>
           <Path d={BLOB_PATH} fill="url(#wheelBlob)" filter="url(#blobShadow)" />
@@ -305,7 +418,8 @@ export function InsightsWheel({
 
       <Svg width={SIZE} height={HEIGHT} style={{ position: "absolute" }}>
         
-        {/* Muted background track — always visible, both variants. */}
+        {/* Muted background track — always visible, both variants. Tapping the bar (this track OR
+            any colored band below) reveals the category badges. */}
         <Path
           d={arcPath(RING_CENTER_X, RING_CENTER_Y, TRACK_RADIUS, ARC_START_DEG, ARC_END_DEG)}
           stroke="#E1E3EA"
@@ -313,16 +427,22 @@ export function InsightsWheel({
           strokeWidth={TRACK_STROKE}
           strokeLinecap="round"
           fill="none"
+          onPress={handleBarPress}
         />
+        {/* Each band is its own rounded "pill". Painted in REVERSE array order (last band first,
+            first band last) so the band closer to the '+' button is always the TOP-most at a
+            junction — its visualEnd (extended forward by BAND_OVERLAP_DEG) paints over the START
+            of the next one, which sits underneath. */}
         {variant === "populated" &&
-          bandArcs.map((band, i) => (
+          [...bandArcs].reverse().map((band, reversedI) => (
             <Path
-              key={i}
-              d={arcPath(RING_CENTER_X, RING_CENTER_Y, TRACK_RADIUS, band.start, band.end)}
+              key={bandArcs.length - 1 - reversedI}
+              d={arcPath(RING_CENTER_X, RING_CENTER_Y, TRACK_RADIUS, band.visualStart, band.visualEnd)}
               stroke={band.colorHex}
               strokeWidth={TRACK_STROKE}
-              strokeLinecap={i === 0 || i === bandArcs.length - 1 ? "round" : "butt"}
+              strokeLinecap="round"
               fill="none"
+              onPress={handleBarPress}
             />
           ))}
         {variant === "populated" && (
@@ -363,7 +483,19 @@ export function InsightsWheel({
       </Svg>
 
       {variant === "populated" &&
-        markers.map((marker) => <CategoryMarkerDot key={marker.id} marker={marker} />)}
+        bandArcs
+          .filter((band): band is typeof band & { emoji: string } => Boolean(band.emoji))
+          .map((band, i) => (
+            <CategoryMarkerDot
+              key={`${band.emoji}-${i}`}
+              angleDeg={band.visualEnd}
+              emoji={band.emoji}
+              ringColor={band.ringColor ?? band.colorHex}
+              onPress={band.onPress}
+              visible={showCategories}
+              index={i}
+            />
+          ))}
 
       {variant === "empty" ? (
         <View
@@ -397,7 +529,7 @@ export function InsightsWheel({
             alignItems: "center",
           }}
         >
-          {trendPercent !== undefined && (
+          {effectiveTrendPercent !== undefined && (
             <View
               style={{
                 backgroundColor: "#C2FB7E",
@@ -408,8 +540,8 @@ export function InsightsWheel({
               }}
             >
               <Text style={{ color: "#034842", fontSize: 11, fontWeight: "700" }}>
-                {trendPercent >= 0 ? "+" : ""}
-                {trendPercent}%
+                {effectiveTrendPercent >= 0 ? "+" : ""}
+                {effectiveTrendPercent}%
               </Text>
             </View>
           )}
