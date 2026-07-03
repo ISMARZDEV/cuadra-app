@@ -3,7 +3,7 @@
 // Mantener en sync con los valores del design-system (cuadra-design-system skill).
 export const palette = {
   primary: "#16A34A", // brand green
-  accent: "#A3E635", // lime CTA
+  accent: "#7EB427", // lime CTA
   // metric/money accents
   income: "#3B82F6",
   expense: "#F97316",

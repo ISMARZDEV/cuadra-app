@@ -1,11 +1,10 @@
 import { Maximize2, Menu, Minimize2 } from "lucide-react-native";
 import { View } from "react-native";
 
+import { GlassButton } from "@/components/ui/glass-button";
 import { t, useLang } from "@/i18n";
 import { useChatExpandStore } from "@/store/chat-expand-store";
 import { useDrawer } from "@/store/drawer-store";
-
-import { GlassButton } from "./glass-button";
 
 // Chat top bar — menu (left, opens the sessions drawer) + expand/collapse (right, ChatGPT-style
 // full-screen toggle — chat-screen.tsx animates the card, cuadra-tab-bar.tsx hides the navbar),

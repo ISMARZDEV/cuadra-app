@@ -4,13 +4,12 @@ import { useRef, useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 
+import { GlassButton } from "@/components/ui/glass-button";
 import { t, useLang } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { useColorScheme } from "nativewind";
 
 import type { ChatInputBarProps } from "../interfaces";
-
-import { GlassButton } from "./glass-button";
 
 // `inputRef` is optional — the screen passes one in so it can dismiss/restore the keyboard around
 // the sessions drawer (hide on open, refocus on close). `onSend` receives the trimmed message when

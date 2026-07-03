@@ -12,7 +12,7 @@ let currentPrefs: { primary: string; extra: string[]; all: string[] } = {
   all: ["DOP", "USD"],
 };
 
-vi.mock("./api", () => ({
+vi.mock("@/lib/hooks/use-currency-preferences", () => ({
   useCurrencyPreferences: () => ({ data: currentPrefs, isLoading: false }),
   useSetExtraCurrencies: () => ({ mutate: mockMutate, isPending: false }),
 }));
