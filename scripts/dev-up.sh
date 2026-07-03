@@ -13,7 +13,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_PORT=8005
-METRO_PORT=8081
+METRO_PORT=8082
 
 # ── 1. IP LAN de la Mac (el iPhone/iPad NO puede usar localhost) ───────────────
 # Usamos la interfaz de la RUTA POR DEFECTO (la misma que elige Metro) para que la URL de
@@ -86,4 +86,4 @@ echo
 cd "${ROOT}/apps/mobile"
 # Pass extra args through to expo (e.g. `./scripts/dev-up.sh --clear` to reset Metro's cache,
 # needed after installing a new native module / adding assets).
-EXPO_PUBLIC_API_URL="http://${IP}:${API_PORT}" exec npx expo start --dev-client "$@"
+EXPO_PUBLIC_API_URL="http://${IP}:${API_PORT}" exec npx expo start --dev-client --port "${METRO_PORT}" "$@"

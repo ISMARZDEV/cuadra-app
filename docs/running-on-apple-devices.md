@@ -12,7 +12,7 @@ Una vez que el dev-build ya está instalado en el device:
 ./scripts/dev-up.sh          # Postgres + migrate + API en LAN + Metro en LAN (IP autodetectada)
 ```
 
-En el iPhone/iPad (misma Wi-Fi): abrí la app **Cuadra** → dev-client → conectá a `IP:8081` →
+En el iPhone/iPad (misma Wi-Fi): abrí la app **Cuadra** → dev-client → conectá a `IP:8082` →
 login con **cualquier email** (el dev-login crea el usuario al vuelo) → listo.
 
 > Datos de ejemplo (opcional, una vez): `make seed`. El login NO lo necesita (crea el user solo),
@@ -86,4 +86,4 @@ hacé el **truco del proyecto señuelo** una vez (detalle completo en la skill
   usa `-allowProvisioningDeviceRegistration` y regenera el perfil.
 - **Free signing caduca a los 7 días** → recompilar (`ios-device-build.sh`) lo renueva.
 
-Procesos que deja corriendo `dev-up.sh`: Postgres (`cuadra-db`), API (`:8005`), Metro (`:8081`).
+Procesos que deja corriendo `dev-up.sh`: Postgres (`cuadra-db`), API (`:8005`), Metro (`:8082`).

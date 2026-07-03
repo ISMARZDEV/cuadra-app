@@ -54,6 +54,6 @@ fi
 # ── 3. Arrancar Metro en modo Expo Go y abrir en el simulador ──────────────────
 # `--go`  fuerza Expo Go (ignora el dev-client que está en package.json).
 # `--ios` instala Expo Go (si falta) y abre la app en el simulador booteado.
-echo "▶ expo start --go --ios"
+echo "▶ expo start --go --ios --port 8082"
 cd "${ROOT}/apps/mobile"
-exec npx expo start --go --ios "$@"
+exec npx expo start --go --ios --port 8082 "$@"
