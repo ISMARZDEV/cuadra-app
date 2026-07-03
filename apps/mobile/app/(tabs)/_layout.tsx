@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 
 import { CuadraTabBar } from "@/components/navigation/cuadra-tab-bar";
+import { DevMockToggle } from "@/features/insights/components/dev-mock-toggle";
 
 // Tab bar — News · Insights · [iM logo · AISpace] · Save · Config.
 // Custom pill-with-notch bar (cuadra-design-system §3 tab bar); routes stay declarative.
@@ -14,15 +15,23 @@ import { CuadraTabBar } from "@/components/navigation/cuadra-tab-bar";
 // which file is "index"), but its OWN name lookups needed updating too — see cuadra-tab-bar.tsx.
 export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "transparent" } }}
-      tabBar={(props) => <CuadraTabBar {...props} />}
-    >
-      <Tabs.Screen name="index" options={{ title: "AISpace" }} />
-      <Tabs.Screen name="news" options={{ title: "News" }} />
-      <Tabs.Screen name="insights" options={{ title: "Insights" }} />
-      <Tabs.Screen name="save" options={{ title: "Save" }} />
-      <Tabs.Screen name="config" options={{ title: "Config" }} />
-    </Tabs>
+    <>
+      <Tabs
+        screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "transparent" } }}
+        tabBar={(props) => <CuadraTabBar {...props} />}
+      >
+        <Tabs.Screen name="index" options={{ title: "AISpace" }} />
+        <Tabs.Screen name="news" options={{ title: "News" }} />
+        <Tabs.Screen name="insights" options={{ title: "Insights" }} />
+        <Tabs.Screen name="save" options={{ title: "Save" }} />
+        <Tabs.Screen name="config" options={{ title: "Config" }} />
+      </Tabs>
+      {/* Dev-only mock-data toggle — always mounted (like Expo Go's own dev-menu bubble, visible
+          app-wide, not gated to one screen), as a LATER sibling than the whole <Tabs> (screens +
+          tab bar), so plain sibling paint order puts it on top of both with no zIndex/Modal tricks
+          (see dev-mock-toggle.tsx for why a Modal froze the screen instead). Only meaningfully
+          affects data while you're on Insights, but it's harmless to leave visible elsewhere. */}
+      {__DEV__ && <DevMockToggle />}
+    </>
   );
 }

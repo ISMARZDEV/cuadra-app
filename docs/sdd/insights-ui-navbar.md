@@ -3,6 +3,8 @@
 > **Contexto:** `insights` (pestaña central-izquierda del tab bar) · **Deriva de**
 > [`arquitectura-mvp.md`](../arquitectura-mvp.md) §5 + [`ui-notas-cleo.md`](../ui-notas-cleo.md).
 > **Estado:** spec de UI aprobado por el usuario sobre los mockups reales.
+> **Implementación mobile:** ver [`insights-home-mvp.md`](./insights-home-mvp.md) — Fase 1 (la
+> rueda + carrusel de 3 cards) hecha, el resto pendiente.
 > **Fecha:** 2026-06-26.
 >
 > Define la interacción de la pantalla principal de Insights: una **rueda persistente**

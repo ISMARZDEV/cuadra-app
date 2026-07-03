@@ -66,11 +66,11 @@ export function GlassButton({
   // dark-green icon (the icon never washes out). `accent` (the send button) flips the theme so it's
   // the photo-negative of the tool buttons: distinct in BOTH themes, making the mic⇄send swap obvious.
   const styleDark = accent ? !isDark : isDark;
-  const tint = styleDark ? "#002E22" : "#C2FB7E";
+  const tint = styleDark ? "#001A0C" : "#C2FB7E";
   const iconColor = styleDark ? "#C2FB7E" : "#002E22";
   // Depth gradient color follows the fill: a dark shadow on the dark-green fill, a light lime
   // highlight (#E7FDCD) on the lime fill.
-  const gradientColor = styleDark ? "#000000" : "#E7FDCD";
+  const gradientColor = styleDark ? "#21362A" : "#E7FDCD";
 
   // Press feedback: a springy scale-down. The native liquid-glass "light up" is masked by the
   // depth gradient on top, so we drive the tactile feedback ourselves — consistent on iOS & Android.

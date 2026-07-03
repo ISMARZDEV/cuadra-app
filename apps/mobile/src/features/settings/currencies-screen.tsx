@@ -6,9 +6,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppBackground } from "@/components/ui/app-background";
 import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
+import { useCurrencyPreferences, useSetExtraCurrencies } from "@/lib/hooks/use-currency-preferences";
 import { palette } from "@/theme";
 
-import { useCurrencyPreferences, useSetExtraCurrencies } from "./api";
 import { SelectableRow } from "./components/selectable-row";
 import { CURRENCY_OPTIONS, MAX_EXTRA_CURRENCIES } from "./currency-options";
 

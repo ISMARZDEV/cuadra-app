@@ -26,6 +26,7 @@ import { Icon } from "@/components/ui/icon";
 import { t, type TranslationKey, useLang } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { palette } from "@/theme";
+import { MONEY_ROLE_COLORS, type MoneyRole } from "@/theme/money-role-colors";
 
 import type { ChatEmptyStateProps } from "../interfaces";
 
@@ -129,41 +130,34 @@ function WaveIn({
 // like arranging home-screen widgets), capped at 4. Full plan + open questions:
 // docs/sdd/chat-home-widgets.md. Do not add more fixed widgets here; extend the catalog instead.
 interface Widget {
-  id: string;
+  id: MoneyRole;
   icon: LucideIcon;
   // Trailing badge — CirclePlus ("add/register a new one") by default; a READ widget (balance) uses
   // Eye ("view") instead, since nothing's being added.
   trailingIcon?: LucideIcon;
-  dark: string; // dark-tinted half of the Figma pair
-  light: string; // light half — dark theme uses it as fg; LIGHT theme INVERTS (light=bg, dark=fg)
   labelKey: TranslationKey;
   promptKey: TranslationKey;
 }
 
-// Exact Figma pair per money-color role (income/expense/savings/balance) — given directly by the
-// user. NOT the same hex as theme/index.ts `palette` (that one's for metric tiles elsewhere).
+// Colors come from the shared MONEY_ROLE_COLORS (src/theme/money-role-colors.ts) — the exact
+// Figma pair per money-color role, also used by Insights' Accounts card metric tiles, so the two
+// features stay visually identical instead of duplicating hex literals.
 const WIDGETS: Widget[] = [
   {
     id: "income",
     icon: BanknoteArrowDown,
-    dark: "#033648",
-    light: "#89E1FF",
     labelKey: "chat.emptyState.income.label",
     promptKey: "chat.emptyState.income.prompt",
   },
   {
     id: "expense",
     icon: BanknoteArrowUp,
-    dark: "#8D3306",
-    light: "#FFD4AB",
     labelKey: "chat.emptyState.expense.label",
     promptKey: "chat.emptyState.expense.prompt",
   },
   {
     id: "savings",
     icon: PiggyBank,
-    dark: "#60004B",
-    light: "#FA96EA",
     labelKey: "chat.emptyState.savings.label",
     promptKey: "chat.emptyState.savings.prompt",
   },
@@ -171,8 +165,6 @@ const WIDGETS: Widget[] = [
     id: "balance",
     icon: Scale,
     trailingIcon: Eye,
-    dark: "#014E3A",
-    light: "#9EF7C8",
     labelKey: "chat.emptyState.balance.label",
     promptKey: "chat.emptyState.balance.prompt",
   },
@@ -188,8 +180,9 @@ function WidgetCard({ widget, onSelect }: { widget: Widget; onSelect: (prompt: s
   // Theme-inverted (same pattern as dock-interaction-view's pillColors / GlassButton): dark theme
   // keeps the dark card + light accent; light theme SWAPS to a light card + the dark color as the
   // accent, so the pair never washes out against its own theme's background.
-  const bg = isDark ? widget.dark : widget.light;
-  const fg = isDark ? widget.light : widget.dark;
+  const colors = MONEY_ROLE_COLORS[widget.id];
+  const bg = isDark ? colors.dark : colors.light;
+  const fg = isDark ? colors.light : colors.dark;
   const handlePress = () => {
     // Same "commit" cue as sending a message / picking a dock option (chat-input-bar.tsx,
     // dock-interaction-view.tsx) — this IS that same action, just via a widget instead of typing.
