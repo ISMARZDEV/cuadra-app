@@ -74,7 +74,7 @@ describe("AccountsCard", () => {
     ];
     render(<AccountsCard />);
 
-    expect(screen.getByText("Ver todo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Ver todo")).toBeInTheDocument();
     expect(screen.getByText("Spotify")).toBeInTheDocument();
     expect(screen.queryByText("Agregar transacción")).not.toBeInTheDocument();
   });

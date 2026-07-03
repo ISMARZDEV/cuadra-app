@@ -2,11 +2,11 @@ import * as Haptics from "expo-haptics";
 import {
   BanknoteArrowDown,
   BanknoteArrowUp,
+  Maximize2,
   PencilSparkles,
   PiggyBank,
   Scale,
 } from "lucide-react-native";
-import { useColorScheme } from "nativewind";
 import { Pressable, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 
@@ -19,8 +19,9 @@ import { t, useLang } from "@/i18n";
 
 import { pickByCurrency, useAccounts, useCurrencyPrimary, useMetrics, useTransactions } from "../api";
 import { InsightsCardShell } from "./insights-card-shell";
+import type { BrandKey } from "./merchant-brand";
 import { MoneyTile } from "./money-tile";
-import { TxRow } from "./tx-row";
+import { TxRowItem } from "./tx-row-item";
 
 function EditButton({ onPress }: { onPress?: () => void }) {
   const pressScale = useSharedValue(1);
@@ -44,9 +45,9 @@ function EditButton({ onPress }: { onPress?: () => void }) {
       onPressOut={onPressOut}
       style={[
         {
-          width: 48,
-          height: 48,
-          borderRadius: 30,
+          width: 40,
+          height: 40,
+          borderRadius: 20,
           backgroundColor: "#C2FB7E",
           alignItems: "center",
           justifyContent: "center",
@@ -54,7 +55,7 @@ function EditButton({ onPress }: { onPress?: () => void }) {
         animStyle,
       ]}
     >
-      <Icon as={PencilSparkles} size={22} color="#034842" strokeWidth={2.5} />
+      <Icon as={PencilSparkles} size={19} color="#034842" strokeWidth={2.5} />
     </AnimatedPressable>
   );
 }
@@ -62,6 +63,93 @@ function EditButton({ onPress }: { onPress?: () => void }) {
 function formatTxDate(occurredAt: string): string {
   const date = new Date(occurredAt);
   return date.toLocaleDateString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// Display-layer merchant → {category emoji + ring color, category parent/child names, brand SVG key
+// / emoji} mapping. `categoryChild` is optional (a tx may only have a parent category). Real
+// transactions carry `merchant.logo_url` + real category data; a `brandKey` points at a local SVG
+// in public/brands/ (see merchant-brand.tsx); `brandEmoji` is the last-resort stand-in. Keyed
+// loosely by name substring. Category names are t()'d — AccountsCard calls useLang() so a language
+// change re-renders this.
+function merchantVisuals(name: string): {
+  emoji: string;
+  ringColor: string;
+  categoryParent: string;
+  categoryChild?: string;
+  brandKey?: BrandKey;
+  brandEmoji?: string;
+} {
+  const n = name.toLowerCase();
+  if (n.includes("spotify"))
+    return {
+      emoji: "🎵",
+      ringColor: "#F4A8A8",
+      categoryParent: t("insights.categories.entertainment"),
+      categoryChild: t("insights.categories.music"),
+      brandKey: "spotify",
+    };
+  if (n.includes("shell"))
+    return {
+      emoji: "⛽",
+      ringColor: "#F5A876",
+      categoryParent: t("insights.categories.transport"),
+      categoryChild: t("insights.categories.fuel"),
+      brandKey: "shell",
+    };
+  if (n.includes("uber"))
+    return {
+      emoji: "🚗",
+      ringColor: "#F08080",
+      categoryParent: t("insights.categories.transport"),
+      categoryChild: t("insights.categories.rides"),
+      brandEmoji: "🚕",
+    };
+  if (n.includes("amazon"))
+    return {
+      emoji: "📦",
+      ringColor: "#F5D76E",
+      categoryParent: t("insights.categories.shopping"),
+      brandEmoji: "🛒",
+    };
+  return { emoji: "🧾", ringColor: "#6FD99A", categoryParent: t("insights.categories.other") };
+}
+
+// The lime round expand button that replaces the old "Ver todo" text pill (Figma) — animated +
+// haptic, opens the full Movimientos/Histórico screen.
+function ExpandButton({ onPress, label }: { onPress?: () => void; label: string }) {
+  const pressScale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: pressScale.value }] }));
+  const onPressIn = () => {
+    pressScale.value = withSpring(0.88, { damping: 15, stiffness: 320, mass: 0.6 });
+  };
+  const onPressOut = () => {
+    pressScale.value = withSpring(1, { damping: 11, stiffness: 220, mass: 0.7 });
+  };
+  return (
+    <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress?.();
+      }}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      style={[
+        {
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: "#C2FB7E",
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        animStyle,
+      ]}
+    >
+      <Icon as={Maximize2} size={18} color="#034842" strokeWidth={2.5} />
+    </AnimatedPressable>
+  );
 }
 
 // Card ① Accounts (insights-ui-navbar.md §3) — 4 metric tiles + Recent Transactions, empty state
@@ -83,7 +171,7 @@ export function AccountsCard() {
     <InsightsCardShell>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text className="text-text" style={{ fontSize: 14, fontWeight: "500" }}>
+          <Text className="text-text" style={{ fontSize: 18, fontWeight: "600" }}>
             {t("insights.accounts.title")}
           </Text>
           <InfoTooltip label={t("insights.accounts.infoLabel")} message={t("insights.accounts.infoMessage")} />
@@ -92,18 +180,27 @@ export function AccountsCard() {
         <EditButton onPress={() => {}} />
         <ScallopFab
           label={t("insights.accounts.addTransaction")}
-          size={58}
+          size={48}
           onPress={() => {}} // TODO(insights-mvp): Add income/expense/transfer form
         />
         </View>
       </View>
 
-      {/* minWidth: 0 on each flex:1 wrapper is load-bearing — without it a tile whose amount is
-          longer (e.g. "+ $20,350.00" vs "-$16,000.00") grows to fit its content instead of holding
-          its exact half, making the two columns unequal. minWidth:0 forces each to shrink to its
-          flex share and let the amount truncate (MoneyTile's numberOfLines) instead. */}
-      <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
+      {/* 2-column grid via flexWrap + a FIXED 48.5% width per tile (not flex:1 per row) — this is
+          what guarantees ALL FOUR tiles are exactly the same width and the two columns line up.
+          Two independent flex rows drifted out of alignment because each row distributed its own
+          width based on its own content; a fixed-percentage wrapping grid can't. Long amounts
+          truncate with "…" inside the tile (MoneyTile's numberOfLines) rather than widening it. */}
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          rowGap: 8,
+          marginTop: 10,
+        }}
+      >
+        <View style={{ width: "48.5%" }}>
           <MoneyTile
             role="income"
             icon={BanknoteArrowDown}
@@ -112,7 +209,7 @@ export function AccountsCard() {
             currency={currency}
           />
         </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ width: "48.5%" }}>
           <MoneyTile
             role="expense"
             icon={BanknoteArrowUp}
@@ -121,9 +218,7 @@ export function AccountsCard() {
             currency={currency}
           />
         </View>
-      </View>
-      <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ width: "48.5%" }}>
           <MoneyTile
             role="savings"
             icon={PiggyBank}
@@ -132,7 +227,7 @@ export function AccountsCard() {
             currency={currency}
           />
         </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ width: "48.5%" }}>
           <MoneyTile
             role="balance"
             icon={Scale}
@@ -147,36 +242,39 @@ export function AccountsCard() {
         {hasTransactions ? (
           <>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text className="text-text" style={{ fontSize: 16, fontWeight: "500" }}>
+              <Text className="text-text" style={{ fontSize: 18, fontWeight: "600" }}>
                 {t("insights.accounts.recentTransactions")}
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t("insights.accounts.seeAll")}
-                style={{
-                  backgroundColor: "#C2FB7E",
-                  borderRadius: 11,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                }}
+              <ExpandButton
+                label={t("insights.accounts.seeAll")}
                 onPress={() => {}} // TODO(insights-mvp): full Movimientos/Histórico screen
-              >
-                <Text style={{ color: "#034842", fontSize: 11, fontWeight: "600" }}>
-                  {t("insights.accounts.seeAll")}
-                </Text>
-              </Pressable>
+              />
             </View>
-            <View style={{ gap: 7, marginTop: 7 }}>
-              {transactions!.map((tx) => (
-                <TxRow
-                  key={tx.id}
-                  emoji={tx.merchant?.name ? "🧾" : "💳"}
-                  merchantName={tx.merchant?.name ?? tx.note ?? tx.type}
-                  dateLabel={formatTxDate(tx.occurred_at)}
-                  amountMinor={tx.amount_minor}
-                  currency={tx.currency}
-                />
-              ))}
+            <View style={{ gap: 10, marginTop: 10 }}>
+              {transactions!.map((tx) => {
+                const name = tx.merchant?.name ?? tx.note ?? tx.type;
+                const { emoji, ringColor, categoryParent, categoryChild, brandKey, brandEmoji } =
+                  merchantVisuals(name);
+                return (
+                  <TxRowItem
+                    key={tx.id}
+                    emoji={emoji}
+                    categoryRingColor={ringColor}
+                    categoryParent={categoryParent}
+                    categoryChild={categoryChild}
+                    brandKey={brandKey}
+                    brandLogoUrl={tx.merchant?.logo_url ?? undefined}
+                    brandEmoji={brandEmoji}
+                    merchantName={name}
+                    dateLabel={formatTxDate(tx.occurred_at)}
+                    amountMinor={tx.amount_minor}
+                    currency={tx.currency}
+                    onPress={() => {}} // TODO(insights-mvp): open this transaction's detail
+                    onEdit={() => {}} // TODO(insights-mvp): edit this transaction
+                    onDelete={() => {}} // TODO(insights-mvp): delete this transaction (confirm)
+                  />
+                );
+              })}
             </View>
           </>
         ) : (
