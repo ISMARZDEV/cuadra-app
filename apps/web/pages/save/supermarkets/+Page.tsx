@@ -1,21 +1,19 @@
 import { Search } from "lucide-react";
+import { useData } from "vike-react/useData";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionRail } from "@/components/section-rail";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
-import { slugify } from "@/lib/utils";
 
-// Inicio de Supermercados (Imagen #4): hero de búsqueda · fila de categorías · rails de
-// ofertas/populares/tiendas/inspiración. Estructura + rutas; los datos de los rails se cablean luego.
-const CATEGORIES = [
-  "Alcohol", "Bebés", "Bebidas", "Proteínas", "Hogar", "Cuidado", "Despensa",
-  "Embutidos", "Escolares", "Frutas", "Lácteos", "Mascotas", "Panadería", "Salud", "Snacks",
-];
+import type { SupermarketsData } from "./+data";
 
+// Inicio de Supermercados (Imagen #4): hero de búsqueda · fila de categorías (datos reales) · rails
+// de ofertas/populares/tiendas/inspiración (skeleton; datos se cablean luego).
 export default function Page() {
   const { locale, country, t } = usePageI18n();
+  const { categories } = useData<SupermarketsData>();
   const base = (path: string) => localeHref(locale, country, `/save/supermarkets${path}`);
 
   return (
@@ -39,13 +37,13 @@ export default function Page() {
 
       <nav className="border-b border-border">
         <ul className="mx-auto flex max-w-6xl gap-6 overflow-x-auto px-4 py-3">
-          {CATEGORIES.map((c) => (
-            <li key={c}>
+          {categories.map((c) => (
+            <li key={c.slug}>
               <a
-                href={base(`/category/${slugify(c)}`)}
+                href={base(`/category/${c.slug}`)}
                 className="whitespace-nowrap text-xs font-medium text-muted-foreground hover:text-primary"
               >
-                {c}
+                {c.name}
               </a>
             </li>
           ))}

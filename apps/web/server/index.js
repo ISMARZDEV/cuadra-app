@@ -7,7 +7,7 @@ import { DEFAULT_COUNTRY, DEFAULT_LOCALE, LOCALES, MARKET_BY_COUNTRY } from "../
 import { buildRobots, buildSitemap, logicalPaths } from "../src/lib/sitemap.js";
 
 const isProduction = process.env.NODE_ENV === "production";
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3006;
 const root = new URL("..", import.meta.url).pathname;
 const apiBase = process.env.VITE_API_BASE_URL || "http://localhost:8005";
 

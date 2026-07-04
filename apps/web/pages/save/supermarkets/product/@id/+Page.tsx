@@ -1,28 +1,22 @@
 import { useData } from "vike-react/useData";
 
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { CompareTable } from "@/components/compare-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { usePageI18n } from "@/i18n/usePageI18n";
-import { localeHref } from "@/lib/links";
 
 import type { ProductData } from "./+data";
 
 // Producto (Imagen #5): breadcrumb · cabecera · tabla comparativa · secciones (alternativas,
 // relacionados, historial, propiedades). La tabla + historial usan datos reales; el resto skeleton.
 export default function Page() {
-  const { locale, country, t } = usePageI18n();
+  const { locale, t } = usePageI18n();
   const comparison = useData<ProductData>();
-  const supermarketsHref = localeHref(locale, country, "/save/supermarkets");
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <nav className="text-xs text-muted-foreground">
-        <a href={supermarketsHref} className="hover:text-primary">
-          {t("nav.supermarkets")}
-        </a>
-        <span> / {comparison.name}</span>
-      </nav>
+      <Breadcrumbs trail={comparison.breadcrumb ?? []} currentName={comparison.name} />
 
       <header className="mt-4">
         <h1 className="text-2xl font-bold">{comparison.name}</h1>

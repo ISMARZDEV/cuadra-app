@@ -1,20 +1,33 @@
 import { ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
 
 import { CountrySwitcher, LocaleSwitcher } from "./switcher";
 import { ThemeToggle } from "./theme-toggle";
 
-// Nav corporativo (Imagen #3): logo · Save▾ (Supermercados/Financieros/Inversiones/Seguros) ·
-// News · Nosotros · Precios · país · idioma · tema · Descargar App.
+// Menú desplegable SSR-CRAWLABLE: los <a> viven SIEMPRE en el DOM (no como Radix, que los monta
+// al abrir en cliente) → Google los indexa. Se revelan por hover/focus con CSS (group).
+function NavMenu({ label, items }: { label: string; items: { href: string; label: string }[] }) {
+  return (
+    <div className="group relative">
+      <button className="flex items-center gap-1 text-sm font-medium outline-none">
+        {label} <ChevronDown className="size-4" />
+      </button>
+      <ul className="invisible absolute left-0 top-full z-50 min-w-52 rounded-md border border-border bg-popover p-1 opacity-0 shadow-md transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+        {items.map((it) => (
+          <li key={it.href}>
+            <a href={it.href} className="block rounded px-3 py-2 text-sm hover:bg-accent">
+              {it.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function SiteHeader() {
   const { locale, country, t } = usePageI18n();
   const href = (path: string) => localeHref(locale, country, path);
@@ -27,37 +40,16 @@ export function SiteHeader() {
         </a>
 
         <nav className="hidden items-center gap-6 md:flex">
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1 text-sm font-medium outline-none">
-              {t("nav.save")} <ChevronDown className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem asChild>
-                <a href={href("/save/supermarkets")}>{t("nav.supermarkets")}</a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a href={href("/save/financial-products")}>{t("nav.financial")}</a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a href={href("/save/investments")}>{t("nav.investments")}</a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a href={href("/save/insurance")}>{t("nav.insurance")}</a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1 text-sm font-medium outline-none">
-              {t("nav.news")} <ChevronDown className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem asChild>
-                <a href={href("/news")}>{t("nav.news")}</a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
+          <NavMenu
+            label={t("nav.save")}
+            items={[
+              { href: href("/save/supermarkets"), label: t("nav.supermarkets") },
+              { href: href("/save/financial-products"), label: t("nav.financial") },
+              { href: href("/save/investments"), label: t("nav.investments") },
+              { href: href("/save/insurance"), label: t("nav.insurance") },
+            ]}
+          />
+          <NavMenu label={t("nav.news")} items={[{ href: href("/news"), label: t("nav.news") }]} />
           <a href={href("/about")} className="text-sm font-medium">
             {t("nav.about")}
           </a>
