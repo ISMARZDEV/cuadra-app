@@ -9,6 +9,7 @@ help:
 	@echo "  make migrate     alembic upgrade head"
 	@echo "  make seed        Carga el seed inicial"
 	@echo "  make save-refresh  Refresca precios vivos de Save (Sirena/Nacional/Jumbo)"
+	@echo "  make ingestion-dev Levanta Dagster (orquestador de ingesta, UI local)"
 	@echo "  make openapi     Vuelca openapi.json + regenera api-client"
 	@echo "  make test        Suite completa del backend (gate)"
 	@echo "  make test-unit   Solo unit, sin DB (loop TDD rápido)"
@@ -39,6 +40,9 @@ seed:
 
 save-refresh:
 	cd apps/api && uv run python -m seeds.save_refresh
+
+ingestion-dev:
+	cd apps/api && uv run --group ingestion dagster dev -m ingestion.definitions
 
 openapi:
 	cd apps/api && uv run python -m src.openapi_dump > openapi.json

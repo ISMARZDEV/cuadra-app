@@ -68,7 +68,12 @@ _GARZA_10LB_PRICES: dict[str, tuple[str, int]] = {
 _ARROZ_PATH = ["Despensa & Abarrotes", "Arroz, Granos & Legumbres", "Arroz", "Arroz Blanco"]
 
 
-def _provider_id(name: str) -> uuid.UUID:
+def provider_id(name: str) -> uuid.UUID:
+    """ID determinista del provider (uuid5). Público: lo comparte el wiring de ingesta.
+
+    Bridge de F1: en producción los providers vendrán de un `store_registry` (doc 06), no del
+    seed; hasta entonces esta derivación es la única fuente de verdad de sus IDs.
+    """
     return uuid.uuid5(_NS, f"provider:DO:{name}")
 
 
@@ -92,7 +97,7 @@ def _taxonomy_leaf(session: Session, market_id: str, path: list[str]) -> str:
     return str(node_id)
 
 
-def _drop_legacy_key(session: Session, provider_id: uuid.UUID, current_external_id: str) -> None:
+def _drop_legacy_key(session: Session, provider_uuid: uuid.UUID, current_external_id: str) -> None:
     """Borra el store_product legacy "garza-10lb" (y su histórico) si el provider ya usa SKU real.
 
     DBs de dev sembradas antes del wiring quedarían con DOS cotizaciones por tienda (la llave
@@ -102,7 +107,7 @@ def _drop_legacy_key(session: Session, provider_id: uuid.UUID, current_external_
         return
     legacy = session.scalars(
         select(StoreProductModel).where(
-            StoreProductModel.provider_id == provider_id,
+            StoreProductModel.provider_id == provider_uuid,
             StoreProductModel.external_id == "garza-10lb",
         )
     ).first()
@@ -121,7 +126,7 @@ def seed_save(session: Session) -> None:
 
     # 1) proveedores (cadenas RD)
     for name, platform in _PROVIDERS:
-        pid = _provider_id(name)
+        pid = provider_id(name)
         if session.get(ProviderModel, pid) is None:
             prov_repo.add(Provider(str(pid), name, ProviderType.SUPERMARKET, platform, "DO"))
 
@@ -145,9 +150,9 @@ def seed_save(session: Session) -> None:
     # 4) precios por tienda (change-only)
     now = datetime.now(timezone.utc)
     for name, (external_id, minor) in _GARZA_10LB_PRICES.items():
-        _drop_legacy_key(session, _provider_id(name), external_id)
+        _drop_legacy_key(session, provider_id(name), external_id)
         store_repo.record_observation(
-            provider_id=str(_provider_id(name)),
+            provider_id=str(provider_id(name)),
             external_id=external_id,
             canonical_product_id=str(cid),
             price=Money(minor, DOP),

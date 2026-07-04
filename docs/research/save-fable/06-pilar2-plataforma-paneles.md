@@ -173,3 +173,43 @@ o módulo en `apps/api` al inicio; (b) web única con `/admin` gateado, o `apps/
   de `identity`/capabilities que ya existe).
 - **Pilar 2: DECIDIDO** (D1 Dagster OSS · D2 Soda Core→+Pandera · D3 Refine · D4 monorepo
   microservices-ready + web única /admin).
+
+---
+
+## 8. IMPLEMENTACIÓN F1 (2026-07-04) — Dagster como MÓDULO en apps/api (no apps/ingestion aún)
+
+> Estado: **implementado** (rama `feat/save-supermercados`). Concreta D1 (Dagster OSS) sin abrir
+> todavía `apps/ingestion`. Append-only.
+
+**Decisión:** el orquestador Dagster se monta como un **módulo top-level `ingestion/` dentro del
+proyecto de `apps/api`** (hermano de `src/`, `seeds/`, `evals/`), NO como un `apps/ingestion` con
+venv propio. Fechada aquí porque ajusta el "dónde vive" de §6 para la realidad de F1.
+
+**Por qué (el concepto):** lo que da "servicio aparte" — aislamiento de fallos, escalado y deploy
+independientes — son propiedades del **PROCESO** (`dagster dev` corre en su propio runtime, un run
+colgado no toca uvicorn), no del directorio. Python comparte código por **paquete instalable**, y
+`apps/api` hoy no lo es (usa `src/` con `pythonpath=["."]`). Un `apps/ingestion` con venv propio
+tendría que importar `src.contexts.save.*` con un shim de `sys.path`, duplicando el árbol de
+dependencias en dos venvs desincronizables (bug silencioso de deserialización el día que las copias
+de SQLAlchemy/pydantic difieran). Primero se **empaqueta** el contexto, después se **muda** — no al
+revés.
+
+**Cómo se mantiene "microservices-ready" (ADR 33 a rajatabla):**
+- `ingestion/` es módulo TOP-LEVEL, nunca mezclado dentro de la API. Queda fuera de
+  `root_package = src` del import-linter (igual que `seeds/`), y solo consume `save` por sus
+  puertos/use cases (`RefreshCatalogPrices`, `ListPriceDrops`) — jamás toca otro schema.
+- Dagster vive en un **dependency-group `ingestion`** aparte (NO en `default-groups`): `uv sync` de
+  CI y el runtime de la API **no lo instalan** → cero contaminación del deploy de la API. Dev corre
+  `uv sync --group ingestion` / `make ingestion-dev`.
+- La **lógica pura** (wiring de fuentes `build_sources`, orquestación `refresh_source`) vive en
+  módulos SIN import de dagster → se testea en el gate de CI sin dagster. Los assets/`Definitions`
+  son la única piel Dagster; su test usa `importorskip("dagster")` (skip en CI, corre en dev).
+- Extracción futura a `apps/ingestion` = mecánica (empaquetar `contexts/save`, mover `ingestion/`,
+  reapuntar imports). Cero reescritura — que es lo que pedía D4.
+
+**Assets F1 (asset-centric, lineage):** un asset por fuente (`sirena_prices`, `nacional_prices`,
+`jumbo_prices`) que corre `RefreshCatalogPrices` (change-only) sobre la canasta curada, y un asset
+`price_drops` aguas abajo (deps de los tres) que corre la detección G4. Job `save_catalog_refresh`
++ `ScheduleDefinition` diaria (interino: un ritmo; el doble ritmo canasta/full-semanal de §7 se
+suma cuando el catálogo crezca). El runner CLI `make save-refresh` (sin dagster) se conserva como
+disparo manual y comparte el MISMO wiring (`build_sources`) — una sola fuente de verdad.
