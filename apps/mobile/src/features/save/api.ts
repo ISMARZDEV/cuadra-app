@@ -5,11 +5,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // El Bearer lo inyecta el interceptor de lib/api/client.ts. El feed es el MISMO que ve la web:
 // las alertas son server-side por user_id → se comparten entre app y web.
 
+// Poll en foreground: refresca el feed con la app activa (TanStack pausa el refetch cuando la app
+// va a background). Elimina el pull-to-refresh manual sin romper el límite de iOS.
+const REFRESH_MS = 30_000;
+
 export const ALERT_NOTIFICATIONS_KEY = ["save", "alertNotifications"] as const;
 export function useAlertNotifications() {
   return useQuery({
     queryKey: ALERT_NOTIFICATIONS_KEY,
     queryFn: () => alertNotifications().then((r) => r.data ?? []),
+    refetchInterval: REFRESH_MS,
   });
 }
 
@@ -18,6 +23,7 @@ export function useMyAlerts() {
   return useQuery({
     queryKey: MY_ALERTS_KEY,
     queryFn: () => listAlerts().then((r) => r.data ?? []),
+    refetchInterval: REFRESH_MS,
   });
 }
 

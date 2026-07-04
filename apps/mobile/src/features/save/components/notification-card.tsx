@@ -1,12 +1,13 @@
 import { Text, View } from "react-native";
 
-import { t } from "@/i18n";
+import { t, useLang } from "@/i18n";
 import { formatMoney } from "@/lib/money";
 
 import type { NotificationCardProps } from "../interfaces";
 
 // Tarjeta de una alerta disparada (feed in-app): producto + "bajó de X a Y en Z" + −%.
 export function NotificationCard({ notification: n }: NotificationCardProps) {
+  useLang(); // re-render en vivo al cambiar idioma (skill cuadra-mobile §5, reactividad de t())
   return (
     <View className="rounded-2xl border border-border bg-surface px-4 py-3">
       <Text className="text-base font-semibold text-text">{n.product_name}</Text>

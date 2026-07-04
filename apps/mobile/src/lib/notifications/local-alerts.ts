@@ -16,6 +16,7 @@ import { t } from "@/i18n";
 const SEEN_KEY = "cuadra.seen_alert_notifs";
 const INIT_KEY = "cuadra.seen_alert_notifs_init";
 const MAX_SEEN = 200;
+const POLL_MS = 30_000; // chequeo periódico mientras la app está activa
 
 let started = false;
 
@@ -92,7 +93,13 @@ export async function startLocalAlertNotifications(): Promise<void> {
 
   started = true;
   await checkAndNotify();
+
+  // Chequeo al volver a foreground + poll periódico mientras la app está activa (iOS suspende el
+  // JS en background, así que el intervalo pausa solo → sin gasto de batería en background).
   AppState.addEventListener("change", (state) => {
     if (state === "active") void checkAndNotify();
   });
+  setInterval(() => {
+    if (AppState.currentState === "active") void checkAndNotify();
+  }, POLL_MS);
 }

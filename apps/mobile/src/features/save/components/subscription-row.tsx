@@ -2,7 +2,7 @@ import { Trash2 } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { Icon } from "@/components/ui/icon";
-import { t } from "@/i18n";
+import { t, useLang } from "@/i18n";
 import { formatMoney } from "@/lib/money";
 import { palette } from "@/theme";
 
@@ -10,6 +10,7 @@ import type { SubscriptionRowProps } from "../interfaces";
 
 // Fila de una suscripción: producto seguido + umbral opcional + dejar de seguir.
 export function SubscriptionRow({ alert, onRemove }: SubscriptionRowProps) {
+  useLang(); // re-render en vivo al cambiar idioma (skill cuadra-mobile §5)
   return (
     <View className="flex-row items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
       <View className="flex-1">
