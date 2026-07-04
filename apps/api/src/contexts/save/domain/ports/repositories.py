@@ -26,6 +26,10 @@ class CanonicalProductRepository(Protocol):
 
 
 class StoreProductRepository(Protocol):
+    def exists(self, provider_id: str, external_id: str) -> bool:
+        """¿Hay store_product para (provider, external_id)? — llave natural del refresh."""
+        ...
+
     def list_quotes_by_canonical(self, canonical_product_id: str) -> list[StoreQuote]:
         """Cotizaciones (con nombre de tienda) para comparar — join a provider."""
         ...

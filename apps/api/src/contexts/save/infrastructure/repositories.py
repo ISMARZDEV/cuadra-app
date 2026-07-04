@@ -114,6 +114,9 @@ class SqlStoreProductRepository:
             )
         ).first()
 
+    def exists(self, provider_id: str, external_id: str) -> bool:
+        return self._find(provider_id, external_id) is not None
+
     def record_observation(
         self,
         *,

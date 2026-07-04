@@ -128,3 +128,16 @@ def test_list_quotes_joins_provider_name(db_session) -> None:  # type: ignore[no
     assert len(quotes) == 1
     assert quotes[0].provider_name == "Sirena"
     assert quotes[0].price == Money(42400, DOP)
+
+
+def test_exists_by_natural_key(db_session) -> None:  # type: ignore[no-untyped-def]
+    pid, cid = _seed_provider_and_canonical(db_session)
+    sp = SqlStoreProductRepository(db_session)
+    assert sp.exists(pid, "sku1") is False
+    sp.record_observation(
+        provider_id=pid, external_id="sku1", canonical_product_id=cid,
+        price=Money(42400, DOP), captured_at=datetime(2026, 7, 1),
+        price_type=PriceType.ONLINE, source="vtex",
+    )
+    assert sp.exists(pid, "sku1") is True
+    assert sp.exists(pid, "sku-otro") is False

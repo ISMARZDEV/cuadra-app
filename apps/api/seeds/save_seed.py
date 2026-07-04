@@ -23,7 +23,9 @@ from src.contexts.save.domain.entities import (
 from src.contexts.save.domain.value_objects import parse_size
 from src.contexts.save.infrastructure.models import (
     CanonicalProductModel,
+    PriceModel,
     ProviderModel,
+    StoreProductModel,
     TaxonomyNodeModel,
 )
 from src.contexts.save.infrastructure.repositories import (
@@ -48,16 +50,19 @@ _PROVIDERS: list[tuple[str, SourcePlatform]] = [
     ("Sirena", SourcePlatform.VTEX),
 ]
 
-# Arroz Enriquecido La Garza 10 LB — precios reales (SupermercadosRD, minor units DOP)
-_GARZA_10LB_PRICES: dict[str, int] = {
-    "Merca Jumbo": 42400,   # RD$424.00 (mejor precio)
-    "Bravo": 43800,         # RD$438.00
-    "Jumbo": 44000,         # RD$440.00
-    "Ritmo": 44800,         # RD$448.00
-    "Nacional": 45495,      # RD$454.95
-    "Carrefour": 45995,     # RD$459.95
-    "Plaza Lama": 47400,    # RD$474.00
-    "Sirena": 47500,        # RD$475.00
+# Arroz Enriquecido La Garza 10 LB — (external_id, precio minor DOP).
+# Cadenas con fuente API viva (Sirena/Nacional/Jumbo): external_id = SKU REAL verificado en vivo
+# (doc 09) → `python -m seeds.save_refresh` refresca su precio desde el adapter. El resto (sin
+# API aún): llave sintética "garza-10lb" + precio de SupermercadosRD como bootstrap.
+_GARZA_10LB_PRICES: dict[str, tuple[str, int]] = {
+    "Merca Jumbo": ("garza-10lb", 42400),  # RD$424.00 (mejor precio)
+    "Bravo": ("garza-10lb", 43800),        # RD$438.00
+    "Jumbo": ("2010981", 44000),           # RD$440.00 — SKU real Magento (Store: jumbo)
+    "Ritmo": ("garza-10lb", 44800),        # RD$448.00
+    "Nacional": ("2010981", 45495),        # RD$454.95 — SKU real Magento (mismo id CCN)
+    "Carrefour": ("garza-10lb", 45995),    # RD$459.95
+    "Plaza Lama": ("garza-10lb", 47400),   # RD$474.00
+    "Sirena": ("14210", 47500),            # RD$475.00 — productId real VTEX
 }
 
 _ARROZ_PATH = ["Despensa & Abarrotes", "Arroz, Granos & Legumbres", "Arroz", "Arroz Blanco"]
@@ -85,6 +90,28 @@ def _taxonomy_leaf(session: Session, market_id: str, path: list[str]) -> str:
         parent = node_id
     assert node_id is not None
     return str(node_id)
+
+
+def _drop_legacy_key(session: Session, provider_id: uuid.UUID, current_external_id: str) -> None:
+    """Borra el store_product legacy "garza-10lb" (y su histórico) si el provider ya usa SKU real.
+
+    DBs de dev sembradas antes del wiring quedarían con DOS cotizaciones por tienda (la llave
+    sintética vieja + la real). Dev-only: el seed es la única fuente de esas filas.
+    """
+    if current_external_id == "garza-10lb":
+        return
+    legacy = session.scalars(
+        select(StoreProductModel).where(
+            StoreProductModel.provider_id == provider_id,
+            StoreProductModel.external_id == "garza-10lb",
+        )
+    ).first()
+    if legacy is None:
+        return
+    for price in session.scalars(select(PriceModel).where(PriceModel.store_product_id == legacy.id)):
+        session.delete(price)
+    session.delete(legacy)
+    session.flush()
 
 
 def seed_save(session: Session) -> None:
@@ -117,10 +144,11 @@ def seed_save(session: Session) -> None:
 
     # 4) precios por tienda (change-only)
     now = datetime.now(timezone.utc)
-    for name, minor in _GARZA_10LB_PRICES.items():
+    for name, (external_id, minor) in _GARZA_10LB_PRICES.items():
+        _drop_legacy_key(session, _provider_id(name), external_id)
         store_repo.record_observation(
             provider_id=str(_provider_id(name)),
-            external_id="garza-10lb",
+            external_id=external_id,
             canonical_product_id=str(cid),
             price=Money(minor, DOP),
             captured_at=now,
