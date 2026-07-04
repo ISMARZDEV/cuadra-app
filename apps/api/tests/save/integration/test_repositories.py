@@ -109,6 +109,23 @@ def test_canonical_get_by_id_reconstructs_brand_and_quantity(db_session) -> None
     assert got.quantity == Quantity(Decimal("4.5359237"), UnitMeasure.MASS)
 
 
+def test_canonical_get_by_id_invalid_uuid_returns_none(db_session) -> None:  # type: ignore[no-untyped-def]
+    # id malformado NO debe reventar (ValueError→500): devuelve None → el use case da 404 limpio.
+    repo = SqlCanonicalProductRepository(db_session)
+    assert repo.get_by_id("no-es-un-uuid") is None
+
+
+def test_canonical_list_by_market_for_sitemap(db_session) -> None:  # type: ignore[no-untyped-def]
+    market = f"T{uuid.uuid4().hex[:6]}"
+    _pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    repo = SqlCanonicalProductRepository(db_session)
+
+    listed = repo.list_by_market(market)
+    assert [p.id for p in listed] == [cid]
+    # mercado distinto → vacío (no arrastra datos reales de "DO" de la DB dev)
+    assert repo.list_by_market(f"T{uuid.uuid4().hex[:6]}") == []
+
+
 def test_canonical_search_by_name_and_market(db_session) -> None:  # type: ignore[no-untyped-def]
     _pid, cid = _seed_provider_and_canonical(db_session)
     crepo = SqlCanonicalProductRepository(db_session)

@@ -152,6 +152,20 @@ def test_drops_endpoint_empty_without_drops(db_session: Session) -> None:
     assert r.json() == []
 
 
+def test_products_endpoint_lists_market_products(db_session: Session) -> None:
+    market = f"T{uuid.uuid4().hex[:6]}"
+    cid = _seed(db_session, market_id=market)
+    r = _client(db_session).get("/v1/save/products", params={"market": market})
+    assert r.status_code == 200
+    assert any(item["id"] == cid for item in r.json())
+
+
+def test_compare_endpoint_invalid_id_is_404_not_500(db_session: Session) -> None:
+    # soft-404 SEO: un id malformado devuelve 404 (no 500 por ValueError de uuid).
+    r = _client(db_session).get("/v1/save/compare", params={"product_id": "no-es-uuid"})
+    assert r.status_code == 404
+
+
 def test_history_endpoint_422_on_bad_range(db_session: Session) -> None:
     cid = _seed(db_session)
     r = _client(db_session).get(

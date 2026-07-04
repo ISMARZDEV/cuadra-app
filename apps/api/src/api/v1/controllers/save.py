@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from src.api.composition_root import (
     get_compare_product,
     get_list_price_drops,
+    get_list_products,
     get_price_history,
     get_search_products,
 )
@@ -24,6 +25,7 @@ from src.contexts.save.application.dtos import (
 )
 from src.contexts.save.application.errors import CanonicalProductNotFoundError
 from src.contexts.save.application.history import GetPriceHistory, HistoryRange
+from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
 
 router = APIRouter(prefix="/save", tags=["save"])
@@ -47,6 +49,16 @@ def compare_product(
         return use_case.execute(product_id)
     except CanonicalProductNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/products")
+def list_products(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    limit: int = Query(1000, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    use_case: ListProducts = Depends(get_list_products),
+) -> list[ProductSearchDto]:
+    return use_case.execute(market, limit=limit, offset=offset)
 
 
 @router.get("/drops")

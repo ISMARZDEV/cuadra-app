@@ -28,6 +28,14 @@ from .models import (
 )
 
 
+def _parse_uuid(value: str) -> uuid.UUID | None:
+    """UUID válido → UUID; malformado → None (para no reventar ante input externo arbitrario)."""
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
 class SqlProviderRepository:
     def __init__(self, session: Session) -> None:
         self._s = session
@@ -91,7 +99,10 @@ class SqlCanonicalProductRepository:
         return b.name if b else ""
 
     def get_by_id(self, product_id: str) -> CanonicalProduct | None:
-        m = self._s.get(CanonicalProductModel, uuid.UUID(product_id))
+        pid = _parse_uuid(product_id)
+        if pid is None:  # id malformado → None (evita ValueError→500; da 404 limpio, SEO)
+            return None
+        m = self._s.get(CanonicalProductModel, pid)
         return canonical_to_entity(m, self._brand_name(m.brand_id)) if m else None
 
     def search(self, query: str, market_id: str) -> list[CanonicalProduct]:
@@ -100,6 +111,18 @@ class SqlCanonicalProductRepository:
                 CanonicalProductModel.market_id == market_id,
                 CanonicalProductModel.name.ilike(f"%{query}%"),
             )
+        ).all()
+        return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
+
+    def list_by_market(
+        self, market_id: str, limit: int = 1000, offset: int = 0
+    ) -> list[CanonicalProduct]:
+        models = self._s.scalars(
+            select(CanonicalProductModel)
+            .where(CanonicalProductModel.market_id == market_id)
+            .order_by(CanonicalProductModel.name)
+            .limit(limit)
+            .offset(offset)
         ).all()
         return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
 

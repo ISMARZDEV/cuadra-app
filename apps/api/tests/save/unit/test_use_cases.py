@@ -12,6 +12,7 @@ import pytest
 
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.errors import CanonicalProductNotFoundError
+from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.domain.comparison import StoreQuote
 from src.contexts.save.domain.entities import CanonicalProduct
@@ -36,6 +37,14 @@ class FakeCanonicalRepo:
             p for p in self._p.values()
             if query.lower() in p.name.lower() and p.market_id == market_id
         ]
+
+    def list_by_market(
+        self, market_id: str, limit: int = 1000, offset: int = 0
+    ) -> list[CanonicalProduct]:
+        products = sorted(
+            (p for p in self._p.values() if p.market_id == market_id), key=lambda p: p.id
+        )
+        return products[offset : offset + limit]
 
 
 class FakeStoreRepo:
@@ -85,3 +94,11 @@ def test_search_products_filters_by_query_and_market() -> None:
     res = uc.execute("arroz", "DO")
     assert [r.id for r in res] == ["c1"]
     assert res[0].name == "Arroz La Garza"
+
+
+def test_list_products_returns_all_in_market_for_sitemap() -> None:
+    a = _canonical("c1", "Arroz La Garza")
+    b = _canonical("c2", "Aceite Crisol", UnitMeasure.VOLUME)
+    uc = ListProducts(FakeCanonicalRepo([a, b]))
+    res = uc.execute("DO")
+    assert {r.id for r in res} == {"c1", "c2"}
