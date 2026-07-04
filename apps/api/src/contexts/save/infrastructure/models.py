@@ -108,6 +108,8 @@ class CanonicalProductModel(Base):
         UUID(as_uuid=True), ForeignKey("save.brand.id")
     )
     quality: Mapped[str | None] = mapped_column(Text)            # Premium|Selecto|…
+    display_size: Mapped[str | None] = mapped_column(Text)       # tamaño original ("10 LB")
+    image_url: Mapped[str | None] = mapped_column(Text)
     size_amount: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)  # Quantity (VO)
     size_measure: Mapped[str] = mapped_column(Text, nullable=False)               # mass|volume|count
     taxonomy_node_id: Mapped[uuid.UUID | None] = mapped_column(

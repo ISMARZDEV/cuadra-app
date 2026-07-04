@@ -25,6 +25,10 @@ class CanonicalProduct:
     quantity: Quantity
     taxonomy_node_id: str
     market_id: str  # por ID (ADR 33) — un país nuevo = un nuevo valor, sin tocar código
+    # Presentación (Imagen #2/#5) — opcionales, no afectan la money-math:
+    quality: str | None = None       # Premium|Selecto|…
+    display_size: str | None = None  # tamaño ORIGINAL de empaque ("10 LB"), no el normalizado
+    image_url: str | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip():

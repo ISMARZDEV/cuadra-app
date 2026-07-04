@@ -19,6 +19,8 @@ class OfferingRow:
     name: str
     brand: str
     quality: str | None
+    display_size: str | None
+    image_url: str | None
     quantity: Quantity
     provider_id: str
     provider_name: str

@@ -26,6 +26,9 @@ def canonical_to_entity(m: CanonicalProductModel, brand_name: str) -> CanonicalP
         Quantity(m.size_amount, UnitMeasure(m.size_measure)),
         taxonomy_node_id=str(m.taxonomy_node_id) if m.taxonomy_node_id else "",
         market_id=m.market_id,
+        quality=m.quality,
+        display_size=m.display_size,
+        image_url=m.image_url,
     )
 
 

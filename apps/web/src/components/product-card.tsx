@@ -21,7 +21,21 @@ export function ProductCard({
     <a href={href} className="group block">
       <Card className="h-full p-3 transition-colors group-hover:border-primary">
         <div className="relative">
-          <div className="aspect-square rounded-md bg-muted" aria-hidden />
+          {product.image_url ? (
+            <img
+              src={product.image_url}
+              alt={product.name}
+              loading="lazy"
+              className="aspect-square w-full rounded-md object-contain"
+            />
+          ) : (
+            <div className="aspect-square rounded-md bg-muted" aria-hidden />
+          )}
+          {product.display_size && (
+            <span className="absolute left-1 top-1 rounded-md bg-foreground/85 px-1.5 py-0.5 text-[11px] font-medium text-background">
+              {product.display_size}
+            </span>
+          )}
           <span
             className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-lg leading-none text-primary-foreground"
             aria-hidden

@@ -7,6 +7,7 @@ import { buildRobots, buildSitemap, logicalPaths } from "./sitemap.js";
 const comparison: PriceComparisonDto = {
   canonical_product_id: "c1",
   name: "Arroz Enriquecido La Garza",
+  brand: "La Garza",
   currency: "DOP",
   cheapest_provider: "Merca Jumbo",
   spread_minor: 5100,

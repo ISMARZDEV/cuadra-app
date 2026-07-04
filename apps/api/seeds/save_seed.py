@@ -162,6 +162,12 @@ def seed_save(session: Session) -> None:
                 parse_size("10 Lbs"),
                 taxonomy_node_id=node_id,
                 market_id="DO",
+                quality="Premium",
+                display_size="10 LB",
+                image_url=(
+                    "https://gruporamos.vteximg.com.br/arquivos/ids/166286/"
+                    "1-und-7463851146038.jpg"
+                ),
             )
         )
 

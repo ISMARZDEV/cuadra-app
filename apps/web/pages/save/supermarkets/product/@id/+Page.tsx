@@ -27,21 +27,52 @@ export default function Page() {
     max: formatMoney(max, comparison.currency),
   });
 
+  // Propiedades (C10): Tipo = categoría hoja (último del breadcrumb) · Marca · Calidad.
+  const leafCategory = comparison.breadcrumb?.at(-1)?.name;
+  const properties: [string, string][] = [
+    ...(leafCategory ? [[t("product.propType"), leafCategory] as [string, string]] : []),
+    ...(comparison.brand ? [[t("product.propBrand"), comparison.brand] as [string, string]] : []),
+    ...(comparison.quality
+      ? [[t("product.propQuality"), comparison.quality] as [string, string]]
+      : []),
+  ];
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
       <Breadcrumbs trail={comparison.breadcrumb ?? []} currentName={comparison.name} />
 
-      <header className="mt-4">
-        <h1 className="text-2xl font-bold">{comparison.name}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{priceRange}</p>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {t("product.bestPriceAt")}{" "}
-          <strong className="text-foreground">{comparison.cheapest_provider}</strong>
-        </p>
-        <div className="mt-3">
-          <Button size="sm" variant="outline">
-            + {t("product.addToList")}
-          </Button>
+      <header className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-[240px_1fr]">
+        <div className="relative">
+          {comparison.image_url ? (
+            <img
+              src={comparison.image_url}
+              alt={comparison.name}
+              className="aspect-square w-full rounded-lg border border-border object-contain p-2"
+            />
+          ) : (
+            <div className="aspect-square rounded-lg bg-muted" aria-hidden />
+          )}
+          {comparison.display_size && (
+            <span className="absolute left-2 top-2 rounded-md bg-foreground/85 px-2 py-0.5 text-xs font-medium text-background">
+              {comparison.display_size}
+            </span>
+          )}
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold">{comparison.name}</h1>
+          {comparison.brand && (
+            <p className="mt-0.5 text-sm text-muted-foreground">{comparison.brand}</p>
+          )}
+          <p className="mt-2 text-sm text-muted-foreground">{priceRange}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {t("product.bestPriceAt")}{" "}
+            <strong className="text-foreground">{comparison.cheapest_provider}</strong>
+          </p>
+          <div className="mt-3">
+            <Button size="sm" variant="outline">
+              + {t("product.addToList")}
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -65,6 +96,22 @@ export default function Page() {
           <Badge variant="secondary">{t("common.comingSoon")}</Badge>
         </section>
       ))}
+
+      {properties.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-lg font-semibold">{t("product.properties")}</h2>
+          <table className="w-full max-w-md text-sm">
+            <tbody>
+              {properties.map(([label, value]) => (
+                <tr key={label} className="border-b border-border">
+                  <td className="py-2 pr-4 text-muted-foreground">{label}</td>
+                  <td className="py-2 font-medium">{value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section className="mt-8">
         <h2 className="mb-3 text-lg font-semibold">{t("product.feedback")}</h2>

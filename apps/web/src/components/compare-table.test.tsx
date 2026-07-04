@@ -7,6 +7,7 @@ import { CompareTable } from "./compare-table";
 const comparison: PriceComparisonDto = {
   canonical_product_id: "c1",
   name: "Arroz La Garza 10 Lbs",
+  brand: "La Garza",
   currency: "DOP",
   cheapest_provider: "Merca",
   spread_minor: 5100,

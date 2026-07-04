@@ -38,6 +38,8 @@ class _Aggregated:
     name: str
     brand: str
     quality: str | None
+    display_size: str | None
+    image_url: str | None
     quantity: Quantity
     min_price: Money
     providers: dict[str, str]  # provider_id → provider_name (tiendas que lo tienen)
@@ -53,8 +55,8 @@ def _aggregate(rows: Iterable[OfferingRow]) -> dict[str, _Aggregated]:
         agg = out.get(r.product_id)
         if agg is None:
             out[r.product_id] = _Aggregated(
-                r.product_id, r.name, r.brand, r.quality, r.quantity, r.price,
-                {r.provider_id: r.provider_name},
+                r.product_id, r.name, r.brand, r.quality, r.display_size, r.image_url,
+                r.quantity, r.price, {r.provider_id: r.provider_name},
             )
             continue
         agg.providers[r.provider_id] = r.provider_name
@@ -129,6 +131,8 @@ def _to_card(p: _Aggregated) -> ProductCardDto:
         name=p.name,
         brand=p.brand,
         quality=p.quality,
+        display_size=p.display_size,
+        image_url=p.image_url,
         price_minor=p.min_price.amount_minor,
         currency=p.min_price.currency.code,
         unit_price_minor=p.unit_price_minor,

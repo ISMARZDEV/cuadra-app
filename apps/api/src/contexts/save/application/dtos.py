@@ -46,6 +46,10 @@ class ComparedPriceDto(BaseModel):
 class PriceComparisonDto(BaseModel):
     canonical_product_id: str
     name: str
+    brand: str
+    quality: str | None = None
+    display_size: str | None = None   # tamaño original ("10 LB") para el badge
+    image_url: str | None = None
     currency: str
     entries: list[ComparedPriceDto]
     cheapest_provider: str
@@ -76,6 +80,10 @@ class PriceComparisonDto(BaseModel):
         return cls(
             canonical_product_id=canonical.id,
             name=canonical.name,
+            brand=canonical.brand,
+            quality=canonical.quality,
+            display_size=canonical.display_size,
+            image_url=canonical.image_url,
             currency=comparison.cheapest.price.currency.code,
             entries=entries,
             cheapest_provider=comparison.cheapest.provider_name,
@@ -208,6 +216,8 @@ class ProductCardDto(BaseModel):
     name: str
     brand: str
     quality: str | None = None
+    display_size: str | None = None  # tamaño original ("10 LB") para el badge
+    image_url: str | None = None
     price_minor: int          # el MÁS BARATO entre tiendas
     currency: str
     unit_price_minor: int     # precio por unidad base (§B2)

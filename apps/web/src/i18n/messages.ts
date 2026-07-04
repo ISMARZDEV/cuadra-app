@@ -50,6 +50,9 @@ type MessageKey =
   | "product.feedback"
   | "product.reportProblem"
   | "product.suggestCategory"
+  | "product.propType"
+  | "product.propBrand"
+  | "product.propQuality"
   | "history.range1m"
   | "history.range3m"
   | "history.rangeAll"
@@ -138,6 +141,9 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.feedback": "Feedback",
     "product.reportProblem": "Reportar problema",
     "product.suggestCategory": "Sugerir categoría",
+    "product.propType": "Tipo",
+    "product.propBrand": "Marca",
+    "product.propQuality": "Calidad",
     "history.range1m": "1 Mes",
     "history.range3m": "3 Meses",
     "history.rangeAll": "Todos",
@@ -221,6 +227,9 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.feedback": "Feedback",
     "product.reportProblem": "Report a problem",
     "product.suggestCategory": "Suggest a category",
+    "product.propType": "Type",
+    "product.propBrand": "Brand",
+    "product.propQuality": "Quality",
     "history.range1m": "1 Month",
     "history.range3m": "3 Months",
     "history.rangeAll": "All",
@@ -304,6 +313,9 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.feedback": "Feedback",
     "product.reportProblem": "Reportar problema",
     "product.suggestCategory": "Sugerir categoria",
+    "product.propType": "Tipo",
+    "product.propBrand": "Marca",
+    "product.propQuality": "Qualidade",
     "history.range1m": "1 Mês",
     "history.range3m": "3 Meses",
     "history.rangeAll": "Todos",

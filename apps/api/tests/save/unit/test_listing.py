@@ -62,14 +62,28 @@ TREE = [
 ]
 DESCENDANTS = {"n-arroz": ["n-arroz", "n-blanco"]}
 
-# 2 productos: Garza 10kg (3 tiendas) y Bisono 5kg (2 tiendas).
+# 2 productos: Garza 10kg (3 tiendas, con presentación) y Bisono 5kg (2 tiendas, sin ella).
+def _garza(pid: str, pname: str, minor: int) -> OfferingRow:
+    return OfferingRow(
+        "garza", "Arroz Garza", "La Garza", "Premium", "10 LB", "http://img/garza.jpg",
+        _q("10"), pid, pname, Money(minor, DOP),
+    )
+
+
+def _bisono(pid: str, pname: str, minor: int) -> OfferingRow:
+    return OfferingRow(
+        "bisono", "Arroz Bisono", "Bisono", None, None, None,
+        _q("5"), pid, pname, Money(minor, DOP),
+    )
+
+
 ROWS = {
     ("n-arroz", "n-blanco"): [
-        OfferingRow("garza", "Arroz Garza", "La Garza", None, _q("10"), "p1", "Merca", Money(42400, DOP)),
-        OfferingRow("garza", "Arroz Garza", "La Garza", None, _q("10"), "p2", "Bravo", Money(43800, DOP)),
-        OfferingRow("garza", "Arroz Garza", "La Garza", None, _q("10"), "p3", "Sirena", Money(47500, DOP)),
-        OfferingRow("bisono", "Arroz Bisono", "Bisono", None, _q("5"), "p1", "Merca", Money(21195, DOP)),
-        OfferingRow("bisono", "Arroz Bisono", "Bisono", None, _q("5"), "p2", "Bravo", Money(22000, DOP)),
+        _garza("p1", "Merca", 42400),
+        _garza("p2", "Bravo", 43800),
+        _garza("p3", "Sirena", 47500),
+        _bisono("p1", "Merca", 21195),
+        _bisono("p2", "Bravo", 22000),
     ],
 }
 
@@ -92,6 +106,14 @@ def test_computes_unit_price_from_min_price() -> None:
     garza = next(c for c in res.products if c.id == "garza")
     assert garza.unit_price_minor == 4240  # 42400 / 10kg
     assert garza.unit_measure == "mass"
+
+
+def test_card_carries_presentation_fields() -> None:
+    res = _uc().execute("DO", "arroz")
+    garza = next(c for c in res.products if c.id == "garza")
+    assert garza.display_size == "10 LB"
+    assert garza.quality == "Premium"
+    assert garza.image_url == "http://img/garza.jpg"
 
 
 def test_breadcrumb_and_subcategories() -> None:
