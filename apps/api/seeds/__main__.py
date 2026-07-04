@@ -7,12 +7,14 @@ from __future__ import annotations
 
 def main() -> None:
     from seeds.identity_seed import seed_identity
+    from seeds.save_seed import seed_save
     from src.shared.db.base import SessionLocal
 
     with SessionLocal() as session:
         seed_identity(session)
+        seed_save(session)
         session.commit()
-    print("seed: identity OK (idempotente).")
+    print("seed: identity + save OK (idempotente).")
 
 
 if __name__ == "__main__":
