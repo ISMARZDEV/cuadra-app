@@ -25,9 +25,9 @@ from .dtos import (
 )
 from .errors import CategoryNotFoundError
 
-__all__ = ["ListCategoryProducts", "OfferingRow"]
+__all__ = ["ListCategoryProducts", "ListFeaturedProducts", "OfferingRow"]
 
-_SORTS = {"price", "unit_price", "name"}
+_SORTS = {"price", "unit_price", "name", "popular"}
 
 
 @dataclass
@@ -122,6 +122,8 @@ def _sort_key(sort: str):
         return lambda p: (p.unit_price_minor, p.name)
     if sort == "name":
         return lambda p: p.name
+    if sort == "popular":  # proxy de popularidad: disponible en MÁS tiendas primero
+        return lambda p: (-len(p.providers), p.name)
     return lambda p: (p.min_price.amount_minor, p.name)  # "price" (default)
 
 
@@ -186,3 +188,23 @@ class ListCategoryProducts:
             products=[_to_card(p) for p in page],
             facets=facets,
         )
+
+
+class ListFeaturedProducts:
+    """Rails de la home (Imagen #3): cards del mercado ordenadas por un criterio, sin categoría.
+
+    'unit_price' → Mejor valor (A10) · 'popular' → Populares (A8, proxy = disponible en más
+    tiendas) · 'price' → más baratos. Reusa la misma agregación producto×tienda.
+    """
+
+    def __init__(self, store_repo: StoreProductRepository) -> None:
+        self._store = store_repo
+
+    def execute(
+        self, market_id: str, *, sort: str = "unit_price", limit: int = 12
+    ) -> list[ProductCardDto]:
+        rows = self._store.list_market_offerings(market_id)
+        products = _aggregate(rows)
+        sort = sort if sort in _SORTS else "unit_price"
+        ordered = sorted(products.values(), key=_sort_key(sort))
+        return [_to_card(p) for p in ordered[:limit]]

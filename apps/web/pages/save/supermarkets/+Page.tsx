@@ -1,20 +1,22 @@
 import { Search } from "lucide-react";
 import { useData } from "vike-react/useData";
 
+import { SectionRail } from "@/components/section-rail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SectionRail } from "@/components/section-rail";
 import { usePageI18n } from "@/i18n/usePageI18n";
+import { categoryIcon } from "@/lib/category-icons";
 import { localeHref } from "@/lib/links";
 
 import type { SupermarketsData } from "./+data";
 
-// Inicio de Supermercados (Imagen #4): hero de búsqueda · fila de categorías (datos reales) · rails
-// de ofertas/populares/tiendas/inspiración (skeleton; datos se cablean luego).
+// Inicio de Supermercados (Imagen #3): hero de búsqueda · fila de categorías con íconos (Lucide) ·
+// rails de productos reales (Mejor valor, Populares). Rails sin datos no se muestran.
 export default function Page() {
   const { locale, country, t } = usePageI18n();
-  const { categories } = useData<SupermarketsData>();
+  const { categories, bestValue, popular } = useData<SupermarketsData>();
   const base = (path: string) => localeHref(locale, country, `/save/supermarkets${path}`);
+  const productHref = (id: string) => base(`/product/${id}`);
 
   return (
     <div>
@@ -36,25 +38,36 @@ export default function Page() {
       </section>
 
       <nav className="border-b border-border">
-        <ul className="mx-auto flex max-w-6xl gap-6 overflow-x-auto px-4 py-3">
-          {categories.map((c) => (
-            <li key={c.slug}>
-              <a
-                href={base(`/category/${c.slug}`)}
-                className="whitespace-nowrap text-xs font-medium text-muted-foreground hover:text-primary"
-              >
-                {c.name}
-              </a>
-            </li>
-          ))}
+        <ul className="mx-auto flex max-w-6xl gap-6 overflow-x-auto px-4 py-4">
+          {categories.map((c) => {
+            const Icon = categoryIcon(c.slug);
+            return (
+              <li key={c.slug}>
+                <a
+                  href={base(`/category/${c.slug}`)}
+                  className="flex w-16 flex-col items-center gap-1.5 text-center text-muted-foreground hover:text-primary"
+                >
+                  <Icon className="size-6" strokeWidth={1.5} />
+                  <span className="text-[11px] font-medium leading-tight">{c.name}</span>
+                </a>
+              </li>
+            );
+          })}
         </ul>
       </nav>
 
-      <SectionRail title={t("super.bestOffers")} seeAll={t("super.seeAll")} />
-      <SectionRail title={t("super.popular")} seeAll={t("super.seeAll")} />
-      <SectionRail title={t("super.offersByStore")} />
-      <SectionRail title={t("super.inspiration")} />
-      <SectionRail title={t("super.bestValue")} seeAll={t("super.seeAll")} />
+      <SectionRail
+        title={t("super.bestValue")}
+        products={bestValue}
+        locale={locale}
+        productHref={productHref}
+      />
+      <SectionRail
+        title={t("super.popular")}
+        products={popular}
+        locale={locale}
+        productHref={productHref}
+      />
     </div>
   );
 }

@@ -65,6 +65,10 @@ class StoreProductRepository(Protocol):
         """Filas producto×tienda para los productos bajo `node_ids` (listado por categoría)."""
         ...
 
+    def list_market_offerings(self, market_id: str) -> list[OfferingRow]:
+        """Filas producto×tienda de TODO el mercado (rails de la home)."""
+        ...
+
     def record_observation(
         self,
         *,

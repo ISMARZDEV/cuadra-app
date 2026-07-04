@@ -15,7 +15,7 @@ from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.history import GetPriceHistory
-from src.contexts.save.application.listing import ListCategoryProducts
+from src.contexts.save.application.listing import ListCategoryProducts, ListFeaturedProducts
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.infrastructure.repositories import (
@@ -262,6 +262,12 @@ def get_list_category_products(
     return ListCategoryProducts(
         SqlTaxonomyRepository(session), SqlStoreProductRepository(session)
     )
+
+
+def get_list_featured_products(
+    session: Session = Depends(get_session),
+) -> ListFeaturedProducts:
+    return ListFeaturedProducts(SqlStoreProductRepository(session))
 
 
 def get_price_history(session: Session = Depends(get_session)) -> GetPriceHistory:

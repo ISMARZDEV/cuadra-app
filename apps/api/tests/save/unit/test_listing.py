@@ -11,7 +11,11 @@ from decimal import Decimal
 import pytest
 
 from src.contexts.save.application.errors import CategoryNotFoundError
-from src.contexts.save.application.listing import ListCategoryProducts, OfferingRow
+from src.contexts.save.application.listing import (
+    ListCategoryProducts,
+    ListFeaturedProducts,
+    OfferingRow,
+)
 from src.contexts.save.domain.taxonomy import CategoryNode
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 from src.shared.money import Currency, Money
@@ -37,11 +41,19 @@ class FakeTaxonomyRepo:
 
 
 class FakeStoreRepo:
-    def __init__(self, rows: dict[tuple[str, ...], list[OfferingRow]]) -> None:
+    def __init__(
+        self,
+        rows: dict[tuple[str, ...], list[OfferingRow]],
+        market_rows: list[OfferingRow] | None = None,
+    ) -> None:
         self._rows = rows
+        self._market_rows = market_rows or []
 
     def list_category_offerings(self, node_ids: list[str]) -> list[OfferingRow]:
         return self._rows.get(tuple(node_ids), [])
+
+    def list_market_offerings(self, market_id: str) -> list[OfferingRow]:
+        return self._market_rows
 
 
 # Taxonomía: Arroz (n-arroz) con hijo Blanco (n-blanco). Productos cuelgan de n-blanco.
@@ -166,3 +178,34 @@ def test_pagination_reports_total_before_paging() -> None:
 def test_unknown_slug_raises() -> None:
     with pytest.raises(CategoryNotFoundError):
         _uc().execute("DO", "no-existe")
+
+
+# ── ListFeaturedProducts (rails de la home) ──
+
+MARKET_ROWS = [
+    _garza("p1", "Merca", 42400),
+    _garza("p2", "Bravo", 43800),
+    _garza("p3", "Sirena", 47500),  # Garza: 3 tiendas, unit 4240/kg
+    _bisono("p1", "Merca", 21195),
+    _bisono("p2", "Bravo", 22000),  # Bisono: 2 tiendas, unit 4239/kg
+]
+
+
+def _featured() -> ListFeaturedProducts:
+    return ListFeaturedProducts(FakeStoreRepo({}, MARKET_ROWS))
+
+
+def test_featured_best_value_sorts_by_unit_price() -> None:
+    cards = _featured().execute("DO", sort="unit_price")
+    assert [c.id for c in cards] == ["bisono", "garza"]  # 4239 < 4240
+
+
+def test_featured_popular_sorts_by_store_count_desc() -> None:
+    cards = _featured().execute("DO", sort="popular")
+    assert [c.id for c in cards] == ["garza", "bisono"]  # 3 tiendas > 2
+
+
+def test_featured_respects_limit() -> None:
+    cards = _featured().execute("DO", sort="price", limit=1)
+    assert len(cards) == 1
+    assert cards[0].id == "bisono"  # más barato

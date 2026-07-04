@@ -297,10 +297,8 @@ class SqlStoreProductRepository:
             for sp, name in rows
         ]
 
-    def list_category_offerings(self, node_ids: list[str]) -> list[OfferingRow]:
-        node_uuids = [u for u in (_parse_uuid(i) for i in node_ids) if u is not None]
-        if not node_uuids:
-            return []
+    def _offerings(self, whereclause) -> list[OfferingRow]:
+        """Filas producto×tienda con marca/presentación/precio, filtradas por `whereclause`."""
         rows = self._s.execute(
             select(
                 CanonicalProductModel.id,
@@ -322,7 +320,7 @@ class SqlStoreProductRepository:
             )
             .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
             .join(BrandModel, CanonicalProductModel.brand_id == BrandModel.id, isouter=True)
-            .where(CanonicalProductModel.taxonomy_node_id.in_(node_uuids))
+            .where(whereclause)
         ).all()
         return [
             OfferingRow(
@@ -339,6 +337,15 @@ class SqlStoreProductRepository:
             )
             for r in rows
         ]
+
+    def list_category_offerings(self, node_ids: list[str]) -> list[OfferingRow]:
+        node_uuids = [u for u in (_parse_uuid(i) for i in node_ids) if u is not None]
+        if not node_uuids:
+            return []
+        return self._offerings(CanonicalProductModel.taxonomy_node_id.in_(node_uuids))
+
+    def list_market_offerings(self, market_id: str) -> list[OfferingRow]:
+        return self._offerings(CanonicalProductModel.market_id == market_id)
 
 
 class SqlTaxonomyRepository:
