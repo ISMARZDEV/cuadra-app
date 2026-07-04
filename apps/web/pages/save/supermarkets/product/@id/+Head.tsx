@@ -1,7 +1,7 @@
 import { useData } from "vike-react/useData";
 
-import { formatMoney } from "../../../src/lib/format";
-import { buildProductJsonLd } from "../../../src/lib/seo";
+import { formatMoney } from "@/lib/format";
+import { buildProductJsonLd } from "@/lib/seo";
 import type { ProductData } from "./+data";
 
 // OG tags + JSON-LD (Product/AggregateOffer) por producto → previews de WhatsApp/redes y

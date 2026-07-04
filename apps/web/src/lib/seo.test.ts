@@ -36,23 +36,28 @@ describe("logicalPaths + buildSitemap (i18n × país)", () => {
   const paths = logicalPaths(products);
   const opts = { locales: ["es", "en", "pt"], country: "do", paths, defaultLocale: "es" };
 
-  it("las rutas lógicas son home, search y una por producto (slugs en inglés)", () => {
-    expect(paths).toEqual(["/", "/search", "/product/c1"]);
+  it("las rutas lógicas: landing, Supermercados, categorías y una por producto (slugs inglés)", () => {
+    expect(paths).toEqual([
+      "/",
+      "/save/supermarkets",
+      "/save/supermarkets/categories",
+      "/save/supermarkets/product/c1",
+    ]);
   });
 
   it("emite un <url> cerrado por locale×ruta con <loc> absolutas prefijadas", () => {
-    const xml = buildSitemap("https://save.cuadra.app/", opts);
+    const xml = buildSitemap("https://cuadra.app/", opts);
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xml).toContain("<loc>https://save.cuadra.app/es/do/product/c1</loc>");
-    expect(xml).toContain("<loc>https://save.cuadra.app/en/do/product/c1</loc>");
+    expect(xml).toContain("<loc>https://cuadra.app/es/do/save/supermarkets/product/c1</loc>");
+    expect(xml).toContain("<loc>https://cuadra.app/en/do/save/supermarkets/product/c1</loc>");
     expect(xml).toContain("</url>"); // cierre correcto (antes faltaba)
-    expect(xml).not.toContain("//product");
+    expect(xml).not.toContain("/do//"); // sin doble slash en el path
   });
 
   it("cada URL trae hreflang es-do/en-do/pt-do + x-default", () => {
-    const xml = buildSitemap("https://save.cuadra.app", opts);
-    expect(xml).toContain('hreflang="en-do" href="https://save.cuadra.app/en/do/product/c1"');
-    expect(xml).toContain('hreflang="x-default" href="https://save.cuadra.app/es/do/product/c1"');
+    const xml = buildSitemap("https://cuadra.app", opts);
+    expect(xml).toContain('hreflang="en-do" href="https://cuadra.app/en/do/save/supermarkets"');
+    expect(xml).toContain('hreflang="x-default" href="https://cuadra.app/es/do"');
   });
 });
 

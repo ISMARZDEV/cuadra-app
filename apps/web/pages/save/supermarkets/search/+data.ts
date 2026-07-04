@@ -1,8 +1,8 @@
 import { searchProducts } from "@cuadra/api-client";
 import type { PageContextServer } from "vike/types";
 
-import { DEFAULT_COUNTRY, marketOf } from "../../src/i18n/config";
-import { apiClient } from "../../src/lib/api";
+import { DEFAULT_COUNTRY, marketOf } from "@/i18n/config";
+import { apiClient } from "@/lib/api";
 
 export type SearchData = Awaited<ReturnType<typeof data>>;
 

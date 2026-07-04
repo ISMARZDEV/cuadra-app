@@ -4,5 +4,5 @@ import { DEFAULT_LOCALE } from "@/i18n/config";
 import { translate } from "@/i18n/messages";
 
 export default function title(pageContext: PageContext): string {
-  return `Cuadra — ${translate(pageContext.locale ?? DEFAULT_LOCALE, "corp.title")}`;
+  return `${translate(pageContext.locale ?? DEFAULT_LOCALE, "nav.news")} | Cuadra`;
 }

@@ -4,10 +4,15 @@
 
 /** @typedef {{ id: string }} ProductRef */
 
-/** Rutas LÓGICAS que existen por país: home, search, una por producto.
+/** Rutas LÓGICAS indexables por país: landing, Supermercados y sus páginas, + una por producto.
  * @param {ProductRef[]} products @returns {string[]} */
 export function logicalPaths(products) {
-  return ["/", "/search", ...products.map((p) => `/product/${p.id}`)];
+  return [
+    "/",
+    "/save/supermarkets",
+    "/save/supermarkets/categories",
+    ...products.map((p) => `/save/supermarkets/product/${p.id}`),
+  ];
 }
 
 /** sitemap.xml: para cada ruta × locale, un <url> con hreflang de todos los locales + x-default.

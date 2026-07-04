@@ -1,7 +1,7 @@
 import type { Config } from "vike/types";
 import vikeReact from "vike-react/config";
 
-import { HreflangTags } from "../src/components/hreflang";
+import { GlobalHead } from "../src/components/global-head";
 import { Layout } from "../layouts/LayoutDefault";
 
 // Config global de Vike (vike-react = renderer React SSR). `Head` global = hreflang (SEO
@@ -9,9 +9,9 @@ import { Layout } from "../layouts/LayoutDefault";
 // se localizan por página (+title.ts/+description.ts); acá solo el fallback estático.
 export default {
   Layout,
-  Head: HreflangTags,
-  title: "Cuadra Save",
-  description: "Compara precios de supermercado.",
+  Head: GlobalHead,
+  title: "Cuadra",
+  description: "Cuadra — administra tu dinero y compara precios de supermercado.",
   passToClient: ["locale", "country"],
   extends: vikeReact,
 } satisfies Config;

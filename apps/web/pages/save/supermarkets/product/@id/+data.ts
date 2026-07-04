@@ -2,7 +2,7 @@ import { compareProduct } from "@cuadra/api-client";
 import { render } from "vike/abort";
 import type { PageContextServer } from "vike/types";
 
-import { apiClient } from "../../../src/lib/api";
+import { apiClient } from "@/lib/api";
 
 export type ProductData = Awaited<ReturnType<typeof data>>;
 

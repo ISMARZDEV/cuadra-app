@@ -1,9 +1,14 @@
+import { fileURLToPath } from "node:url";
+
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import vike from "vike/plugin";
 import { defineConfig } from "vite";
 
-// Vike (SSR/SSG sobre Vite) + React. El SEO viene del render server-side por página
-// (doc 06 §9). El plugin `vike` hookea el dev server y el build (cliente + servidor).
+// Vike (SSR sobre Vite) + React + Tailwind v4 (shadcn/ui). Alias @ → src (shadcn importa @/…).
 export default defineConfig({
-  plugins: [react(), vike()],
+  plugins: [tailwindcss(), react(), vike()],
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
 });
