@@ -1,5 +1,9 @@
 import { useData } from "vike-react/useData";
 
+import { Bell } from "lucide-react";
+import { useState } from "react";
+import { navigate } from "vike/client/router";
+
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { CompareTable } from "@/components/compare-table";
 import { PriceHistoryChart } from "@/components/price-history-chart";
@@ -7,7 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
+import { subscribe } from "@/lib/alerts-api";
 import { formatMoney } from "@/lib/format";
+import { localeHref } from "@/lib/links";
+import { useAuth } from "@/lib/use-auth";
 import { useShoppingList } from "@/lib/use-shopping-list";
 
 import type { ProductData } from "./+data";
@@ -16,9 +23,20 @@ import type { ProductData } from "./+data";
 // comparativa + disclaimer · historial (C9, datos reales) · feedback. Las secciones que dependen
 // de matching/embeddings (alternativas, relacionados, más de la marca) quedan como próximamente.
 export default function Page() {
-  const { locale, t } = usePageI18n();
+  const { locale, country, t } = usePageI18n();
   const { comparison, history, nowMs } = useData<ProductData>();
   const { add } = useShoppingList();
+  const { isAuthed } = useAuth();
+  const [watching, setWatching] = useState(false);
+
+  const onNotifyMe = async () => {
+    if (!isAuthed) {
+      void navigate(localeHref(locale, country, "/save/supermarkets/login"));
+      return;
+    }
+    const res = await subscribe(comparison.canonical_product_id);
+    if (!res.error) setWatching(true);
+  };
 
   // "Compara desde RD$X hasta RD$Y" — derivado de las entries (el backend las ordena por precio).
   const prices = comparison.entries.map((e) => e.price_minor);
@@ -70,7 +88,7 @@ export default function Page() {
             {t("product.bestPriceAt")}{" "}
             <strong className="text-foreground">{comparison.cheapest_provider}</strong>
           </p>
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -87,6 +105,10 @@ export default function Page() {
               }
             >
               + {t("product.addToList")}
+            </Button>
+            <Button size="sm" variant={watching ? "secondary" : "default"} onClick={onNotifyMe}>
+              <Bell className="mr-1.5 size-3.5" />
+              {watching ? t("alerts.watching") : t("alerts.notifyMe")}
             </Button>
           </div>
         </div>

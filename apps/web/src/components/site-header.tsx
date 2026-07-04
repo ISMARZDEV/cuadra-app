@@ -1,12 +1,38 @@
-import { ChevronDown, ShoppingCart } from "lucide-react";
+import { Bell, ChevronDown, LogOut, ShoppingCart } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { usePageI18n } from "@/i18n/usePageI18n";
+import { myNotifications } from "@/lib/alerts-api";
 import { localeHref } from "@/lib/links";
+import { useAuth } from "@/lib/use-auth";
 import { useShoppingList } from "@/lib/use-shopping-list";
 
 import { CountrySwitcher, LocaleSwitcher } from "./switcher";
 import { ThemeToggle } from "./theme-toggle";
+
+// Campana de notificaciones (G4): visible solo con sesión. Muestra el nº de alertas disparadas
+// (el MISMO feed que ve la app móvil). Enlaza a "Mis alertas".
+function AlertsBell({ href, label }: { href: string; label: string }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    void myNotifications().then((r) => setCount(r.data?.length ?? 0));
+  }, []);
+  return (
+    <a
+      href={href}
+      aria-label={label}
+      className="relative flex size-9 items-center justify-center rounded-md hover:bg-accent"
+    >
+      <Bell className="size-5" />
+      {count > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+          {count}
+        </span>
+      )}
+    </a>
+  );
+}
 
 // Enlace al carrito con badge de nº de artículos (lista local). El count es client-only
 // (useSyncExternalStore) → 0 en SSR, se actualiza tras hidratar.
@@ -51,6 +77,7 @@ function NavMenu({ label, items }: { label: string; items: { href: string; label
 
 export function SiteHeader() {
   const { locale, country, t } = usePageI18n();
+  const { isAuthed, logout } = useAuth();
   const href = (path: string) => localeHref(locale, country, path);
 
   return (
@@ -81,12 +108,26 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-1.5">
           <CartLink href={href("/save/supermarkets/list")} label={t("list.title")} />
+          {isAuthed && (
+            <AlertsBell href={href("/save/supermarkets/alerts")} label={t("alerts.title")} />
+          )}
           <CountrySwitcher />
           <LocaleSwitcher />
           <ThemeToggle />
-          <Button asChild size="sm" className="hidden sm:inline-flex">
-            <a href={href("/pricing")}>{t("nav.download")}</a>
-          </Button>
+          {isAuthed ? (
+            <button
+              type="button"
+              onClick={logout}
+              aria-label={t("nav.logout")}
+              className="flex size-9 items-center justify-center rounded-md hover:bg-accent"
+            >
+              <LogOut className="size-5" />
+            </button>
+          ) : (
+            <Button asChild size="sm" variant="outline" className="hidden sm:inline-flex">
+              <a href={href("/save/supermarkets/login")}>{t("nav.login")}</a>
+            </Button>
+          )}
         </div>
       </div>
     </header>

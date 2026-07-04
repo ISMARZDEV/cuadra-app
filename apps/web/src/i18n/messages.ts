@@ -92,6 +92,22 @@ type MessageKey =
   | "list.items"
   | "list.disclaimer"
   | "list.view"
+  // auth + alertas (G4)
+  | "nav.login"
+  | "nav.logout"
+  | "login.title"
+  | "login.hint"
+  | "login.submit"
+  | "alerts.title"
+  | "alerts.notifyMe"
+  | "alerts.watching"
+  | "alerts.subscriptions"
+  | "alerts.notifications"
+  | "alerts.noAlerts"
+  | "alerts.noNotifications"
+  | "alerts.unsubscribe"
+  | "alerts.loginToWatch"
+  | "alerts.droppedFromTo"
   // error
   | "error.notFoundTitle"
   | "error.notFoundBody"
@@ -190,6 +206,21 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "list.items": "artículos",
     "list.disclaimer": "Precio del más barato al agregar; puede cambiar en la tienda.",
     "list.view": "Ver lista",
+    "nav.login": "Iniciar sesión",
+    "nav.logout": "Salir",
+    "login.title": "Iniciar sesión",
+    "login.hint": "Usa el email de tu cuenta Cuadra (la misma de la app).",
+    "login.submit": "Entrar",
+    "alerts.title": "Mis alertas",
+    "alerts.notifyMe": "Avísame cuando baje",
+    "alerts.watching": "Siguiendo precio",
+    "alerts.subscriptions": "Productos que sigues",
+    "alerts.notifications": "Notificaciones",
+    "alerts.noAlerts": "No sigues ningún producto todavía.",
+    "alerts.noNotifications": "Sin notificaciones por ahora.",
+    "alerts.unsubscribe": "Dejar de seguir",
+    "alerts.loginToWatch": "Inicia sesión para recibir alertas de precio.",
+    "alerts.droppedFromTo": "bajó de {from} a {to} en {store}",
     "error.notFoundTitle": "Producto no encontrado",
     "error.notFoundBody": "No encontramos ese producto. Puede que ya no esté en catálogo.",
     "error.genericTitle": "Algo salió mal",
@@ -284,6 +315,21 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "list.items": "items",
     "list.disclaimer": "Cheapest price when added; may vary in store.",
     "list.view": "View list",
+    "nav.login": "Log in",
+    "nav.logout": "Log out",
+    "login.title": "Log in",
+    "login.hint": "Use your Cuadra account email (same as the app).",
+    "login.submit": "Log in",
+    "alerts.title": "My alerts",
+    "alerts.notifyMe": "Notify me when it drops",
+    "alerts.watching": "Watching price",
+    "alerts.subscriptions": "Products you watch",
+    "alerts.notifications": "Notifications",
+    "alerts.noAlerts": "You're not watching any product yet.",
+    "alerts.noNotifications": "No notifications yet.",
+    "alerts.unsubscribe": "Unwatch",
+    "alerts.loginToWatch": "Log in to get price alerts.",
+    "alerts.droppedFromTo": "dropped from {from} to {to} at {store}",
     "error.notFoundTitle": "Product not found",
     "error.notFoundBody": "We couldn't find that product. It may no longer be in the catalog.",
     "error.genericTitle": "Something went wrong",
@@ -378,6 +424,21 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "list.items": "itens",
     "list.disclaimer": "Preço mais barato ao adicionar; pode variar na loja.",
     "list.view": "Ver lista",
+    "nav.login": "Entrar",
+    "nav.logout": "Sair",
+    "login.title": "Entrar",
+    "login.hint": "Use o email da sua conta Cuadra (a mesma do app).",
+    "login.submit": "Entrar",
+    "alerts.title": "Meus alertas",
+    "alerts.notifyMe": "Avise-me quando baixar",
+    "alerts.watching": "Seguindo preço",
+    "alerts.subscriptions": "Produtos que você segue",
+    "alerts.notifications": "Notificações",
+    "alerts.noAlerts": "Você ainda não segue nenhum produto.",
+    "alerts.noNotifications": "Sem notificações por enquanto.",
+    "alerts.unsubscribe": "Deixar de seguir",
+    "alerts.loginToWatch": "Entre para receber alertas de preço.",
+    "alerts.droppedFromTo": "baixou de {from} para {to} em {store}",
     "error.notFoundTitle": "Produto não encontrado",
     "error.notFoundBody": "Não encontramos esse produto. Talvez não esteja mais no catálogo.",
     "error.genericTitle": "Algo deu errado",
