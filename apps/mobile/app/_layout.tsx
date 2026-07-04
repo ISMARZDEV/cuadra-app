@@ -11,6 +11,7 @@ import { ActivityIndicator, View } from "react-native";
 import { useAuthStore } from "@/features/auth/use-auth-store";
 import { useLanguageStore } from "@/features/settings/use-language-store";
 import { queryClient } from "@/lib/api/query-client";
+import { registerForPushNotifications } from "@/lib/push/register-push";
 import { sounds } from "@/lib/sounds";
 import { ThemeProvider } from "@/lib/theme/theme-provider";
 import { DrawerProvider } from "@/store/drawer-store";
@@ -33,6 +34,12 @@ export default function RootLayout() {
   useEffect(() => {
     sounds.startup(); // app-launch sound (once per app open)
   }, []);
+
+  // Al autenticarse, registra el Expo push token (G4). Best-effort: requiere eas init + dev build
+  // en dispositivo físico; si falta algo, no hace nada y el feed in-app sigue funcionando.
+  useEffect(() => {
+    if (status === "authenticated") void registerForPushNotifications();
+  }, [status]);
 
   // Wait for the language restore too, not just auth — otherwise the home screen (chat, mounted
   // immediately on launch) renders once with whatever deviceLanguage() resolved to at JS
