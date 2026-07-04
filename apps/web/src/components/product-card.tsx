@@ -2,7 +2,7 @@ import type { ProductCardDto } from "@cuadra/api-client";
 
 import type { Locale } from "../i18n/config";
 import { translate } from "../i18n/messages";
-import { formatMoney, formatUnitPrice } from "../lib/format";
+import { formatMoney, formatUnitPriceDisplay } from "../lib/format";
 import { useShoppingList } from "../lib/use-shopping-list";
 import { Card } from "./ui/card";
 
@@ -68,7 +68,13 @@ export function ProductCard({
           <p className="line-clamp-2 text-sm font-medium">{product.name}</p>
           <p className="pt-0.5 font-bold">{formatMoney(product.price_minor, product.currency)}</p>
           <p className="text-xs text-muted-foreground">
-            {formatUnitPrice(product.unit_price_minor, product.currency, product.unit_measure)}
+            {formatUnitPriceDisplay(
+              product.price_minor,
+              product.currency,
+              product.display_size,
+              product.unit_price_minor,
+              product.unit_measure,
+            )}
           </p>
           <p className="text-xs text-muted-foreground">
             {product.store_count} {translate(locale, "product.stores")}

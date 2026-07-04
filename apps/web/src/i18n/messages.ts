@@ -50,6 +50,7 @@ type MessageKey =
   | "product.feedback"
   | "product.reportProblem"
   | "product.suggestCategory"
+  | "product.moreFromBrand"
   | "product.propType"
   | "product.propBrand"
   | "product.propQuality"
@@ -166,6 +167,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.feedback": "Feedback",
     "product.reportProblem": "Reportar problema",
     "product.suggestCategory": "Sugerir categoría",
+    "product.moreFromBrand": "Más de {brand}",
     "product.propType": "Tipo",
     "product.propBrand": "Marca",
     "product.propQuality": "Calidad",
@@ -275,6 +277,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.feedback": "Feedback",
     "product.reportProblem": "Report a problem",
     "product.suggestCategory": "Suggest a category",
+    "product.moreFromBrand": "More from {brand}",
     "product.propType": "Type",
     "product.propBrand": "Brand",
     "product.propQuality": "Quality",
@@ -384,6 +387,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.feedback": "Feedback",
     "product.reportProblem": "Reportar problema",
     "product.suggestCategory": "Sugerir categoria",
+    "product.moreFromBrand": "Mais de {brand}",
     "product.propType": "Tipo",
     "product.propBrand": "Marca",
     "product.propQuality": "Qualidade",

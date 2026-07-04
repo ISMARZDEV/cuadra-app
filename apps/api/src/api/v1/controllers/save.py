@@ -14,6 +14,7 @@ from src.api.composition_root import (
     get_compare_product,
     get_list_alert_notifications,
     get_list_alerts,
+    get_list_brand_products,
     get_list_categories,
     get_list_category_products,
     get_list_featured_products,
@@ -56,7 +57,11 @@ from src.contexts.save.application.errors import (
     CategoryNotFoundError,
 )
 from src.contexts.save.application.history import GetPriceHistory, HistoryRange
-from src.contexts.save.application.listing import ListCategoryProducts, ListFeaturedProducts
+from src.contexts.save.application.listing import (
+    ListBrandProducts,
+    ListCategoryProducts,
+    ListFeaturedProducts,
+)
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
 
@@ -140,6 +145,15 @@ def category_products(
         )
     except CategoryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/product/{product_id}/brand")
+def brand_products(
+    product_id: str,
+    limit: int = Query(12, ge=1, le=50),
+    use_case: ListBrandProducts = Depends(get_list_brand_products),
+) -> list[ProductCardDto]:
+    return use_case.execute(product_id, limit=limit)
 
 
 @router.get("/products")

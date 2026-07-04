@@ -1,4 +1,4 @@
-import { compareProduct, priceHistory } from "@cuadra/api-client";
+import { brandProducts, compareProduct, priceHistory } from "@cuadra/api-client";
 import { render } from "vike/abort";
 import type { PageContextServer } from "vike/types";
 
@@ -15,13 +15,14 @@ export async function data(pageContext: PageContextServer) {
   if (res.error || !res.data) {
     throw render(404, "Producto no encontrado.");
   }
-  const hist = await priceHistory({
-    client: apiClient,
-    query: { product_id: productId, range: "all" },
-  });
+  const [hist, brand] = await Promise.all([
+    priceHistory({ client: apiClient, query: { product_id: productId, range: "all" } }),
+    brandProducts({ client: apiClient, path: { product_id: productId } }),
+  ]);
   return {
     comparison: res.data,
     history: hist.data ?? null,
+    brandProducts: brand.data ?? [],
     nowMs: Date.now(),
   };
 }

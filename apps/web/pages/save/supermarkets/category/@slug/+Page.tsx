@@ -70,8 +70,11 @@ export default function Page() {
                 <a
                   key={s.slug}
                   href={catHref(s.slug)}
-                  className="rounded-full border border-border px-3 py-1 text-sm hover:border-primary"
+                  className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-3 text-sm font-medium transition-colors hover:border-primary hover:text-primary"
                 >
+                  <span className="flex size-7 items-center justify-center rounded-full bg-secondary text-xs font-bold text-secondary-foreground">
+                    {s.name.charAt(0)}
+                  </span>
                   {s.name}
                 </a>
               ))}

@@ -11,7 +11,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ..domain.listing import OfferingRow  # re-exportado para el port y los tests
-from ..domain.ports import StoreProductRepository, TaxonomyRepository
+from ..domain.ports import (
+    CanonicalProductRepository,
+    StoreProductRepository,
+    TaxonomyRepository,
+)
 from ..domain.value_objects import Quantity, unit_price
 from src.shared.money import Money
 from .categories import _find_path
@@ -25,7 +29,12 @@ from .dtos import (
 )
 from .errors import CategoryNotFoundError
 
-__all__ = ["ListCategoryProducts", "ListFeaturedProducts", "OfferingRow"]
+__all__ = [
+    "ListBrandProducts",
+    "ListCategoryProducts",
+    "ListFeaturedProducts",
+    "OfferingRow",
+]
 
 _SORTS = {"price", "unit_price", "name", "popular"}
 
@@ -208,3 +217,26 @@ class ListFeaturedProducts:
         sort = sort if sort in _SORTS else "unit_price"
         ordered = sorted(products.values(), key=_sort_key(sort))
         return [_to_card(p) for p in ordered[:limit]]
+
+
+class ListBrandProducts:
+    """'Más de la marca' (C8): otros productos de la MISMA marca que un producto dado."""
+
+    def __init__(
+        self, canonical_repo: CanonicalProductRepository, store_repo: StoreProductRepository
+    ) -> None:
+        self._canonical = canonical_repo
+        self._store = store_repo
+
+    def execute(self, product_id: str, *, limit: int = 12) -> list[ProductCardDto]:
+        product = self._canonical.get_by_id(product_id)
+        if product is None or not product.brand:
+            return []
+        products = _aggregate(self._store.list_market_offerings(product.market_id))
+        same_brand = [
+            p
+            for p in products.values()
+            if p.brand == product.brand and p.product_id != product_id
+        ]
+        same_brand.sort(key=_sort_key("unit_price"))
+        return [_to_card(p) for p in same_brand[:limit]]

@@ -7,6 +7,7 @@ import { navigate } from "vike/client/router";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { CompareTable } from "@/components/compare-table";
 import { PriceHistoryChart } from "@/components/price-history-chart";
+import { SectionRail } from "@/components/section-rail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "@/i18n/messages";
@@ -24,8 +25,10 @@ import type { ProductData } from "./+data";
 // de matching/embeddings (alternativas, relacionados, más de la marca) quedan como próximamente.
 export default function Page() {
   const { locale, country, t } = usePageI18n();
-  const { comparison, history, nowMs } = useData<ProductData>();
+  const { comparison, history, brandProducts, nowMs } = useData<ProductData>();
   const { add } = useShoppingList();
+  const productHref = (id: string) =>
+    localeHref(locale, country, `/save/supermarkets/product/${id}`);
   const { isAuthed } = useAuth();
   const [watching, setWatching] = useState(false);
 
@@ -127,6 +130,17 @@ export default function Page() {
           <p className="text-sm text-muted-foreground">{t("history.empty")}</p>
         )}
       </section>
+
+      {brandProducts.length > 0 && (
+        <div className="mt-4">
+          <SectionRail
+            title={format(locale, "product.moreFromBrand", { brand: comparison.brand })}
+            products={brandProducts}
+            locale={locale}
+            productHref={productHref}
+          />
+        </div>
+      )}
 
       {[t("product.alternatives"), t("product.related")].map((section) => (
         <section key={section} className="mt-8">

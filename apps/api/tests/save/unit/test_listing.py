@@ -12,10 +12,12 @@ import pytest
 
 from src.contexts.save.application.errors import CategoryNotFoundError
 from src.contexts.save.application.listing import (
+    ListBrandProducts,
     ListCategoryProducts,
     ListFeaturedProducts,
     OfferingRow,
 )
+from src.contexts.save.domain.entities import CanonicalProduct
 from src.contexts.save.domain.taxonomy import CategoryNode
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 from src.shared.money import Currency, Money
@@ -209,3 +211,26 @@ def test_featured_respects_limit() -> None:
     cards = _featured().execute("DO", sort="price", limit=1)
     assert len(cards) == 1
     assert cards[0].id == "bisono"  # más barato
+
+
+# ── ListBrandProducts ("Más de la marca") ──
+
+
+class FakeCanonicalRepo:
+    def __init__(self, products: list[CanonicalProduct]) -> None:
+        self._p = {p.id: p for p in products}
+
+    def get_by_id(self, product_id: str) -> CanonicalProduct | None:
+        return self._p.get(product_id)
+
+
+def test_brand_products_returns_same_brand_excluding_self() -> None:
+    garza = CanonicalProduct("garza", "Arroz Garza", "La Garza", _q("10"), "t", "DO")
+    rows = [
+        _garza("p1", "Merca", 42400),
+        OfferingRow("garza2", "Arroz Garza 5", "La Garza", None, None, None, _q("5"), "p1", "Merca", Money(21000, DOP)),
+        _bisono("p1", "Merca", 21195),  # otra marca → no
+    ]
+    uc = ListBrandProducts(FakeCanonicalRepo([garza]), FakeStoreRepo({}, rows))
+    cards = uc.execute("garza")
+    assert [c.id for c in cards] == ["garza2"]  # misma marca, sin el propio garza
