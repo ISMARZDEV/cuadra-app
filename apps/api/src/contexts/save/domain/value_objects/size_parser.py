@@ -15,6 +15,7 @@ from .units import Quantity, UnitMeasure
 _UNITS: dict[str, tuple[UnitMeasure, str]] = {
     # masa → kg
     "lb": (UnitMeasure.MASS, "0.45359237"),
+    "lbs": (UnitMeasure.MASS, "0.45359237"),
     "libra": (UnitMeasure.MASS, "0.45359237"),
     "libras": (UnitMeasure.MASS, "0.45359237"),
     "kg": (UnitMeasure.MASS, "1"),

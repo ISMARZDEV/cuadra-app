@@ -60,6 +60,11 @@ def test_multipack_multiplies_inner() -> None:
     assert parse_size("12x330ml") == Quantity(Decimal("3.96"), UnitMeasure.VOLUME)
 
 
+def test_plural_pounds_lbs() -> None:
+    # "10 Lbs" (plural) — visto en datos reales de Sirena (Arroz Pimco 10 Lbs)
+    assert parse_size("10 Lbs") == Quantity(Decimal("4.5359237"), UnitMeasure.MASS)
+
+
 def test_unparseable_raises() -> None:
     with pytest.raises(ValueError):
         parse_size("gigante")
