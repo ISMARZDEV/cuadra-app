@@ -103,5 +103,13 @@
   "insights.dailyDiary.period.today": "Hoje",
   "insights.dailyDiary.period.week": "Semana",
   "insights.dailyDiary.period.month": "Mês",
-  "insights.dailyDiary.period.quarter": "Trimestre"
+  "insights.dailyDiary.period.quarter": "Trimestre",
+  "save.alerts.title": "Alertas de preço",
+  "save.alerts.hint": "Siga produtos no cuadra.do e avisamos quando baixarem.",
+  "save.alerts.notifications": "Notificações",
+  "save.alerts.subscriptions": "Produtos que você segue",
+  "save.alerts.noNotifications": "Sem notificações por enquanto.",
+  "save.alerts.noAlerts": "Você não segue nenhum produto. Adicione pela web.",
+  "save.alerts.droppedFromTo": "baixou de {from} para {to} em {store}",
+  "save.alerts.unsubscribe": "Deixar de seguir"
 }
