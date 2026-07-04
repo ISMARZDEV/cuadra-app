@@ -111,5 +111,7 @@
   "save.alerts.noNotifications": "Sin notificaciones por ahora.",
   "save.alerts.noAlerts": "No sigues ningún producto. Agrégalos desde la web.",
   "save.alerts.droppedFromTo": "bajó de {from} a {to} en {store}",
-  "save.alerts.unsubscribe": "Dejar de seguir"
+  "save.alerts.unsubscribe": "Dejar de seguir",
+  "save.alerts.dropTitle": "¡Bajó de precio!",
+  "save.alerts.dropBody": "{product} bajó en {store}"
 }

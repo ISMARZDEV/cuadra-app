@@ -11,7 +11,13 @@
       "bundleIdentifier": "com.ismarzdev.cuadra"
     },
     "android": {
-      "package": "com.ismarzdev.cuadra"
+      "package": "com.ismarzdev.cuadra",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -23,6 +29,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7bf2f75c-e8ed-4f6e-8c39-c73a528c10f1"
+      }
+    },
+    "owner": "ismartzdev"
   }
 }

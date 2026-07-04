@@ -111,5 +111,7 @@
   "save.alerts.noNotifications": "No notifications yet.",
   "save.alerts.noAlerts": "You're not following any product. Add them from the web.",
   "save.alerts.droppedFromTo": "dropped from {from} to {to} at {store}",
-  "save.alerts.unsubscribe": "Unfollow"
+  "save.alerts.unsubscribe": "Unfollow",
+  "save.alerts.dropTitle": "Price dropped!",
+  "save.alerts.dropBody": "{product} dropped at {store}"
 }
