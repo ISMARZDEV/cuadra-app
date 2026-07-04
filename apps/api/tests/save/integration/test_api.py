@@ -38,12 +38,16 @@ def _client(db_session: Session) -> TestClient:
     return TestClient(app)
 
 
-def _seed(db_session: Session) -> str:
+def _seed(db_session: Session, market_id: str = "DO") -> str:
     prov = SqlProviderRepository(db_session)
     p_merca, p_sirena = str(uuid.uuid4()), str(uuid.uuid4())
-    prov.add(Provider(p_merca, "Merca", ProviderType.SUPERMARKET, SourcePlatform.MAGENTO, "DO"))
-    prov.add(Provider(p_sirena, "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, "DO"))
-    node = TaxonomyNodeModel(name="Arroz", level=0, market_id="DO")
+    prov.add(
+        Provider(p_merca, "Merca", ProviderType.SUPERMARKET, SourcePlatform.MAGENTO, market_id)
+    )
+    prov.add(
+        Provider(p_sirena, "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, market_id)
+    )
+    node = TaxonomyNodeModel(name="Arroz", level=0, market_id=market_id)
     db_session.add(node)
     db_session.flush()
     cid = str(uuid.uuid4())
@@ -51,7 +55,7 @@ def _seed(db_session: Session) -> str:
         CanonicalProduct(
             cid, "Arroz La Garza 10 Lbs", "La Garza",
             Quantity(Decimal("4.5359237"), UnitMeasure.MASS),
-            taxonomy_node_id=str(node.id), market_id="DO",
+            taxonomy_node_id=str(node.id), market_id=market_id,
         )
     )
     sp = SqlStoreProductRepository(db_session)
@@ -110,6 +114,42 @@ def test_history_endpoint_404_when_missing(db_session: Session) -> None:
         "/v1/save/history", params={"product_id": str(uuid.uuid4()), "range": "1m"}
     )
     assert r.status_code == 404
+
+
+def test_drops_endpoint_lists_price_drops(db_session: Session) -> None:
+    # mercado sintético: /drops es market-wide y la DB dev puede tener datos reales de "DO"
+    market = f"T{uuid.uuid4().hex[:6]}"
+    cid = _seed(db_session, market_id=market)
+    # bajada REAL en Sirena: 475.00 → 450.00 (la seed puso 47500 el 2026-07-01)
+    sp = SqlStoreProductRepository(db_session)
+    provider_id = next(
+        q.provider_id
+        for q in sp.list_quotes_by_canonical(cid)
+        if q.provider_name == "Sirena"
+    )
+    sp.record_observation(
+        provider_id=provider_id, external_id="s1", canonical_product_id=cid,
+        price=Money(45000, DOP), captured_at=datetime(2026, 7, 3),
+        price_type=PriceType.ONLINE, source="vtex",
+    )
+
+    r = _client(db_session).get("/v1/save/drops", params={"market": market, "days": 3650})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 1
+    assert body[0]["provider_name"] == "Sirena"
+    assert body[0]["previous_minor"] == 47500
+    assert body[0]["current_minor"] == 45000
+    assert body[0]["drop_minor"] == 2500
+    assert body[0]["drop_bps"] == 526
+
+
+def test_drops_endpoint_empty_without_drops(db_session: Session) -> None:
+    market = f"T{uuid.uuid4().hex[:6]}"
+    _seed(db_session, market_id=market)  # una sola observación por tienda → no hay pares
+    r = _client(db_session).get("/v1/save/drops", params={"market": market, "days": 3650})
+    assert r.status_code == 200
+    assert r.json() == []
 
 
 def test_history_endpoint_422_on_bad_range(db_session: Session) -> None:

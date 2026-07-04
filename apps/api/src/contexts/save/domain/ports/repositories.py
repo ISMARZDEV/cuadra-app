@@ -11,6 +11,7 @@ from typing import Protocol
 from src.shared.money import Money
 
 from ..comparison import StoreQuote
+from ..drops import PriceChange
 from ..entities import CanonicalProduct, PriceType, Provider, StoreProduct
 from ..history import PricePoint
 
@@ -55,4 +56,8 @@ class StoreProductRepository(Protocol):
 
     def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
         """Puntos de cambio (change-only) de todas las tiendas, ordenados por captured_at."""
+        ...
+
+    def list_price_changes(self, market_id: str, since: datetime) -> list[PriceChange]:
+        """Pares consecutivos previous→current cuyo cambio cae en la ventana (solo matcheados)."""
         ...

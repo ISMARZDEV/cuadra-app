@@ -9,12 +9,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.shared.money import Currency, Money
 
 from ..domain.comparison import StoreQuote
+from ..domain.drops import PriceChange
 from ..domain.entities import CanonicalProduct, PriceType, Provider, StoreProduct
 from ..domain.history import PricePoint
 from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
@@ -195,6 +196,59 @@ class SqlStoreProductRepository:
                 price_type=PriceType(p.price_type),
             )
             for p, provider_id, name in rows
+        ]
+
+    def list_price_changes(self, market_id: str, since: datetime) -> list[PriceChange]:
+        """Pares previous→current vía LAG por store_product; el dominio clasifica la bajada."""
+        lagged = (
+            select(
+                PriceModel.store_product_id,
+                PriceModel.value_minor,
+                PriceModel.currency,
+                PriceModel.captured_at,
+                PriceModel.price_type,
+                func.lag(PriceModel.value_minor)
+                .over(partition_by=PriceModel.store_product_id, order_by=PriceModel.captured_at)
+                .label("prev_minor"),
+                func.lag(PriceModel.currency)
+                .over(partition_by=PriceModel.store_product_id, order_by=PriceModel.captured_at)
+                .label("prev_currency"),
+            )
+        ).subquery()
+
+        rows = self._s.execute(
+            select(
+                lagged,
+                StoreProductModel.canonical_product_id,
+                StoreProductModel.provider_id,
+                ProviderModel.name.label("provider_name"),
+                CanonicalProductModel.name.label("product_name"),
+            )
+            .join(StoreProductModel, lagged.c.store_product_id == StoreProductModel.id)
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .join(
+                CanonicalProductModel,
+                StoreProductModel.canonical_product_id == CanonicalProductModel.id,
+            )
+            .where(
+                lagged.c.prev_minor.is_not(None),
+                lagged.c.captured_at >= since,
+                ProviderModel.market_id == market_id,
+            )
+            .order_by(lagged.c.captured_at)
+        ).all()
+        return [
+            PriceChange(
+                canonical_product_id=str(r.canonical_product_id),
+                product_name=r.product_name,
+                provider_id=str(r.provider_id),
+                provider_name=r.provider_name,
+                previous=Money(r.prev_minor, Currency(r.prev_currency)),
+                current=Money(r.value_minor, Currency(r.currency)),
+                captured_at=r.captured_at,
+                price_type=PriceType(r.price_type),
+            )
+            for r in rows
         ]
 
     def list_quotes_by_canonical(self, canonical_product_id: str) -> list[StoreQuote]:

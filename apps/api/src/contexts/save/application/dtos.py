@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from ..domain.comparison import PriceComparison
+from ..domain.drops import PriceDrop
 from ..domain.entities import CanonicalProduct
 from ..domain.history import PricePoint
 
@@ -67,6 +68,39 @@ class PriceComparisonDto(BaseModel):
             entries=entries,
             cheapest_provider=comparison.cheapest.provider_name,
             spread_minor=comparison.spread.amount_minor,
+        )
+
+
+class PriceDropDto(BaseModel):
+    """Una bajada de precio detectada (feed de ofertas / futuras alertas)."""
+
+    canonical_product_id: str
+    product_name: str
+    provider_id: str
+    provider_name: str
+    previous_minor: int
+    current_minor: int
+    currency: str
+    drop_minor: int
+    drop_bps: int  # básis points (526 = -5.26%)
+    captured_at: datetime
+    price_type: str
+
+    @classmethod
+    def from_drop(cls, drop: PriceDrop) -> PriceDropDto:
+        change = drop.change
+        return cls(
+            canonical_product_id=change.canonical_product_id,
+            product_name=change.product_name,
+            provider_id=change.provider_id,
+            provider_name=change.provider_name,
+            previous_minor=change.previous.amount_minor,
+            current_minor=change.current.amount_minor,
+            currency=change.current.currency.code,
+            drop_minor=drop.drop.amount_minor,
+            drop_bps=drop.drop_bps,
+            captured_at=change.captured_at,
+            price_type=change.price_type.value,
         )
 
 

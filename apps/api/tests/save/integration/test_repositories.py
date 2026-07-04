@@ -45,11 +45,11 @@ def test_provider_round_trip(db_session) -> None:  # type: ignore[no-untyped-def
     assert got.market_id == "DO"
 
 
-def _seed_provider_and_canonical(db_session) -> tuple[str, str]:  # type: ignore[no-untyped-def]
+def _seed_provider_and_canonical(db_session, market_id: str = "DO") -> tuple[str, str]:  # type: ignore[no-untyped-def]
     prov = SqlProviderRepository(db_session)
     pid = _uuid()
-    prov.add(Provider(pid, "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, "DO"))
-    node = TaxonomyNodeModel(name="Arroz", level=0, market_id="DO")
+    prov.add(Provider(pid, "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, market_id))
+    node = TaxonomyNodeModel(name="Arroz", level=0, market_id=market_id)
     db_session.add(node)
     db_session.flush()
     crepo = SqlCanonicalProductRepository(db_session)
@@ -58,7 +58,7 @@ def _seed_provider_and_canonical(db_session) -> tuple[str, str]:  # type: ignore
         CanonicalProduct(
             cid, "Arroz La Garza", "La Garza",
             Quantity(Decimal("4.5359237"), UnitMeasure.MASS),
-            taxonomy_node_id=str(node.id), market_id="DO",
+            taxonomy_node_id=str(node.id), market_id=market_id,
         )
     )
     return pid, cid
@@ -148,6 +148,52 @@ def test_list_price_history_joins_provider_and_orders_by_time(db_session) -> Non
     ]
     assert points[0].captured_at < points[1].captured_at
     assert points[0].price_type == PriceType.ONLINE
+
+
+def test_list_price_changes_pairs_consecutive_prices(db_session) -> None:  # type: ignore[no-untyped-def]
+    # mercado sintético: la consulta es market-wide y la DB dev puede tener datos reales de "DO"
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    sp = SqlStoreProductRepository(db_session)
+    kw = dict(
+        provider_id=pid, external_id="sku-garza-10", canonical_product_id=cid,
+        price_type=PriceType.ONLINE, source="vtex",
+    )
+    sp.record_observation(price=Money(47500, DOP), captured_at=datetime(2026, 7, 1, 8), **kw)
+    sp.record_observation(price=Money(45000, DOP), captured_at=datetime(2026, 7, 3, 8), **kw)
+    # producto con UNA sola observación → sin par (no hay previous)
+    sp.record_observation(
+        provider_id=pid, external_id="sku-solo", canonical_product_id=cid,
+        price=Money(10000, DOP), captured_at=datetime(2026, 7, 3, 9),
+        price_type=PriceType.ONLINE, source="vtex",
+    )
+
+    changes = sp.list_price_changes(market, since=datetime(2026, 7, 2))
+
+    assert len(changes) == 1
+    ch = changes[0]
+    assert ch.previous == Money(47500, DOP)
+    assert ch.current == Money(45000, DOP)
+    assert ch.provider_name == "Sirena"
+    assert ch.canonical_product_id == cid
+    assert ch.product_name == "Arroz La Garza"
+
+
+def test_list_price_changes_respects_since_window(db_session) -> None:  # type: ignore[no-untyped-def]
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    sp = SqlStoreProductRepository(db_session)
+    kw = dict(
+        provider_id=pid, external_id="sku-garza-10", canonical_product_id=cid,
+        price_type=PriceType.ONLINE, source="vtex",
+    )
+    sp.record_observation(price=Money(47500, DOP), captured_at=datetime(2026, 7, 1, 8), **kw)
+    sp.record_observation(price=Money(45000, DOP), captured_at=datetime(2026, 7, 3, 8), **kw)
+
+    # ventana que empieza DESPUÉS del cambio → vacío
+    assert sp.list_price_changes(market, since=datetime(2026, 7, 4)) == []
+    # mercado distinto → vacío
+    assert sp.list_price_changes(f"T{uuid.uuid4().hex[:6]}", since=datetime(2026, 7, 2)) == []
 
 
 def test_exists_by_natural_key(db_session) -> None:  # type: ignore[no-untyped-def]
