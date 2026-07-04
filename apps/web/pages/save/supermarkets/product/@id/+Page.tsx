@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { formatMoney } from "@/lib/format";
+import { useShoppingList } from "@/lib/use-shopping-list";
 
 import type { ProductData } from "./+data";
 
@@ -17,6 +18,7 @@ import type { ProductData } from "./+data";
 export default function Page() {
   const { locale, t } = usePageI18n();
   const { comparison, history, nowMs } = useData<ProductData>();
+  const { add } = useShoppingList();
 
   // "Compara desde RD$X hasta RD$Y" — derivado de las entries (el backend las ordena por precio).
   const prices = comparison.entries.map((e) => e.price_minor);
@@ -69,7 +71,21 @@ export default function Page() {
             <strong className="text-foreground">{comparison.cheapest_provider}</strong>
           </p>
           <div className="mt-3">
-            <Button size="sm" variant="outline">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                add({
+                  id: comparison.canonical_product_id,
+                  name: comparison.name,
+                  brand: comparison.brand,
+                  image_url: comparison.image_url ?? null,
+                  price_minor: min,
+                  currency: comparison.currency,
+                  qty: 1,
+                })
+              }
+            >
               + {t("product.addToList")}
             </Button>
           </div>

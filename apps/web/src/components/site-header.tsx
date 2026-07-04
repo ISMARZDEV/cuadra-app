@@ -1,11 +1,32 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ShoppingCart } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
+import { useShoppingList } from "@/lib/use-shopping-list";
 
 import { CountrySwitcher, LocaleSwitcher } from "./switcher";
 import { ThemeToggle } from "./theme-toggle";
+
+// Enlace al carrito con badge de nº de artículos (lista local). El count es client-only
+// (useSyncExternalStore) → 0 en SSR, se actualiza tras hidratar.
+function CartLink({ href, label }: { href: string; label: string }) {
+  const { count } = useShoppingList();
+  return (
+    <a
+      href={href}
+      aria-label={label}
+      className="relative flex size-9 items-center justify-center rounded-md hover:bg-accent"
+    >
+      <ShoppingCart className="size-5" />
+      {count > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+          {count}
+        </span>
+      )}
+    </a>
+  );
+}
 
 // Menú desplegable SSR-CRAWLABLE: los <a> viven SIEMPRE en el DOM (no como Radix, que los monta
 // al abrir en cliente) → Google los indexa. Se revelan por hover/focus con CSS (group).
@@ -59,6 +80,7 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-1.5">
+          <CartLink href={href("/save/supermarkets/list")} label={t("list.title")} />
           <CountrySwitcher />
           <LocaleSwitcher />
           <ThemeToggle />

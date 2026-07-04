@@ -3,6 +3,7 @@ import type { ProductCardDto } from "@cuadra/api-client";
 import type { Locale } from "../i18n/config";
 import { translate } from "../i18n/messages";
 import { formatMoney, formatUnitPrice } from "../lib/format";
+import { useShoppingList } from "../lib/use-shopping-list";
 import { Card } from "./ui/card";
 
 // Card de producto (Imagen #5, §B): imagen (placeholder hasta persistir image_url), marca, nombre,
@@ -17,6 +18,21 @@ export function ProductCard({
   href: string;
   locale: Locale;
 }) {
+  const { add } = useShoppingList();
+  const addToCart = (e: React.MouseEvent) => {
+    e.preventDefault(); // el "+" no navega al producto
+    e.stopPropagation();
+    add({
+      id: product.id,
+      name: product.name,
+      brand: product.brand,
+      image_url: product.image_url ?? null,
+      price_minor: product.price_minor,
+      currency: product.currency,
+      qty: 1,
+    });
+  };
+
   return (
     <a href={href} className="group block">
       <Card className="h-full p-3 transition-colors group-hover:border-primary">
@@ -36,12 +52,14 @@ export function ProductCard({
               {product.display_size}
             </span>
           )}
-          <span
-            className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-lg leading-none text-primary-foreground"
-            aria-hidden
+          <button
+            type="button"
+            onClick={addToCart}
+            aria-label={translate(locale, "product.addToList")}
+            className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-lg leading-none text-primary-foreground transition hover:brightness-110"
           >
             +
-          </span>
+          </button>
         </div>
         <div className="mt-2 space-y-0.5">
           {product.brand && (

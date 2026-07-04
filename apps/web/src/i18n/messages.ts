@@ -83,6 +83,15 @@ type MessageKey =
   | "sort.price"
   | "sort.unitPrice"
   | "sort.name"
+  // lista de compra (local)
+  | "list.title"
+  | "list.empty"
+  | "list.total"
+  | "list.remove"
+  | "list.keepShopping"
+  | "list.items"
+  | "list.disclaimer"
+  | "list.view"
   // error
   | "error.notFoundTitle"
   | "error.notFoundBody"
@@ -173,6 +182,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "sort.price": "Precio",
     "sort.unitPrice": "Precio/unidad",
     "sort.name": "Nombre",
+    "list.title": "Tu lista de compra",
+    "list.empty": "Tu lista está vacía.",
+    "list.total": "Total estimado",
+    "list.remove": "Quitar",
+    "list.keepShopping": "Seguir comprando",
+    "list.items": "artículos",
+    "list.disclaimer": "Precio del más barato al agregar; puede cambiar en la tienda.",
+    "list.view": "Ver lista",
     "error.notFoundTitle": "Producto no encontrado",
     "error.notFoundBody": "No encontramos ese producto. Puede que ya no esté en catálogo.",
     "error.genericTitle": "Algo salió mal",
@@ -259,6 +276,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "sort.price": "Price",
     "sort.unitPrice": "Price/unit",
     "sort.name": "Name",
+    "list.title": "Your shopping list",
+    "list.empty": "Your list is empty.",
+    "list.total": "Estimated total",
+    "list.remove": "Remove",
+    "list.keepShopping": "Keep shopping",
+    "list.items": "items",
+    "list.disclaimer": "Cheapest price when added; may vary in store.",
+    "list.view": "View list",
     "error.notFoundTitle": "Product not found",
     "error.notFoundBody": "We couldn't find that product. It may no longer be in the catalog.",
     "error.genericTitle": "Something went wrong",
@@ -345,6 +370,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "sort.price": "Preço",
     "sort.unitPrice": "Preço/unidade",
     "sort.name": "Nome",
+    "list.title": "Sua lista de compras",
+    "list.empty": "Sua lista está vazia.",
+    "list.total": "Total estimado",
+    "list.remove": "Remover",
+    "list.keepShopping": "Continuar comprando",
+    "list.items": "itens",
+    "list.disclaimer": "Preço mais barato ao adicionar; pode variar na loja.",
+    "list.view": "Ver lista",
     "error.notFoundTitle": "Produto não encontrado",
     "error.notFoundBody": "Não encontramos esse produto. Talvez não esteja mais no catálogo.",
     "error.genericTitle": "Algo deu errado",
