@@ -245,3 +245,25 @@ disparo manual y comparte el MISMO wiring (`build_sources`) — una sola fuente 
   suma Vike sobre la MISMA app React (no hay que reescribir a otro framework).
 
 **Sin cambios:** D1 Dagster · D2 Soda→Pandera · D3 Refine · D4 web única `/admin` gateado + ADR 33.
+
+### Actualización (2026-07-04, mismo día) — SEO es OBLIGATORIO desde F1 → **Vike**
+
+Decisión del usuario que **corrige la conclusión de §9** ("F1 no necesita SEO, el SPA es
+perfecto"): el SEO es **requisito de F1, no diferible a F2**. Un portal de comparación de precios
+se descubre por Google ("precio arroz la garza rd") y por los previews Open Graph (WhatsApp/redes,
+que leen HTML crudo, no ejecutan JS) → un SPA client-rendered NO sirve.
+
+**Motor elegido: [Vike](https://vike.dev)** (React + Vite, SSR/SSG, ex vite-plugin-ssr). Por qué
+sobre las alternativas evaluadas:
+- **Vike (ELEGIDO):** control de render **por página** — SSR/pre-render para el portal público
+  (HTML poblado + OG tags = SEO real) y `render: 'spa'` para `/admin` (Refine). Mantiene TanStack
+  Query intacto (nuestro api-client genera hooks TanStack). Maduro y estable. Es el fit exacto de
+  "portal SEO + panel app en una sola web" (D4).
+- 🔀 **TanStack Start:** sinergia total con TanStack Query (SSR dehydrate/hydrate), moderno, pero
+  ecosistema más joven; SSR-first en todas las rutas (menos natural el modo SPA del admin).
+- 🔀 **React Router v7 (Remix):** SSR/SSG maduro, pero su modelo de `loaders` **duplica** TanStack
+  Query → dos capas de datos, menos limpio para nuestro api-client.
+
+**Patrón de SEO F1:** páginas públicas de producto/canasta con `+data` (fetch server-side vía el
+api-client) → el `+Page` renderiza la tabla ya poblada = HTML indexable + `+Head` con title/desc/OG
+por producto. `/admin` con `render: 'spa'`. La mitigación de §9 ("Vike en F2") se ADELANTA a F1.
