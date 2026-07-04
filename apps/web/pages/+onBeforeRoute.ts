@@ -12,13 +12,15 @@ import {
 export function onBeforeRoute(pageContext: PageContext) {
   const segments = pageContext.urlPathname.split("/").filter(Boolean);
   const [first, second, ...rest] = segments;
+  // preserva el query string (?q=…) al reescribir la ruta lógica, si no la búsqueda pierde `q`.
+  const search = pageContext.urlParsed.searchOriginal ?? "";
 
   if (isLocale(first) && isCountry(second)) {
     return {
       pageContext: {
         locale: first,
         country: second,
-        urlLogical: "/" + rest.join("/"),
+        urlLogical: "/" + rest.join("/") + search,
       },
     };
   }
