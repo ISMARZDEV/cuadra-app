@@ -30,6 +30,7 @@ from .models import (
     PriceAlertModel,
     PriceModel,
     ProviderModel,
+    PushTokenModel,
     StoreProductModel,
     TaxonomyNodeModel,
 )
@@ -489,6 +490,29 @@ class SqlAlertRepository:
             )
             for n in rows
         ]
+
+    def register_push_token(self, user_id: str, token: str, platform: str) -> None:
+        existing = self._s.scalars(
+            select(PushTokenModel).where(PushTokenModel.token == token)
+        ).first()
+        if existing is not None:  # el token identifica el dispositivo → reasigna el user si cambió
+            existing.user_id = uuid.UUID(user_id)
+            existing.platform = platform
+            self._s.flush()
+            return
+        self._s.add(
+            PushTokenModel(user_id=uuid.UUID(user_id), token=token, platform=platform)
+        )
+        self._s.flush()
+
+    def list_push_tokens(self, user_id: str) -> list[str]:
+        return list(
+            self._s.scalars(
+                select(PushTokenModel.token).where(
+                    PushTokenModel.user_id == uuid.UUID(user_id)
+                )
+            ).all()
+        )
 
 
 class SqlTaxonomyRepository:

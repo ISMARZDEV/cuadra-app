@@ -10,7 +10,12 @@ from datetime import datetime, timedelta, timezone
 
 from ..domain.alerts import match_alerts
 from ..domain.drops import detect_drops
-from ..domain.ports import AlertRepository, CanonicalProductRepository, StoreProductRepository
+from ..domain.ports import (
+    AlertRepository,
+    CanonicalProductRepository,
+    PushSender,
+    StoreProductRepository,
+)
 from .dtos import AlertDto, AlertNotificationDto
 from .errors import CanonicalProductNotFoundError
 
@@ -87,14 +92,30 @@ class ListAlertNotifications:
         ]
 
 
+class RegisterPushToken:
+    """Registra el Expo push token de un dispositivo del usuario (para el push de alertas)."""
+
+    def __init__(self, alert_repo: AlertRepository) -> None:
+        self._alerts = alert_repo
+
+    def execute(self, user_id: str, token: str, platform: str) -> None:
+        self._alerts.register_push_token(user_id, token, platform)
+
+
 class RunAlertMatching:
-    """Cruza las bajadas recientes con las suscripciones y crea las notificaciones (idempotente)."""
+    """Cruza las bajadas recientes con las suscripciones, crea las notificaciones (idempotente) y
+    envía el push a los dispositivos del usuario (si hay `push_sender`). El push es best-effort:
+    nunca rompe el matching. El feed in-app queda siempre; el push es el 'buzz' del teléfono."""
 
     def __init__(
-        self, store_repo: StoreProductRepository, alert_repo: AlertRepository
+        self,
+        store_repo: StoreProductRepository,
+        alert_repo: AlertRepository,
+        push_sender: PushSender | None = None,
     ) -> None:
         self._store = store_repo
         self._alerts = alert_repo
+        self._push = push_sender
 
     def execute(self, market_id: str, days: int = 7) -> int:
         since = datetime.now(timezone.utc) - timedelta(days=days)
@@ -116,4 +137,18 @@ class RunAlertMatching:
                 captured_at=change.captured_at,
             ):
                 created += 1
+                self._notify(match.subscription.user_id, change)
         return created
+
+    def _notify(self, user_id: str, change) -> None:
+        if self._push is None:
+            return
+        tokens = self._alerts.list_push_tokens(user_id)
+        if not tokens:
+            return
+        self._push.send(
+            tokens,
+            title="¡Bajó de precio!",
+            body=f"{change.product_name} bajó en {change.provider_name}.",
+            data={"canonical_product_id": change.canonical_product_id},
+        )

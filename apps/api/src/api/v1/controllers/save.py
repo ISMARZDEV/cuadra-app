@@ -20,6 +20,7 @@ from src.api.composition_root import (
     get_list_price_drops,
     get_list_products,
     get_price_history,
+    get_register_push_token,
     get_run_alert_matching,
     get_search_products,
     get_subscribe_alert,
@@ -30,6 +31,7 @@ from src.config import settings
 from src.contexts.save.application.alerts import (
     ListAlertNotifications,
     ListAlerts,
+    RegisterPushToken,
     RunAlertMatching,
     SubscribeAlert,
     UnsubscribeAlert,
@@ -177,6 +179,20 @@ def price_history(
 class SubscribeAlertRequest(BaseModel):
     product_id: str
     threshold_minor: int | None = None  # null = avísame ante cualquier bajada
+
+
+class PushTokenRequest(BaseModel):
+    token: str
+    platform: str = "ios"  # ios|android
+
+
+@router.post("/alerts/push-token", status_code=status.HTTP_204_NO_CONTENT)
+def register_push_token(
+    body: PushTokenRequest,
+    user_id: str = Depends(get_current_user_id),
+    use_case: RegisterPushToken = Depends(get_register_push_token),
+) -> None:
+    use_case.execute(user_id, body.token, body.platform)
 
 
 @router.get("/alerts/notifications")

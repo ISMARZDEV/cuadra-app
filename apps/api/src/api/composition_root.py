@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from src.contexts.save.application.alerts import (
     ListAlertNotifications,
     ListAlerts,
+    RegisterPushToken,
     RunAlertMatching,
     SubscribeAlert,
     UnsubscribeAlert,
@@ -25,6 +26,7 @@ from src.contexts.save.application.history import GetPriceHistory
 from src.contexts.save.application.listing import ListCategoryProducts, ListFeaturedProducts
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
+from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlCanonicalProductRepository,
@@ -308,7 +310,13 @@ def get_list_alert_notifications(
 
 
 def get_run_alert_matching(session: Session = Depends(get_session)) -> RunAlertMatching:
-    return RunAlertMatching(SqlStoreProductRepository(session), SqlAlertRepository(session))
+    return RunAlertMatching(
+        SqlStoreProductRepository(session), SqlAlertRepository(session), ExpoPushSender()
+    )
+
+
+def get_register_push_token(session: Session = Depends(get_session)) -> RegisterPushToken:
+    return RegisterPushToken(SqlAlertRepository(session))
 
 
 def get_list_products(session: Session = Depends(get_session)) -> ListProducts:

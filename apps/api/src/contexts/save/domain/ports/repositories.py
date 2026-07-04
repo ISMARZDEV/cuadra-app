@@ -138,3 +138,11 @@ class AlertRepository(Protocol):
     def list_notifications(self, user_id: str) -> list[AlertNotification]:
         """Feed de alertas disparadas del usuario, más recientes primero."""
         ...
+
+    def register_push_token(self, user_id: str, token: str, platform: str) -> None:
+        """Registra/actualiza el Expo push token de un dispositivo del usuario (upsert por token)."""
+        ...
+
+    def list_push_tokens(self, user_id: str) -> list[str]:
+        """Tokens de push de todos los dispositivos del usuario (para el envío)."""
+        ...

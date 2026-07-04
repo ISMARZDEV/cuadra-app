@@ -205,6 +205,27 @@ class AlertNotificationModel(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class PushTokenModel(Base):
+    """Expo push token de un dispositivo del usuario (G4). Único por token; user_id sin FK (ADR 33)."""
+
+    __tablename__ = "push_token"
+    __table_args__ = (
+        UniqueConstraint("token", name="uq_push_token_token"),
+        Index("ix_push_token_user", "user_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    token: Mapped[str] = mapped_column(Text, nullable=False)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)  # ios|android
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class PriceModel(Base):
     """Histórico de precio APPEND-ONLY (SCD-4, el foso · §6.2). Nunca UPDATE. Auto-contenido."""
 

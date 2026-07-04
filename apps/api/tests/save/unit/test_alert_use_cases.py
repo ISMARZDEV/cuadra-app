@@ -27,10 +27,11 @@ class FakeCanonicalRepo:
 
 
 class FakeAlertRepo:
-    def __init__(self, subscriptions=None):
+    def __init__(self, subscriptions=None, tokens=None):
         self.subs = subscriptions or []
         self.recorded: list[tuple] = []
         self._seen: set[tuple] = set()
+        self._tokens = tokens or {}
 
     def subscribe(self, user_id, canonical_product_id, market_id, threshold_minor):
         return "alert-1"
@@ -45,6 +46,17 @@ class FakeAlertRepo:
         self._seen.add(key)
         self.recorded.append((alert_id, kw["current_minor"]))
         return True
+
+    def list_push_tokens(self, user_id):
+        return self._tokens.get(user_id, [])
+
+
+class FakePushSender:
+    def __init__(self):
+        self.sent: list[tuple] = []  # (tokens, title, body)
+
+    def send(self, tokens, *, title, body, data):
+        self.sent.append((tokens, title, body))
 
 
 def _canonical(cid, name):
@@ -95,3 +107,26 @@ def test_run_matching_is_idempotent() -> None:
     uc = RunAlertMatching(store_repo, alert_repo)
     assert uc.execute("DO") == 1
     assert uc.execute("DO") == 0  # segunda corrida no re-notifica la misma bajada
+
+
+def test_run_matching_sends_push_to_user_tokens() -> None:
+    alert_repo = FakeAlertRepo(
+        [AlertSubscription("alert-1", "u1", "arroz", None)],
+        tokens={"u1": ["ExponentPushToken[abc]"]},
+    )
+    store_repo = FakeStoreRepo([_change("arroz", 45000, 42000)])
+    push = FakePushSender()
+    RunAlertMatching(store_repo, alert_repo, push).execute("DO")
+    assert len(push.sent) == 1
+    tokens, _title, body = push.sent[0]
+    assert tokens == ["ExponentPushToken[abc]"]
+    assert "arroz" in body.lower()
+
+
+def test_run_matching_no_push_when_no_sender() -> None:
+    alert_repo = FakeAlertRepo(
+        [AlertSubscription("alert-1", "u1", "arroz", None)], tokens={"u1": ["tok"]}
+    )
+    store_repo = FakeStoreRepo([_change("arroz", 45000, 42000)])
+    # sin push_sender → solo feed in-app, sin error
+    assert RunAlertMatching(store_repo, alert_repo).execute("DO") == 1
