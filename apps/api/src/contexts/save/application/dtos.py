@@ -199,3 +199,49 @@ class CategoryPageDto(BaseModel):
     breadcrumb: list[CategoryRefDto]
     subcategories: list[CategoryRefDto]
     products: list[ProductSearchDto]
+
+
+class ProductCardDto(BaseModel):
+    """Card de producto en el listado (Imagen #5): precio mínimo, precio/unidad, N tiendas."""
+
+    id: str
+    name: str
+    brand: str
+    quality: str | None = None
+    price_minor: int          # el MÁS BARATO entre tiendas
+    currency: str
+    unit_price_minor: int     # precio por unidad base (§B2)
+    unit_measure: str         # mass|volume|count
+    store_count: int          # "N tiendas" (B4)
+
+
+class FacetValueDto(BaseModel):
+    """Un valor de faceta con su conteo (supermercado o marca)."""
+
+    id: str
+    name: str
+    count: int
+
+
+class PriceFacetDto(BaseModel):
+    min_minor: int
+    max_minor: int
+    currency: str
+
+
+class CategoryFacetsDto(BaseModel):
+    price: PriceFacetDto
+    stores: list[FacetValueDto]
+    brands: list[FacetValueDto]
+
+
+class CategoryListingDto(BaseModel):
+    """Listado filtrable/ordenable por categoría (Imagen #5): cards + facetas + paginación."""
+
+    name: str
+    slug: str
+    breadcrumb: list[CategoryRefDto]
+    subcategories: list[CategoryRefDto]
+    total: int                # productos que pasan los filtros (antes de paginar)
+    products: list[ProductCardDto]
+    facets: CategoryFacetsDto

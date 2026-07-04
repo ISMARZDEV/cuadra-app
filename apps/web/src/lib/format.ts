@@ -6,3 +6,15 @@ export function formatMoney(minor: number, currency: string): string {
     currency,
   }).format(minor / 100);
 }
+
+// Etiqueta de la unidad base del precio/unidad (mass→kg, volume→L, count→und). El backend ya
+// normalizó a la unidad base; acá solo se muestra el símbolo.
+const UNIT_LABEL: Record<string, string> = { mass: "kg", volume: "L", count: "und" };
+export function unitLabel(measure: string): string {
+  return UNIT_LABEL[measure] ?? measure;
+}
+
+// "RD$42.40/kg" — precio por unidad base para las cards (§B2).
+export function formatUnitPrice(minor: number, currency: string, measure: string): string {
+  return `${formatMoney(minor, currency)}/${unitLabel(measure)}`;
+}

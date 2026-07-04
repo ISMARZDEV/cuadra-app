@@ -67,6 +67,19 @@ type MessageKey =
   | "categories.title"
   | "category.products"
   | "category.filters"
+  | "category.stores"
+  | "category.brands"
+  | "category.searchBrand"
+  | "category.priceMin"
+  | "category.priceMax"
+  | "category.apply"
+  | "category.clear"
+  | "category.sortBy"
+  | "category.empty"
+  | "product.stores"
+  | "sort.price"
+  | "sort.unitPrice"
+  | "sort.name"
   // error
   | "error.notFoundTitle"
   | "error.notFoundBody"
@@ -141,6 +154,19 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "categories.title": "Todas las categorías",
     "category.products": "productos",
     "category.filters": "Filtros",
+    "category.stores": "Supermercados",
+    "category.brands": "Marcas",
+    "category.searchBrand": "Buscar marca",
+    "category.priceMin": "Mín",
+    "category.priceMax": "Máx",
+    "category.apply": "Aplicar",
+    "category.clear": "Limpiar",
+    "category.sortBy": "Ordenar por",
+    "category.empty": "No hay productos con estos filtros.",
+    "product.stores": "tiendas",
+    "sort.price": "Precio",
+    "sort.unitPrice": "Precio/unidad",
+    "sort.name": "Nombre",
     "error.notFoundTitle": "Producto no encontrado",
     "error.notFoundBody": "No encontramos ese producto. Puede que ya no esté en catálogo.",
     "error.genericTitle": "Algo salió mal",
@@ -211,6 +237,19 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "categories.title": "All categories",
     "category.products": "products",
     "category.filters": "Filters",
+    "category.stores": "Supermarkets",
+    "category.brands": "Brands",
+    "category.searchBrand": "Search brand",
+    "category.priceMin": "Min",
+    "category.priceMax": "Max",
+    "category.apply": "Apply",
+    "category.clear": "Clear",
+    "category.sortBy": "Sort by",
+    "category.empty": "No products match these filters.",
+    "product.stores": "stores",
+    "sort.price": "Price",
+    "sort.unitPrice": "Price/unit",
+    "sort.name": "Name",
     "error.notFoundTitle": "Product not found",
     "error.notFoundBody": "We couldn't find that product. It may no longer be in the catalog.",
     "error.genericTitle": "Something went wrong",
@@ -281,6 +320,19 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "categories.title": "Todas as categorias",
     "category.products": "produtos",
     "category.filters": "Filtros",
+    "category.stores": "Supermercados",
+    "category.brands": "Marcas",
+    "category.searchBrand": "Buscar marca",
+    "category.priceMin": "Mín",
+    "category.priceMax": "Máx",
+    "category.apply": "Aplicar",
+    "category.clear": "Limpar",
+    "category.sortBy": "Ordenar por",
+    "category.empty": "Nenhum produto com estes filtros.",
+    "product.stores": "lojas",
+    "sort.price": "Preço",
+    "sort.unitPrice": "Preço/unidade",
+    "sort.name": "Nome",
     "error.notFoundTitle": "Produto não encontrado",
     "error.notFoundBody": "Não encontramos esse produto. Talvez não esteja mais no catálogo.",
     "error.genericTitle": "Algo deu errado",

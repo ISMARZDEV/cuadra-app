@@ -14,6 +14,7 @@ from ..comparison import StoreQuote
 from ..drops import PriceChange
 from ..entities import CanonicalProduct, PriceType, Provider, StoreProduct
 from ..history import PricePoint
+from ..listing import OfferingRow
 from ..taxonomy import CategoryNode
 
 
@@ -29,6 +30,10 @@ class TaxonomyRepository(Protocol):
 
     def ancestors(self, node_id: str) -> list[CategoryNode]:
         """Camino raíz→nodo (inclusive) para el breadcrumb del producto."""
+        ...
+
+    def descendant_ids(self, node_id: str) -> list[str]:
+        """IDs de `node_id` + todos sus descendientes (subárbol) — para el listado."""
         ...
 
     def list_products_under(self, node_id: str) -> list[CanonicalProduct]:
@@ -54,6 +59,10 @@ class StoreProductRepository(Protocol):
 
     def list_quotes_by_canonical(self, canonical_product_id: str) -> list[StoreQuote]:
         """Cotizaciones (con nombre de tienda) para comparar — join a provider."""
+        ...
+
+    def list_category_offerings(self, node_ids: list[str]) -> list[OfferingRow]:
+        """Filas producto×tienda para los productos bajo `node_ids` (listado por categoría)."""
         ...
 
     def record_observation(

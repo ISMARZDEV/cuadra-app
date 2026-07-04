@@ -18,7 +18,9 @@ from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
 from ..domain.entities import CanonicalProduct, PriceType, Provider, StoreProduct
 from ..domain.history import PricePoint
+from ..domain.listing import OfferingRow
 from ..domain.taxonomy import CategoryNode, slugify
+from ..domain.value_objects import Quantity, UnitMeasure
 from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
 from .models import (
     BrandModel,
@@ -292,6 +294,45 @@ class SqlStoreProductRepository:
             for sp, name in rows
         ]
 
+    def list_category_offerings(self, node_ids: list[str]) -> list[OfferingRow]:
+        node_uuids = [u for u in (_parse_uuid(i) for i in node_ids) if u is not None]
+        if not node_uuids:
+            return []
+        rows = self._s.execute(
+            select(
+                CanonicalProductModel.id,
+                CanonicalProductModel.name,
+                BrandModel.name.label("brand"),
+                CanonicalProductModel.quality,
+                CanonicalProductModel.size_amount,
+                CanonicalProductModel.size_measure,
+                StoreProductModel.provider_id,
+                ProviderModel.name.label("provider_name"),
+                StoreProductModel.current_price_minor,
+                StoreProductModel.currency,
+            )
+            .join(
+                StoreProductModel,
+                StoreProductModel.canonical_product_id == CanonicalProductModel.id,
+            )
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .join(BrandModel, CanonicalProductModel.brand_id == BrandModel.id, isouter=True)
+            .where(CanonicalProductModel.taxonomy_node_id.in_(node_uuids))
+        ).all()
+        return [
+            OfferingRow(
+                product_id=str(r.id),
+                name=r.name,
+                brand=r.brand or "",
+                quality=r.quality,
+                quantity=Quantity(r.size_amount, UnitMeasure(r.size_measure)),
+                provider_id=str(r.provider_id),
+                provider_name=r.provider_name,
+                price=Money(r.current_price_minor, Currency(r.currency)),
+            )
+            for r in rows
+        ]
+
 
 class SqlTaxonomyRepository:
     """Read-only sobre `taxonomy_node` (árbol self-FK). El slug se deriva del nombre (sin columna)."""
@@ -347,7 +388,7 @@ class SqlTaxonomyRepository:
             )
         return list(reversed(chain))
 
-    def list_products_under(self, node_id: str) -> list[CanonicalProduct]:
+    def descendant_ids(self, node_id: str) -> list[str]:
         node = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
         if node is None:
             return []
@@ -361,6 +402,12 @@ class SqlTaxonomyRepository:
             current = stack.pop()
             ids.append(current)
             stack.extend(children_of.get(current, []))
+        return ids
+
+    def list_products_under(self, node_id: str) -> list[CanonicalProduct]:
+        ids = self.descendant_ids(node_id)
+        if not ids:
+            return []
         products = self._s.scalars(
             select(CanonicalProductModel)
             .where(CanonicalProductModel.taxonomy_node_id.in_([uuid.UUID(i) for i in ids]))

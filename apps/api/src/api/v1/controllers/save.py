@@ -12,6 +12,7 @@ from src.api.composition_root import (
     get_category,
     get_compare_product,
     get_list_categories,
+    get_list_category_products,
     get_list_price_drops,
     get_list_products,
     get_price_history,
@@ -21,6 +22,7 @@ from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.dtos import (
+    CategoryListingDto,
     CategoryPageDto,
     CategoryTreeDto,
     PriceComparisonDto,
@@ -33,6 +35,7 @@ from src.contexts.save.application.errors import (
     CategoryNotFoundError,
 )
 from src.contexts.save.application.history import GetPriceHistory, HistoryRange
+from src.contexts.save.application.listing import ListCategoryProducts
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
 
@@ -75,6 +78,35 @@ def category(
 ) -> CategoryPageDto:
     try:
         return use_case.execute(market, slug)
+    except CategoryNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/category/{slug}/products")
+def category_products(
+    slug: str,
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    stores: list[str] = Query(default=[], description="IDs de supermercado a incluir"),
+    brands: list[str] = Query(default=[], description="Marcas a incluir"),
+    price_min: int | None = Query(None, ge=0, description="Precio mínimo (minor units)"),
+    price_max: int | None = Query(None, ge=0, description="Precio máximo (minor units)"),
+    sort: str = Query("price", description="price|unit_price|name"),
+    limit: int = Query(48, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    use_case: ListCategoryProducts = Depends(get_list_category_products),
+) -> CategoryListingDto:
+    try:
+        return use_case.execute(
+            market,
+            slug,
+            stores=tuple(stores),
+            brands=tuple(brands),
+            price_min=price_min,
+            price_max=price_max,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+        )
     except CategoryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
