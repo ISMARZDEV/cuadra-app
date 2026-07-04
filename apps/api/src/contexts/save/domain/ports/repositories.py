@@ -14,11 +14,26 @@ from ..comparison import StoreQuote
 from ..drops import PriceChange
 from ..entities import CanonicalProduct, PriceType, Provider, StoreProduct
 from ..history import PricePoint
+from ..taxonomy import CategoryNode
 
 
 class ProviderRepository(Protocol):
     def add(self, provider: Provider) -> None: ...
     def get_by_id(self, provider_id: str) -> Provider | None: ...
+
+
+class TaxonomyRepository(Protocol):
+    def list_tree(self, market_id: str) -> list[CategoryNode]:
+        """Árbol de categorías del mercado (raíces con hijos anidados)."""
+        ...
+
+    def ancestors(self, node_id: str) -> list[CategoryNode]:
+        """Camino raíz→nodo (inclusive) para el breadcrumb del producto."""
+        ...
+
+    def list_products_under(self, node_id: str) -> list[CanonicalProduct]:
+        """Productos canónicos cuyo nodo es `node_id` o un descendiente."""
+        ...
 
 
 class CanonicalProductRepository(Protocol):

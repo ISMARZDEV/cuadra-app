@@ -67,6 +67,20 @@ _GARZA_10LB_PRICES: dict[str, tuple[str, int]] = {
 
 _ARROZ_PATH = ["Despensa & Abarrotes", "Arroz, Granos & Legumbres", "Arroz", "Arroz Blanco"]
 
+# Taxonomía semilla (categorías + subcategorías, alineada a SupermercadosRD / Imagen #6). El árbol
+# real se sembrará desde las fuentes (VTEX/Magento) en F2; esto da datos para la UI de categorías.
+_TOP_CATEGORIES = [
+    "Alcohol", "Bebés", "Bebidas", "Carnes & Pescados", "Cuidado Del Hogar", "Cuidado Personal",
+    "Despensa & Abarrotes", "Embutidos & Delicatessen", "Escolares & Oficina", "Frutas & Verduras",
+    "Lácteos & Huevos", "Mascotas", "Panadería & Tortillería", "Salud & Farmacia", "Snacks & Dulces",
+]
+_DESPENSA_SUBCATEGORIES = [
+    "Aceite & Vinagre", "Arroz, Granos & Legumbres", "Café", "Caldos & Sopas",
+    "Chocolate Para Beber", "Condimentos & Especias", "Desayuno & Cereal", "Endulzantes",
+    "Enlatados & Conservas", "Harinas", "Pastas", "Repostería", "Salsas",
+    "Semillas & Frutos Secos", "Té & Infusiones",
+]
+
 
 def provider_id(name: str) -> uuid.UUID:
     """ID determinista del provider (uuid5). Público: lo comparte el wiring de ingesta.
@@ -130,7 +144,11 @@ def seed_save(session: Session) -> None:
         if session.get(ProviderModel, pid) is None:
             prov_repo.add(Provider(str(pid), name, ProviderType.SUPERMARKET, platform, "DO"))
 
-    # 2) taxonomía (hoja "Arroz Blanco")
+    # 2) taxonomía: categorías top + subcategorías de Despensa + la hoja "Arroz Blanco"
+    for cat in _TOP_CATEGORIES:
+        _taxonomy_leaf(session, "DO", [cat])
+    for sub in _DESPENSA_SUBCATEGORIES:
+        _taxonomy_leaf(session, "DO", ["Despensa & Abarrotes", sub])
     node_id = _taxonomy_leaf(session, "DO", _ARROZ_PATH)
 
     # 3) producto canónico (matcheo manual = todos los store_products apuntan acá)

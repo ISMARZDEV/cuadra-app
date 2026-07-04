@@ -10,3 +10,9 @@ class CanonicalProductNotFoundError(SaveError):
     def __init__(self, product_id: str) -> None:
         super().__init__(f"Producto canónico no encontrado: {product_id}")
         self.product_id = product_id
+
+
+class CategoryNotFoundError(SaveError):
+    def __init__(self, slug: str) -> None:
+        super().__init__(f"Categoría no encontrada: {slug}")
+        self.slug = slug

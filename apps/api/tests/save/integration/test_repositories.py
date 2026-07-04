@@ -213,6 +213,50 @@ def test_list_price_changes_respects_since_window(db_session) -> None:  # type: 
     assert sp.list_price_changes(f"T{uuid.uuid4().hex[:6]}", since=datetime(2026, 7, 2)) == []
 
 
+def test_taxonomy_tree_ancestors_and_products(db_session) -> None:  # type: ignore[no-untyped-def]
+    from src.contexts.save.infrastructure.repositories import SqlTaxonomyRepository
+
+    market = f"T{uuid.uuid4().hex[:6]}"
+    # árbol: Despensa & Abarrotes > Arroz, Granos & Legumbres > Arroz
+    despensa = TaxonomyNodeModel(name="Despensa & Abarrotes", level=0, market_id=market)
+    db_session.add(despensa)
+    db_session.flush()
+    granos = TaxonomyNodeModel(
+        name="Arroz, Granos & Legumbres", level=1, market_id=market, parent_id=despensa.id
+    )
+    db_session.add(granos)
+    db_session.flush()
+    arroz = TaxonomyNodeModel(name="Arroz", level=2, market_id=market, parent_id=granos.id)
+    db_session.add(arroz)
+    db_session.flush()
+
+    crepo = SqlCanonicalProductRepository(db_session)
+    cid = _uuid()
+    crepo.add(
+        CanonicalProduct(
+            cid, "Arroz La Garza", "La Garza",
+            Quantity(Decimal("4.5359237"), UnitMeasure.MASS),
+            taxonomy_node_id=str(arroz.id), market_id=market,
+        )
+    )
+
+    repo = SqlTaxonomyRepository(db_session)
+
+    tree = repo.list_tree(market)
+    assert [n.name for n in tree] == ["Despensa & Abarrotes"]
+    assert tree[0].slug == "despensa-abarrotes"
+    assert tree[0].children[0].children[0].name == "Arroz"
+
+    # breadcrumb raíz→nodo del producto
+    crumb = repo.ancestors(str(arroz.id))
+    assert [n.name for n in crumb] == ["Despensa & Abarrotes", "Arroz, Granos & Legumbres", "Arroz"]
+
+    # productos bajo la categoría padre (incluye descendientes)
+    under = repo.list_products_under(str(granos.id))
+    assert [p.id for p in under] == [cid]
+    assert repo.list_products_under(str(despensa.id))[0].id == cid  # sube más arriba también
+
+
 def test_exists_by_natural_key(db_session) -> None:  # type: ignore[no-untyped-def]
     pid, cid = _seed_provider_and_canonical(db_session)
     sp = SqlStoreProductRepository(db_session)

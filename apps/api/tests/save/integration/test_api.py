@@ -152,6 +152,50 @@ def test_drops_endpoint_empty_without_drops(db_session: Session) -> None:
     assert r.json() == []
 
 
+def _seed_taxonomy(db_session: Session, market: str) -> str:
+    despensa = TaxonomyNodeModel(name="Despensa & Abarrotes", level=0, market_id=market)
+    db_session.add(despensa)
+    db_session.flush()
+    granos = TaxonomyNodeModel(
+        name="Arroz, Granos & Legumbres", level=1, market_id=market, parent_id=despensa.id
+    )
+    db_session.add(granos)
+    db_session.flush()
+    return str(granos.id)
+
+
+def test_categories_endpoint_returns_tree(db_session: Session) -> None:
+    market = f"T{uuid.uuid4().hex[:6]}"
+    _seed_taxonomy(db_session, market)
+    r = _client(db_session).get("/v1/save/categories", params={"market": market})
+    assert r.status_code == 200
+    cats = r.json()["categories"]
+    assert cats[0]["name"] == "Despensa & Abarrotes"
+    assert cats[0]["slug"] == "despensa-abarrotes"
+    assert cats[0]["children"][0]["slug"] == "arroz-granos-legumbres"
+
+
+def test_category_endpoint_breadcrumb_and_404(db_session: Session) -> None:
+    market = f"T{uuid.uuid4().hex[:6]}"
+    _seed_taxonomy(db_session, market)
+    r = _client(db_session).get(
+        "/v1/save/category/arroz-granos-legumbres", params={"market": market}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert [b["name"] for b in body["breadcrumb"]] == [
+        "Despensa & Abarrotes",
+        "Arroz, Granos & Legumbres",
+    ]
+    # slug inexistente → 404
+    assert (
+        _client(db_session)
+        .get("/v1/save/category/no-existe", params={"market": market})
+        .status_code
+        == 404
+    )
+
+
 def test_products_endpoint_lists_market_products(db_session: Session) -> None:
     market = f"T{uuid.uuid4().hex[:6]}"
     cid = _seed(db_session, market_id=market)

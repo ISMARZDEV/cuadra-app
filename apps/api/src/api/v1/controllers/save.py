@@ -9,21 +9,29 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.api.composition_root import (
+    get_category,
     get_compare_product,
+    get_list_categories,
     get_list_price_drops,
     get_list_products,
     get_price_history,
     get_search_products,
 )
+from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.dtos import (
+    CategoryPageDto,
+    CategoryTreeDto,
     PriceComparisonDto,
     PriceDropDto,
     PriceHistoryDto,
     ProductSearchDto,
 )
-from src.contexts.save.application.errors import CanonicalProductNotFoundError
+from src.contexts.save.application.errors import (
+    CanonicalProductNotFoundError,
+    CategoryNotFoundError,
+)
 from src.contexts.save.application.history import GetPriceHistory, HistoryRange
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
@@ -48,6 +56,26 @@ def compare_product(
     try:
         return use_case.execute(product_id)
     except CanonicalProductNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/categories")
+def list_categories(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: ListCategories = Depends(get_list_categories),
+) -> CategoryTreeDto:
+    return use_case.execute(market)
+
+
+@router.get("/category/{slug}")
+def category(
+    slug: str,
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: GetCategory = Depends(get_category),
+) -> CategoryPageDto:
+    try:
+        return use_case.execute(market, slug)
+    except CategoryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 

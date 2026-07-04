@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.history import GetPriceHistory
@@ -19,6 +20,7 @@ from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlStoreProductRepository,
+    SqlTaxonomyRepository,
 )
 
 from src.contexts.identity.application.queries import GetMe
@@ -239,8 +241,18 @@ def get_search_products(session: Session = Depends(get_session)) -> SearchProduc
 
 def get_compare_product(session: Session = Depends(get_session)) -> CompareProduct:
     return CompareProduct(
-        SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
+        SqlCanonicalProductRepository(session),
+        SqlStoreProductRepository(session),
+        SqlTaxonomyRepository(session),
     )
+
+
+def get_list_categories(session: Session = Depends(get_session)) -> ListCategories:
+    return ListCategories(SqlTaxonomyRepository(session))
+
+
+def get_category(session: Session = Depends(get_session)) -> GetCategory:
+    return GetCategory(SqlTaxonomyRepository(session))
 
 
 def get_price_history(session: Session = Depends(get_session)) -> GetPriceHistory:

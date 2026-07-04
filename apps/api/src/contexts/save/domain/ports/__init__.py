@@ -3,6 +3,7 @@ from .repositories import (
     CanonicalProductRepository,
     ProviderRepository,
     StoreProductRepository,
+    TaxonomyRepository,
 )
 
 __all__ = [
@@ -11,4 +12,5 @@ __all__ = [
     "ProviderRepository",
     "RawCatalogEntry",
     "StoreProductRepository",
+    "TaxonomyRepository",
 ]

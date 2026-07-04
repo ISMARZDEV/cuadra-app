@@ -18,6 +18,7 @@ from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
 from ..domain.entities import CanonicalProduct, PriceType, Provider, StoreProduct
 from ..domain.history import PricePoint
+from ..domain.taxonomy import CategoryNode, slugify
 from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
 from .models import (
     BrandModel,
@@ -25,6 +26,7 @@ from .models import (
     PriceModel,
     ProviderModel,
     StoreProductModel,
+    TaxonomyNodeModel,
 )
 
 
@@ -289,3 +291,79 @@ class SqlStoreProductRepository:
             )
             for sp, name in rows
         ]
+
+
+class SqlTaxonomyRepository:
+    """Read-only sobre `taxonomy_node` (árbol self-FK). El slug se deriva del nombre (sin columna)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def _to_node(
+        self, m: TaxonomyNodeModel, children: tuple[CategoryNode, ...] = ()
+    ) -> CategoryNode:
+        return CategoryNode(
+            id=str(m.id),
+            name=m.name,
+            slug=slugify(m.name),
+            level=m.level,
+            parent_id=str(m.parent_id) if m.parent_id else None,
+            children=children,
+        )
+
+    def _market_nodes(self, market_id: str) -> list[TaxonomyNodeModel]:
+        return list(
+            self._s.scalars(
+                select(TaxonomyNodeModel)
+                .where(TaxonomyNodeModel.market_id == market_id)
+                .order_by(TaxonomyNodeModel.level, TaxonomyNodeModel.name)
+            ).all()
+        )
+
+    def _brand_name(self, brand_id: uuid.UUID | None) -> str:
+        if brand_id is None:
+            return ""
+        b = self._s.get(BrandModel, brand_id)
+        return b.name if b else ""
+
+    def list_tree(self, market_id: str) -> list[CategoryNode]:
+        models = self._market_nodes(market_id)
+        by_parent: dict[str | None, list[TaxonomyNodeModel]] = {}
+        for m in models:
+            by_parent.setdefault(str(m.parent_id) if m.parent_id else None, []).append(m)
+
+        def build(parent_id: str | None) -> tuple[CategoryNode, ...]:
+            return tuple(self._to_node(m, build(str(m.id))) for m in by_parent.get(parent_id, []))
+
+        return list(build(None))
+
+    def ancestors(self, node_id: str) -> list[CategoryNode]:
+        chain: list[CategoryNode] = []
+        current = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
+        while current is not None:
+            chain.append(self._to_node(current))
+            current = (
+                self._s.get(TaxonomyNodeModel, current.parent_id) if current.parent_id else None
+            )
+        return list(reversed(chain))
+
+    def list_products_under(self, node_id: str) -> list[CanonicalProduct]:
+        node = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
+        if node is None:
+            return []
+        children_of: dict[str | None, list[str]] = {}
+        for m in self._market_nodes(node.market_id):
+            children_of.setdefault(str(m.parent_id) if m.parent_id else None, []).append(str(m.id))
+        # BFS: node_id + todos sus descendientes
+        ids: list[str] = []
+        stack = [node_id]
+        while stack:
+            current = stack.pop()
+            ids.append(current)
+            stack.extend(children_of.get(current, []))
+        products = self._s.scalars(
+            select(CanonicalProductModel)
+            .where(CanonicalProductModel.taxonomy_node_id.in_([uuid.UUID(i) for i in ids]))
+            .order_by(CanonicalProductModel.name)
+        ).all()
+        return [canonical_to_entity(p, self._brand_name(p.brand_id)) for p in products]
