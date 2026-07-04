@@ -18,6 +18,7 @@ from src.shared.db.base import Base  # noqa: E402
 import src.contexts.identity.infrastructure.models  # noqa: F401,E402  (registra las tablas)
 import src.contexts.insights.infrastructure.models  # noqa: F401,E402  (registra las tablas)
 import src.contexts.aispace.infrastructure.models  # noqa: F401,E402  (registra las tablas)
+import src.contexts.save.infrastructure.models  # noqa: F401,E402  (registra las tablas)
 
 target_metadata = Base.metadata
 
