@@ -213,3 +213,35 @@ revés.
 + `ScheduleDefinition` diaria (interino: un ritmo; el doble ritmo canasta/full-semanal de §7 se
 suma cuando el catálogo crezca). El runner CLI `make save-refresh` (sin dagster) se conserva como
 disparo manual y comparte el MISMO wiring (`build_sources`) — una sola fuente de verdad.
+
+---
+
+## 9. CAMBIO DE STACK WEB (2026-07-04) — React + Vite, NO Next.js (supersede D4)
+
+> Decisión del usuario que **reemplaza el "Next.js" de la resolución D4 (§5)**. Append-only:
+> D4 (web única con `/admin` gateado, monorepo microservices-ready) SIGUE vigente; solo cambia
+> el framework de render.
+
+**Decisión:** `apps/web` se construye con **React + Vite (SPA)**, no Next.js.
+
+**Por qué encaja bien (a favor):**
+- **El `@cuadra/api-client` es agnóstico del framework** — `@hey-api/client-fetch` + hooks de
+  TanStack Query. NO dependía de Next.js; funciona idéntico bajo Vite. Cero fricción para reusar
+  todo el SDK tipado (search/compare/history/drops ya en el OpenAPI).
+- **Refine (D3, la consola `/admin`) es Vite-native** — `create-refine-app` scaffolds sobre Vite.
+  React+Vite alinea MEJOR con la consola elegida que Next.js.
+- DX más simple/rápido (HMR de Vite), sin la complejidad del App Router ni el runtime de Next.
+- El monorepo ya es pnpm+turbo con `apps/mobile` (React Native) → una web React comparte mental
+  model y `packages/*` (api-client, config, shared-types).
+
+**⚠️ El tradeoff que hay que aceptar CONSCIENTEMENTE (rol arquitecto):**
+- Next.js se eligió pensando en **SEO / landings programáticas** (doc 08, F2): un portal público de
+  comparación de precios (competir con SupermercadosRD) se descubre por Google ("precio arroz la
+  garza rd"). Un SPA Vite es **client-rendered** → peor SEO out-of-the-box.
+- **Mitigación (cuando SEO importe, que es F2 no F1):** añadir **prerendering** a Vite —
+  `vike` (ex vite-plugin-ssr) o generación estática de las páginas de producto/canasta. Se paga ese
+  costo en F2; para el MVP F1 (portal app-like + admin) el SPA es perfecto.
+- **Neto:** aceptable. F1 no necesita SEO; el día que las landings programáticas entren (F2), se
+  suma Vike sobre la MISMA app React (no hay que reescribir a otro framework).
+
+**Sin cambios:** D1 Dagster · D2 Soda→Pandera · D3 Refine · D4 web única `/admin` gateado + ADR 33.
