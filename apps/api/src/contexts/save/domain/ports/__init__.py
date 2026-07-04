@@ -1,5 +1,6 @@
 from .catalog_source import CatalogSource, RawCatalogEntry
 from .repositories import (
+    AlertRepository,
     CanonicalProductRepository,
     ProviderRepository,
     StoreProductRepository,
@@ -7,6 +8,7 @@ from .repositories import (
 )
 
 __all__ = [
+    "AlertRepository",
     "CanonicalProductRepository",
     "CatalogSource",
     "ProviderRepository",

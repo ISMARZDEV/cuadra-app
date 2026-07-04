@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from src.shared.money import Currency, Money
 
+from ..domain.alerts import Alert, AlertNotification, AlertSubscription
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
 from ..domain.entities import CanonicalProduct, PriceType, Provider, StoreProduct
@@ -23,8 +24,10 @@ from ..domain.taxonomy import CategoryNode, slugify
 from ..domain.value_objects import Quantity, UnitMeasure
 from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
 from .models import (
+    AlertNotificationModel,
     BrandModel,
     CanonicalProductModel,
+    PriceAlertModel,
     PriceModel,
     ProviderModel,
     StoreProductModel,
@@ -346,6 +349,146 @@ class SqlStoreProductRepository:
 
     def list_market_offerings(self, market_id: str) -> list[OfferingRow]:
         return self._offerings(CanonicalProductModel.market_id == market_id)
+
+
+class SqlAlertRepository:
+    """Alertas de precio (G4): suscripciones + feed de notificaciones. `user_id` cross-context."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def subscribe(
+        self, user_id: str, canonical_product_id: str, market_id: str, threshold_minor: int | None
+    ) -> str:
+        uid = uuid.UUID(user_id)
+        cid = uuid.UUID(canonical_product_id)
+        existing = self._s.scalars(
+            select(PriceAlertModel).where(
+                PriceAlertModel.user_id == uid,
+                PriceAlertModel.canonical_product_id == cid,
+            )
+        ).first()
+        if existing is not None:  # re-suscribir = actualizar el umbral
+            existing.threshold_minor = threshold_minor
+            self._s.flush()
+            return str(existing.id)
+        alert = PriceAlertModel(
+            user_id=uid,
+            canonical_product_id=cid,
+            market_id=market_id,
+            threshold_minor=threshold_minor,
+        )
+        self._s.add(alert)
+        self._s.flush()
+        return str(alert.id)
+
+    def list_by_user(self, user_id: str) -> list[Alert]:
+        rows = self._s.execute(
+            select(PriceAlertModel, CanonicalProductModel.name)
+            .join(
+                CanonicalProductModel,
+                PriceAlertModel.canonical_product_id == CanonicalProductModel.id,
+            )
+            .where(PriceAlertModel.user_id == uuid.UUID(user_id))
+            .order_by(PriceAlertModel.created_at.desc())
+        ).all()
+        return [
+            Alert(
+                id=str(a.id),
+                canonical_product_id=str(a.canonical_product_id),
+                product_name=name,
+                threshold_minor=a.threshold_minor,
+                created_at=a.created_at,
+            )
+            for a, name in rows
+        ]
+
+    def unsubscribe(self, user_id: str, alert_id: str) -> bool:
+        aid = _parse_uuid(alert_id)
+        if aid is None:
+            return False
+        alert = self._s.get(PriceAlertModel, aid)
+        if alert is None or str(alert.user_id) != user_id:
+            return False
+        self._s.delete(alert)
+        self._s.flush()
+        return True
+
+    def list_active_subscriptions(self, market_id: str) -> list[AlertSubscription]:
+        rows = self._s.scalars(
+            select(PriceAlertModel).where(PriceAlertModel.market_id == market_id)
+        ).all()
+        return [
+            AlertSubscription(
+                alert_id=str(a.id),
+                user_id=str(a.user_id),
+                canonical_product_id=str(a.canonical_product_id),
+                threshold_minor=a.threshold_minor,
+            )
+            for a in rows
+        ]
+
+    def record_notification(
+        self,
+        *,
+        alert_id: str,
+        user_id: str,
+        canonical_product_id: str,
+        product_name: str,
+        provider_name: str,
+        previous_minor: int,
+        current_minor: int,
+        currency: str,
+        drop_bps: int,
+        captured_at: datetime,
+    ) -> bool:
+        exists = self._s.scalars(
+            select(AlertNotificationModel).where(
+                AlertNotificationModel.price_alert_id == uuid.UUID(alert_id),
+                AlertNotificationModel.provider_name == provider_name,
+                AlertNotificationModel.captured_at == captured_at,
+            )
+        ).first()
+        if exists is not None:
+            return False  # ya notificada (idempotente)
+        self._s.add(
+            AlertNotificationModel(
+                price_alert_id=uuid.UUID(alert_id),
+                user_id=uuid.UUID(user_id),
+                canonical_product_id=uuid.UUID(canonical_product_id),
+                product_name=product_name,
+                provider_name=provider_name,
+                previous_minor=previous_minor,
+                current_minor=current_minor,
+                currency=currency,
+                drop_bps=drop_bps,
+                captured_at=captured_at,
+            )
+        )
+        self._s.flush()
+        return True
+
+    def list_notifications(self, user_id: str) -> list[AlertNotification]:
+        rows = self._s.scalars(
+            select(AlertNotificationModel)
+            .where(AlertNotificationModel.user_id == uuid.UUID(user_id))
+            .order_by(AlertNotificationModel.triggered_at.desc())
+        ).all()
+        return [
+            AlertNotification(
+                id=str(n.id),
+                canonical_product_id=str(n.canonical_product_id),
+                product_name=n.product_name,
+                provider_name=n.provider_name,
+                previous_minor=n.previous_minor,
+                current_minor=n.current_minor,
+                currency=n.currency,
+                drop_bps=n.drop_bps,
+                triggered_at=n.triggered_at,
+                read=n.read_at is not None,
+            )
+            for n in rows
+        ]
 
 
 class SqlTaxonomyRepository:

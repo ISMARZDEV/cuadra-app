@@ -7,22 +7,39 @@ mercado (multi-país: DO→US→CO). Los errores de aplicación se mapean a HTTP
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 
 from src.api.composition_root import (
     get_category,
     get_compare_product,
+    get_list_alert_notifications,
+    get_list_alerts,
     get_list_categories,
     get_list_category_products,
     get_list_featured_products,
     get_list_price_drops,
     get_list_products,
     get_price_history,
+    get_run_alert_matching,
     get_search_products,
+    get_subscribe_alert,
+    get_unsubscribe_alert,
+)
+from src.api.extensions.security import get_current_user_id
+from src.config import settings
+from src.contexts.save.application.alerts import (
+    ListAlertNotifications,
+    ListAlerts,
+    RunAlertMatching,
+    SubscribeAlert,
+    UnsubscribeAlert,
 )
 from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.dtos import (
+    AlertDto,
+    AlertNotificationDto,
     CategoryListingDto,
     CategoryPageDto,
     CategoryTreeDto,
@@ -152,3 +169,61 @@ def price_history(
         return use_case.execute(product_id, range_=range_)
     except CanonicalProductNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+# ── Alertas de precio (G4) — requieren usuario autenticado (JWT) ──
+
+
+class SubscribeAlertRequest(BaseModel):
+    product_id: str
+    threshold_minor: int | None = None  # null = avísame ante cualquier bajada
+
+
+@router.get("/alerts/notifications")
+def alert_notifications(
+    user_id: str = Depends(get_current_user_id),
+    use_case: ListAlertNotifications = Depends(get_list_alert_notifications),
+) -> list[AlertNotificationDto]:
+    return use_case.execute(user_id)
+
+
+@router.post("/alerts/run-matching")
+def run_alert_matching(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    days: int = Query(7, ge=1, le=3650),
+    use_case: RunAlertMatching = Depends(get_run_alert_matching),
+) -> dict[str, int]:
+    # En prod = schedule de Dagster; acá se expone solo en dev para demo/manual.
+    if settings.app_env != "dev":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return {"created": use_case.execute(market, days=days)}
+
+
+@router.get("/alerts")
+def list_alerts(
+    user_id: str = Depends(get_current_user_id),
+    use_case: ListAlerts = Depends(get_list_alerts),
+) -> list[AlertDto]:
+    return use_case.execute(user_id)
+
+
+@router.post("/alerts", status_code=status.HTTP_201_CREATED)
+def subscribe_alert(
+    body: SubscribeAlertRequest,
+    user_id: str = Depends(get_current_user_id),
+    use_case: SubscribeAlert = Depends(get_subscribe_alert),
+) -> AlertDto:
+    try:
+        return use_case.execute(user_id, body.product_id, body.threshold_minor)
+    except CanonicalProductNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/alerts/{alert_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unsubscribe_alert(
+    alert_id: str,
+    user_id: str = Depends(get_current_user_id),
+    use_case: UnsubscribeAlert = Depends(get_unsubscribe_alert),
+) -> None:
+    if not use_case.execute(user_id, alert_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada")

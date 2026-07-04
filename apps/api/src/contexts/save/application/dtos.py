@@ -199,6 +199,31 @@ class CategoryTreeDto(BaseModel):
     categories: list[CategoryNodeDto]
 
 
+class AlertDto(BaseModel):
+    """Suscripción de alerta (G4) como la ve el usuario."""
+
+    id: str
+    canonical_product_id: str
+    product_name: str
+    threshold_minor: int | None = None
+    created_at: datetime
+
+
+class AlertNotificationDto(BaseModel):
+    """Alerta disparada (feed in-app): la bajada que gatilló la notificación."""
+
+    id: str
+    canonical_product_id: str
+    product_name: str
+    provider_name: str
+    previous_minor: int
+    current_minor: int
+    currency: str
+    drop_bps: int
+    triggered_at: datetime
+    read: bool
+
+
 class CategoryPageDto(BaseModel):
     """Página de una categoría: breadcrumb + subcategorías + productos (Imagen #8)."""
 

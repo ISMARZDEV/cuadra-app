@@ -148,6 +148,63 @@ class StoreProductModel(Base):
     )
 
 
+class PriceAlertModel(Base):
+    """Suscripción de un usuario a las bajadas de un producto (G4). `user_id` sin FK (ADR 33)."""
+
+    __tablename__ = "price_alert"
+    __table_args__ = (
+        UniqueConstraint("user_id", "canonical_product_id", name="uq_price_alert_user_product"),
+        Index("ix_price_alert_user", "user_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)  # cross-context
+    canonical_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.canonical_product.id", ondelete="CASCADE"), nullable=False
+    )
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    threshold_minor: Mapped[int | None] = mapped_column(BigInteger)  # null = cualquier bajada
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AlertNotificationModel(Base):
+    """Evento de alerta disparado (feed in-app). Único por (alerta, tienda, captured_at) → idempotente."""
+
+    __tablename__ = "alert_notification"
+    __table_args__ = (
+        UniqueConstraint(
+            "price_alert_id", "provider_name", "captured_at", name="uq_alert_notification_dedup"
+        ),
+        Index("ix_alert_notification_user", "user_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    price_alert_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.price_alert.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    canonical_product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    product_name: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_name: Mapped[str] = mapped_column(Text, nullable=False)
+    previous_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    current_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    drop_bps: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    triggered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class PriceModel(Base):
     """Histórico de precio APPEND-ONLY (SCD-4, el foso · §6.2). Nunca UPDATE. Auto-contenido."""
 

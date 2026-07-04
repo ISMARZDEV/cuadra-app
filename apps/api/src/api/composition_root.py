@@ -11,6 +11,13 @@ from collections.abc import Iterator
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from src.contexts.save.application.alerts import (
+    ListAlertNotifications,
+    ListAlerts,
+    RunAlertMatching,
+    SubscribeAlert,
+    UnsubscribeAlert,
+)
 from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.drops import ListPriceDrops
@@ -19,6 +26,7 @@ from src.contexts.save.application.listing import ListCategoryProducts, ListFeat
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.infrastructure.repositories import (
+    SqlAlertRepository,
     SqlCanonicalProductRepository,
     SqlStoreProductRepository,
     SqlTaxonomyRepository,
@@ -278,6 +286,29 @@ def get_price_history(session: Session = Depends(get_session)) -> GetPriceHistor
 
 def get_list_price_drops(session: Session = Depends(get_session)) -> ListPriceDrops:
     return ListPriceDrops(SqlStoreProductRepository(session))
+
+
+# ── Alertas de precio (G4) ──
+def get_subscribe_alert(session: Session = Depends(get_session)) -> SubscribeAlert:
+    return SubscribeAlert(SqlAlertRepository(session), SqlCanonicalProductRepository(session))
+
+
+def get_list_alerts(session: Session = Depends(get_session)) -> ListAlerts:
+    return ListAlerts(SqlAlertRepository(session))
+
+
+def get_unsubscribe_alert(session: Session = Depends(get_session)) -> UnsubscribeAlert:
+    return UnsubscribeAlert(SqlAlertRepository(session))
+
+
+def get_list_alert_notifications(
+    session: Session = Depends(get_session),
+) -> ListAlertNotifications:
+    return ListAlertNotifications(SqlAlertRepository(session))
+
+
+def get_run_alert_matching(session: Session = Depends(get_session)) -> RunAlertMatching:
+    return RunAlertMatching(SqlStoreProductRepository(session), SqlAlertRepository(session))
 
 
 def get_list_products(session: Session = Depends(get_session)) -> ListProducts:

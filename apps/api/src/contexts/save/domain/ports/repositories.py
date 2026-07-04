@@ -10,6 +10,7 @@ from typing import Protocol
 
 from src.shared.money import Money
 
+from ..alerts import Alert, AlertNotification, AlertSubscription
 from ..comparison import StoreQuote
 from ..drops import PriceChange
 from ..entities import CanonicalProduct, PriceType, Provider, StoreProduct
@@ -93,4 +94,47 @@ class StoreProductRepository(Protocol):
 
     def list_price_changes(self, market_id: str, since: datetime) -> list[PriceChange]:
         """Pares consecutivos previous→current cuyo cambio cae en la ventana (solo matcheados)."""
+        ...
+
+
+class AlertRepository(Protocol):
+    """Alertas de precio (G4): suscripciones + feed de notificaciones disparadas."""
+
+    def subscribe(
+        self, user_id: str, canonical_product_id: str, market_id: str, threshold_minor: int | None
+    ) -> str:
+        """Suscribe (upsert por user×producto: re-suscribir actualiza el umbral). Devuelve el id."""
+        ...
+
+    def list_by_user(self, user_id: str) -> list[Alert]:
+        """Suscripciones del usuario (con nombre de producto), más recientes primero."""
+        ...
+
+    def unsubscribe(self, user_id: str, alert_id: str) -> bool:
+        """Elimina la suscripción si es del usuario. False si no existe/ajena."""
+        ...
+
+    def list_active_subscriptions(self, market_id: str) -> list[AlertSubscription]:
+        """Todas las suscripciones activas del mercado (para el matching)."""
+        ...
+
+    def record_notification(
+        self,
+        *,
+        alert_id: str,
+        user_id: str,
+        canonical_product_id: str,
+        product_name: str,
+        provider_name: str,
+        previous_minor: int,
+        current_minor: int,
+        currency: str,
+        drop_bps: int,
+        captured_at: datetime,
+    ) -> bool:
+        """Inserta la notificación IDEMPOTENTE (alerta×tienda×captured_at). True si fue nueva."""
+        ...
+
+    def list_notifications(self, user_id: str) -> list[AlertNotification]:
+        """Feed de alertas disparadas del usuario, más recientes primero."""
         ...
