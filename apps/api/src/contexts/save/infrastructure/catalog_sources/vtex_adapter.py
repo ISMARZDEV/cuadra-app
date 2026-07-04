@@ -7,7 +7,6 @@ testear el mapeo sin red. Paginación `_from/_to` (50/pág, cap 2500 → segment
 """
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterator
 from urllib.parse import quote
 
@@ -17,22 +16,10 @@ from src.shared.money import Currency, Money, primary_currency_for_market
 
 from ...domain.entities import PriceType
 from ...domain.ports import RawCatalogEntry
+from .size_from_name import extract_size
 
 _PAGE_SIZE = 50
 _MAX_FROM = 2500  # límite duro de la API legacy de VTEX
-
-_SIZE_IN_NAME = re.compile(
-    r"\d+(?:[.,]\d+)?\s*"
-    r"(?:lbs?|libras?|kg|kgs|kilos?|gr?|grs|gramos?|oz|onzas?|lt?s?|litros?|ml|gl|gal|gal[oó]n"
-    r"|und|un|uds|unidad(?:es)?)\b",
-    re.IGNORECASE,
-)
-
-
-def _extract_size(name: str) -> str:
-    """Extrae el último token de tamaño del nombre ("Arroz ... 5lb" → "5lb"). Best-effort."""
-    matches = list(_SIZE_IN_NAME.finditer(name))
-    return matches[-1].group(0).strip() if matches else ""
 
 
 def _parse_category_path(path: str) -> tuple[str, ...]:
@@ -66,7 +53,7 @@ def map_vtex_product(item: dict, provider_id: str, market_id: str) -> RawCatalog
         external_id=str(item.get("productId", "")),
         name=name,
         brand=item.get("brand", ""),
-        size_text=_extract_size(name),
+        size_text=extract_size(name),
         price=price,
         price_type=PriceType.ONLINE,
         source="vtex",

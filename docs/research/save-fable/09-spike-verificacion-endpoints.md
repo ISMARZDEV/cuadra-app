@@ -91,3 +91,37 @@ de Cloudflare). Managed-first sigue siendo lo correcto.
 **Corte limpio real para MVP (F0/F1): Sirena (VTEX) + Nacional + Jumbo (Magento).** 2 plataformas, 3
 cadenas, todas verificadas devolviendo precio. Carrefour/Ole/PriceSmart/Ritmo/Líder → vía agregadores
 (F2+). Esto CIERRA la duda de fuentes para el MVP.
+
+---
+
+## 8. Ronda 3 (2026-07-03) — Jumbo: el store view se selecciona con el header `Store`
+
+Al arrancar F1 (implementación del `MagentoAdapter`) se verificó la promesa "un adapter cubre
+Nacional Y Jumbo" y apareció un matiz que el spike de la ronda 1 no vio:
+
+- `POST https://jumbo.com.do/graphql` **sin headers** → responde, pero sirve el store de
+  **NACIONAL**: `availableStores` devuelve solo `default` (Nacional) y `app_nacional_store_view`,
+  con `base_url: supermercadosnacional.com`. El mismo `total_count: 516` y los mismos precios que
+  Nacional. **El dominio no elige la tienda.**
+- `https://jumbo.com.do/` con curl entra en un **loop de redirects `/shared-session/token/...`**
+  (el shared-session CCN detectado en el doc 02); con cookie jar carga, y el HTML del frontend
+  expone `"storeCode":"jumbo"`.
+- **La clave:** el header estándar de Magento `Store: jumbo` → `storeConfig.store_code: "jumbo"`,
+  `website_name: "Jumbo Website"`, catálogo PROPIO (`total_count: 1030` para "arroz", productos y
+  precios distintos de Nacional). **✅ CONFIRMADO en vivo.**
+
+**Implicación de diseño:** el `MagentoAdapter` recibe `store_code: str | None` y lo envía como
+header `Store` en cada request. Nacional = sin header (default) · Jumbo = `Store: jumbo`. Una sola
+instancia CCN, dos providers.
+
+**Otros datos verificados en esta ronda (para el mapeo del adapter):**
+- La query `products` expone: `name`, `sku`, `url_key`, `price_range.minimum_price.final_price
+  {value, currency}` (decimal + moneda EXPLÍCITA → el adapter usa la currency del payload, no la
+  del market), `small_image.url`, `categories {name, level}` (jerárquicas → path canónico ordenado
+  por `level`).
+- **NO expone marca ni EAN:** `manufacturer` existe pero viene `null`; `brand`/`ean` no existen en
+  el schema; `aggregations` solo trae `category_id`/`category_uid`. → marca/EAN los resuelve el
+  matching (pilar 3), igual que se planificó.
+- URL de producto = `{base}/{url_key}` **sin sufijo `.html`** (probado: 200 sin sufijo, 404 con).
+- Dato real de Jumbo que amplió el parser: tamaño abreviado **"Onz"** ("… 3.5 Onz") → agregado a
+  `parse_size` y al extractor de tamaño compartido.

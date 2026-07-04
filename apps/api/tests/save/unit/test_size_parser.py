@@ -65,6 +65,13 @@ def test_plural_pounds_lbs() -> None:
     assert parse_size("10 Lbs") == Quantity(Decimal("4.5359237"), UnitMeasure.MASS)
 
 
+def test_onz_abbreviation_to_mass() -> None:
+    # "3.5 Onz" — abreviatura vista en datos reales de Jumbo (Rollo Crujiente ... 3.5 Onz)
+    q = parse_size("3.5 Onz")
+    assert q.measure == UnitMeasure.MASS
+    assert q.amount == Decimal("0.0992233309375")  # 3.5 * 0.028349523125
+
+
 def test_unparseable_raises() -> None:
     with pytest.raises(ValueError):
         parse_size("gigante")

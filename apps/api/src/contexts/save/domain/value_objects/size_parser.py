@@ -28,6 +28,7 @@ _UNITS: dict[str, tuple[UnitMeasure, str]] = {
     "gramo": (UnitMeasure.MASS, "0.001"),
     "gramos": (UnitMeasure.MASS, "0.001"),
     "oz": (UnitMeasure.MASS, "0.028349523125"),
+    "onz": (UnitMeasure.MASS, "0.028349523125"),
     "onza": (UnitMeasure.MASS, "0.028349523125"),
     "onzas": (UnitMeasure.MASS, "0.028349523125"),
     # volumen → L
