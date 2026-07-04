@@ -2,7 +2,7 @@ import type { PriceComparisonDto } from "@cuadra/api-client";
 import { describe, expect, it } from "vitest";
 
 import { buildProductJsonLd } from "./seo";
-import { buildRobots, buildSitemap, sitemapEntries } from "./sitemap.js";
+import { buildRobots, buildSitemap, logicalPaths } from "./sitemap.js";
 
 const comparison: PriceComparisonDto = {
   canonical_product_id: "c1",
@@ -31,24 +31,28 @@ describe("buildProductJsonLd", () => {
   });
 });
 
-describe("sitemapEntries + buildSitemap", () => {
+describe("logicalPaths + buildSitemap (i18n × país)", () => {
   const products = [{ id: "c1" }];
+  const paths = logicalPaths(products);
+  const opts = { locales: ["es", "en", "pt"], country: "do", paths, defaultLocale: "es" };
 
-  it("incluye home, buscar y una URL por producto", () => {
-    expect(sitemapEntries(products).map((e) => e.path)).toEqual(["/", "/buscar", "/producto/c1"]);
+  it("las rutas lógicas son home, search y una por producto (slugs en inglés)", () => {
+    expect(paths).toEqual(["/", "/search", "/product/c1"]);
   });
 
-  it("genera XML válido con <loc> absolutas y sin dobles slashes", () => {
-    const xml = buildSitemap("https://save.cuadra.app/", sitemapEntries(products));
+  it("emite un <url> cerrado por locale×ruta con <loc> absolutas prefijadas", () => {
+    const xml = buildSitemap("https://save.cuadra.app/", opts);
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xml).toContain("<loc>https://save.cuadra.app/producto/c1</loc>");
-    expect(xml).not.toContain("//producto");
+    expect(xml).toContain("<loc>https://save.cuadra.app/es/do/product/c1</loc>");
+    expect(xml).toContain("<loc>https://save.cuadra.app/en/do/product/c1</loc>");
+    expect(xml).toContain("</url>"); // cierre correcto (antes faltaba)
+    expect(xml).not.toContain("//product");
   });
 
-  it("emite hreflang alternates cuando hay locales (i18n-ready)", () => {
-    const xml = buildSitemap("https://save.cuadra.app", sitemapEntries(products), ["es", "en", "pt"]);
-    expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
-    expect(xml).toContain('hreflang="en" href="https://save.cuadra.app/en/producto/c1"');
+  it("cada URL trae hreflang es-do/en-do/pt-do + x-default", () => {
+    const xml = buildSitemap("https://save.cuadra.app", opts);
+    expect(xml).toContain('hreflang="en-do" href="https://save.cuadra.app/en/do/product/c1"');
+    expect(xml).toContain('hreflang="x-default" href="https://save.cuadra.app/es/do/product/c1"');
   });
 });
 

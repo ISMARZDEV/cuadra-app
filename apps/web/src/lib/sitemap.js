@@ -1,48 +1,40 @@
-// Builders de sitemap.xml + robots.txt. JS ESM plano (no TS) A PROPÓSITO: los importa el
-// Express server con Node crudo (sin transpilar) Y los tests de vitest — una sola fuente de
-// verdad, sin duplicar. `locales` prepara el hreflang del slice i18n (es/en/pt).
+// Builders de sitemap.xml + robots.txt. JS ESM plano A PROPÓSITO: los importa el Express server
+// con Node crudo (sin transpilar) Y los tests de vitest — una sola fuente de verdad, sin duplicar.
+// Emite la matriz idioma×país×ruta con hreflang alternates (SEO multilingüe multi-país).
 
-/**
- * @typedef {{ path: string, changefreq?: string, priority?: string }} SitemapEntry
- * @typedef {{ id: string }} ProductRef
- */
+/** @typedef {{ id: string }} ProductRef */
 
-/** URLs base: home, buscar y una por producto (para que Google descubra las páginas).
- * @param {ProductRef[]} products @returns {SitemapEntry[]} */
-export function sitemapEntries(products) {
-  return [
-    { path: "/", changefreq: "daily", priority: "1.0" },
-    { path: "/buscar", changefreq: "weekly", priority: "0.6" },
-    ...products.map((p) => ({ path: `/producto/${p.id}`, changefreq: "daily", priority: "0.8" })),
-  ];
+/** Rutas LÓGICAS que existen por país: home, search, una por producto.
+ * @param {ProductRef[]} products @returns {string[]} */
+export function logicalPaths(products) {
+  return ["/", "/search", ...products.map((p) => `/product/${p.id}`)];
 }
 
-/** sitemap.xml. `locales` vacío = single-locale; con locales emite hreflang alternates (i18n).
- * @param {string} baseUrl @param {SitemapEntry[]} entries @param {string[]} [locales] */
-export function buildSitemap(baseUrl, entries, locales = []) {
+/** sitemap.xml: para cada ruta × locale, un <url> con hreflang de todos los locales + x-default.
+ * @param {string} baseUrl
+ * @param {{ locales: string[], country: string, paths: string[], defaultLocale?: string }} opts */
+export function buildSitemap(baseUrl, { locales, country, paths, defaultLocale = "es" }) {
   const origin = baseUrl.replace(/\/$/, "");
-  const renderUrl = (e) => {
-    const alternates = locales
-      .map(
-        (loc) =>
-          `    <xhtml:link rel="alternate" hreflang="${loc}" href="${origin}/${loc}${e.path === "/" ? "" : e.path}"/>`,
-      )
-      .join("\n");
-    return [
-      "  <url>",
-      `    <loc>${origin}${e.path}</loc>`,
-      e.changefreq ? `    <changefreq>${e.changefreq}</changefreq>` : "",
-      e.priority ? `    <priority>${e.priority}</priority>` : "",
-      alternates,
-    ]
-      .filter(Boolean)
-      .join("\n");
-  };
-  const xmlns = locales.length ? ` xmlns:xhtml="http://www.w3.org/1999/xhtml"` : "";
+  const href = (loc, path) => `${origin}/${loc}/${country}${path === "/" ? "" : path}`;
+  const blocks = [];
+  for (const path of paths) {
+    for (const loc of locales) {
+      const alternates = [
+        ...locales.map(
+          (l) =>
+            `    <xhtml:link rel="alternate" hreflang="${l}-${country}" href="${href(l, path)}"/>`,
+        ),
+        `    <xhtml:link rel="alternate" hreflang="x-default" href="${href(defaultLocale, path)}"/>`,
+      ].join("\n");
+      blocks.push(
+        ["  <url>", `    <loc>${href(loc, path)}</loc>`, alternates, "  </url>"].join("\n"),
+      );
+    }
+  }
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
-    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xmlns}>`,
-    entries.map(renderUrl).join("\n"),
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`,
+    blocks.join("\n"),
     `</urlset>`,
   ].join("\n");
 }

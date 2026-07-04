@@ -23,15 +23,21 @@ const comparison: PriceComparisonDto = {
 };
 
 describe("CompareTable", () => {
-  it("marca la tienda más barata como 'Mejor precio'", () => {
-    render(<CompareTable comparison={comparison} />);
+  it("marca la tienda más barata como 'Mejor precio' (es)", () => {
+    render(<CompareTable comparison={comparison} locale="es" />);
     const cheapestRow = screen.getByText("Merca").closest("tr");
     expect(cheapestRow).toHaveClass("cheapest");
     expect(screen.getByText("Mejor precio")).toBeInTheDocument();
   });
 
+  it("traduce los encabezados según el locale (en)", () => {
+    render(<CompareTable comparison={comparison} locale="en" />);
+    expect(screen.getByText("Best price")).toBeInTheDocument();
+    expect(screen.getByText("Supermarket")).toBeInTheDocument();
+  });
+
   it("muestra el sobreprecio de las demás tiendas (+RD$51.00)", () => {
-    render(<CompareTable comparison={comparison} />);
+    render(<CompareTable comparison={comparison} locale="es" />);
     expect(screen.getByText(/\+.*51[.,]00/)).toBeInTheDocument();
   });
 });

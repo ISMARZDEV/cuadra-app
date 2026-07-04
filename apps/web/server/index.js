@@ -3,7 +3,8 @@
 import express from "express";
 import { renderPage } from "vike/server";
 
-import { buildRobots, buildSitemap, sitemapEntries } from "../src/lib/sitemap.js";
+import { DEFAULT_COUNTRY, DEFAULT_LOCALE, LOCALES, MARKET_BY_COUNTRY } from "../src/i18n/locales.js";
+import { buildRobots, buildSitemap, logicalPaths } from "../src/lib/sitemap.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 const port = process.env.PORT || 3000;
@@ -15,12 +16,12 @@ function siteUrl(req) {
   return process.env.SITE_URL || `${req.protocol}://${req.get("host")}`;
 }
 
-async function fetchProducts() {
+async function fetchProducts(market) {
   try {
-    const res = await fetch(`${apiBase}/v1/save/products?market=DO&limit=5000`);
+    const res = await fetch(`${apiBase}/v1/save/products?market=${market}&limit=5000`);
     return res.ok ? await res.json() : [];
   } catch {
-    return []; // sitemap degradado (home+buscar) si la API no responde — no rompe el server
+    return []; // sitemap degradado (home+search) si la API no responde — no rompe el server
   }
 }
 
@@ -43,8 +44,15 @@ async function startServer() {
   });
 
   app.get("/sitemap.xml", async (req, res) => {
-    const products = await fetchProducts();
-    res.type("application/xml").send(buildSitemap(siteUrl(req), sitemapEntries(products)));
+    // Por ahora un país (DO); multi-país = loop sobre los países cuando entren US/CO/BR.
+    const products = await fetchProducts(MARKET_BY_COUNTRY[DEFAULT_COUNTRY]);
+    const xml = buildSitemap(siteUrl(req), {
+      locales: LOCALES,
+      country: DEFAULT_COUNTRY,
+      paths: logicalPaths(products),
+      defaultLocale: DEFAULT_LOCALE,
+    });
+    res.type("application/xml").send(xml);
   });
 
   app.get("*", async (req, res) => {
