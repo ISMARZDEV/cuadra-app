@@ -10,6 +10,7 @@ from typing import Protocol
 
 from src.shared.money import Money
 
+from ..comparison import StoreQuote
 from ..entities import CanonicalProduct, PriceType, Provider, StoreProduct
 
 
@@ -20,9 +21,15 @@ class ProviderRepository(Protocol):
 
 class CanonicalProductRepository(Protocol):
     def add(self, product: CanonicalProduct) -> None: ...
+    def get_by_id(self, product_id: str) -> CanonicalProduct | None: ...
+    def search(self, query: str, market_id: str) -> list[CanonicalProduct]: ...
 
 
 class StoreProductRepository(Protocol):
+    def list_quotes_by_canonical(self, canonical_product_id: str) -> list[StoreQuote]:
+        """Cotizaciones (con nombre de tienda) para comparar — join a provider."""
+        ...
+
     def record_observation(
         self,
         *,

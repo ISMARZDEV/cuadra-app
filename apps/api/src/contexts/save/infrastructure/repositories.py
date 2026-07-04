@@ -12,10 +12,11 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.shared.money import Money
+from src.shared.money import Currency, Money
 
+from ..domain.comparison import StoreQuote
 from ..domain.entities import CanonicalProduct, PriceType, Provider, StoreProduct
-from .mappers import provider_to_entity, store_product_to_entity
+from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
 from .models import (
     BrandModel,
     CanonicalProductModel,
@@ -80,6 +81,25 @@ class SqlCanonicalProductRepository:
             )
         )
         self._s.flush()
+
+    def _brand_name(self, brand_id: uuid.UUID | None) -> str:
+        if brand_id is None:
+            return ""
+        b = self._s.get(BrandModel, brand_id)
+        return b.name if b else ""
+
+    def get_by_id(self, product_id: str) -> CanonicalProduct | None:
+        m = self._s.get(CanonicalProductModel, uuid.UUID(product_id))
+        return canonical_to_entity(m, self._brand_name(m.brand_id)) if m else None
+
+    def search(self, query: str, market_id: str) -> list[CanonicalProduct]:
+        models = self._s.scalars(
+            select(CanonicalProductModel).where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.name.ilike(f"%{query}%"),
+            )
+        ).all()
+        return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
 
 
 class SqlStoreProductRepository:
@@ -153,3 +173,19 @@ class SqlStoreProductRepository:
             )
         ).all()
         return [store_product_to_entity(m) for m in models]
+
+    def list_quotes_by_canonical(self, canonical_product_id: str) -> list[StoreQuote]:
+        rows = self._s.execute(
+            select(StoreProductModel, ProviderModel.name)
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .where(StoreProductModel.canonical_product_id == uuid.UUID(canonical_product_id))
+        ).all()
+        return [
+            StoreQuote(
+                provider_id=str(sp.provider_id),
+                provider_name=name,
+                price=Money(sp.current_price_minor, Currency(sp.currency)),
+                url=sp.url,
+            )
+            for sp, name in rows
+        ]

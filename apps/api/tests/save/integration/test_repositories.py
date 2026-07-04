@@ -98,3 +98,33 @@ def test_change_only_updates_current_price_and_last_seen(db_session) -> None:  #
     stores = sp.list_by_canonical(cid)
     assert len(stores) == 1
     assert stores[0].current_price == Money(150, DOP)  # actual actualizado
+
+
+def test_canonical_get_by_id_reconstructs_brand_and_quantity(db_session) -> None:  # type: ignore[no-untyped-def]
+    _pid, cid = _seed_provider_and_canonical(db_session)
+    got = SqlCanonicalProductRepository(db_session).get_by_id(cid)
+    assert got is not None
+    assert got.name == "Arroz La Garza"
+    assert got.brand == "La Garza"
+    assert got.quantity == Quantity(Decimal("4.5359237"), UnitMeasure.MASS)
+
+
+def test_canonical_search_by_name_and_market(db_session) -> None:  # type: ignore[no-untyped-def]
+    _pid, cid = _seed_provider_and_canonical(db_session)
+    crepo = SqlCanonicalProductRepository(db_session)
+    assert any(c.id == cid for c in crepo.search("garza", "DO"))
+    assert crepo.search("garza", "US") == []  # otro mercado no matchea
+
+
+def test_list_quotes_joins_provider_name(db_session) -> None:  # type: ignore[no-untyped-def]
+    pid, cid = _seed_provider_and_canonical(db_session)
+    sp = SqlStoreProductRepository(db_session)
+    sp.record_observation(
+        provider_id=pid, external_id="sku1", canonical_product_id=cid,
+        price=Money(42400, DOP), captured_at=datetime(2026, 7, 1),
+        price_type=PriceType.ONLINE, source="vtex",
+    )
+    quotes = sp.list_quotes_by_canonical(cid)
+    assert len(quotes) == 1
+    assert quotes[0].provider_name == "Sirena"
+    assert quotes[0].price == Money(42400, DOP)

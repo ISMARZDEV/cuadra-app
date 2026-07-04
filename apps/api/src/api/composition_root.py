@@ -11,6 +11,13 @@ from collections.abc import Iterator
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from src.contexts.save.application.compare import CompareProduct
+from src.contexts.save.application.search import SearchProducts
+from src.contexts.save.infrastructure.repositories import (
+    SqlCanonicalProductRepository,
+    SqlStoreProductRepository,
+)
+
 from src.contexts.identity.application.queries import GetMe
 from src.contexts.identity.infrastructure.repositories import (
     SqlCapabilityGatingRepository,
@@ -219,4 +226,15 @@ def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):
         classifier=llm_classifier,
         registry=registry,
         flow_registry={"register_expense": expense_flow},
+    )
+
+
+# ── Save (catálogo de precios) ──
+def get_search_products(session: Session = Depends(get_session)) -> SearchProducts:
+    return SearchProducts(SqlCanonicalProductRepository(session))
+
+
+def get_compare_product(session: Session = Depends(get_session)) -> CompareProduct:
+    return CompareProduct(
+        SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
     )
