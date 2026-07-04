@@ -130,6 +130,26 @@ def test_list_quotes_joins_provider_name(db_session) -> None:  # type: ignore[no
     assert quotes[0].price == Money(42400, DOP)
 
 
+def test_list_price_history_joins_provider_and_orders_by_time(db_session) -> None:  # type: ignore[no-untyped-def]
+    pid, cid = _seed_provider_and_canonical(db_session)
+    sp = SqlStoreProductRepository(db_session)
+    kw = dict(
+        provider_id=pid, external_id="sku-garza-10", canonical_product_id=cid,
+        price_type=PriceType.ONLINE, source="vtex",
+    )
+    sp.record_observation(price=Money(42400, DOP), captured_at=datetime(2026, 7, 1, 8), **kw)
+    sp.record_observation(price=Money(43800, DOP), captured_at=datetime(2026, 7, 3, 8), **kw)
+
+    points = sp.list_price_history(cid)
+
+    assert [(p.provider_name, p.price.amount_minor) for p in points] == [
+        ("Sirena", 42400),
+        ("Sirena", 43800),
+    ]
+    assert points[0].captured_at < points[1].captured_at
+    assert points[0].price_type == PriceType.ONLINE
+
+
 def test_exists_by_natural_key(db_session) -> None:  # type: ignore[no-untyped-def]
     pid, cid = _seed_provider_and_canonical(db_session)
     sp = SqlStoreProductRepository(db_session)

@@ -1,10 +1,13 @@
 """DTOs de Save (Pydantic) — contrato que sale por la API. Montos en minor units (§12·B)."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 from ..domain.comparison import PriceComparison
 from ..domain.entities import CanonicalProduct
+from ..domain.history import PricePoint
 
 
 class ProductSearchDto(BaseModel):
@@ -64,4 +67,60 @@ class PriceComparisonDto(BaseModel):
             entries=entries,
             cheapest_provider=comparison.cheapest.provider_name,
             spread_minor=comparison.spread.amount_minor,
+        )
+
+
+class PricePointDto(BaseModel):
+    """Un punto de cambio del chart (change-only: el precio rige hasta el punto siguiente)."""
+
+    price_minor: int
+    captured_at: datetime
+    price_type: str  # online|delivery|shelf|receipt — nunca se mezclan (doc 01)
+
+
+class ProviderSeriesDto(BaseModel):
+    provider_id: str
+    provider_name: str
+    points: list[PricePointDto]
+
+
+class PriceHistoryDto(BaseModel):
+    canonical_product_id: str
+    name: str
+    currency: str
+    range: str
+    series: list[ProviderSeriesDto]
+
+    @classmethod
+    def from_series(
+        cls,
+        canonical: CanonicalProduct,
+        range_: str,
+        series: dict[str, list[PricePoint]],
+        fallback_currency: str,
+    ) -> PriceHistoryDto:
+        currencies = {p.price.currency.code for pts in series.values() for p in pts}
+        if len(currencies) > 1:  # regla sagrada: jamás mezclar monedas en un mismo chart
+            raise ValueError(f"Histórico con monedas mezcladas: {sorted(currencies)}")
+        return cls(
+            canonical_product_id=canonical.id,
+            name=canonical.name,
+            currency=next(iter(currencies), fallback_currency),
+            range=range_,
+            series=[
+                ProviderSeriesDto(
+                    provider_id=pid,
+                    provider_name=pts[0].provider_name,
+                    points=[
+                        PricePointDto(
+                            price_minor=p.price.amount_minor,
+                            captured_at=p.captured_at,
+                            price_type=p.price_type.value,
+                        )
+                        for p in pts
+                    ],
+                )
+                for pid, pts in series.items()
+                if pts
+            ],
         )

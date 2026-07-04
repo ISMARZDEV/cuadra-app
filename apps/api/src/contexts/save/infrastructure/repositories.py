@@ -16,6 +16,7 @@ from src.shared.money import Currency, Money
 
 from ..domain.comparison import StoreQuote
 from ..domain.entities import CanonicalProduct, PriceType, Provider, StoreProduct
+from ..domain.history import PricePoint
 from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
 from .models import (
     BrandModel,
@@ -176,6 +177,25 @@ class SqlStoreProductRepository:
             )
         ).all()
         return [store_product_to_entity(m) for m in models]
+
+    def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
+        rows = self._s.execute(
+            select(PriceModel, StoreProductModel.provider_id, ProviderModel.name)
+            .join(StoreProductModel, PriceModel.store_product_id == StoreProductModel.id)
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .where(StoreProductModel.canonical_product_id == uuid.UUID(canonical_product_id))
+            .order_by(PriceModel.captured_at)
+        ).all()
+        return [
+            PricePoint(
+                provider_id=str(provider_id),
+                provider_name=name,
+                price=Money(p.value_minor, Currency(p.currency)),
+                captured_at=p.captured_at,
+                price_type=PriceType(p.price_type),
+            )
+            for p, provider_id, name in rows
+        ]
 
     def list_quotes_by_canonical(self, canonical_product_id: str) -> list[StoreQuote]:
         rows = self._s.execute(

@@ -12,6 +12,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from src.contexts.save.application.compare import CompareProduct
+from src.contexts.save.application.history import GetPriceHistory
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
@@ -236,5 +237,11 @@ def get_search_products(session: Session = Depends(get_session)) -> SearchProduc
 
 def get_compare_product(session: Session = Depends(get_session)) -> CompareProduct:
     return CompareProduct(
+        SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_price_history(session: Session = Depends(get_session)) -> GetPriceHistory:
+    return GetPriceHistory(
         SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
     )

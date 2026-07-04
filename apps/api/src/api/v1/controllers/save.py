@@ -8,10 +8,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from src.api.composition_root import get_compare_product, get_search_products
+from src.api.composition_root import (
+    get_compare_product,
+    get_price_history,
+    get_search_products,
+)
 from src.contexts.save.application.compare import CompareProduct
-from src.contexts.save.application.dtos import PriceComparisonDto, ProductSearchDto
+from src.contexts.save.application.dtos import (
+    PriceComparisonDto,
+    PriceHistoryDto,
+    ProductSearchDto,
+)
 from src.contexts.save.application.errors import CanonicalProductNotFoundError
+from src.contexts.save.application.history import GetPriceHistory, HistoryRange
 from src.contexts.save.application.search import SearchProducts
 
 router = APIRouter(prefix="/save", tags=["save"])
@@ -33,5 +42,17 @@ def compare_product(
 ) -> PriceComparisonDto:
     try:
         return use_case.execute(product_id)
+    except CanonicalProductNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/history")
+def price_history(
+    product_id: str = Query(..., description="ID del producto canónico"),
+    range_: HistoryRange = Query("all", alias="range", description="Ventana del chart"),
+    use_case: GetPriceHistory = Depends(get_price_history),
+) -> PriceHistoryDto:
+    try:
+        return use_case.execute(product_id, range_=range_)
     except CanonicalProductNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

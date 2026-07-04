@@ -89,3 +89,32 @@ def test_compare_endpoint_returns_sorted_table(db_session: Session) -> None:
 def test_compare_endpoint_404_when_missing(db_session: Session) -> None:
     r = _client(db_session).get("/v1/save/compare", params={"product_id": str(uuid.uuid4())})
     assert r.status_code == 404
+
+
+def test_history_endpoint_returns_series_per_provider(db_session: Session) -> None:
+    cid = _seed(db_session)
+    r = _client(db_session).get(
+        "/v1/save/history", params={"product_id": cid, "range": "all"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["canonical_product_id"] == cid
+    assert body["range"] == "all"
+    by_name = {s["provider_name"]: s for s in body["series"]}
+    assert set(by_name) == {"Merca", "Sirena"}
+    assert by_name["Merca"]["points"][0]["price_minor"] == 42400
+
+
+def test_history_endpoint_404_when_missing(db_session: Session) -> None:
+    r = _client(db_session).get(
+        "/v1/save/history", params={"product_id": str(uuid.uuid4()), "range": "1m"}
+    )
+    assert r.status_code == 404
+
+
+def test_history_endpoint_422_on_bad_range(db_session: Session) -> None:
+    cid = _seed(db_session)
+    r = _client(db_session).get(
+        "/v1/save/history", params={"product_id": cid, "range": "6m"}
+    )
+    assert r.status_code == 422

@@ -12,6 +12,7 @@ from src.shared.money import Money
 
 from ..comparison import StoreQuote
 from ..entities import CanonicalProduct, PriceType, Provider, StoreProduct
+from ..history import PricePoint
 
 
 class ProviderRepository(Protocol):
@@ -51,3 +52,7 @@ class StoreProductRepository(Protocol):
         ...
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]: ...
+
+    def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
+        """Puntos de cambio (change-only) de todas las tiendas, ordenados por captured_at."""
+        ...
