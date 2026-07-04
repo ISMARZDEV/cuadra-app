@@ -42,6 +42,19 @@ El backend **ya envía** el push remoto — solo está desconectado en el client
    expo_push_sender.py`) hace `POST https://exp.host/--/api/v2/push/send`; `RunAlertMatching` lo
    invoca al crear cada notificación. Nada que cambiar.
 
+## Seguir productos DESDE LA APP (pendiente — parte del Save móvil)
+
+La idea es poder seguir productos tanto desde **cuadra.do** como **desde la app**. A nivel de
+backend **ya funciona**: `POST /v1/save/alerts` es autenticado y sirve a cualquier cliente con la
+sesión (el móvil ya inyecta el Bearer). El hook `useSubscribeAlert()` ya existe en
+`apps/mobile/src/features/save/api.ts`, listo para cablear.
+
+Lo que falta es la **UI de Save en el móvil**: hoy el tab Save es solo la pantalla de alertas
+(feed + suscripciones). Cuando se porte el marketplace de Save a la app (buscar · categorías ·
+página de producto), la página de producto lleva el botón **"Avísame cuando baje"** → llama
+`useSubscribeAlert` → misma alerta compartida por `user_id` entre web y app. Es solo UI; el
+dominio y los endpoints ya están.
+
 ## Follow-ups relacionados (menores)
 
 - Notificaciones **read/unread** + badge (`alert_notification.read_at` ya existe en el schema; falta

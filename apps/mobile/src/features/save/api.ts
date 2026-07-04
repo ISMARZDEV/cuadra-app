@@ -1,4 +1,9 @@
-import { alertNotifications, listAlerts, unsubscribeAlert } from "@cuadra/api-client";
+import {
+  alertNotifications,
+  listAlerts,
+  subscribeAlert,
+  unsubscribeAlert,
+} from "@cuadra/api-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 // Query/mutation hooks de alertas de precio (G4) sobre el SDK generado (cuadra-mobile §3).
@@ -31,6 +36,20 @@ export function useUnsubscribeAlert() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (alertId: string) => unsubscribeAlert({ path: { alert_id: alertId } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: MY_ALERTS_KEY }),
+  });
+}
+
+// Seguir un producto DESDE LA APP ("Avísame cuando baje"). El backend es el mismo endpoint
+// autenticado que usa la web → las alertas se comparten por user_id. Listo para cablear al botón
+// cuando exista la pantalla de producto en el móvil (marketplace Save móvil, pendiente).
+export function useSubscribeAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { productId: string; thresholdMinor?: number | null }) =>
+      subscribeAlert({
+        body: { product_id: vars.productId, threshold_minor: vars.thresholdMinor ?? null },
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: MY_ALERTS_KEY }),
   });
 }
