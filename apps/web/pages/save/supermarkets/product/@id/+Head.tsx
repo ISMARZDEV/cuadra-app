@@ -8,7 +8,7 @@ import type { ProductData } from "./+data";
 // rich results de Google con el rango de precio. La <meta name="description"> la maneja
 // vike-react vía +description.ts (evita duplicado).
 export default function Head() {
-  const comparison = useData<ProductData>();
+  const { comparison } = useData<ProductData>();
   const best = comparison.entries.find((e) => e.is_cheapest) ?? comparison.entries[0];
   const bestPrice = best ? formatMoney(best.price_minor, best.currency) : "";
   const description = `Compara ${comparison.name} entre supermercados de RD. Mejor precio: ${bestPrice} en ${comparison.cheapest_provider}.`;

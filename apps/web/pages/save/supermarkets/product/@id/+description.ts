@@ -10,11 +10,12 @@ export default function description(pageContext: PageContext): string {
   const data = pageContext.data as ProductData;
   const locale = pageContext.locale ?? DEFAULT_LOCALE;
   const country = pageContext.country ?? DEFAULT_COUNTRY;
-  const best = data.entries.find((e) => e.is_cheapest) ?? data.entries[0];
+  const best =
+    data.comparison.entries.find((e) => e.is_cheapest) ?? data.comparison.entries[0];
   return format(locale, "product.metaDescription", {
-    name: data.name,
+    name: data.comparison.name,
     country: COUNTRY_NAMES[locale][country],
     price: best ? formatMoney(best.price_minor, best.currency) : "",
-    provider: data.cheapest_provider,
+    provider: data.comparison.cheapest_provider,
   });
 }

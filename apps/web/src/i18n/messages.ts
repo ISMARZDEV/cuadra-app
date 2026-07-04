@@ -45,6 +45,16 @@ type MessageKey =
   | "product.related"
   | "product.history"
   | "product.properties"
+  | "product.priceFrom"
+  | "product.onlineDisclaimer"
+  | "product.feedback"
+  | "product.reportProblem"
+  | "product.suggestCategory"
+  | "history.range1m"
+  | "history.range3m"
+  | "history.rangeAll"
+  | "history.byStore"
+  | "history.empty"
   | "product.title"
   | "product.metaDescription"
   // comparación
@@ -109,6 +119,17 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.related": "Productos relacionados",
     "product.history": "Historial de precios",
     "product.properties": "Propiedades",
+    "product.priceFrom": "Compara precios desde {min} hasta {max}",
+    "product.onlineDisclaimer":
+      "Estos precios están disponibles online y pueden variar en la tienda.",
+    "product.feedback": "Feedback",
+    "product.reportProblem": "Reportar problema",
+    "product.suggestCategory": "Sugerir categoría",
+    "history.range1m": "1 Mes",
+    "history.range3m": "3 Meses",
+    "history.rangeAll": "Todos",
+    "history.byStore": "Supermercados",
+    "history.empty": "Historial insuficiente por ahora.",
     "product.title": "{name} — precios en supermercados de {country} | Cuadra Save",
     "product.metaDescription":
       "Compara {name} entre supermercados de {country}. Mejor precio: {price} en {provider}.",
@@ -169,6 +190,16 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.related": "Related products",
     "product.history": "Price history",
     "product.properties": "Properties",
+    "product.priceFrom": "Compare prices from {min} to {max}",
+    "product.onlineDisclaimer": "These prices are available online and may vary in store.",
+    "product.feedback": "Feedback",
+    "product.reportProblem": "Report a problem",
+    "product.suggestCategory": "Suggest a category",
+    "history.range1m": "1 Month",
+    "history.range3m": "3 Months",
+    "history.rangeAll": "All",
+    "history.byStore": "Supermarkets",
+    "history.empty": "Not enough price history yet.",
     "product.title": "{name} — supermarket prices in {country} | Cuadra Save",
     "product.metaDescription":
       "Compare {name} across {country} supermarkets. Best price: {price} at {provider}.",
@@ -229,6 +260,16 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "product.related": "Produtos relacionados",
     "product.history": "Histórico de preços",
     "product.properties": "Propriedades",
+    "product.priceFrom": "Compare preços desde {min} até {max}",
+    "product.onlineDisclaimer": "Estes preços estão disponíveis online e podem variar na loja.",
+    "product.feedback": "Feedback",
+    "product.reportProblem": "Reportar problema",
+    "product.suggestCategory": "Sugerir categoria",
+    "history.range1m": "1 Mês",
+    "history.range3m": "3 Meses",
+    "history.rangeAll": "Todos",
+    "history.byStore": "Supermercados",
+    "history.empty": "Histórico insuficiente por enquanto.",
     "product.title": "{name} — preços em supermercados em {country} | Cuadra Save",
     "product.metaDescription":
       "Compare {name} entre supermercados em {country}. Melhor preço: {price} em {provider}.",

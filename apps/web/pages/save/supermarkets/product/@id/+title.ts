@@ -10,7 +10,7 @@ export default function title(pageContext: PageContext): string {
   const locale = pageContext.locale ?? DEFAULT_LOCALE;
   const country = pageContext.country ?? DEFAULT_COUNTRY;
   return format(locale, "product.title", {
-    name: data.name,
+    name: data.comparison.name,
     country: COUNTRY_NAMES[locale][country],
   });
 }
