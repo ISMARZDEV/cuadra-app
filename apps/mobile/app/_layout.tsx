@@ -1,6 +1,8 @@
 import "../global.css";
 import "@/lib/api/client"; // side-effect: configure the SDK client (baseURL + Bearer)
 
+import { ClerkProvider } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
 import { Akshar_500Medium, Akshar_600SemiBold } from "@expo-google-fonts/akshar";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
@@ -8,7 +10,10 @@ import { useFonts } from "expo-font";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
+import { CLERK_ENABLED, CLERK_PUBLISHABLE_KEY } from "@/features/auth/clerk";
+import { ClerkAuthBridge } from "@/features/auth/clerk-auth-bridge";
 import { useAuthStore } from "@/features/auth/use-auth-store";
+import { useSession } from "@/features/auth/use-session";
 import { useLanguageStore } from "@/features/settings/use-language-store";
 import { queryClient } from "@/lib/api/query-client";
 import { startLocalAlertNotifications } from "@/lib/notifications/local-alerts";
@@ -17,9 +22,23 @@ import { ThemeProvider } from "@/lib/theme/theme-provider";
 import { DrawerProvider } from "@/store/drawer-store";
 import { palette } from "@/theme";
 
-// Root layout — gates (auth) vs (tabs) on session presence (cuadra-mobile skill §4).
+// Root layout — dual-mode auth (cuadra-mobile skill §4). In Clerk mode wraps the app in
+// <ClerkProvider> (+ the bridge that feeds Clerk's token to the SDK client); in dev mode the
+// dev-login store drives it. Gating lives in <AppGate> so it can read useSession() (which reads
+// Clerk's useAuth) from UNDER the provider.
 export default function RootLayout() {
-  const status = useAuthStore((s) => s.status);
+  const app = <AppGate />;
+  if (!CLERK_ENABLED) return app;
+  return (
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+      <ClerkAuthBridge />
+      {app}
+    </ClerkProvider>
+  );
+}
+
+function AppGate() {
+  const status = useSession();
   const restore = useAuthStore((s) => s.restore);
   const restoreLanguage = useLanguageStore((s) => s.restore);
   const languageRestored = useLanguageStore((s) => s.restored);
@@ -27,7 +46,8 @@ export default function RootLayout() {
   const [fontsLoaded] = useFonts({ Akshar_500Medium, Akshar_600SemiBold });
 
   useEffect(() => {
-    restore();
+    // dev-login: restore the persisted JWT. In Clerk mode, Clerk restores its own session (tokenCache).
+    if (!CLERK_ENABLED) restore();
     restoreLanguage(); // apply the persisted language choice (or follow the device when auto)
   }, [restore, restoreLanguage]);
 
