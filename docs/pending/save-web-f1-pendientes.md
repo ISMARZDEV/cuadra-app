@@ -48,14 +48,23 @@ Los 6 usan `PlaceholderPage` y muestran "próximamente". **No están rotos; se q
 
 ---
 
-## 2. Deuda ARQUITECTÓNICA (apps/web)
+## 2. Deuda ARQUITECTÓNICA (apps/web) — ✅ RESUELTA (2026-07-05, rama `refactor/web-feature-structure`)
 
-> Referencia: `apps/mobile` es feature-oriented (`features/{name}/components`, `components/{ui,charts,
-> forms,navigation}`, `lib/{api,hooks,theme}`). OJO: mobile tiene su PROPIA deuda (`types` en 3
-> lugares, `theme` en 2) y sus `shared/{enums,interfaces,types}` están **vacíos** → seguimos su
-> INTENCIÓN, no clonamos su desorden.
+> **HECHO.** `apps/web` ahora ESPEJA a `apps/mobile` (feature-first), guiado por la skill nueva
+> `cuadra-web`. 6 commits (`chore(skills)` + 5 `refactor(web)` Fase 1/2/3a/3b). typecheck limpio,
+> 33 tests (subieron de 28), SEO intacto. Estructura final:
+> - `features/save/{screens/ · components/ · hooks/ · lib/ · api.ts · enums.ts · interfaces.ts · types.ts}`
+> - `components/{ui/ · layout/}` · `lib/{api.ts · links.ts · utils.ts}` (compartido) · `scripts/sitemap.js`
+> - Rutas Vike `pages/**/+Page.tsx` = re-exports finos (1-2 LOC) del screen del feature (espejo app/→features).
+> - Decisiones: `links.ts` quedó compartido (layout+save+sitemap, no baja a feature); tipos SSR
+>   (CategoryData/ProductData/…) definidos en `features/save/types.ts` y re-exportados por `+data`
+>   (single source, sin dependencia feature→pages). Bug de raíz arreglado: alias `@` faltaba en
+>   `vitest.config.ts`. FALTA: push + PR a `developer`.
+>
+> Referencia: `apps/mobile` es feature-oriented. OJO: sus `shared/{enums,interfaces,types}` están
+> **vacíos** → seguimos su INTENCIÓN (tipos POR-FEATURE), no clonamos su desorden.
 
-### Fase 1 — Higiene (bajo riesgo, alto valor) 🔴
+### Fase 1 — Higiene ✅
 - [ ] **Matar duplicación de `asList()`** — idéntico en `category-filters.tsx:23` y
   `category/@slug/+Page.tsx:129` → extraer a `lib/`.
 - [ ] **Extraer `<ProductRail>`** — el markup del carrusel Embla está duplicado en
