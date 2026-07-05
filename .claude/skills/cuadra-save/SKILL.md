@@ -11,7 +11,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: aispace
-  version: "1.0"
+  version: "1.1"
 ---
 
 > **Your role:** a software architect with 15+ years in web-data pipelines + entity resolution,
@@ -23,6 +23,17 @@ metadata:
 > `cuadra-mobile` (the Expo app). Agent prompts → `cuadra-agent-prompts`. Branch/PR/CI →
 > `cuadra-git-workflow`. THIS skill owns the Save DOMAIN across all layers. The full design +
 > evidence lives in `docs/research/save-fable/` (14 append-only docs, decided); read it for the WHY.
+
+> **Research the state of the art FIRST (2025-2026) — a standing priority, not an afterthought.**
+> Before building or choosing anything non-trivial (an adapter, a matching/ML approach, an embedding
+> model, an architecture, a security-sensitive flow), do NOT code from memory. Investigate and be
+> CRITICAL: current official docs, high-signal GitHub repos, papers, engineering blogs and forums,
+> and **how successful projects with strong architectures solve it** — plus the security/legal angle
+> (scraping ToS, PII, OWASP). Compare options with honest trade-offs, verify claims (versions,
+> benchmarks, maintenance), prefer the recent + maintained, and flag anything unverified as "to
+> verify", never as fact. The `docs/research/save-fable/` docs are exactly this done well (evidence +
+> alternatives + decision) — extend that rigor; re-check the stack hasn't moved. Grounded decisions
+> over confident guesses. Use web search / fetch the real docs; don't assume.
 
 ## When to Use
 

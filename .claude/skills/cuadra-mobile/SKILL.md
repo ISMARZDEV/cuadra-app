@@ -9,7 +9,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: aispace
-  version: "1.0"
+  version: "1.1"
 ---
 
 > **Compose with the official Expo plugin (`expo@claude-plugins-official`) + Expo MCP — don't
@@ -17,6 +17,16 @@ metadata:
 > `expo-tailwind-setup`; styling/components/navigation/animations → `building-native-ui`; data
 > fetching → `native-data-fetching`; ~70 examples → `expo-examples`. THIS skill + `cuadra-design-system`
 > only add what's Cuadra-specific (structure, api-client wiring, dev-login auth, i18n, our look).
+
+> **Research the state of the art FIRST (2025-2026) — a standing priority, not an afterthought.**
+> Before building or choosing anything non-trivial (a library, native module, animation/perf
+> pattern, architecture, or security-sensitive flow), do NOT code from memory. Investigate and be
+> CRITICAL: current official docs (Expo/React Native), high-signal GitHub repos, papers, engineering
+> blogs and forums, and **how successful projects with strong architectures solve it** — plus the
+> security angle (secure token storage, PII, OWASP MASVS). Compare options with honest trade-offs,
+> verify claims (versions, SDK compat, maintenance), prefer the recent + maintained, and flag
+> anything unverified as "to verify", never as fact. Grounded decisions over confident guesses — the
+> base for working excellently. Use web search / the Expo MCP + docs; don't assume.
 
 ## When to Use
 
