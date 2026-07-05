@@ -24,12 +24,17 @@ jobs:
             api:
               - 'apps/api/**'
               - '.github/workflows/ci.yml'
+            # `apps/api/**` dispara mobile+web: el contrato OpenAPI se regenera y el typecheck de los
+            # consumidores caza cualquier cambio rompe-contrato (campo de DTO quitado/renombrado) —
+            # evita el "under-building" de que un PR solo-backend mergee rompiendo la web/app.
             mobile:
               - 'apps/mobile/**'
               - 'packages/**'
+              - 'apps/api/**'
             web:
               - 'apps/web/**'
               - 'packages/**'
+              - 'apps/api/**'
               - '.github/workflows/ci.yml'
 
   backend:
