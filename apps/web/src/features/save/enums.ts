@@ -10,6 +10,8 @@ export const VIEW_MODE = ["loadmore", "pages"] as const;
 export type ViewMode = (typeof VIEW_MODE)[number];
 export const DEFAULT_VIEW_MODE: ViewMode = "loadmore";
 
+export const PAGE_SIZE = 40; // batch del listado por categoría (4 col × 10 filas, calca la referencia)
+
 /** Normaliza el `?sort=` de la URL a un `Sort` válido (default = price). */
 export function parseSort(v: string | undefined): Sort {
   return (SORT as readonly string[]).includes(v ?? "") ? (v as Sort) : DEFAULT_SORT;

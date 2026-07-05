@@ -2,27 +2,22 @@ import { categoryProducts, listCategories } from "@cuadra/api-client";
 import { render } from "vike/abort";
 import type { PageContextServer } from "vike/types";
 
+import { DEFAULT_SORT, PAGE_SIZE } from "@/features/save/enums";
+import { asList } from "@/features/save/lib/query";
+import type { CategoryData } from "@/features/save/types";
 import { DEFAULT_COUNTRY, marketOf } from "@/i18n/config";
 import { apiClient } from "@/lib/api";
-
-export type CategoryData = Awaited<ReturnType<typeof data>>;
-
-export const PAGE_SIZE = 40; // calca el batch de la referencia (4 col × 10 filas)
-
-const list = (v: string | undefined): string[] =>
-  v ? v.split(",").map((s) => s.trim()).filter(Boolean) : [];
 
 // SSR: el listado por categoría (breadcrumb + subcats + cards + facetas) se arma en el servidor
 // con los FILTROS de la URL (?stores=…&brands=…&pmin=…&pmax=…&sort=…&view=…&page=…) → estado
 // filtrable, indexable y compartible. 404 si el slug no existe (soft-404 correcto para SEO).
-// `categories` (las 15 tope) alimenta el sidebar de la plantilla Overview.
+// `categories` (las 15 tope) alimenta el sidebar de la plantilla Overview. El tipo `CategoryData`
+// y `PAGE_SIZE` viven en el feature (los consume el screen sin depender de pages/).
 //
-// Vista de resultados (elegible en CategoryFilters, doc "Vista de resultados"):
-// - "loadmore" (default, sin ?view en la URL): SSR trae SOLO el primer batch (offset=0); el
-//   cliente acumula más al hacer clic en "Ver más" (fetch client-side, sin re-navegar).
-// - "pages" (?view=pages&page=N): paginación numerada tradicional, offset=(page-1)*PAGE_SIZE,
-//   cada página es su propio SSR (compartible/indexable, como el resto de filtros).
-export async function data(pageContext: PageContextServer) {
+// Vista de resultados (elegible en CategoryFilters):
+// - "loadmore" (default): SSR trae SOLO el primer batch (offset=0); el cliente acumula más.
+// - "pages" (?view=pages&page=N): paginación numerada, offset=(page-1)*PAGE_SIZE, cada página SSR.
+export async function data(pageContext: PageContextServer): Promise<CategoryData> {
   const slug = pageContext.routeParams.slug;
   const market = marketOf(pageContext.country ?? DEFAULT_COUNTRY);
   const s = pageContext.urlParsed.search;
@@ -34,11 +29,11 @@ export async function data(pageContext: PageContextServer) {
       path: { slug },
       query: {
         market,
-        stores: list(s.stores),
-        brands: list(s.brands),
+        stores: asList(s.stores),
+        brands: asList(s.brands),
         price_min: s.pmin ? Number(s.pmin) : undefined,
         price_max: s.pmax ? Number(s.pmax) : undefined,
-        sort: s.sort ?? "price",
+        sort: s.sort ?? DEFAULT_SORT,
         limit: PAGE_SIZE,
         offset,
       },
