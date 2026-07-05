@@ -14,10 +14,12 @@ import type { SupermarketsData } from "./+data";
 // rails de productos reales (Ofertas de hoy A7, Populares, Mejor valor). Rails sin datos no se muestran.
 export default function Page() {
   const { locale, country, t } = usePageI18n();
-  const { categories, deals, popular, providers, bestValue } = useData<SupermarketsData>();
+  const { categories, deals, popular, providers, bestValue, collections } =
+    useData<SupermarketsData>();
   const base = (path: string) => localeHref(locale, country, `/save/supermarkets${path}`);
   const productHref = (id: string) => base(`/product/${id}`);
   const storeHref = (id: string) => base(`/store/${id}`);
+  const collectionHref = (slug: string) => base(`/collection/${slug}`);
 
   return (
     <div>
@@ -69,6 +71,19 @@ export default function Page() {
         locale={locale}
         productHref={productHref}
       />
+
+      {/* Carruseles curados (A6): colecciones editoriales hand-pick (Protector solar, Limpieza). */}
+      {collections.map((c) => (
+        <SectionRail
+          key={c.slug}
+          title={c.name}
+          products={c.products}
+          locale={locale}
+          productHref={productHref}
+          seeAll={t("super.seeAll")}
+          seeAllHref={collectionHref(c.slug)}
+        />
+      ))}
 
       {providers.length > 0 && (
         <section className="mx-auto max-w-6xl px-4 py-6">

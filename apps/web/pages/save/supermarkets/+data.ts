@@ -1,6 +1,7 @@
 import {
   featuredProducts,
   listCategories,
+  listCollections,
   listProviders,
   todaysDeals,
 } from "@cuadra/api-client";
@@ -15,12 +16,13 @@ export type SupermarketsData = Awaited<ReturnType<typeof data>>;
 // ofertas por supermercado y mejor valor por precio/unidad), todo indexable.
 export async function data(pageContext: PageContextServer) {
   const market = marketOf(pageContext.country ?? DEFAULT_COUNTRY);
-  const [cats, deals, popular, providers, bestValue] = await Promise.all([
+  const [cats, deals, popular, providers, bestValue, collections] = await Promise.all([
     listCategories({ client: apiClient, query: { market } }),
     todaysDeals({ client: apiClient, query: { market, limit: 12 } }),
     featuredProducts({ client: apiClient, query: { market, sort: "popular", limit: 12 } }),
     listProviders({ client: apiClient, query: { market } }),
     featuredProducts({ client: apiClient, query: { market, sort: "unit_price", limit: 12 } }),
+    listCollections({ client: apiClient, query: { market } }),
   ]);
   return {
     categories: cats.data?.categories ?? [],
@@ -28,5 +30,6 @@ export async function data(pageContext: PageContextServer) {
     popular: popular.data ?? [],
     providers: providers.data ?? [],
     bestValue: bestValue.data ?? [],
+    collections: collections.data ?? [],
   };
 }
