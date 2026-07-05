@@ -141,12 +141,14 @@ class CanonicalProductModel(Base):
     __tablename__ = "canonical_product"
     __table_args__ = (
         Index("ix_canonical_product_market", "market_id"),
+        UniqueConstraint("market_id", "slug", name="uq_canonical_product_market_slug"),
         {"schema": _SCHEMA},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
+    slug: Mapped[str] = mapped_column(Text, nullable=False)  # llave PÚBLICA URL-safe (SEO)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     brand_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("save.brand.id")

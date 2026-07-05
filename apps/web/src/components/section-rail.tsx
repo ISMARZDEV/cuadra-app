@@ -46,7 +46,7 @@ export function SectionRail({
           {products.map((p) => (
             <CarouselItem key={p.id} className="basis-auto pl-4">
               <div className="w-40">
-                <ProductCard product={p} href={productHref(p.id)} locale={locale} />
+                <ProductCard product={p} href={productHref(p.slug)} locale={locale} />
               </div>
             </CarouselItem>
           ))}

@@ -9,14 +9,19 @@
 ## 1. Pendientes de FEATURE (F1)
 
 ### 1.1 SEO / i18n — el bloque de mayor valor
-- [ ] **Slugs legibles de producto** — hoy la ruta es `product/@id` con **UUID** (`routeParams.id`).
-  Necesita un campo `slug` en el backend (canonical_product) y resolver por slug. Es la pieza
-  ANCLA: destraba `og:image` y `canonical`.
-  - `apps/web/pages/save/supermarkets/product/@id/` · backend `canonical_product`
-- [ ] **`og:image` dinámico por producto** — `+Head.tsx` hoy tiene `og:type/title/description` +
-  JSON-LD, pero **falta `og:image`** (previews de WhatsApp/redes salen sin imagen).
-  - `apps/web/pages/save/supermarkets/product/@id/+Head.tsx`
-- [ ] **`<link rel="canonical">`** — no está presente en ninguna página.
+- [x] **Slugs legibles de producto** ✅ (2026-07-05, rama `feat/save-product-slug`). `slug` en
+  `canonical_product` (columna `UNIQUE(market_id, slug)` + migración `b2c3d4e5f6a7` con backfill),
+  helper de dominio `product_slug` (omite marca ya presente en el nombre), autogen+dedupe en el
+  repo (`add`), `get_by_slug`, y `/save/compare` resuelve por slug **con fallback a UUID** (patrón
+  permalink: las páginas privadas —lista local, feed de alertas— siguen linkeando por id). Ruta web
+  `product/@id` → `product/@slug`; links públicos (rails/categoría/colección/búsqueda) por slug;
+  sitemap por slug. 154 tests save + 28 web verdes.
+  - `apps/web/pages/save/supermarkets/product/@slug/` · backend `canonical_product`
+- [x] **`og:image` dinámico por producto** ✅ (2026-07-05). `+Head.tsx` ahora emite `og:image`
+  (desde `image_url`, que ya estaba en el DTO) + `og:url`.
+  - `apps/web/pages/save/supermarkets/product/@slug/+Head.tsx`
+- [x] **`<link rel="canonical">`** ✅ (2026-07-05). En la página de producto, apunta SIEMPRE a la
+  URL del slug (aunque se entre por el UUID de fallback) → una sola URL canónica por producto.
 - [ ] **`Accept-Language` en el guard** — hoy redirige a `es-do` FIJO (ignora el idioma del browser).
   El propio comentario del archivo lo marca como follow-up.
   - `apps/web/pages/+guard.ts`

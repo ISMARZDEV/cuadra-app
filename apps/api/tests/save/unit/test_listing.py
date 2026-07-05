@@ -90,7 +90,7 @@ DESCENDANTS = {"n-arroz": ["n-arroz", "n-blanco"]}
 def _garza(pid: str, pname: str, minor: int) -> OfferingRow:
     return OfferingRow(
         "garza", "Arroz Garza", "La Garza", "Premium", "10 LB", "http://img/garza.jpg",
-        _q("10"), pid, pname, Money(minor, DOP),
+        _q("10"), pid, pname, Money(minor, DOP), slug="arroz-garza-10-lb",
     )
 
 
@@ -138,6 +138,7 @@ def test_card_carries_presentation_fields() -> None:
     assert garza.display_size == "10 LB"
     assert garza.quality == "Premium"
     assert garza.image_url == "http://img/garza.jpg"
+    assert garza.slug == "arroz-garza-10-lb"  # llave pública para el href de la card
 
 
 def test_breadcrumb_and_subcategories() -> None:

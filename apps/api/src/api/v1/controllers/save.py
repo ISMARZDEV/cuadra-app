@@ -92,11 +92,12 @@ def search_products(
 
 @router.get("/compare")
 def compare_product(
-    product_id: str = Query(..., description="ID del producto canónico"),
+    slug: str = Query(..., description="Slug público del producto canónico"),
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
     use_case: CompareProduct = Depends(get_compare_product),
 ) -> PriceComparisonDto:
     try:
-        return use_case.execute(product_id)
+        return use_case.execute(slug, market)
     except CanonicalProductNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

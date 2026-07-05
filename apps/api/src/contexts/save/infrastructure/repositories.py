@@ -20,6 +20,7 @@ from ..domain.drops import PriceChange
 from ..domain.entities import CanonicalProduct, Collection, PriceType, Provider, StoreProduct
 from ..domain.history import PricePoint
 from ..domain.listing import OfferingRow
+from ..domain.slug import product_slug
 from ..domain.taxonomy import CategoryNode, slugify
 from ..domain.value_objects import Quantity, UnitMeasure
 from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
@@ -134,9 +135,13 @@ class SqlCanonicalProductRepository:
         return brand.id
 
     def add(self, product: CanonicalProduct) -> None:
+        slug = product.slug or self._unique_slug(
+            product_slug(product.name, product.brand, product.display_size), product.market_id
+        )
         self._s.add(
             CanonicalProductModel(
                 id=uuid.UUID(product.id),
+                slug=slug,
                 name=product.name,
                 brand_id=self._get_or_create_brand_id(product.brand, product.market_id),
                 quality=product.quality,
@@ -151,6 +156,31 @@ class SqlCanonicalProductRepository:
             )
         )
         self._s.flush()
+
+    def _unique_slug(self, base: str, market_id: str) -> str:
+        """Slug único por-mercado: si `base` ya existe, sufija -2, -3… (invariante del catálogo)."""
+        base = base or "producto"
+        candidate, n = base, 2
+        while (
+            self._s.scalars(
+                select(CanonicalProductModel.id).where(
+                    CanonicalProductModel.market_id == market_id,
+                    CanonicalProductModel.slug == candidate,
+                )
+            ).first()
+            is not None
+        ):
+            candidate, n = f"{base}-{n}", n + 1
+        return candidate
+
+    def get_by_slug(self, slug: str, market_id: str) -> CanonicalProduct | None:
+        m = self._s.scalars(
+            select(CanonicalProductModel).where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.slug == slug,
+            )
+        ).first()
+        return canonical_to_entity(m, self._brand_name(m.brand_id)) if m else None
 
     def _brand_name(self, brand_id: uuid.UUID | None) -> str:
         if brand_id is None:
@@ -355,6 +385,7 @@ class SqlStoreProductRepository:
         rows = self._s.execute(
             select(
                 CanonicalProductModel.id,
+                CanonicalProductModel.slug,
                 CanonicalProductModel.name,
                 BrandModel.name.label("brand"),
                 CanonicalProductModel.quality,
@@ -378,6 +409,7 @@ class SqlStoreProductRepository:
         return [
             OfferingRow(
                 product_id=str(r.id),
+                slug=r.slug,
                 name=r.name,
                 brand=r.brand or "",
                 quality=r.quality,

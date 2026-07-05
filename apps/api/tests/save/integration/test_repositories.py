@@ -134,6 +134,40 @@ def test_canonical_get_by_id_invalid_uuid_returns_none(db_session) -> None:  # t
     assert repo.get_by_id("no-es-un-uuid") is None
 
 
+def _add_canonical(db_session, name: str, brand: str, market_id: str = "DO") -> str:  # type: ignore[no-untyped-def]
+    prov = SqlProviderRepository(db_session)
+    prov.add(Provider(_uuid(), "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, market_id))
+    repo = SqlCanonicalProductRepository(db_session)
+    cid = _uuid()
+    repo.add(
+        CanonicalProduct(
+            cid, name, brand, Quantity(Decimal("2"), UnitMeasure.MASS),
+            taxonomy_node_id="", market_id=market_id,
+        )
+    )
+    return cid
+
+
+def test_canonical_add_autogenerates_slug_and_get_by_slug(db_session) -> None:  # type: ignore[no-untyped-def]
+    # nombre único → slug determinista sin chocar con el seed de dev.
+    cid = _add_canonical(db_session, "Zqx Producto Prueba Slug", "MarcaZ")
+    repo = SqlCanonicalProductRepository(db_session)
+    got = repo.get_by_slug("zqx-producto-prueba-slug-marcaz", "DO")
+    assert got is not None
+    assert got.id == cid
+    assert got.slug == "zqx-producto-prueba-slug-marcaz"
+    # el slug es único POR-MERCADO: no aparece en otro mercado.
+    assert repo.get_by_slug("zqx-producto-prueba-slug-marcaz", "US") is None
+
+
+def test_canonical_add_dedupes_slug_per_market(db_session) -> None:  # type: ignore[no-untyped-def]
+    _add_canonical(db_session, "Zqx Duplicado Slug", "MarcaZ")          # → zqx-duplicado-slug-marcaz
+    cid2 = _add_canonical(db_session, "Zqx Duplicado Slug", "MarcaZ")   # colisión → -2
+    got = SqlCanonicalProductRepository(db_session).get_by_id(cid2)
+    assert got is not None
+    assert got.slug == "zqx-duplicado-slug-marcaz-2"
+
+
 def test_canonical_list_by_market_for_sitemap(db_session) -> None:  # type: ignore[no-untyped-def]
     market = f"T{uuid.uuid4().hex[:6]}"
     _pid, cid = _seed_provider_and_canonical(db_session, market_id=market)

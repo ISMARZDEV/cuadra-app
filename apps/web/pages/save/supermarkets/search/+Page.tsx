@@ -43,7 +43,7 @@ export default function Page() {
       <ul className="mt-3 divide-y divide-border">
         {results.map((product) => (
           <li key={product.id} className="py-3">
-            <a href={productHref(product.id)} className="hover:text-primary">
+            <a href={productHref(product.slug)} className="hover:text-primary">
               {product.name}
               {product.brand && <span className="text-muted-foreground"> · {product.brand}</span>}
             </a>
