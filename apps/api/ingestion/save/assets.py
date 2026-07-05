@@ -10,8 +10,13 @@ from __future__ import annotations
 
 import dagster as dg
 
+from src.contexts.save.application.alerts import RunAlertMatching
 from src.contexts.save.application.drops import ListPriceDrops
-from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
+from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.infrastructure.repositories import (
+    SqlAlertRepository,
+    SqlStoreProductRepository,
+)
 from src.shared.db.base import SessionLocal
 
 from .runner import refresh_source
@@ -62,3 +67,24 @@ def price_drops(context) -> dg.MaterializeResult:
         )
     context.log.info(f"{len(drops)} bajadas detectadas ({_DROPS_WINDOW_DAYS}d)")
     return dg.MaterializeResult(metadata={"drops": len(drops)})
+
+
+@dg.asset(
+    deps=[dg.AssetKey(f"{k}_prices") for k in SOURCE_KEYS],
+    group_name="save_catalog",
+    description="Cruce de bajadas con las suscripciones → notificaciones de alerta (G4).",
+)
+def alert_matching(context) -> dg.MaterializeResult:
+    """Vía de PROD del matching de alertas (antes: endpoint dev-guarded). Cuelga de las fuentes —
+    tras el refresh cruza las bajadas con las suscripciones activas y persiste las notificaciones
+    (idempotente); el push es best-effort (`ExpoPushSender`), nunca rompe el matching. Escribe →
+    commitea la sesión. `RunAlertMatching` ya está testeado; el asset es piel fina."""
+    with SessionLocal() as session:
+        created = RunAlertMatching(
+            SqlStoreProductRepository(session),
+            SqlAlertRepository(session),
+            ExpoPushSender(),
+        ).execute(SAVE_MARKET, days=_DROPS_WINDOW_DAYS)
+        session.commit()
+    context.log.info(f"{created} notificaciones de alerta creadas")
+    return dg.MaterializeResult(metadata={"notifications": created})

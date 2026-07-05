@@ -1,8 +1,9 @@
 # Save Web — Pendientes de F1 + Deuda Arquitectónica
 
-> Estado al **2026-07-04**. Rama `feat/save-supermercados`. Verificado contra el código, no de
+> Estado al **2026-07-05**. Rama `feat/save-web-f1-followups`. Verificado contra el código, no de
 > memoria. Las 3 piezas CORE de F1 (lista D1, alertas G4, histórico C9) están cerradas; A6
-> (colecciones curadas) también. Lo que queda es **pulido, SEO, hardening y deuda de organización**.
+> (colecciones curadas) también. La deuda arquitectónica web (§2) quedó RESUELTA (PR #16). Lo que
+> queda es **hardening pre-producción** (IdP real) y trabajo que es F2/F3.
 
 ---
 
@@ -22,21 +23,31 @@
   - `apps/web/pages/save/supermarkets/product/@slug/+Head.tsx`
 - [x] **`<link rel="canonical">`** ✅ (2026-07-05). En la página de producto, apunta SIEMPRE a la
   URL del slug (aunque se entre por el UUID de fallback) → una sola URL canónica por producto.
-- [ ] **`Accept-Language` en el guard** — hoy redirige a `es-do` FIJO (ignora el idioma del browser).
-  El propio comentario del archivo lo marca como follow-up.
+- [x] **`Accept-Language` en el guard** ✅ (2026-07-05, rama `feat/save-web-f1-followups`). El guard
+  negocia el idioma del browser (es/en/pt) contra los soportados; el país queda fijo en DO.
   - `apps/web/pages/+guard.ts`
-- [ ] **Multi-país real** (US/CO/BR) — hoy solo DO en `src/i18n/locales.js` + datos backend.
+- [ ] **Multi-país real** (US/CO/BR) — **es F3, NO F1.** No es un toggle: requiere `store_registry`
+  por país, datos de catálogo por mercado y el vertical financiero. Ver roadmap Save F3.
 
 ### 1.2 Home — assets/contenido
 - [ ] **Logos de supermercados** en "Ofertas por supermercado" — hoy son badges de texto.
 - [x] ~~"Inspiración"~~ — es contenido de News, **deferido, no necesario ahora**.
 
 ### 1.3 Hardening pre-producción (hoy en modo dev)
-- [ ] **IdP real** — el `dev-login` (`/identity/dev-login`) es solo para desarrollo.
-- [ ] **Matching de alertas como schedule de Dagster** — hoy es un endpoint con dev-guard
-  (`POST /save/alerts/run-matching`), no un job programado.
-- [ ] **G4 menores**: badge read/unread de notificaciones + **copy de push localizado** (hoy
-  español fijo; el backend no conoce el locale del user al matchear).
+- [ ] **IdP real** — el `dev-login` (`/identity/dev-login`) es solo para desarrollo. GRANDE: requiere
+  decidir proveedor (Clerk/Supabase/Auth0/custom) antes de codear.
+- [x] **Matching de alertas como schedule de Dagster** ✅ (2026-07-05, rama `feat/save-web-f1-followups`).
+  Nuevo asset `alert_matching` en `apps/api/ingestion/save/assets.py` (hermano de `price_drops`,
+  deps de las 3 fuentes): tras el refresh cruza bajadas × suscripciones y persiste las notificaciones
+  (idempotente, commitea); push best-effort vía `ExpoPushSender`. La schedule diaria `save_daily_refresh`
+  (`selection="*"`) ya lo recoge. El endpoint dev-guarded `POST /save/alerts/run-matching` se MANTIENE
+  como disparador manual de demo.
+- [x] **G4 read/unread** ✅ (2026-07-05, rama `feat/save-web-f1-followups`). Endpoint
+  `mark-notifications-read` (use-case+repo+puerto, TDD), la campanita cuenta no-leídas, marca leído al
+  abrir el feed y muestra dot de nueva.
+- [ ] **Copy de push localizado** — diferido. Hoy español fijo; el backend no conoce el locale del
+  user al matchear. Bloqueado además por el push remoto (Apple Developer de pago); la notif LOCAL ya
+  localiza. Ver `docs/pending/save-alerts-remote-push.md`.
 
 ### 1.4 Placeholders de nav — OK como "próximamente" (verificado)
 Los 6 usan `PlaceholderPage` y muestran "próximamente". **No están rotos; se quedan así.**
@@ -64,33 +75,23 @@ Los 6 usan `PlaceholderPage` y muestran "próximamente". **No están rotos; se q
 > Referencia: `apps/mobile` es feature-oriented. OJO: sus `shared/{enums,interfaces,types}` están
 > **vacíos** → seguimos su INTENCIÓN (tipos POR-FEATURE), no clonamos su desorden.
 
-### Fase 1 — Higiene ✅
-- [ ] **Matar duplicación de `asList()`** — idéntico en `category-filters.tsx:23` y
-  `category/@slug/+Page.tsx:129` → extraer a `lib/`.
-- [ ] **Extraer `<ProductRail>`** — el markup del carrusel Embla está duplicado en
-  `section-rail.tsx` y el Overview de `category/@slug/+Page.tsx` (introducido el 2026-07-04).
-- [ ] **Centralizar magic strings** en `lib/save/constants.ts` (union `as const`, NO enums):
-  - `SORT` = `popular | unit_price | price | name`
-  - `VIEW_MODE` = `loadmore | pages`
-  - `MARKET` / default. Hoy hardcodeados en data-loaders, `+Page` y `category-filters`.
-- [ ] **Mover `category-icons.tsx`** de `lib/` a `components/` (es un componente, no una utilidad).
+### Fase 1 — Higiene ✅ (verificado en código, 2026-07-05)
+- [x] **Matar duplicación de `asList()`** — extraído a `features/save/lib/query.ts` (con test);
+  lo consumen `category-listing.tsx` y `category-filters.tsx`.
+- [x] **Extraer `<ProductRail>`** — `features/save/components/product-rail.tsx`, consumido por
+  `section-rail.tsx` y `category-overview.tsx`.
+- [x] **Centralizar magic strings** — en `features/save/enums.ts` (union `as const`, con test).
+- [x] **Mover `category-icons.tsx`** — ahora en `features/save/components/`.
 
-### Fase 2 — Estructura (riesgo medio: muchos imports; commit aislado) 🟡
-- [ ] **Reorganizar `components/`** (hoy plano, 15 archivos) en:
-  - `components/save/` — product-card, category-filters, section-rail, compare-table,
-    price-history-chart, pagination, breadcrumbs
-  - `components/layout/` — site-header, site-footer, switcher, theme-toggle, theme-script,
-    hreflang, global-head
-  - `components/ui/` — primitivos shadcn (ya existe)
-- [ ] **Separar `lib/`** en:
-  - `lib/api/` — api.ts, alerts-api.ts
-  - `lib/hooks/` — use-auth.ts, use-shopping-list.ts
-  - `lib/save/` (dominio) — format, links, seo, price-history, shopping-list, constants
-  - `scripts/` — sitemap.js (es build, no runtime)
+### Fase 2 — Estructura ✅ (verificado en código, 2026-07-05)
+- [x] **Reorganizar `components/`** — `components/{layout/ · ui/}` (compartido) + los de dominio bajo
+  `features/save/components/`.
+- [x] **Separar `lib/`** — dominio en `features/save/lib/`, api en `features/save/api.ts`, hooks en
+  `features/save/hooks/`, `scripts/sitemap.js` aparte.
 
-### Fase 3 — Descomposición (bajo riesgo) 🟡
-- [ ] Partir `category/@slug/+Page.tsx` (281 LOC) — hoy mete `CategoryOverview` + `CategoryListing`
-  + `navigateWith` + `loadMore` en un archivo → componentes propios.
+### Fase 3 — Descomposición ✅ (verificado en código, 2026-07-05)
+- [x] Partido el `category/@slug/+Page.tsx` — `CategoryOverview` + `CategoryListing` viven en
+  `features/save/components/`; la ruta Vike es re-export fino del screen.
 
 ### Descartado (decisión de arquitectura)
 - ❌ **NO** copiar `shared/enums|interfaces|types` de mobile (vacíos, aspiracionales).
@@ -112,5 +113,13 @@ Los 6 usan `PlaceholderPage` y muestran "próximamente". **No están rotos; se q
 ---
 
 ## 4. Estado de la rama
-Todo commiteado en `feat/save-supermercados` (SIN pushear). Pendiente: push + PR a `developer`
-(preguntar squash vs rebase). Ver `.claude/skills/cuadra-git-workflow`.
+Rama actual `feat/save-web-f1-followups` (SIN pushear). Contiene los follow-ups de cierre de F1:
+Accept-Language en el guard, G4 read/unread, y el matching de alertas como schedule de Dagster
+(#3). Base ya en `developer`: F0+F1 backend/web/mobile (PR #14), slug SEO (PR #15), estructura
+feature-first web (PR #16).
+
+**Pendiente inmediato:** push + PR a `developer` (preguntar squash vs rebase). Ver
+`.claude/skills/cuadra-git-workflow`.
+
+**Pendiente de F1 que queda abierto:** solo **IdP real** (§1.3) — requiere decidir proveedor.
+Todo lo demás es F2 (§3) o F3 (multi-país).
