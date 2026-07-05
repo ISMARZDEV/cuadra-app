@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.contexts.identity.domain.entities import AuthIdentity, Role, User
-from src.contexts.identity.domain.enums import CapabilityKey
+from src.contexts.identity.domain.enums import CapabilityKey, RoleKey
 
 from .mappers import auth_identity_to_entity, role_to_entity, user_to_entity
 from .models import (
@@ -77,6 +77,26 @@ class SqlUserRepository:
             return None
         return user_to_entity(model, self._roles.list_by_user(str(model.id)))
 
+    def create(
+        self,
+        *,
+        email: str | None,
+        name: str,
+        home_market: str,
+        current_market: str,
+        role: RoleKey,
+    ) -> str:
+        model = UserModel(
+            email=email.strip().lower() if email else None,
+            name=name,
+            home_market_id=home_market,
+            current_market_id=current_market,
+        )
+        self._session.add(model)
+        self._session.flush()  # asigna model.id (RETURNING) sin commitear
+        self._session.add(UserRoleModel(user_id=model.id, role_key=role.value))
+        return str(model.id)
+
 
 class SqlAuthIdentityRepository:
     def __init__(self, session: Session) -> None:
@@ -90,3 +110,13 @@ class SqlAuthIdentityRepository:
             )
         ).first()
         return auth_identity_to_entity(model) if model else None
+
+    def link(
+        self, *, user_id: str, provider: str, subject: str, email: str | None
+    ) -> None:
+        self._session.add(
+            AuthIdentityModel(
+                user_id=uuid.UUID(user_id), provider=provider, subject=subject, email=email
+            )
+        )
+        self._session.flush()
