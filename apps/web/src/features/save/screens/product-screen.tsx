@@ -9,7 +9,7 @@ import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
 
-import { myAlerts, subscribe } from "../api";
+import { myAlerts, removeAlert, subscribe } from "../api";
 import { Breadcrumbs } from "../components/breadcrumbs";
 import { CompareTable } from "../components/compare-table";
 import { PriceHistoryChart } from "../components/price-history-chart";
@@ -29,7 +29,11 @@ export function ProductScreen() {
   const productHref = (slug: string) =>
     localeHref(locale, country, `/save/supermarkets/product/${slug}`);
   const { isAuthed } = useAuth();
-  const [watching, setWatching] = useState(false);
+  // El id de la alerta de ESTE producto (null = no suscrito). Guardamos el id, no solo un bool,
+  // para poder desuscribir (toggle). watching se deriva de su presencia.
+  const [alertId, setAlertId] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
+  const watching = alertId !== null;
   const productId = comparison.canonical_product_id;
 
   // Refleja la suscripción YA existente al cargar (persistencia): sin esto el botón vuelve a
@@ -37,27 +41,39 @@ export function ProductScreen() {
   // cuando cambia la sesión (isAuthed pasa a true tras Clerk/hidratación).
   useEffect(() => {
     if (!isAuthed) {
-      setWatching(false);
+      setAlertId(null);
       return;
     }
     let cancelled = false;
     void myAlerts().then((res) => {
       if (cancelled) return;
-      const alerts = res.data ?? [];
-      setWatching(alerts.some((a) => a.canonical_product_id === productId));
+      const alert = (res.data ?? []).find((a) => a.canonical_product_id === productId);
+      setAlertId(alert?.id ?? null);
     });
     return () => {
       cancelled = true;
     };
   }, [isAuthed, productId]);
 
-  const onNotifyMe = async () => {
+  // Toggle: suscribe si no sigue, desuscribe si ya sigue.
+  const onToggleNotify = async () => {
     if (!isAuthed) {
       void navigate(localeHref(locale, country, "/save/supermarkets/login"));
       return;
     }
-    const res = await subscribe(productId);
-    if (!res.error) setWatching(true);
+    if (toggling) return;
+    setToggling(true);
+    try {
+      if (alertId) {
+        const res = await removeAlert(alertId);
+        if (!res.error) setAlertId(null);
+      } else {
+        const res = await subscribe(productId);
+        if (!res.error) setAlertId(res.data?.id ?? null);
+      }
+    } finally {
+      setToggling(false);
+    }
   };
 
   // "Compara desde RD$X hasta RD$Y" — derivado de las entries (el backend las ordena por precio).
@@ -128,7 +144,14 @@ export function ProductScreen() {
             >
               + {t("product.addToList")}
             </Button>
-            <Button size="sm" variant={watching ? "secondary" : "default"} onClick={onNotifyMe}>
+            <Button
+              size="sm"
+              variant={watching ? "secondary" : "default"}
+              onClick={onToggleNotify}
+              disabled={toggling}
+              aria-pressed={watching}
+              title={watching ? t("alerts.stopWatching") : undefined}
+            >
               <Bell className="mr-1.5 size-3.5" />
               {watching ? t("alerts.watching") : t("alerts.notifyMe")}
             </Button>
