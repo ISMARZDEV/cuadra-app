@@ -66,3 +66,11 @@ class ClerkTokenVerifier:
             email=claims.get("email"),
             name=claims.get("name"),
         )
+
+
+class NullTokenVerifier:
+    """Verificador inactivo — cuando Clerk NO está configurado (dev sin IdP). Rechaza todo token
+    RS256: sin el issuer/JWKS del IdP no hay forma de validar su firma."""
+
+    def verify(self, token: str) -> VerifiedClaims:
+        raise InvalidToken("IdP (Clerk) no configurado")
