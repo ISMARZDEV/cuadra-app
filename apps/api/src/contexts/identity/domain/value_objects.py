@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .enums import AuthProvider
+
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -24,6 +26,24 @@ class Email:
 
     def __str__(self) -> str:
         return self.value
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedClaims:
+    """Identidad autenticada tras verificar el token del IdP (provider-agnóstica).
+
+    La produce el `TokenVerifier` (infra: JWKS/RS256); la consume `ResolveUserFromClaims`.
+    `subject` = `sub` estable del proveedor (NUNCA un password). `email`/`name` son opcionales
+    (Apple Hide-My-Email puede no dar email; el name puede faltar)."""
+
+    provider: AuthProvider
+    subject: str
+    email: str | None = None
+    name: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.subject.strip():
+            raise ValueError("VerifiedClaims: 'subject' no puede estar vacío")
 
 
 @dataclass(frozen=True, slots=True)

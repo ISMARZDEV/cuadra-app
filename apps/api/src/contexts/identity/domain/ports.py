@@ -9,12 +9,23 @@ from __future__ import annotations
 from typing import Protocol
 
 from .entities import AuthIdentity, Role, User
-from .enums import CapabilityKey
+from .enums import CapabilityKey, RoleKey
 
 
 class UserRepository(Protocol):
     def get_by_id(self, user_id: str) -> User | None: ...
     def get_by_email(self, email: str) -> User | None: ...
+    def create(
+        self,
+        *,
+        email: str | None,
+        name: str,
+        home_market: str,
+        current_market: str,
+        role: RoleKey,
+    ) -> str:
+        """Crea un usuario con el rol dado y devuelve su id (JIT provisioning · §12·E E.2)."""
+        ...
 
 
 class RoleRepository(Protocol):
@@ -31,3 +42,8 @@ class AuthIdentityRepository(Protocol):
     """Mapea (provider, subject) → identidad de login (account-linking · §12·E E.2)."""
 
     def get_by_provider_subject(self, provider: str, subject: str) -> AuthIdentity | None: ...
+    def link(
+        self, *, user_id: str, provider: str, subject: str, email: str | None
+    ) -> None:
+        """Vincula una identidad de login (provider, subject) a un usuario existente."""
+        ...
