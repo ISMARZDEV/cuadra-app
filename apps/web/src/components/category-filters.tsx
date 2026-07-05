@@ -13,9 +13,10 @@ import {
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Slider } from "./ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
-import type { Locale } from "../i18n/config";
+import type { Country, Locale } from "../i18n/config";
 import { format, translate } from "../i18n/messages";
 import { formatMoney } from "../lib/format";
+import { localeHref, logicalPath } from "../lib/links";
 
 type Search = Record<string, string | undefined>;
 
@@ -100,7 +101,10 @@ export function CategoryFilters({
 }) {
   const pageContext = usePageContext();
   const search = pageContext.urlParsed.search as Search;
-  const pathname = pageContext.urlPathname;
+  // urlPathname viene SIN el prefijo /{locale}/{country} (vike lo strippea al pathname lógico);
+  // hay que re-prefijarlo o navigate va a una URL que el router no matchea y aborta en silencio.
+  const country = pageContext.country as Country;
+  const pathname = localeHref(locale, country, logicalPath(pageContext.urlPathname));
 
   const activeStores = asList(search.stores);
   const activeBrands = asList(search.brands);

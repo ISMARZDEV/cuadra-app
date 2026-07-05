@@ -20,7 +20,7 @@ import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { apiClient } from "@/lib/api";
 import { categoryIcon } from "@/lib/category-icons";
-import { localeHref } from "@/lib/links";
+import { localeHref, logicalPath } from "@/lib/links";
 
 import { PAGE_SIZE, type CategoryData } from "./+data";
 
@@ -141,7 +141,9 @@ function CategoryListing() {
       if (v && !(k === "sort" && v === "price")) params.set(k, v);
     }
     const qs = params.toString();
-    void navigate(qs ? `${pageContext.urlPathname}?${qs}` : pageContext.urlPathname);
+    // urlPathname viene SIN el prefijo /{locale}/{country}; re-prefijar o navigate aborta.
+    const base = localeHref(locale, country, logicalPath(pageContext.urlPathname));
+    void navigate(qs ? `${base}?${qs}` : base);
   };
 
   const onSort = (value: string) => navigateWith({ sort: value, page: undefined });
