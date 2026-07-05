@@ -18,7 +18,7 @@ export interface ResumeResult {
 // streamChat) so we control the body — the generated SDK's resume still models only the legacy
 // `approved` bool, and this endpoint is plain JSON (no stream).
 export async function resumeChat(threadId: string, value: string): Promise<ResumeResult> {
-  const token = getApiAuthToken();
+  const token = await getApiAuthToken();
   const res = await fetch(`${API_BASE_URL}/v1/aispace/chat/resume`, {
     method: "POST",
     headers: {
@@ -54,7 +54,7 @@ export async function streamChat({
   signal,
   onEvent,
 }: StreamChatArgs): Promise<void> {
-  const token = getApiAuthToken();
+  const token = await getApiAuthToken();
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/v1/aispace/chat/stream`, {
