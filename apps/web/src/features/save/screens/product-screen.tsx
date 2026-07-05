@@ -1,5 +1,5 @@
 import { Bell } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { navigate } from "vike/client/router";
 import { useData } from "vike-react/useData";
 
@@ -9,7 +9,7 @@ import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
 
-import { subscribe } from "../api";
+import { myAlerts, subscribe } from "../api";
 import { Breadcrumbs } from "../components/breadcrumbs";
 import { CompareTable } from "../components/compare-table";
 import { PriceHistoryChart } from "../components/price-history-chart";
@@ -30,13 +30,33 @@ export function ProductScreen() {
     localeHref(locale, country, `/save/supermarkets/product/${slug}`);
   const { isAuthed } = useAuth();
   const [watching, setWatching] = useState(false);
+  const productId = comparison.canonical_product_id;
+
+  // Refleja la suscripción YA existente al cargar (persistencia): sin esto el botón vuelve a
+  // "Avísame cuando baje" tras refrescar aunque la alerta esté guardada. Corre al hidratar y
+  // cuando cambia la sesión (isAuthed pasa a true tras Clerk/hidratación).
+  useEffect(() => {
+    if (!isAuthed) {
+      setWatching(false);
+      return;
+    }
+    let cancelled = false;
+    void myAlerts().then((res) => {
+      if (cancelled) return;
+      const alerts = res.data ?? [];
+      setWatching(alerts.some((a) => a.canonical_product_id === productId));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthed, productId]);
 
   const onNotifyMe = async () => {
     if (!isAuthed) {
       void navigate(localeHref(locale, country, "/save/supermarkets/login"));
       return;
     }
-    const res = await subscribe(comparison.canonical_product_id);
+    const res = await subscribe(productId);
     if (!res.error) setWatching(true);
   };
 
