@@ -13,7 +13,15 @@ from src.shared.money import Money
 from ..alerts import Alert, AlertNotification, AlertSubscription
 from ..comparison import StoreQuote
 from ..drops import PriceChange
-from ..entities import CanonicalProduct, Collection, PriceType, Provider, StoreProduct
+from ..entities import (
+    CanonicalProduct,
+    Collection,
+    MatchCandidate,
+    PriceType,
+    ProductMatch,
+    Provider,
+    StoreProduct,
+)
 from ..history import PricePoint
 from ..listing import OfferingRow
 from ..taxonomy import CategoryNode
@@ -169,4 +177,53 @@ class AlertRepository(Protocol):
 
     def list_push_tokens(self, user_id: str) -> list[str]:
         """Tokens de push de todos los dispositivos del usuario (para el envío)."""
+        ...
+
+
+class EmbeddingProvider(Protocol):
+    """Genera embeddings semánticos para la etapa vectorial de la cascada de matching (F2.0).
+
+    Implementación concreta (BGE-M3 auto-hosteado) vive en infrastructure; el modelo está
+    FIJO por despliegue — un cambio de modelo requiere una nueva implementación + backfill
+    de `canonical_product.embedding` (no es un flag de config).
+    """
+
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+class ProductMatchRepository(Protocol):
+    """Fuente de verdad del enlace store_product↔canonical_product (F2.0 matching)."""
+
+    def record_match(
+        self,
+        *,
+        store_product_id: str,
+        canonical_product_id: str | None,
+        confidence: float,
+        method: str,
+        status: str,
+    ) -> str:
+        """Inserta/actualiza el `product_match` de `store_product_id` (UNIQUE). Devuelve el id."""
+        ...
+
+    def find_candidates_trgm(
+        self, name: str, market_id: str, limit: int = 20
+    ) -> list[MatchCandidate]:
+        """Candidatos por similitud léxica (pg_trgm) dentro del mercado, mejor primero."""
+        ...
+
+    def find_candidates_vector(
+        self, embedding: list[float], market_id: str, limit: int = 20
+    ) -> list[MatchCandidate]:
+        """Candidatos por similitud semántica (pgvector HNSW) dentro del mercado, mejor primero."""
+        ...
+
+    def list_review_queue(self, market_id: str) -> list[ProductMatch]:
+        """Matches en `pending_review` del mercado, para la consola de administración."""
+        ...
+
+    def resolve_review(
+        self, match_id: str, canonical_product_id: str | None, decided_by: str
+    ) -> None:
+        """Resuelve un match pendiente (enlaza o rechaza) por decisión humana."""
         ...
