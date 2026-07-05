@@ -5,11 +5,13 @@ cola humana. `product_match` es la fuente de verdad del enlace (Sacred rule); el
 `store_product.canonical_product_id` se escribe SOLO junto con el `product_match` correspondiente
 — este use case es el dueño de esa frontera transaccional (ver design), nunca un trigger de DB.
 
-Gap de puertos (documentado, no se tocan Batches 1-6 ya cerrados): `domain/ports/repositories.py`
-(Batch 2) expone `find_candidates_trgm`/`find_candidates_vector` pero NO una etapa EAN ni un
-escritor del FK de store_product — se agregan aquí como extensiones LOCALES (`Protocol` que
-extiende el puerto compartido) en vez de reabrir esos archivos. Candidato a formalizarse en el
-puerto compartido en una batch futura de wiring (Batch 8) si el equipo lo confirma.
+Puertos (Batch 8): la etapa EAN (`ProductMatchRepository.find_candidates_by_ean`) y el escritor
+del FK denormalizado (`StoreProductRepository.link_to_canonical`) están formalizados en los
+puertos compartidos de `domain/ports/repositories.py` — el use case depende SOLO de esas
+abstracciones (DIP, ADR 31), nunca de la infra concreta. El judge, en cambio, no tiene puerto de
+dominio (es un adapter LLM de un solo propósito): se consume vía un `Protocol` estructural LOCAL
+(`GreyBandJudge`), que `ClaudeJudge` satisface sin heredar de nada y sin que la aplicación importe
+infraestructura.
 
 Nota de diseño (RRF vs banding): con `DEFAULT_RRF_K=60` (Batch 3, fusion.py) el score fusionado
 por RRF nunca supera ~2/(k+1) ≈ 0.033 — muy por debajo de MATCH_MID_THRESHOLD=0.55. Usar
@@ -26,7 +28,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ..domain.entities import MatchCandidate, ProductMatch
-from ..domain.ports import CanonicalProductRepository, StoreProductRepository
+from ..domain.ports import (
+    CanonicalProductRepository,
+    StoreProductRepository,
+)
 from ..domain.ports.repositories import EmbeddingProvider, ProductMatchRepository
 from ..infrastructure.matching.cascade.banding import determine_band
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
@@ -54,30 +59,6 @@ class IncomingStoreProduct:
             raise ValueError("IncomingStoreProduct.name no puede estar vacío")
 
 
-class CascadeMatchRepository(ProductMatchRepository, Protocol):
-    """Extiende `ProductMatchRepository` (domain/ports, Batch 2 ya cerrado) con la etapa EAN, que
-    el puerto compartido aún no expone. Devuelve `MatchCandidate` para reusar el mismo tipo que
-    trgm/vector; el use case decide colisión (>1 id distinto) vs match único (1 id) vs sin match
-    (lista vacía)."""
-
-    def find_candidates_by_ean(self, ean: str, market_id: str) -> list[MatchCandidate]:
-        """canonical_product_id(s) DISTINTOS de store_products YA enlazados que comparten este
-        EAN en el mercado, mejor-primero (aunque para EAN exacto no hay ranking real: o hay
-        1 match, 0, o una colisión ambigua)."""
-        ...
-
-
-class CascadeStoreProductRepository(StoreProductRepository, Protocol):
-    """Extiende `StoreProductRepository` (domain/ports, Batch 2 ya cerrado) con el escritor del
-    FK denormalizado que la cascada necesita. Invariante de diseño: SOLO se llama junto al
-    `record_match` correspondiente, dentro de la misma transacción — este use case llama a ambos
-    contra la misma Session/UoW inyectada en producción, antes de que se confirme el commit."""
-
-    def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
-        """Escribe (o reemplaza) `store_product.canonical_product_id`."""
-        ...
-
-
 class GreyBandJudge(Protocol):
     """Lo mínimo que el use case necesita del judge (ver `ClaudeJudge.judge`, Batch 6) — definido
     aquí (no en domain/ports) para no acoplar la aplicación al tipo concreto de infraestructura;
@@ -98,8 +79,8 @@ class MatchStoreProduct:
     def __init__(
         self,
         *,
-        match_repo: CascadeMatchRepository,
-        store_repo: CascadeStoreProductRepository,
+        match_repo: ProductMatchRepository,
+        store_repo: StoreProductRepository,
         canonical_repo: CanonicalProductRepository,
         embedding_provider: EmbeddingProvider,
         judge: GreyBandJudge,

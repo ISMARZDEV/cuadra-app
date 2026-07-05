@@ -66,6 +66,25 @@ def test_no_adapters_yields_zero() -> None:
     assert refresh_source(FakeStoreRepo(set()), []) == RefreshResult(0, 0, 0)
 
 
+def test_forwards_matcher_and_aggregates_matched_across_adapters() -> None:
+    class FakeMatcher:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, product):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            return None
+
+    repo = FakeStoreRepo(known=set())  # todo desconocido → todo se enruta al matcher
+    matcher = FakeMatcher()
+    adapters = [FakeSource([_entry("a"), _entry("b")]), FakeSource([_entry("c")])]
+
+    result = refresh_source(repo, adapters, matcher=matcher)
+
+    assert result == RefreshResult(seen=3, refreshed=0, unmatched=0, matched=3)
+    assert matcher.calls == 3  # el matcher fue efectivamente enrutado por cada fuente
+
+
 def test_captured_at_is_forwarded() -> None:
     ts = datetime(2026, 7, 4, tzinfo=timezone.utc)
     captured: list[datetime] = []

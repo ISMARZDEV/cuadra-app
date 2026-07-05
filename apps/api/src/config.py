@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     def clerk_authorized_party_list(self) -> list[str]:
         return [p.strip() for p in self.clerk_authorized_parties.split(",") if p.strip()]
 
+    # Save · matching cascade (F2.0). Ship-dark: la cascada EAN→trgm→vector→judge→cola humana
+    # solo se conecta al refresh cuando `save_matching_cascade_enabled=true` (por entorno, tras
+    # bootstrapear la canasta curada). `save_bge_m3_endpoint_url` = endpoint HTTP del servidor de
+    # embeddings BGE-M3 (HF TEI o wrapper); requerido si la cascada está activa.
+    save_matching_cascade_enabled: bool = False
+    save_bge_m3_endpoint_url: str = ""
+
     # CORS (§12·E E.1) — coma-separado (evita el parseo JSON de listas de pydantic-settings).
     # La web de Cuadra corre SIEMPRE en :3006 (dev). Prod se agrega vía CORS_ORIGINS en el entorno.
     cors_origins: str = "http://localhost:3006"

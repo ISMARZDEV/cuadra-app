@@ -36,6 +36,7 @@ from src.contexts.save.infrastructure.models import (
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlProviderRepository,
+    SqlStoreProductRepository,
 )
 
 
@@ -307,3 +308,109 @@ def test_resolve_review_rejects_when_canonical_is_none(db_session) -> None:  # t
     assert row.status == "rejected"
     assert row.canonical_product_id is None
     assert row.decided_by == "admin-123"
+
+
+# ---------------------------------------------------------------- find_candidates_by_ean ----------
+
+
+def _seed_linked_store_product_with_ean(
+    db_session, provider_id: str, canonical_product_id: str, ean: str
+) -> str:  # type: ignore[no-untyped-def]
+    sp = StoreProductModel(
+        provider_id=uuid.UUID(provider_id),
+        canonical_product_id=uuid.UUID(canonical_product_id),
+        external_id=f"sku-{uuid.uuid4().hex[:8]}",
+        current_price_minor=42400,
+        currency="DOP",
+        ean=ean,
+    )
+    db_session.add(sp)
+    db_session.flush()
+    return str(sp.id)
+
+
+def test_find_candidates_by_ean_returns_linked_canonical(db_session) -> None:  # type: ignore[no-untyped-def]
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    _seed_linked_store_product_with_ean(db_session, pid, cid, ean="7501000000001")
+    repo = SqlProductMatchRepository(db_session)
+
+    candidates = repo.find_candidates_by_ean("7501000000001", market)
+
+    assert [c.canonical_product_id for c in candidates] == [cid]
+    assert candidates[0].score == 1.0  # EAN exacto
+
+
+def test_find_candidates_by_ean_empty_when_no_match(db_session) -> None:  # type: ignore[no-untyped-def]
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    _seed_linked_store_product_with_ean(db_session, pid, cid, ean="7501000000001")
+    repo = SqlProductMatchRepository(db_session)
+
+    assert repo.find_candidates_by_ean("0000000000000", market) == []
+
+
+def test_find_candidates_by_ean_collision_returns_distinct_canonicals(db_session) -> None:  # type: ignore[no-untyped-def]
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid_a, cid_a = _seed_provider_and_canonical(db_session, market_id=market, name="Arroz A")
+    pid_b, cid_b = _seed_provider_and_canonical(db_session, market_id=market, name="Arroz B")
+    _seed_linked_store_product_with_ean(db_session, pid_a, cid_a, ean="dup-ean")
+    _seed_linked_store_product_with_ean(db_session, pid_b, cid_b, ean="dup-ean")
+    repo = SqlProductMatchRepository(db_session)
+
+    candidates = repo.find_candidates_by_ean("dup-ean", market)
+
+    assert {c.canonical_product_id for c in candidates} == {cid_a, cid_b}  # colisión ambigua
+
+
+def test_find_candidates_by_ean_excludes_unlinked_and_other_market(db_session) -> None:  # type: ignore[no-untyped-def]
+    market = f"T{uuid.uuid4().hex[:6]}"
+    other = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    # mismo EAN pero SIN enlazar (canonical_product_id NULL) -> no es candidato
+    sp_unlinked = StoreProductModel(
+        provider_id=uuid.UUID(pid),
+        canonical_product_id=None,
+        external_id=f"sku-{uuid.uuid4().hex[:8]}",
+        current_price_minor=100,
+        currency="DOP",
+        ean="shared-ean",
+    )
+    db_session.add(sp_unlinked)
+    # mismo EAN pero en OTRO mercado -> no debe aparecer
+    pid_other, cid_other = _seed_provider_and_canonical(db_session, market_id=other, name="Otro")
+    _seed_linked_store_product_with_ean(db_session, pid_other, cid_other, ean="shared-ean")
+    db_session.flush()
+    repo = SqlProductMatchRepository(db_session)
+
+    assert repo.find_candidates_by_ean("shared-ean", market) == []
+
+
+# ---------------------------------------------------------------- link_to_canonical ----------
+
+
+def test_link_to_canonical_writes_denormalized_fk(db_session) -> None:  # type: ignore[no-untyped-def]
+    pid, cid = _seed_provider_and_canonical(db_session)
+    sp_id = _seed_store_product(db_session, pid)  # sin canonical (unmatched)
+    repo = SqlStoreProductRepository(db_session)
+
+    repo.link_to_canonical(sp_id, cid)
+
+    row = db_session.get(StoreProductModel, uuid.UUID(sp_id))
+    assert row is not None
+    assert str(row.canonical_product_id) == cid
+
+
+def test_link_to_canonical_overwrites_previous_link(db_session) -> None:  # type: ignore[no-untyped-def]
+    pid, cid_old = _seed_provider_and_canonical(db_session, name="Viejo")
+    _pid2, cid_new = _seed_provider_and_canonical(
+        db_session, market_id="DO", name="Nuevo canónico"
+    )
+    sp_id = _seed_store_product(db_session, pid, canonical_product_id=cid_old)
+    repo = SqlStoreProductRepository(db_session)
+
+    repo.link_to_canonical(sp_id, cid_new)
+
+    row = db_session.get(StoreProductModel, uuid.UUID(sp_id))
+    assert row is not None
+    assert str(row.canonical_product_id) == cid_new
