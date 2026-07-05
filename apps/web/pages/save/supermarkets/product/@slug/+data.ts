@@ -5,7 +5,7 @@ import type { PageContextServer } from "vike/types";
 import { DEFAULT_COUNTRY, marketOf } from "@/i18n/config";
 import { apiClient } from "@/lib/api";
 
-export type ProductData = Awaited<ReturnType<typeof data>>;
+export type { ProductData } from "@/features/save/types";
 
 // SSR: la comparación se arma en el servidor → HTML con los precios (SEO) + OG tags (+Head).
 // El producto se resuelve por SLUG legible (no UUID) → URL indexable + canonical. El historial

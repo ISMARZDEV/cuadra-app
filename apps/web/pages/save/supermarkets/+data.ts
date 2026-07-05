@@ -10,7 +10,7 @@ import type { PageContextServer } from "vike/types";
 import { DEFAULT_COUNTRY, marketOf } from "@/i18n/config";
 import { apiClient } from "@/lib/api";
 
-export type SupermarketsData = Awaited<ReturnType<typeof data>>;
+export type { SupermarketsData } from "@/features/save/types";
 
 // SSR: categorías reales (fila con íconos) + rails de la home (ofertas del día, populares,
 // ofertas por supermercado y mejor valor por precio/unidad), todo indexable.
