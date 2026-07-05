@@ -45,3 +45,10 @@ def test_one_adapter_per_basket_query() -> None:
 def test_default_basket_is_curated_and_market_is_do() -> None:
     assert SAVE_MARKET == "DO"
     assert "arroz la garza" in BASKET_QUERIES
+
+
+def test_basket_grew_toward_the_curated_target_size() -> None:
+    # Batch 9 (F2.0): la canasta pasó de 1 query a un starting point de ~200 SKUs de alta
+    # rotación, punto de partida para el cold-start de matching — no el catálogo completo.
+    assert len(BASKET_QUERIES) >= 150
+    assert len(set(BASKET_QUERIES)) == len(BASKET_QUERIES)  # sin duplicados
