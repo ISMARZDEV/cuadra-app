@@ -10,6 +10,7 @@ from typing import Protocol
 
 from .entities import AuthIdentity, Role, User
 from .enums import CapabilityKey, RoleKey
+from .value_objects import VerifiedClaims
 
 
 class UserRepository(Protocol):
@@ -47,3 +48,12 @@ class AuthIdentityRepository(Protocol):
     ) -> None:
         """Vincula una identidad de login (provider, subject) a un usuario existente."""
         ...
+
+
+class TokenVerifier(Protocol):
+    """Verifica el token del IdP (firma + claims) y devuelve la identidad autenticada.
+
+    La implementación (infra) valida la firma vía JWKS/RS256; lanza si el token es inválido.
+    El dominio depende de esta abstracción, no del proveedor concreto."""
+
+    def verify(self, token: str) -> VerifiedClaims: ...

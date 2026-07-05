@@ -13,7 +13,7 @@ dependencies = [
     "psycopg[binary]>=3.1",
     "pgvector>=0.3",
     "python-multipart>=0.0.9",
-    "pyjwt>=2.9",
+    "pyjwt[crypto]>=2.9",
     # IA / orquestador (Fase 1+)
     "langgraph>=0.2",
     "langgraph-checkpoint-postgres>=2.0",
