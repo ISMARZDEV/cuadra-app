@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from src.contexts.save.application.alerts import (
     ListAlertNotifications,
     ListAlerts,
+    MarkNotificationsRead,
     RegisterPushToken,
     RunAlertMatching,
     SubscribeAlert,
@@ -349,6 +350,12 @@ def get_list_alert_notifications(
     session: Session = Depends(get_session),
 ) -> ListAlertNotifications:
     return ListAlertNotifications(SqlAlertRepository(session))
+
+
+def get_mark_notifications_read(
+    session: Session = Depends(get_session),
+) -> MarkNotificationsRead:
+    return MarkNotificationsRead(SqlAlertRepository(session))
 
 
 def get_run_alert_matching(session: Session = Depends(get_session)) -> RunAlertMatching:

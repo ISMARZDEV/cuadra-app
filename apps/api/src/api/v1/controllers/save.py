@@ -15,6 +15,7 @@ from src.api.composition_root import (
     get_compare_product,
     get_list_alert_notifications,
     get_list_alerts,
+    get_mark_notifications_read,
     get_list_brand_products,
     get_list_categories,
     get_list_category_products,
@@ -38,6 +39,7 @@ from src.config import settings
 from src.contexts.save.application.alerts import (
     ListAlertNotifications,
     ListAlerts,
+    MarkNotificationsRead,
     RegisterPushToken,
     RunAlertMatching,
     SubscribeAlert,
@@ -285,6 +287,15 @@ def alert_notifications(
     use_case: ListAlertNotifications = Depends(get_list_alert_notifications),
 ) -> list[AlertNotificationDto]:
     return use_case.execute(user_id)
+
+
+@router.post("/alerts/notifications/read")
+def mark_notifications_read(
+    user_id: str = Depends(get_current_user_id),
+    use_case: MarkNotificationsRead = Depends(get_mark_notifications_read),
+) -> dict[str, int]:
+    """Marca leídas las notificaciones del usuario (al abrir el feed) → limpia el badge."""
+    return {"marked": use_case.execute(user_id)}
 
 
 @router.post("/alerts/run-matching")
