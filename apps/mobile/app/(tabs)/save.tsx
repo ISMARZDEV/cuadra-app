@@ -1,5 +1,1 @@
-import { Placeholder } from "@/components/ui/Placeholder";
-
-export default function SaveScreen() {
-  return <Placeholder title="Save" />;
-}
+export { SaveScreen as default } from "@/features/save/save-screen";

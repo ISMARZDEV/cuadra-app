@@ -1,0 +1,97 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Modo oscuro por clase en <html> (tema claro por defecto). */
+@custom-variant dark (&:is(.dark *));
+
+/* Design tokens de Cuadra — mismos VALORES que la app móvil (src/lib/theme/theme-provider):
+   verde #16A34A (primary), lime #7EB427 (accent/brand), bg claro #F2F7F1 / oscuro #0B1410. */
+:root {
+  --radius: 0.75rem;
+
+  --background: #f2f7f1;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #16a34a;
+  --primary-foreground: #ffffff;
+  --secondary: #e3f0de;
+  --secondary-foreground: #052e16;
+  --muted: #e8ede7;
+  --muted-foreground: #6b7280;
+  --accent: #e3f0de;
+  --accent-foreground: #052e16;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #dbead9;
+  --input: #dbead9;
+  --ring: #16a34a;
+
+  /* Marca (constantes) — para elementos de énfasis. */
+  --brand: #16a34a;
+  --lime: #7eb427;
+}
+
+.dark {
+  --background: #0b1410;
+  --foreground: #f7faf7;
+  --card: #12201a;
+  --card-foreground: #f7faf7;
+  --popover: #12201a;
+  --popover-foreground: #f7faf7;
+  --primary: #16a34a;
+  --primary-foreground: #ffffff;
+  --secondary: #16261e;
+  --secondary-foreground: #f7faf7;
+  --muted: #16261e;
+  --muted-foreground: #9ca3af;
+  --accent: #16261e;
+  --accent-foreground: #f7faf7;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #1e3a2a;
+  --input: #1e3a2a;
+  --ring: #16a34a;
+}
+
+/* Mapea los tokens a utilidades de Tailwind (bg-background, text-primary, border-border, …). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-lime: var(--lime);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+}

@@ -15,6 +15,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_PORT=8005
 METRO_PORT=8082
 
+# En DEV queremos CORS abierto (`*`, el default de config.py). Si la shell trae un
+# `CORS_ORIGINS` exportado a mano (p. ej. apuntando a un puerto viejo), el API nace
+# con CORS restrictivo y el navegador se come un error de preflight. Lo normalizamos
+# acá para que el script sea idempotente sin importar el estado de la terminal.
+unset CORS_ORIGINS
+
 # ── 1. IP LAN de la Mac (el iPhone/iPad NO puede usar localhost) ───────────────
 # Usamos la interfaz de la RUTA POR DEFECTO (la misma que elige Metro) para que la URL de
 # la API coincida con la del dev server, aun si hay varias interfaces (en0/en9/VPN/etc.).
@@ -53,8 +59,12 @@ fi
 # `$$` = PID del script → nombre único por corrida y limpio, sin las rarezas de `mktemp` entre
 # macOS (BSD, exige las X al final) y Linux (GNU).
 API_LOG="${TMPDIR:-/tmp}/cuadra-api.$$.log"
-echo "▶ API en http://${IP}:${API_PORT}  (logs: ${API_LOG})"
-( cd "${ROOT}/apps/api" && uv run uvicorn src.main:app --host 0.0.0.0 --port "${API_PORT}" ) >"${API_LOG}" 2>&1 &
+echo "▶ API en http://${IP}:${API_PORT}  (logs: ${API_LOG})  [auto-reload en src/]"
+# --reload: recarga el API al guardar código, sin reiniciar el script a mano.
+# --reload-dir src: acota la vigilancia a src/ (evita .venv, __pycache__, seeds → recargas
+# innecesarias y arranque lento). El worker que spawnea el reloader es nieto del script, pero
+# el cleanup de abajo mata POR PUERTO, así que igual queda libre al salir.
+( cd "${ROOT}/apps/api" && uv run uvicorn src.main:app --host 0.0.0.0 --port "${API_PORT}" --reload --reload-dir src ) >"${API_LOG}" 2>&1 &
 API_PID=$!
 # Al salir, mata el árbol y libera el puerto (kill al PID del subshell NO basta: uv/uvicorn son
 # nietos y sobreviven → de ahí los zombis). Limpiar por puerto garantiza que quede libre.

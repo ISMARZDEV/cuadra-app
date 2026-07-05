@@ -11,6 +11,7 @@ import { ActivityIndicator, View } from "react-native";
 import { useAuthStore } from "@/features/auth/use-auth-store";
 import { useLanguageStore } from "@/features/settings/use-language-store";
 import { queryClient } from "@/lib/api/query-client";
+import { startLocalAlertNotifications } from "@/lib/notifications/local-alerts";
 import { sounds } from "@/lib/sounds";
 import { ThemeProvider } from "@/lib/theme/theme-provider";
 import { DrawerProvider } from "@/store/drawer-store";
@@ -33,6 +34,12 @@ export default function RootLayout() {
   useEffect(() => {
     sounds.startup(); // app-launch sound (once per app open)
   }, []);
+
+  // Al autenticarse, arranca las alertas locales G4 (funciona con firma gratis; buzz al abrir/volver
+  // a la app). El push remoto 24/7 (register-push.ts) queda para cuando haya cuenta Apple de pago.
+  useEffect(() => {
+    if (status === "authenticated") void startLocalAlertNotifications();
+  }, [status]);
 
   // Wait for the language restore too, not just auth — otherwise the home screen (chat, mounted
   // immediately on launch) renders once with whatever deviceLanguage() resolved to at JS

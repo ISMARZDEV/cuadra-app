@@ -11,6 +11,39 @@ from collections.abc import Iterator
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from src.contexts.save.application.alerts import (
+    ListAlertNotifications,
+    ListAlerts,
+    RegisterPushToken,
+    RunAlertMatching,
+    SubscribeAlert,
+    UnsubscribeAlert,
+)
+from src.contexts.save.application.categories import GetCategory, ListCategories
+from src.contexts.save.application.compare import CompareProduct
+from src.contexts.save.application.drops import ListPriceDrops
+from src.contexts.save.application.history import GetPriceHistory
+from src.contexts.save.application.listing import (
+    ListBrandProducts,
+    ListCategoryProducts,
+    ListFeaturedProducts,
+    ListProviderProducts,
+    ListTodaysDeals,
+)
+from src.contexts.save.application.products import ListProducts
+from src.contexts.save.application.collections import GetCollection, ListCollections
+from src.contexts.save.application.providers import GetProvider, ListProviders
+from src.contexts.save.application.search import SearchProducts
+from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.infrastructure.repositories import (
+    SqlAlertRepository,
+    SqlCanonicalProductRepository,
+    SqlCollectionRepository,
+    SqlProviderRepository,
+    SqlStoreProductRepository,
+    SqlTaxonomyRepository,
+)
+
 from src.contexts.identity.application.queries import GetMe
 from src.contexts.identity.infrastructure.repositories import (
     SqlCapabilityGatingRepository,
@@ -220,3 +253,113 @@ def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):
         registry=registry,
         flow_registry={"register_expense": expense_flow},
     )
+
+
+# ── Save (catálogo de precios) ──
+def get_search_products(session: Session = Depends(get_session)) -> SearchProducts:
+    return SearchProducts(SqlCanonicalProductRepository(session))
+
+
+def get_compare_product(session: Session = Depends(get_session)) -> CompareProduct:
+    return CompareProduct(
+        SqlCanonicalProductRepository(session),
+        SqlStoreProductRepository(session),
+        SqlTaxonomyRepository(session),
+    )
+
+
+def get_list_categories(session: Session = Depends(get_session)) -> ListCategories:
+    return ListCategories(SqlTaxonomyRepository(session))
+
+
+def get_category(session: Session = Depends(get_session)) -> GetCategory:
+    return GetCategory(SqlTaxonomyRepository(session))
+
+
+def get_list_providers(session: Session = Depends(get_session)) -> ListProviders:
+    return ListProviders(SqlProviderRepository(session))
+
+
+def get_provider(session: Session = Depends(get_session)) -> GetProvider:
+    return GetProvider(SqlProviderRepository(session))
+
+
+def get_list_category_products(
+    session: Session = Depends(get_session),
+) -> ListCategoryProducts:
+    return ListCategoryProducts(
+        SqlTaxonomyRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_list_featured_products(
+    session: Session = Depends(get_session),
+) -> ListFeaturedProducts:
+    return ListFeaturedProducts(SqlStoreProductRepository(session))
+
+
+def get_list_collections(session: Session = Depends(get_session)) -> ListCollections:
+    return ListCollections(SqlCollectionRepository(session), SqlStoreProductRepository(session))
+
+
+def get_collection(session: Session = Depends(get_session)) -> GetCollection:
+    return GetCollection(SqlCollectionRepository(session), SqlStoreProductRepository(session))
+
+
+def get_list_brand_products(session: Session = Depends(get_session)) -> ListBrandProducts:
+    return ListBrandProducts(
+        SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_price_history(session: Session = Depends(get_session)) -> GetPriceHistory:
+    return GetPriceHistory(
+        SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_list_price_drops(session: Session = Depends(get_session)) -> ListPriceDrops:
+    return ListPriceDrops(SqlStoreProductRepository(session))
+
+
+def get_list_todays_deals(session: Session = Depends(get_session)) -> ListTodaysDeals:
+    return ListTodaysDeals(SqlStoreProductRepository(session))
+
+
+def get_list_provider_products(
+    session: Session = Depends(get_session),
+) -> ListProviderProducts:
+    return ListProviderProducts(SqlStoreProductRepository(session))
+
+
+# ── Alertas de precio (G4) ──
+def get_subscribe_alert(session: Session = Depends(get_session)) -> SubscribeAlert:
+    return SubscribeAlert(SqlAlertRepository(session), SqlCanonicalProductRepository(session))
+
+
+def get_list_alerts(session: Session = Depends(get_session)) -> ListAlerts:
+    return ListAlerts(SqlAlertRepository(session))
+
+
+def get_unsubscribe_alert(session: Session = Depends(get_session)) -> UnsubscribeAlert:
+    return UnsubscribeAlert(SqlAlertRepository(session))
+
+
+def get_list_alert_notifications(
+    session: Session = Depends(get_session),
+) -> ListAlertNotifications:
+    return ListAlertNotifications(SqlAlertRepository(session))
+
+
+def get_run_alert_matching(session: Session = Depends(get_session)) -> RunAlertMatching:
+    return RunAlertMatching(
+        SqlStoreProductRepository(session), SqlAlertRepository(session), ExpoPushSender()
+    )
+
+
+def get_register_push_token(session: Session = Depends(get_session)) -> RegisterPushToken:
+    return RegisterPushToken(SqlAlertRepository(session))
+
+
+def get_list_products(session: Session = Depends(get_session)) -> ListProducts:
+    return ListProducts(SqlCanonicalProductRepository(session))
