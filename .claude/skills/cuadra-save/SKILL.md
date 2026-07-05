@@ -104,6 +104,10 @@ tier first: **official API → mobile-app API → structured feed → AI agent (
   blocking) → Claude judges the grey band → human review queue`. Nothing below the threshold
   auto-merges; `confidence` explicit. Bootstrap with a curated ~200-SKU basket (solves cold-start).
 - **Break detection:** an adapter returning 0 products / changed schema → alert, never silent fail.
+- **2026 stack watch (benchmark at F2, don't assume):** Splink stays the reference, but evaluate
+  **GoldenMatch** (Fellegi-Sunter, SQL-native in Postgres/DuckDB) head-to-head. Embeddings: BGE-M3 is
+  the OSS workhorse, but **Qwen3-Embedding** now leads MTEB multilingual — benchmark both on the RD
+  catalog. Principle that holds either way: deterministic scoring > LLM generation for the match decision.
 
 ### 5. Contract-first API
 
@@ -121,7 +125,10 @@ never writes the query → no hallucinated columns/aggregations, no injection). 
 pg_trgm + pgvector, RRF, conditional rerank) resolves fuzzy INTENT only ("arroz Rica" → product
 id); prices are always the tool's. Mutations (add_to_list, set_price_alert) are HITL (`interrupt()`).
 `CoachAgent` = fan-out of the triangle (Insights × Save). Grounding: context-only, cite
-`source + captured_at + price_type`; faithfulness eval is the release gate.
+`source + captured_at + price_type`; faithfulness eval (RAGAS + LangSmith; 2026 stack also Phoenix/
+Langfuse) is the release gate. **Caveat (2026):** a RAG answer can score 0.95 faithfulness and still
+be WRONG if the retrieved price is stale — that's exactly why prices go through deterministic tools
+with a **freshness SLA** (`captured_at`), never through RAG. Faithfulness ≠ correctness.
 
 ### 7. Roadmap / current state
 
