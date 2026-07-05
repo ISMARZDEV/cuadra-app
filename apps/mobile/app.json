@@ -24,7 +24,9 @@
       "expo-secure-store",
       "expo-audio",
       "expo-font",
-      "expo-notifications"
+      "expo-notifications",
+      "@clerk/expo",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
