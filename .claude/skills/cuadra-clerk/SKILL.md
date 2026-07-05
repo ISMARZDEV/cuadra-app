@@ -54,6 +54,8 @@ metadata:
    `identity.user` + RBAC (roles/capabilities/market-gating, schema `identity`) are the source of
    truth. We map Clerk's `sub` → our user via **`auth_identity(provider="clerk", subject=sub)`** →
    **near-zero lock-in** (swap IdP = change the issuer/JWKS + the front SDK; the user table stays).
+   The user is provisioned JIT on the **first AUTHENTICATED backend request** (`get_current_user_id`),
+   NOT on Clerk login — so after signing in, an authed call must fire for the row to exist in our DB.
 2. **DUAL-MODE, always.** Clerk activates ONLY when the publishable key env is set; with no key the
    app falls back to **dev-login** (HS256, dev-only). This protects local dev, CI, and SSR (no key →
    `<ClerkProvider>` is never mounted). NEVER hard-require Clerk; NEVER delete the dev-login path.
