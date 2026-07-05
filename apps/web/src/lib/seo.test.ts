@@ -6,6 +6,7 @@ import { buildRobots, buildSitemap, logicalPaths } from "./sitemap.js";
 
 const comparison: PriceComparisonDto = {
   canonical_product_id: "c1",
+  slug: "arroz-enriquecido-la-garza-10-lb",
   name: "Arroz Enriquecido La Garza",
   brand: "La Garza",
   currency: "DOP",
@@ -33,24 +34,28 @@ describe("buildProductJsonLd", () => {
 });
 
 describe("logicalPaths + buildSitemap (i18n × país)", () => {
-  const products = [{ id: "c1" }];
+  const products = [{ slug: "arroz-la-garza-10-lb" }];
   const paths = logicalPaths(products);
   const opts = { locales: ["es", "en", "pt"], country: "do", paths, defaultLocale: "es" };
 
-  it("las rutas lógicas: landing, Supermercados, categorías y una por producto (slugs inglés)", () => {
+  it("las rutas lógicas: landing, Supermercados, categorías y una por producto (por SLUG)", () => {
     expect(paths).toEqual([
       "/",
       "/save/supermarkets",
       "/save/supermarkets/categories",
-      "/save/supermarkets/product/c1",
+      "/save/supermarkets/product/arroz-la-garza-10-lb",
     ]);
   });
 
   it("emite un <url> cerrado por locale×ruta con <loc> absolutas prefijadas", () => {
     const xml = buildSitemap("https://cuadra.app/", opts);
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xml).toContain("<loc>https://cuadra.app/es/do/save/supermarkets/product/c1</loc>");
-    expect(xml).toContain("<loc>https://cuadra.app/en/do/save/supermarkets/product/c1</loc>");
+    expect(xml).toContain(
+      "<loc>https://cuadra.app/es/do/save/supermarkets/product/arroz-la-garza-10-lb</loc>",
+    );
+    expect(xml).toContain(
+      "<loc>https://cuadra.app/en/do/save/supermarkets/product/arroz-la-garza-10-lb</loc>",
+    );
     expect(xml).toContain("</url>"); // cierre correcto (antes faltaba)
     expect(xml).not.toContain("/do//"); // sin doble slash en el path
   });

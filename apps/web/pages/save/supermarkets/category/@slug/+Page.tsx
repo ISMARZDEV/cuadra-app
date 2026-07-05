@@ -110,7 +110,7 @@ function CategoryOverview() {
                   {popular.map((p) => (
                     <CarouselItem key={p.id} className="basis-auto pl-4">
                       <div className="w-40">
-                        <ProductCard product={p} href={productHref(p.id)} locale={locale} />
+                        <ProductCard product={p} href={productHref(p.slug)} locale={locale} />
                       </div>
                     </CarouselItem>
                   ))}
@@ -241,7 +241,7 @@ function CategoryListing() {
           ) : (
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
               {items.map((p) => (
-                <ProductCard key={p.id} product={p} href={productHref(p.id)} locale={locale} />
+                <ProductCard key={p.id} product={p} href={productHref(p.slug)} locale={locale} />
               ))}
             </div>
           )}

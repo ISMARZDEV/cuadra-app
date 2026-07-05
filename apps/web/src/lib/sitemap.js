@@ -2,16 +2,17 @@
 // con Node crudo (sin transpilar) Y los tests de vitest — una sola fuente de verdad, sin duplicar.
 // Emite la matriz idioma×país×ruta con hreflang alternates (SEO multilingüe multi-país).
 
-/** @typedef {{ id: string }} ProductRef */
+/** @typedef {{ slug: string }} ProductRef */
 
 /** Rutas LÓGICAS indexables por país: landing, Supermercados y sus páginas, + una por producto.
+ * La URL de producto usa el SLUG legible (llave pública/canónica), no el UUID.
  * @param {ProductRef[]} products @returns {string[]} */
 export function logicalPaths(products) {
   return [
     "/",
     "/save/supermarkets",
     "/save/supermarkets/categories",
-    ...products.map((p) => `/save/supermarkets/product/${p.id}`),
+    ...products.map((p) => `/save/supermarkets/product/${p.slug}`),
   ];
 }
 

@@ -6,6 +6,7 @@ import { CompareTable } from "./compare-table";
 
 const comparison: PriceComparisonDto = {
   canonical_product_id: "c1",
+  slug: "arroz-la-garza-10-lbs",
   name: "Arroz La Garza 10 Lbs",
   brand: "La Garza",
   display_size: "10 LB",
