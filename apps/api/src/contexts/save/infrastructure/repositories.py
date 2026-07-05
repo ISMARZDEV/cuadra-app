@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from src.shared.money import Currency, Money
@@ -571,6 +571,17 @@ class SqlAlertRepository:
             )
             for n in rows
         ]
+
+    def mark_notifications_read(self, user_id: str) -> int:
+        result = self._s.execute(
+            update(AlertNotificationModel)
+            .where(
+                AlertNotificationModel.user_id == uuid.UUID(user_id),
+                AlertNotificationModel.read_at.is_(None),
+            )
+            .values(read_at=func.now())
+        )
+        return result.rowcount
 
     def register_push_token(self, user_id: str, token: str, platform: str) -> None:
         existing = self._s.scalars(

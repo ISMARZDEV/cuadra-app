@@ -1,6 +1,7 @@
 import {
   alertNotifications,
   listAlerts,
+  markNotificationsRead,
   subscribeAlert,
   unsubscribeAlert,
 } from "@cuadra/api-client";
@@ -23,3 +24,7 @@ export const removeAlert = (alertId: string) =>
 
 export const myNotifications = () =>
   alertNotifications({ client: apiClient, headers: authHeaders() });
+
+// Marca leídas todas las notificaciones del usuario (al abrir el feed) → limpia el badge del bell.
+export const readNotifications = () =>
+  markNotificationsRead({ client: apiClient, headers: authHeaders() });

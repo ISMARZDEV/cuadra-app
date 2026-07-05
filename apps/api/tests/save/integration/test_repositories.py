@@ -6,7 +6,7 @@ CAMBIA (change-only, doc 10); si es igual, solo actualiza `last_seen_at`. Money 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -21,6 +21,7 @@ from src.contexts.save.domain.entities import (
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 from src.contexts.save.infrastructure.models import PriceModel, TaxonomyNodeModel
 from src.contexts.save.infrastructure.repositories import (
+    SqlAlertRepository,
     SqlCanonicalProductRepository,
     SqlProviderRepository,
     SqlStoreProductRepository,
@@ -321,3 +322,20 @@ def test_exists_by_natural_key(db_session) -> None:  # type: ignore[no-untyped-d
     )
     assert sp.exists(pid, "sku1") is True
     assert sp.exists(pid, "sku-otro") is False
+
+
+def test_alert_mark_notifications_read_sets_read_at_and_is_idempotent(db_session) -> None:  # type: ignore[no-untyped-def]
+    _pid, cid = _seed_provider_and_canonical(db_session)
+    user = _uuid()
+    repo = SqlAlertRepository(db_session)
+    alert_id = repo.subscribe(user, cid, "DO", None)
+    repo.record_notification(
+        alert_id=alert_id, user_id=user, canonical_product_id=cid,
+        product_name="Arroz La Garza", provider_name="Merca", previous_minor=45000,
+        current_minor=42000, currency="DOP", drop_bps=666,
+        captured_at=datetime(2026, 7, 4, tzinfo=timezone.utc),
+    )
+    assert repo.list_notifications(user)[0].read is False  # nace no leída
+    assert repo.mark_notifications_read(user) == 1         # marca 1
+    assert repo.mark_notifications_read(user) == 0         # idempotente (ya no hay no-leídas)
+    assert repo.list_notifications(user)[0].read is True   # ahora leída

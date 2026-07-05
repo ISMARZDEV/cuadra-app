@@ -12,11 +12,11 @@ import { CountrySwitcher, LocaleSwitcher } from "./switcher";
 import { ThemeToggle } from "./theme-toggle";
 
 // Campana de notificaciones (G4): visible solo con sesión. Muestra el nº de alertas disparadas
-// (el MISMO feed que ve la app móvil). Enlaza a "Mis alertas".
+// NO LEÍDAS (el MISMO feed que ve la app móvil). Se limpia al abrir "Mis alertas" (marca leído).
 function AlertsBell({ href, label }: { href: string; label: string }) {
   const [count, setCount] = useState(0);
   useEffect(() => {
-    void myNotifications().then((r) => setCount(r.data?.length ?? 0));
+    void myNotifications().then((r) => setCount(r.data?.filter((n) => !n.read).length ?? 0));
   }, []);
   return (
     <a

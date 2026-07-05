@@ -159,6 +159,10 @@ class AlertRepository(Protocol):
         """Feed de alertas disparadas del usuario, más recientes primero."""
         ...
 
+    def mark_notifications_read(self, user_id: str) -> int:
+        """Marca leídas todas las notificaciones no leídas del usuario. Devuelve cuántas."""
+        ...
+
     def register_push_token(self, user_id: str, token: str, platform: str) -> None:
         """Registra/actualiza el Expo push token de un dispositivo del usuario (upsert por token)."""
         ...

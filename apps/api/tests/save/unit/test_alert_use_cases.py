@@ -7,7 +7,11 @@ from decimal import Decimal
 
 import pytest
 
-from src.contexts.save.application.alerts import RunAlertMatching, SubscribeAlert
+from src.contexts.save.application.alerts import (
+    MarkNotificationsRead,
+    RunAlertMatching,
+    SubscribeAlert,
+)
 from src.contexts.save.application.errors import CanonicalProductNotFoundError
 from src.contexts.save.domain.alerts import AlertSubscription
 from src.contexts.save.domain.drops import PriceChange
@@ -130,3 +134,18 @@ def test_run_matching_no_push_when_no_sender() -> None:
     store_repo = FakeStoreRepo([_change("arroz", 45000, 42000)])
     # sin push_sender → solo feed in-app, sin error
     assert RunAlertMatching(store_repo, alert_repo).execute("DO") == 1
+
+
+def test_mark_notifications_read_delegates_and_returns_count() -> None:
+    class Repo:
+        def __init__(self) -> None:
+            self.marked: str | None = None
+
+        def mark_notifications_read(self, user_id: str) -> int:
+            self.marked = user_id
+            return 3
+
+    repo = Repo()
+    n = MarkNotificationsRead(repo).execute("user-1")  # type: ignore[arg-type]
+    assert n == 3
+    assert repo.marked == "user-1"

@@ -8,7 +8,7 @@ import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
 
-import { myAlerts, myNotifications, removeAlert } from "../api";
+import { myAlerts, myNotifications, readNotifications, removeAlert } from "../api";
 import { useAuth } from "../hooks/use-auth";
 import { formatMoney } from "../lib/format";
 
@@ -25,6 +25,9 @@ export function AlertsScreen() {
     const [a, n] = await Promise.all([myAlerts(), myNotifications()]);
     setAlerts(a.data ?? []);
     setNotifs(n.data ?? []);
+    // Abrir el feed = leído: marca leídas en el backend (limpia el badge del bell). El snapshot
+    // recién traído conserva `read` para pintar el punto de "nueva" en esta vista.
+    if ((n.data ?? []).some((x) => !x.read)) void readNotifications();
   }, [isAuthed]);
 
   useEffect(() => {
@@ -63,7 +66,12 @@ export function AlertsScreen() {
             {notifs.map((n) => (
               <li key={n.id}>
                 <Card className="p-3">
-                  <p className="text-sm font-medium">{n.product_name}</p>
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    {!n.read && (
+                      <span className="size-2 shrink-0 rounded-full bg-primary" aria-hidden />
+                    )}
+                    {n.product_name}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {format(locale, "alerts.droppedFromTo", {
                       from: formatMoney(n.previous_minor, n.currency),

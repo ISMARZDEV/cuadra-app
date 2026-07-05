@@ -92,6 +92,16 @@ class ListAlertNotifications:
         ]
 
 
+class MarkNotificationsRead:
+    """Marca como leídas TODAS las notificaciones no leídas del usuario. Devuelve cuántas (badge)."""
+
+    def __init__(self, alert_repo: AlertRepository) -> None:
+        self._alerts = alert_repo
+
+    def execute(self, user_id: str) -> int:
+        return self._alerts.mark_notifications_read(user_id)
+
+
 class RegisterPushToken:
     """Registra el Expo push token de un dispositivo del usuario (para el push de alertas)."""
 
