@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@clerk/expo": "^3.6.5",
     "@cuadra/api-client": "workspace:*",
     "@expo-google-fonts/akshar": "^0.4.1",
     "@expo/metro-runtime": "~56.0.16",
@@ -33,6 +34,7 @@
     "expo-router": "~56.2.12",
     "expo-secure-store": "~56.0.4",
     "expo-status-bar": "~56.0.4",
+    "expo-web-browser": "~56.0.5",
     "lucide-react-native": "^1.21.0",
     "nativewind": "^4.2.6",
     "react": "19.2.3",
