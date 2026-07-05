@@ -9,6 +9,13 @@ import { CategoryFilters } from "@/components/category-filters";
 import { Pagination } from "@/components/pagination";
 import { ProductCard } from "@/components/product-card";
 import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -51,7 +58,7 @@ function CategoryOverview() {
     <div className="mx-auto max-w-6xl px-4 py-6">
       <Breadcrumbs trail={trail} currentName={cat.name} />
 
-      <div className="mt-4 grid grid-cols-1 gap-8 md:grid-cols-[220px_1fr]">
+      <div className="mt-4 grid grid-cols-1 gap-8 md:grid-cols-[220px_minmax(0,1fr)]">
         <nav className="flex flex-col gap-0.5">
           {cat.categories.map((c) => {
             const Icon = categoryIcon(c.slug);
@@ -98,13 +105,19 @@ function CategoryOverview() {
           {popular.length > 0 && (
             <div className="mt-8">
               <h2 className="mb-3 text-lg font-semibold">{t("category.popular")}</h2>
-              <div className="flex gap-4 overflow-x-auto pb-2">
-                {popular.map((p) => (
-                  <div key={p.id} className="w-40 shrink-0">
-                    <ProductCard product={p} href={productHref(p.id)} locale={locale} />
-                  </div>
-                ))}
-              </div>
+              <Carousel opts={{ align: "start", dragFree: true }} className="w-full">
+                <CarouselContent className="-ml-4">
+                  {popular.map((p) => (
+                    <CarouselItem key={p.id} className="basis-auto pl-4">
+                      <div className="w-40">
+                        <ProductCard product={p} href={productHref(p.id)} locale={locale} />
+                      </div>
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+                <CarouselPrevious className="left-2 hidden sm:flex" />
+                <CarouselNext className="right-2 hidden sm:flex" />
+              </Carousel>
             </div>
           )}
         </div>
@@ -176,7 +189,7 @@ function CategoryListing() {
     <div className="mx-auto max-w-6xl px-4 py-6">
       <Breadcrumbs trail={cat.breadcrumb.slice(0, -1)} currentName={cat.name} />
 
-      <div className="mt-4 grid grid-cols-1 gap-8 md:grid-cols-[220px_1fr]">
+      <div className="mt-4 grid grid-cols-1 gap-8 md:grid-cols-[220px_minmax(0,1fr)]">
         <CategoryFilters facets={cat.facets} locale={locale} />
 
         <div>

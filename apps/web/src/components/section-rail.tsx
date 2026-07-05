@@ -51,8 +51,8 @@ export function SectionRail({
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious className="hidden sm:flex" />
-        <CarouselNext className="hidden sm:flex" />
+        <CarouselPrevious className="left-2 hidden sm:flex" />
+        <CarouselNext className="right-2 hidden sm:flex" />
       </Carousel>
     </section>
   );
