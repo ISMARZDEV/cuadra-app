@@ -9,8 +9,17 @@ description: >
 license: Apache-2.0
 metadata:
   author: aispace
-  version: "1.0"
+  version: "1.1"
 ---
+
+> **Research the state of the art FIRST (2025-2026) — a standing priority, not an afterthought.**
+> LLM/agent practice moves fast; do NOT design prompts from memory. Investigate and be CRITICAL:
+> current model/provider docs (Anthropic prompt-engineering, tool-use), LangGraph/LangChain docs,
+> papers on agents/RAG/evals, high-signal GitHub repos, and **how successful agentic products solve
+> it** — plus prompt-injection / jailbreak / tool-abuse security (OWASP LLM Top 10). Compare
+> approaches, verify claims (model versions, benchmarks), prefer the recent, and flag anything
+> unverified as "to verify", never as fact. Grounded decisions over confident guesses. Use web
+> search / fetch the real docs; don't assume.
 
 ## When to Use
 

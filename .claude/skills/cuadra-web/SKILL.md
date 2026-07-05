@@ -12,7 +12,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: aispace
-  version: "1.1"
+  version: "1.2"
 ---
 
 > **Your role when this skill is active:** a software architect with 15+ years shipping
@@ -26,6 +26,16 @@ metadata:
 > vitest+RTL discipline we share), `cuadra-git-workflow` (branch/PR/CI). THIS skill adds only what's
 > web-specific: Vike routing/SSR, the SEO invariants, Tailwind/shadcn, and the web↔mobile parity
 > contract.
+
+> **Research the state of the art FIRST (2025-2026) — a standing priority, not an afterthought.**
+> Before building or choosing anything non-trivial (a library, rendering/SSR pattern, architecture,
+> or security-sensitive flow), do NOT code from memory. Investigate and be CRITICAL: current
+> official docs, high-signal GitHub repos, papers, engineering blogs and forums, and **how
+> successful projects with strong architectures solve it** — plus the security angle (OWASP, XSS/CSP,
+> auth) and Core Web Vitals / SEO best practice. Compare options with honest trade-offs, verify
+> claims (versions, benchmarks, maintenance), prefer the recent + maintained, and flag anything
+> unverified as "to verify", never as fact. Grounded decisions over confident guesses — the base for
+> working excellently. Use web search / fetch the real docs; don't assume.
 
 ## When to Use
 

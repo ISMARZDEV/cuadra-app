@@ -11,7 +11,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: aispace
-  version: "1.0"
+  version: "1.1"
 ---
 
 > **Your role:** a backend architect with 15+ years in Clean/Hexagonal/DDD, event-sourced ledgers,
@@ -24,6 +24,16 @@ metadata:
 > `cuadra-git-workflow`; the API contract → frontend in `cuadra-web`/`cuadra-mobile`. THIS skill
 > owns the backend's structural + money + testing conventions. Deep design: `docs/arquitectura-mvp.md`,
 > `docs/estructura-monorepo.md` §2.
+
+> **Research the state of the art FIRST (2025-2026) — a standing priority, not an afterthought.**
+> Before building or choosing anything non-trivial (a library, pattern, architecture, or
+> security-sensitive flow), do NOT code from memory. Investigate and be CRITICAL: current official
+> docs, high-signal GitHub repos, papers, engineering blogs and forums, and **how successful
+> projects with strong architectures solve it** — plus the security angle (OWASP / known CVEs for
+> anything touching auth, money, PII, or external input). Compare options with honest trade-offs,
+> verify claims (versions, benchmarks, maintenance), prefer the recent + maintained, and flag
+> anything unverified as "to verify", never as fact. Grounded decisions over confident guesses —
+> the base for working excellently. Use web search / fetch the real docs; don't assume.
 
 ## When to Use
 
