@@ -15,6 +15,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_PORT=8005
 METRO_PORT=8082
 
+# En DEV queremos CORS abierto (`*`, el default de config.py). Si la shell trae un
+# `CORS_ORIGINS` exportado a mano (p. ej. apuntando a un puerto viejo), el API nace
+# con CORS restrictivo y el navegador se come un error de preflight. Lo normalizamos
+# acá para que el script sea idempotente sin importar el estado de la terminal.
+unset CORS_ORIGINS
+
 # ── 1. IP LAN de la Mac (el iPhone/iPad NO puede usar localhost) ───────────────
 # Usamos la interfaz de la RUTA POR DEFECTO (la misma que elige Metro) para que la URL de
 # la API coincida con la del dev server, aun si hay varias interfaces (en0/en9/VPN/etc.).
