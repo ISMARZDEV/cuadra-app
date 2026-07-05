@@ -355,6 +355,47 @@ def test_grey_band_invokes_judge_and_auto_links_on_match_verdict() -> None:
     assert c["store_repo"].links == [("sp-1", "canon-1")]
 
 
+def test_grey_band_match_verdict_at_confidence_floor_auto_links() -> None:
+    # JUDGE_MATCH_MIN_CONFIDENCE = 0.70 — exactly AT the floor still auto-links (>=, not >).
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.70, ["brand agrees"]))
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
+
+    result = use_case.execute(_incoming())
+
+    assert result.status == "auto_linked"
+    assert result.method == "llm"
+    assert result.confidence == 0.70
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_grey_band_low_confidence_match_verdict_routes_to_pending_review() -> None:
+    # CRITICAL-1 fix: a judge "match" BELOW the confidence floor must NOT auto-merge — sacred
+    # rule #4 (nothing weakly-confident auto-merges). Routes to review instead, method="llm".
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.60, ["brand agrees"]))  # < JUDGE_MATCH_MIN_CONFIDENCE
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
+
+    result = use_case.execute(_incoming())
+
+    assert len(judge.calls) == 1
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert result.method == "llm"
+    assert result.confidence == 0.60
+    assert c["store_repo"].links == []
+
+
 def test_grey_band_no_match_verdict_routes_to_pending_review() -> None:
     match_repo = FakeCascadeMatchRepository(
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],

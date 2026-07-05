@@ -12,6 +12,12 @@ que fusionar) — se trata igual que un score bajo: directo a la cola humana.
 
 Los umbrales son constantes nombradas (no mágicas) porque están pendientes de afinar una vez
 exista el labeled set del curated basket (ver design §Open Questions).
+
+`JUDGE_MATCH_MIN_CONFIDENCE` (verify follow-up, CRITICAL-1): piso de confianza que un veredicto
+`decision="match"` del Claude-judge debe alcanzar para autolinkear. Sin este piso, una banda gris
+(que arranca en MATCH_MID_THRESHOLD=0.55) podía autolinkear con un "match" del judge de baja
+confianza propia — violando la regla sagrada #4 (nada débilmente confiado se auto-mergea). Tuned
+en Batch 10 con datos reales del curated basket; hasta entonces, valor conservador provisional.
 """
 from __future__ import annotations
 
@@ -19,6 +25,7 @@ from typing import Literal
 
 MATCH_HIGH_THRESHOLD = 0.85
 MATCH_MID_THRESHOLD = 0.55
+JUDGE_MATCH_MIN_CONFIDENCE = 0.70
 
 MatchBand = Literal["auto_link", "grey", "human"]
 

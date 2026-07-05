@@ -35,6 +35,10 @@ class ProductMatch:
             raise ValueError(f"ProductMatch.status inválido: {self.status!r}")
         if not isinstance(self.confidence, float):
             raise ValueError("ProductMatch.confidence debe ser float")
+        if not (0.0 <= self.confidence <= 1.0):
+            raise ValueError(
+                f"ProductMatch.confidence fuera de rango [0.0, 1.0]: {self.confidence!r}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
