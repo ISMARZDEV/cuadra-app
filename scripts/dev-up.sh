@@ -59,8 +59,12 @@ fi
 # `$$` = PID del script → nombre único por corrida y limpio, sin las rarezas de `mktemp` entre
 # macOS (BSD, exige las X al final) y Linux (GNU).
 API_LOG="${TMPDIR:-/tmp}/cuadra-api.$$.log"
-echo "▶ API en http://${IP}:${API_PORT}  (logs: ${API_LOG})"
-( cd "${ROOT}/apps/api" && uv run uvicorn src.main:app --host 0.0.0.0 --port "${API_PORT}" ) >"${API_LOG}" 2>&1 &
+echo "▶ API en http://${IP}:${API_PORT}  (logs: ${API_LOG})  [auto-reload en src/]"
+# --reload: recarga el API al guardar código, sin reiniciar el script a mano.
+# --reload-dir src: acota la vigilancia a src/ (evita .venv, __pycache__, seeds → recargas
+# innecesarias y arranque lento). El worker que spawnea el reloader es nieto del script, pero
+# el cleanup de abajo mata POR PUERTO, así que igual queda libre al salir.
+( cd "${ROOT}/apps/api" && uv run uvicorn src.main:app --host 0.0.0.0 --port "${API_PORT}" --reload --reload-dir src ) >"${API_LOG}" 2>&1 &
 API_PID=$!
 # Al salir, mata el árbol y libera el puerto (kill al PID del subshell NO basta: uv/uvicorn son
 # nietos y sobreviven → de ahí los zombis). Limpiar por puerto garantiza que quede libre.
