@@ -7,6 +7,7 @@ declare global {
       locale?: Locale;
       country?: Country;
       needsLocaleRedirect?: boolean;
+      acceptLanguage?: string; // header del request (SSR) → negociación de idioma en el guard
     }
   }
 }
