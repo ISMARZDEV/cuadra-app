@@ -57,7 +57,10 @@ async function startServer() {
 
   app.get("*", async (req, res) => {
     try {
-      const pageContext = await renderPage({ urlOriginal: req.originalUrl });
+      const pageContext = await renderPage({
+        urlOriginal: req.originalUrl,
+        acceptLanguage: req.headers["accept-language"], // → el guard negocia el idioma
+      });
       if (pageContext.errorWhileRendering) {
         console.error("[render error]", pageContext.errorWhileRendering);
       }
