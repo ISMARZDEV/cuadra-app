@@ -1,7 +1,7 @@
 import type { Config } from "vike/types";
 import vikeReact from "vike-react/config";
 
-import { GlobalHead } from "../src/components/global-head";
+import { GlobalHead } from "../src/components/layout/global-head";
 import { Layout } from "../layouts/LayoutDefault";
 
 // Config global de Vike (vike-react = renderer React SSR). `Head` global = hreflang (SEO

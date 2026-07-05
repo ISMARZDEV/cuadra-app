@@ -4,7 +4,7 @@ import express from "express";
 import { renderPage } from "vike/server";
 
 import { DEFAULT_COUNTRY, DEFAULT_LOCALE, LOCALES, MARKET_BY_COUNTRY } from "../src/i18n/locales.js";
-import { buildRobots, buildSitemap, logicalPaths } from "../src/lib/sitemap.js";
+import { buildRobots, buildSitemap, logicalPaths } from "../src/scripts/sitemap.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 const port = process.env.PORT || 3006;

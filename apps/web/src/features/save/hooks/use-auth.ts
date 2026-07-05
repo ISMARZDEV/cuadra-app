@@ -1,7 +1,7 @@
 import { devLogin } from "@cuadra/api-client";
 import { useSyncExternalStore } from "react";
 
-import { apiClient } from "./api";
+import { apiClient } from "@/lib/api";
 
 // Auth mínima del portal (dev): login por email vía /identity/dev-login → JWT en localStorage.
 // En prod el token lo emite el IdP externo (dev-login devuelve 404). Mismo patrón SSR-safe que la

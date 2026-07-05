@@ -1,10 +1,10 @@
 import type { ProductCardDto } from "@cuadra/api-client";
 
-import type { Locale } from "../i18n/config";
-import { translate } from "../i18n/messages";
-import { formatMoney, formatUnitPriceDisplay } from "../lib/format";
-import { useShoppingList } from "../lib/use-shopping-list";
-import { Card } from "./ui/card";
+import type { Locale } from "@/i18n/config";
+import { translate } from "@/i18n/messages";
+import { formatMoney, formatUnitPriceDisplay } from "@/features/save/lib/format";
+import { useShoppingList } from "@/features/save/hooks/use-shopping-list";
+import { Card } from "@/components/ui/card";
 
 // Card de producto (Imagen #5, §B): imagen (placeholder hasta persistir image_url), marca, nombre,
 // precio del MÁS BARATO, precio/unidad y "N tiendas". Presentacional puro (recibe locale + href).

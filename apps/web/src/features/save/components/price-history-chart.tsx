@@ -1,16 +1,16 @@
 import type { PriceHistoryDto } from "@cuadra/api-client";
 import { useMemo, useState } from "react";
 
-import type { Locale } from "../i18n/config";
-import { translate } from "../i18n/messages";
-import { formatMoney } from "../lib/format";
+import type { Locale } from "@/i18n/config";
+import { translate } from "@/i18n/messages";
+import { formatMoney } from "@/features/save/lib/format";
 import {
   priceDomain,
   seriesInRange,
   stepVertices,
   windowStart,
   type HistoryRange,
-} from "../lib/price-history";
+} from "@/features/save/lib/price-history";
 
 // Historial de precios (C9) — área escalonada de UNA tienda a la vez (dropdown), con toggle de
 // rango 1M/3M/Todos. Verde de marca (una sola serie → sin leyenda; el título/dropdown la nombra).

@@ -1,4 +1,4 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { PlaceholderPage } from "@/components/layout/placeholder-page";
 import { usePageI18n } from "@/i18n/usePageI18n";
 
 export default function Page() {

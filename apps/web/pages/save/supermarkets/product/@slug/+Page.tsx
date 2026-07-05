@@ -4,19 +4,19 @@ import { Bell } from "lucide-react";
 import { useState } from "react";
 import { navigate } from "vike/client/router";
 
-import { Breadcrumbs } from "@/components/breadcrumbs";
-import { CompareTable } from "@/components/compare-table";
-import { PriceHistoryChart } from "@/components/price-history-chart";
-import { SectionRail } from "@/components/section-rail";
+import { Breadcrumbs } from "@/features/save/components/breadcrumbs";
+import { CompareTable } from "@/features/save/components/compare-table";
+import { PriceHistoryChart } from "@/features/save/components/price-history-chart";
+import { SectionRail } from "@/features/save/components/section-rail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
-import { subscribe } from "@/lib/alerts-api";
-import { formatMoney } from "@/lib/format";
+import { subscribe } from "@/features/save/api";
+import { formatMoney } from "@/features/save/lib/format";
 import { localeHref } from "@/lib/links";
-import { useAuth } from "@/lib/use-auth";
-import { useShoppingList } from "@/lib/use-shopping-list";
+import { useAuth } from "@/features/save/hooks/use-auth";
+import { useShoppingList } from "@/features/save/hooks/use-shopping-list";
 
 import type { ProductData } from "./+data";
 

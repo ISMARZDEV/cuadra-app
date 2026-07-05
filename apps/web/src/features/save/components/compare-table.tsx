@@ -1,9 +1,9 @@
 import type { PriceComparisonDto } from "@cuadra/api-client";
 import { ArrowUpRight } from "lucide-react";
 
-import type { Locale } from "../i18n/config";
-import { translate } from "../i18n/messages";
-import { formatMoney, formatUnitPriceDisplay } from "../lib/format";
+import type { Locale } from "@/i18n/config";
+import { translate } from "@/i18n/messages";
+import { formatMoney, formatUnitPriceDisplay } from "@/features/save/lib/format";
 
 // Color estable por tienda para el avatar (mientras no haya logos reales — F2/assets).
 const AVATAR_COLORS = [

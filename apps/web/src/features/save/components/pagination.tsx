@@ -10,14 +10,14 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from "./ui/pagination";
+} from "@/components/ui/pagination";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./ui/select";
+} from "@/components/ui/select";
 
 // Números visibles: primero, último, actual±1, con "…" en los huecos (patrón clásico).
 function pageNumbers(current: number, total: number): (number | "…")[] {
