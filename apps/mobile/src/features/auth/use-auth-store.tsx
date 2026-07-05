@@ -10,7 +10,7 @@ import { setApiAuthToken } from "@/lib/api/client";
 
 const TOKEN_KEY = "cuadra.access_token";
 
-type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 type AuthState = {
   token: string | null;
