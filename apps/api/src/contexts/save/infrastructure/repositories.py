@@ -61,8 +61,17 @@ class SqlProviderRepository:
         self._s.flush()
 
     def get_by_id(self, provider_id: str) -> Provider | None:
-        m = self._s.get(ProviderModel, uuid.UUID(provider_id))
+        pid = _parse_uuid(provider_id)
+        m = self._s.get(ProviderModel, pid) if pid else None
         return provider_to_entity(m) if m else None
+
+    def list_by_market(self, market_id: str) -> list[Provider]:
+        models = self._s.scalars(
+            select(ProviderModel)
+            .where(ProviderModel.market_id == market_id)
+            .order_by(ProviderModel.name)
+        ).all()
+        return [provider_to_entity(m) for m in models]
 
 
 class SqlCanonicalProductRepository:

@@ -22,6 +22,9 @@ from ..taxonomy import CategoryNode
 class ProviderRepository(Protocol):
     def add(self, provider: Provider) -> None: ...
     def get_by_id(self, provider_id: str) -> Provider | None: ...
+    def list_by_market(self, market_id: str) -> list[Provider]:
+        """Providers del mercado, para el rail "Ofertas por supermercado" (A9)."""
+        ...
 
 
 class TaxonomyRepository(Protocol):

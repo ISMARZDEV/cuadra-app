@@ -45,6 +45,25 @@ def test_provider_round_trip(db_session) -> None:  # type: ignore[no-untyped-def
     assert got.market_id == "DO"
 
 
+def test_provider_get_by_id_invalid_uuid_returns_none(db_session) -> None:  # type: ignore[no-untyped-def]
+    # mismo contrato que CanonicalProductRepository: id malformado → None, no ValueError→500.
+    repo = SqlProviderRepository(db_session)
+    assert repo.get_by_id("no-es-un-uuid") is None
+
+
+def test_list_by_market_returns_only_that_markets_providers_sorted_by_name(db_session) -> None:  # type: ignore[no-untyped-def]
+    # DB de dev ya trae providers reales del seed (§ save_seed.py) → no asumir lista vacía,
+    # solo que la propia data agregada aparece, filtrada por mercado y ordenada por nombre.
+    repo = SqlProviderRepository(db_session)
+    repo.add(Provider(_uuid(), "ZzTestSirenaXYZ", ProviderType.SUPERMARKET, SourcePlatform.VTEX, "DO"))
+    repo.add(Provider(_uuid(), "AaTestBravoXYZ", ProviderType.SUPERMARKET, SourcePlatform.SPA, "DO"))
+    repo.add(Provider(_uuid(), "OtroMercadoXYZ", ProviderType.SUPERMARKET, SourcePlatform.VTEX, "US"))
+
+    names = [p.name for p in repo.list_by_market("DO")]
+    assert "OtroMercadoXYZ" not in names  # otro mercado, no debe aparecer
+    assert names.index("AaTestBravoXYZ") < names.index("ZzTestSirenaXYZ")  # orden alfabético
+
+
 def _seed_provider_and_canonical(db_session, market_id: str = "DO") -> tuple[str, str]:  # type: ignore[no-untyped-def]
     prov = SqlProviderRepository(db_session)
     pid = _uuid()

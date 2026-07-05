@@ -19,7 +19,11 @@ from src.api.composition_root import (
     get_list_category_products,
     get_list_featured_products,
     get_list_price_drops,
+    get_list_provider_products,
     get_list_products,
+    get_list_providers,
+    get_list_todays_deals,
+    get_provider,
     get_price_history,
     get_register_push_token,
     get_run_alert_matching,
@@ -51,6 +55,8 @@ from src.contexts.save.application.dtos import (
     PriceHistoryDto,
     ProductCardDto,
     ProductSearchDto,
+    ProviderPageDto,
+    ProviderRefDto,
 )
 from src.contexts.save.application.errors import (
     CanonicalProductNotFoundError,
@@ -61,8 +67,11 @@ from src.contexts.save.application.listing import (
     ListBrandProducts,
     ListCategoryProducts,
     ListFeaturedProducts,
+    ListProviderProducts,
+    ListTodaysDeals,
 )
 from src.contexts.save.application.products import ListProducts
+from src.contexts.save.application.providers import GetProvider, ListProviders
 from src.contexts.save.application.search import SearchProducts
 
 router = APIRouter(prefix="/save", tags=["save"])
@@ -104,6 +113,28 @@ def list_categories(
     use_case: ListCategories = Depends(get_list_categories),
 ) -> CategoryTreeDto:
     return use_case.execute(market)
+
+
+@router.get("/providers")
+def list_providers(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: ListProviders = Depends(get_list_providers),
+) -> list[ProviderRefDto]:
+    return use_case.execute(market)
+
+
+@router.get("/store/{provider_id}")
+def store_page(
+    provider_id: str,
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    get_provider_use_case: GetProvider = Depends(get_provider),
+    list_products_use_case: ListProviderProducts = Depends(get_list_provider_products),
+) -> ProviderPageDto:
+    provider = get_provider_use_case.execute(provider_id)
+    if provider is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tienda no encontrada.")
+    products = list_products_use_case.execute(market, provider_id)
+    return ProviderPageDto(name=provider.name, products=products)
 
 
 @router.get("/category/{slug}")
@@ -164,6 +195,16 @@ def list_products(
     use_case: ListProducts = Depends(get_list_products),
 ) -> list[ProductSearchDto]:
     return use_case.execute(market, limit=limit, offset=offset)
+
+
+@router.get("/deals")
+def todays_deals(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    days: int = Query(7, ge=1, le=3650, description="Ventana de detección en días"),
+    limit: int = Query(12, ge=1, le=50),
+    use_case: ListTodaysDeals = Depends(get_list_todays_deals),
+) -> list[ProductCardDto]:
+    return use_case.execute(market, days=days, limit=limit)
 
 
 @router.get("/drops")

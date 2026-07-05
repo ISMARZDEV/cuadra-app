@@ -27,13 +27,17 @@ from src.contexts.save.application.listing import (
     ListBrandProducts,
     ListCategoryProducts,
     ListFeaturedProducts,
+    ListProviderProducts,
+    ListTodaysDeals,
 )
 from src.contexts.save.application.products import ListProducts
+from src.contexts.save.application.providers import GetProvider, ListProviders
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlCanonicalProductRepository,
+    SqlProviderRepository,
     SqlStoreProductRepository,
     SqlTaxonomyRepository,
 )
@@ -270,6 +274,14 @@ def get_category(session: Session = Depends(get_session)) -> GetCategory:
     return GetCategory(SqlTaxonomyRepository(session))
 
 
+def get_list_providers(session: Session = Depends(get_session)) -> ListProviders:
+    return ListProviders(SqlProviderRepository(session))
+
+
+def get_provider(session: Session = Depends(get_session)) -> GetProvider:
+    return GetProvider(SqlProviderRepository(session))
+
+
 def get_list_category_products(
     session: Session = Depends(get_session),
 ) -> ListCategoryProducts:
@@ -298,6 +310,16 @@ def get_price_history(session: Session = Depends(get_session)) -> GetPriceHistor
 
 def get_list_price_drops(session: Session = Depends(get_session)) -> ListPriceDrops:
     return ListPriceDrops(SqlStoreProductRepository(session))
+
+
+def get_list_todays_deals(session: Session = Depends(get_session)) -> ListTodaysDeals:
+    return ListTodaysDeals(SqlStoreProductRepository(session))
+
+
+def get_list_provider_products(
+    session: Session = Depends(get_session),
+) -> ListProviderProducts:
+    return ListProviderProducts(SqlStoreProductRepository(session))
 
 
 # ── Alertas de precio (G4) ──

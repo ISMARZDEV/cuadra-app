@@ -199,6 +199,13 @@ class CategoryTreeDto(BaseModel):
     categories: list[CategoryNodeDto]
 
 
+class ProviderRefDto(BaseModel):
+    """Referencia a un supermercado (A9: "Ofertas por supermercado")."""
+
+    id: str
+    name: str
+
+
 class AlertDto(BaseModel):
     """Suscripción de alerta (G4) como la ve el usuario."""
 
@@ -248,6 +255,7 @@ class ProductCardDto(BaseModel):
     unit_price_minor: int     # precio por unidad base (§B2)
     unit_measure: str         # mass|volume|count
     store_count: int          # "N tiendas" (B4)
+    discount_bps: int | None = None  # % de bajada reciente (badge −X%), None si no está en oferta
 
 
 class FacetValueDto(BaseModel):
@@ -258,10 +266,20 @@ class FacetValueDto(BaseModel):
     count: int
 
 
+class PriceBucketDto(BaseModel):
+    """Un rango de precio preset con su conteo ("Hasta RD$125" · 129)."""
+
+    min_minor: int
+    max_minor: int | None  # None = "y más" (sin tope)
+    count: int
+
+
 class PriceFacetDto(BaseModel):
     min_minor: int
     max_minor: int
     currency: str
+    histogram: list[int] = []         # conteos por bin (barras del filtro de precio)
+    buckets: list[PriceBucketDto] = []  # rangos preset clicables con conteo
 
 
 class CategoryFacetsDto(BaseModel):
@@ -270,8 +288,21 @@ class CategoryFacetsDto(BaseModel):
     brands: list[FacetValueDto]
 
 
+class ProviderPageDto(BaseModel):
+    """Página propia de un supermercado (A9): nombre + su catálogo."""
+
+    name: str
+    products: list[ProductCardDto]
+
+
 class CategoryListingDto(BaseModel):
-    """Listado filtrable/ordenable por categoría (Imagen #5): cards + facetas + paginación."""
+    """Listado filtrable/ordenable por categoría (Imagen #5): cards + facetas + paginación.
+
+    `popular`: top productos por popularidad de TODA la rama (sin filtros aplicar) — alimenta la
+    plantilla Overview cuando el nodo tiene subcategorías (el frontend decide qué plantilla usar
+    según `subcategories`; `products`/`facets`/`total` siguen siendo el listado filtrado para la
+    plantilla Listing de los nodos hoja).
+    """
 
     name: str
     slug: str
@@ -280,3 +311,4 @@ class CategoryListingDto(BaseModel):
     total: int                # productos que pasan los filtros (antes de paginar)
     products: list[ProductCardDto]
     facets: CategoryFacetsDto
+    popular: list[ProductCardDto] = []
