@@ -52,6 +52,16 @@ def test_product_match_confidence_is_float() -> None:
     assert m.confidence == 0.5
 
 
+def test_product_match_rejects_confidence_above_one() -> None:
+    with pytest.raises(ValueError):
+        _make(confidence=1.5)
+
+
+def test_product_match_rejects_confidence_below_zero() -> None:
+    with pytest.raises(ValueError):
+        _make(confidence=-0.1)
+
+
 def test_product_match_canonical_product_id_may_be_none_when_pending() -> None:
     m = _make(canonical_product_id=None, status="pending_review", method="human", confidence=0.0)
     assert m.canonical_product_id is None

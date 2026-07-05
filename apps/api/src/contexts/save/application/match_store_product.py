@@ -33,7 +33,7 @@ from ..domain.ports import (
     StoreProductRepository,
 )
 from ..domain.ports.repositories import EmbeddingProvider, ProductMatchRepository
-from ..infrastructure.matching.cascade.banding import determine_band
+from ..infrastructure.matching.cascade.banding import JUDGE_MATCH_MIN_CONFIDENCE, determine_band
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
 from ..infrastructure.matching.cascade.scoring import apply_boosts
 
@@ -149,7 +149,10 @@ class MatchStoreProduct:
                     "ean": None,
                 },
             )
-            if verdict.decision == "match":
+            # CRITICAL-1 (verify follow-up): un veredicto "match" del judge SOLO autolinkea si su
+            # propia confianza alcanza el piso — por debajo, es un match débil y va a revisión
+            # (method="llm", NO "human": el judge SÍ corrió, solo no fue lo bastante seguro).
+            if verdict.decision == "match" and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE:
                 return self._auto_link(product, winner_id, confidence=verdict.confidence, method="llm")
             return self._to_review(product, method="llm", confidence=verdict.confidence)
 
