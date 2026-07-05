@@ -34,9 +34,20 @@ function commit(next: AuthState): void {
   listeners.forEach((l) => l());
 }
 
-// Header Authorization para las llamadas autenticadas (client-side). Lee el token vigente.
-export function authHeaders(): Record<string, string> {
-  return cache.token ? { Authorization: `Bearer ${cache.token}` } : {};
+// Fuente del token para las llamadas autenticadas. Por defecto = el cache del dev-login; el
+// bridge de Clerk lo sobreescribe con `getToken` (async, token fresco por request: los de Clerk
+// son de vida corta). Dual-mode sin import circular (ni el bridge ni el componente se importan aquí).
+type TokenGetter = () => string | null | Promise<string | null>;
+let tokenGetter: TokenGetter = () => cache.token;
+
+export function registerTokenGetter(getter: TokenGetter): void {
+  tokenGetter = getter;
+}
+
+// Header Authorization para las llamadas autenticadas (client-side). Async: el getter de Clerk lo es.
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await tokenGetter();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function login(email: string): Promise<boolean> {
