@@ -115,6 +115,7 @@ type MessageKey =
   | "alerts.title"
   | "alerts.notifyMe"
   | "alerts.watching"
+  | "alerts.stopWatching"
   | "alerts.subscriptions"
   | "alerts.notifications"
   | "alerts.noAlerts"
@@ -242,6 +243,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "alerts.title": "Mis alertas",
     "alerts.notifyMe": "Avísame cuando baje",
     "alerts.watching": "Siguiendo precio",
+    "alerts.stopWatching": "Dejar de seguir",
     "alerts.subscriptions": "Productos que sigues",
     "alerts.notifications": "Notificaciones",
     "alerts.noAlerts": "No sigues ningún producto todavía.",
@@ -365,6 +367,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "alerts.title": "My alerts",
     "alerts.notifyMe": "Notify me when it drops",
     "alerts.watching": "Watching price",
+    "alerts.stopWatching": "Stop watching",
     "alerts.subscriptions": "Products you watch",
     "alerts.notifications": "Notifications",
     "alerts.noAlerts": "You're not watching any product yet.",
@@ -488,6 +491,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "alerts.title": "Meus alertas",
     "alerts.notifyMe": "Avise-me quando baixar",
     "alerts.watching": "Seguindo preço",
+    "alerts.stopWatching": "Deixar de seguir",
     "alerts.subscriptions": "Produtos que você segue",
     "alerts.notifications": "Notificações",
     "alerts.noAlerts": "Você ainda não segue nenhum produto.",
