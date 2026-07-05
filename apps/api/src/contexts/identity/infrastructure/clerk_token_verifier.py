@@ -52,8 +52,11 @@ class ClerkTokenVerifier:
         except Exception as exc:  # p.ej. el JWKS no resuelve la clave
             raise InvalidToken(f"No se pudo resolver la clave: {exc}") from exc
 
+        # `azp` (authorized party) es defensa anti-CSRF de navegador y es OPCIONAL: Clerk NO lo
+        # incluye en el session token por defecto (ni web ni nativo). Se valida SOLO si está
+        # presente; la firma RS256 + `iss` ya garantizan que el token es de nuestra instancia.
         azp = claims.get("azp")
-        if self._authorized_parties and azp not in self._authorized_parties:
+        if self._authorized_parties and azp is not None and azp not in self._authorized_parties:
             raise InvalidToken(f"azp no autorizado: {azp!r}")
 
         subject = claims.get("sub")
