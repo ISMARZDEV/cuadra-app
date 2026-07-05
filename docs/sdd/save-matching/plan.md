@@ -80,6 +80,13 @@ EAN exacto
        no_match / uncertain / fallo de esquema / timeout → cola humana
 ```
 
+> **Corrección de implementación (Batch 7):** RRF se usa **solo para elegir el candidato ganador
+> por consenso cross-stage** (ranking), NO como el score que se bandea. La suma RRF con k=60 tiene
+> máximo ≈0.033 → nunca alcanzaría `MID=0.55`. El **banding usa la mejor similitud cruda [0,1] del
+> candidato ganador** (trgm `similarity()` / vector `1 - cosine_distance`), sobre la que se aplican
+> los boosts. Así los umbrales 0.85/0.55 operan sobre una escala 0-1 real. El tuneo fino de esos
+> umbrales sigue pendiente de datos etiquetados (Batch 10).
+
 **`product_match` es la única fuente de verdad de la vinculación.**
 `store_product.canonical_product_id` es un puntero denormalizado que se escribe SOLO junto a una fila
 `product_match`, en la MISMA transacción (mata el riesgo de deriva que marcó el explore).
@@ -267,6 +274,10 @@ La cascada **sale dark** y se enciende por entorno tras bootstrapear la canasta 
 - [ ] 7.2 GREEN: `application/match_store_product.py`.
 
 ### Batch 8 — Wiring *(integración, RED-first)*
+- [ ] 8.0 **(añadido en Batch 7)** Implementar en `SqlProductMatchRepository`/store repo los dos
+  métodos que Batch 7 declaró como Protocol local (`CascadeMatchRepository`,
+  `CascadeStoreProductRepository`): `find_candidates_by_ean` (lookup EAN exacto) y `link_to_canonical`
+  (escribe `store_product.canonical_product_id`). Con test de integración.
 - [ ] 8.1 RED: `RefreshCatalogPrices` con `matcher=None` inalterado (drop legacy) y con fake matcher
   rutea filas antes tiradas — `tests/application/test_refresh_prices_matching.py`.
 - [ ] 8.2 GREEN: param opcional `matcher: MatchStoreProduct | None` en `application/refresh_prices.py`.
