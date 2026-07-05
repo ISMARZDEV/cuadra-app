@@ -86,6 +86,14 @@ def test_rejects_unauthorized_party() -> None:
         _verifier().verify(_token(azp="https://evil.example.com"))
 
 
+def test_allows_absent_azp() -> None:
+    # Clerk NO incluye azp en el session token (ni web ni nativo) → se acepta cuando falta.
+    # azp es defensa anti-CSRF de navegador; solo se valida SI está presente. La firma RS256 +
+    # iss ya garantizan que el token es de nuestra instancia.
+    claims = _verifier().verify(_token(azp=None))
+    assert claims.subject == "user_2clerk"
+
+
 def test_rejects_expired_token() -> None:
     past = datetime.now(timezone.utc) - timedelta(hours=2)
     with pytest.raises(InvalidToken):
