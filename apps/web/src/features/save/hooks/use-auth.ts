@@ -1,7 +1,10 @@
+import { useAuth as useClerkAuth, useClerk } from "@clerk/clerk-react";
 import { devLogin } from "@cuadra/api-client";
 import { useSyncExternalStore } from "react";
 
 import { apiClient } from "@/lib/api";
+
+import { CLERK_ENABLED } from "./clerk";
 
 // Auth mínima del portal (dev): login por email vía /identity/dev-login → JWT en localStorage.
 // En prod el token lo emite el IdP externo (dev-login devuelve 404). Mismo patrón SSR-safe que la
@@ -66,7 +69,26 @@ function subscribe(cb: () => void): () => void {
   return () => listeners.delete(cb);
 }
 
+// Dual-mode. Clerk mode → estado desde Clerk (isSignedIn, signOut); el login es vía <SignIn/>, no
+// esta función. Dev mode → el store SSR-safe de siempre. CLERK_ENABLED es constante de build (env),
+// así que la rama es INVARIANTE por proceso → las llamadas condicionales a hooks son seguras.
 export function useAuth() {
+  if (CLERK_ENABLED) {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- invariant build-time branch (see above)
+    const { isSignedIn } = useClerkAuth();
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const clerk = useClerk();
+    return {
+      token: null as string | null,
+      email: null as string | null,
+      isAuthed: Boolean(isSignedIn),
+      login, // no-op en Clerk mode (login = <SignIn/>); se mantiene por forma estable
+      logout: () => {
+        void clerk.signOut();
+      },
+    };
+  }
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- invariant build-time branch (see above)
   const state = useSyncExternalStore(
     subscribe,
     () => cache,
