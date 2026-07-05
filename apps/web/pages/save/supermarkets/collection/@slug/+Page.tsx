@@ -1,7 +1,7 @@
 import { useData } from "vike-react/useData";
 
-import { Breadcrumbs } from "@/components/breadcrumbs";
-import { ProductCard } from "@/components/product-card";
+import { Breadcrumbs } from "@/features/save/components/breadcrumbs";
+import { ProductCard } from "@/features/save/components/product-card";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
 

@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
-import { myAlerts, myNotifications, removeAlert } from "@/lib/alerts-api";
-import { formatMoney } from "@/lib/format";
+import { myAlerts, myNotifications, removeAlert } from "@/features/save/api";
+import { formatMoney } from "@/features/save/lib/format";
 import { localeHref } from "@/lib/links";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/features/save/hooks/use-auth";
 
 // Mis alertas (G4): suscripciones (dejar de seguir) + feed de notificaciones disparadas. Estado
 // cliente autenticado; el MISMO feed lo lee la app móvil (alertas compartidas por user_id).

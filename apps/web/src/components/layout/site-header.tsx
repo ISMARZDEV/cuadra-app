@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { usePageI18n } from "@/i18n/usePageI18n";
-import { myNotifications } from "@/lib/alerts-api";
+import { myNotifications } from "@/features/save/api";
 import { localeHref } from "@/lib/links";
-import { useAuth } from "@/lib/use-auth";
-import { useShoppingList } from "@/lib/use-shopping-list";
+import { useAuth } from "@/features/save/hooks/use-auth";
+import { useShoppingList } from "@/features/save/hooks/use-shopping-list";
 
 import { CountrySwitcher, LocaleSwitcher } from "./switcher";
 import { ThemeToggle } from "./theme-toggle";

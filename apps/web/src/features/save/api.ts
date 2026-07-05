@@ -5,8 +5,8 @@ import {
   unsubscribeAlert,
 } from "@cuadra/api-client";
 
-import { apiClient } from "./api";
-import { authHeaders } from "./use-auth";
+import { apiClient } from "@/lib/api";
+import { authHeaders } from "@/features/save/hooks/use-auth";
 
 // Llamadas autenticadas de alertas (G4): inyectan el header Bearer del usuario. Todas client-side.
 export const subscribe = (productId: string, thresholdMinor?: number | null) =>

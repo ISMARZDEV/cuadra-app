@@ -3,9 +3,9 @@ import { Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { usePageI18n } from "@/i18n/usePageI18n";
-import { formatMoney } from "@/lib/format";
+import { formatMoney } from "@/features/save/lib/format";
 import { localeHref } from "@/lib/links";
-import { useShoppingList } from "@/lib/use-shopping-list";
+import { useShoppingList } from "@/features/save/hooks/use-shopping-list";
 
 // Lista de compra local (D1): items con stepper de cantidad, quitar y subtotal estimado. Estado
 // 100% cliente (localStorage) → en SSR renderiza vacío y se rellena al hidratar. Sin auth.

@@ -2,9 +2,9 @@ import { usePageContext } from "vike-react/usePageContext";
 import { useData } from "vike-react/useData";
 
 import { DEFAULT_COUNTRY, DEFAULT_LOCALE, type Country, type Locale } from "@/i18n/config";
-import { formatMoney } from "@/lib/format";
+import { formatMoney } from "@/features/save/lib/format";
 import { localeHref } from "@/lib/links";
-import { buildProductJsonLd } from "@/lib/seo";
+import { buildProductJsonLd } from "@/features/save/lib/seo";
 import type { ProductData } from "./+data";
 
 const SITE = import.meta.env.VITE_SITE_URL ?? "http://localhost:3006";

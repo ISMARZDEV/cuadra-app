@@ -4,10 +4,10 @@ import { usePageContext } from "vike-react/usePageContext";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
 
-import { Breadcrumbs } from "@/components/breadcrumbs";
-import { CategoryFilters } from "@/components/category-filters";
-import { Pagination } from "@/components/pagination";
-import { ProductCard } from "@/components/product-card";
+import { Breadcrumbs } from "@/features/save/components/breadcrumbs";
+import { CategoryFilters } from "@/features/save/components/category-filters";
+import { Pagination } from "@/features/save/components/pagination";
+import { ProductCard } from "@/features/save/components/product-card";
 import {
   Select,
   SelectContent,
@@ -22,7 +22,7 @@ import { marketOf } from "@/i18n/config";
 import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { apiClient } from "@/lib/api";
-import { categoryIcon } from "@/lib/category-icons";
+import { categoryIcon } from "@/features/save/components/category-icons";
 import { localeHref, logicalPath } from "@/lib/links";
 
 import { PAGE_SIZE, type CategoryData } from "./+data";

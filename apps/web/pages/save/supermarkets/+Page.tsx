@@ -1,11 +1,11 @@
 import { Search } from "lucide-react";
 import { useData } from "vike-react/useData";
 
-import { SectionRail } from "@/components/section-rail";
+import { SectionRail } from "@/features/save/components/section-rail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePageI18n } from "@/i18n/usePageI18n";
-import { categoryIcon } from "@/lib/category-icons";
+import { categoryIcon } from "@/features/save/components/category-icons";
 import { localeHref } from "@/lib/links";
 
 import type { SupermarketsData } from "./+data";

@@ -1,4 +1,4 @@
-import { ProductCard } from "@/components/product-card";
+import { ProductCard } from "@/features/save/components/product-card";
 import {
   Carousel,
   CarouselContent,

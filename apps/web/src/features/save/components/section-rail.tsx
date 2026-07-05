@@ -2,7 +2,7 @@ import type { ProductCardDto } from "@cuadra/api-client";
 
 import { ProductRail } from "@/features/save/components/product-rail";
 
-import type { Locale } from "../i18n/config";
+import type { Locale } from "@/i18n/config";
 
 // Sección de rail de la home (Imagen #3): título + "ver todas" + <ProductRail> (carrusel Embla).
 // El rail en sí vive en features/save/components/product-rail (compartido con el Overview de

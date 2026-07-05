@@ -2,7 +2,7 @@ import type { PageContext } from "vike/types";
 
 import { COUNTRY_NAMES, DEFAULT_COUNTRY, DEFAULT_LOCALE } from "@/i18n/config";
 import { format } from "@/i18n/messages";
-import { formatMoney } from "@/lib/format";
+import { formatMoney } from "@/features/save/lib/format";
 import type { ProductData } from "./+data";
 
 // meta description por producto y por idioma → SEO. vike-react la renderiza (evita duplicado).

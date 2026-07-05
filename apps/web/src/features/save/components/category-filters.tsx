@@ -4,21 +4,21 @@ import { useEffect, useState } from "react";
 import { usePageContext } from "vike-react/usePageContext";
 import { navigate } from "vike/client/router";
 
-import { Checkbox } from "./ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "./ui/collapsible";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { Slider } from "./ui/slider";
-import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+} from "@/components/ui/collapsible";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Slider } from "@/components/ui/slider";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { parseViewMode } from "@/features/save/enums";
 import { asList } from "@/features/save/lib/query";
-import type { Country, Locale } from "../i18n/config";
-import { format, translate } from "../i18n/messages";
-import { formatMoney } from "../lib/format";
-import { localeHref, logicalPath } from "../lib/links";
+import type { Country, Locale } from "@/i18n/config";
+import { format, translate } from "@/i18n/messages";
+import { formatMoney } from "@/features/save/lib/format";
+import { localeHref, logicalPath } from "@/lib/links";
 
 type Search = Record<string, string | undefined>;
 

@@ -7,7 +7,7 @@ import {
   removeFromList,
   setQty,
   type ShoppingListItem,
-} from "./shopping-list";
+} from "@/features/save/lib/shopping-list";
 
 // Store de la lista local: localStorage + pub/sub, expuesto vía useSyncExternalStore (SSR-safe:
 // el servidor renderiza vacío y el cliente re-lee tras hidratar; sincroniza header + botones +

@@ -2,7 +2,7 @@ import type { PriceComparisonDto } from "@cuadra/api-client";
 import { describe, expect, it } from "vitest";
 
 import { buildProductJsonLd } from "./seo";
-import { buildRobots, buildSitemap, logicalPaths } from "./sitemap.js";
+import { buildRobots, buildSitemap, logicalPaths } from "@/scripts/sitemap.js";
 
 const comparison: PriceComparisonDto = {
   canonical_product_id: "c1",

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/features/save/hooks/use-auth";
 
 // Login del portal (dev): email → /identity/dev-login → JWT. Con cuenta de la app (mismo email)
 // se obtiene el MISMO user_id → las alertas se comparten entre app y web.

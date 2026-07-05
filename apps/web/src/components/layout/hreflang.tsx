@@ -1,7 +1,7 @@
 import { usePageContext } from "vike-react/usePageContext";
 
-import { DEFAULT_COUNTRY, DEFAULT_LOCALE, LOCALES, type Country } from "../i18n/config";
-import { localeHref, logicalPath } from "../lib/links";
+import { DEFAULT_COUNTRY, DEFAULT_LOCALE, LOCALES, type Country } from "@/i18n/config";
+import { localeHref, logicalPath } from "@/lib/links";
 
 // <link rel="alternate" hreflang> para CADA idioma del mismo país + x-default → SEO multilingüe
 // (Google entiende que /es/do y /en/do son la misma página en otro idioma). Global (todas las
