@@ -76,8 +76,9 @@ EAN exacto
        MID [0.55, 0.85)     → Claude-juez (banda gris)
        < MID  o  sin cands. → cola humana           (method = human)
   → Claude-juez: {decision, confidence, cited_fields}
-       match      → auto-link (method = llm)
-       no_match / uncertain / fallo de esquema / timeout → cola humana
+       match Y confidence ≥ JUDGE_MATCH_MIN_CONFIDENCE (0.70) → auto-link (method = llm)
+       match pero confidence < 0.70 (match débil)            → cola humana (method = llm)
+       no_match / uncertain / fallo de esquema / timeout     → cola humana
 ```
 
 > **Corrección de implementación (Batch 7):** RRF se usa **solo para elegir el candidato ganador
