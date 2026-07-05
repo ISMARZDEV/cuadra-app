@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-// use-auth imports the SDK + base client only as side deps; mock them so the test stays pure.
+// use-auth imports the SDK + base client + Clerk only as side deps; mock them so the test stays pure.
 vi.mock("@cuadra/api-client", () => ({ devLogin: vi.fn() }));
 vi.mock("@/lib/api", () => ({ apiClient: {} }));
+vi.mock("@clerk/clerk-react", () => ({ useAuth: vi.fn(), useClerk: vi.fn() }));
 
 import { authHeaders, registerTokenGetter } from "./use-auth";
 
