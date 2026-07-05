@@ -1,9 +1,17 @@
 import { useRouter } from "expo-router";
-import { ChevronRight, CircleDollarSign, Languages, Moon, Sparkles } from "lucide-react-native";
+import {
+  ChevronRight,
+  CircleDollarSign,
+  Languages,
+  LogOut,
+  Moon,
+  Sparkles,
+} from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { Pressable, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useSignOut } from "@/features/auth/use-sign-out";
 import { AppBackground } from "@/components/ui/app-background";
 import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
@@ -15,6 +23,7 @@ export function ConfigScreen() {
   const router = useRouter();
   const { colorScheme, setColorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
+  const signOut = useSignOut();
 
   return (
     <SafeAreaView className="flex-1" edges={["top"]}>
@@ -74,6 +83,19 @@ export function ConfigScreen() {
             <Text className="text-base text-text">{t("config.currencies")}</Text>
           </View>
           <Icon as={ChevronRight} size={22} color="#9CA3AF" />
+        </Pressable>
+
+        {/* Cerrar sesión — dual-mode (Clerk signOut o el store dev). El gate del root vuelve a (auth). */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("config.signOut")}
+          onPress={() => void signOut()}
+          className="mt-3 flex-row items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-4"
+        >
+          <Icon as={LogOut} size={22} color={palette.danger} />
+          <Text className="text-base" style={{ color: palette.danger }}>
+            {t("config.signOut")}
+          </Text>
         </Pressable>
       </View>
     </SafeAreaView>

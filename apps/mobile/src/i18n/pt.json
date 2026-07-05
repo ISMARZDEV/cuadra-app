@@ -21,6 +21,7 @@
   "language.auto": "Detectar automaticamente",
   "language.a11y.back": "Voltar",
   "config.currencies": "Moedas",
+  "config.signOut": "Sair",
   "currencies.title": "Moedas",
   "currencies.subtitle": "Sua moeda principal é fixa; escolha até 3 adicionais",
   "currencies.primary.badge": "Principal",

@@ -21,6 +21,7 @@
   "language.auto": "Detect automatically",
   "language.a11y.back": "Back",
   "config.currencies": "Currencies",
+  "config.signOut": "Sign out",
   "currencies.title": "Currencies",
   "currencies.subtitle": "Your primary currency is fixed; choose up to 3 extra",
   "currencies.primary.badge": "Primary",
