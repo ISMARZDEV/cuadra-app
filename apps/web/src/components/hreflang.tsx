@@ -6,7 +6,7 @@ import { localeHref, logicalPath } from "../lib/links";
 // <link rel="alternate" hreflang> para CADA idioma del mismo país + x-default → SEO multilingüe
 // (Google entiende que /es/do y /en/do son la misma página en otro idioma). Global (todas las
 // páginas) vía el Head de +config. El origin viene de VITE_SITE_URL en build.
-const SITE = import.meta.env.VITE_SITE_URL ?? "http://localhost:3000";
+const SITE = import.meta.env.VITE_SITE_URL ?? "http://localhost:3006";
 
 export function HreflangTags() {
   const pageContext = usePageContext();

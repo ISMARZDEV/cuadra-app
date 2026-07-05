@@ -80,10 +80,23 @@ type MessageKey =
   | "category.clear"
   | "category.sortBy"
   | "category.empty"
+  | "category.popular"
+  | "category.viewMode"
+  | "category.viewMode.loadMore"
+  | "category.viewMode.pages"
+  | "category.loadMore"
+  | "category.seen"
+  | "category.goToPage"
+  | "category.go"
+  | "category.facetMore"
+  | "category.facetLess"
+  | "category.upTo"
+  | "category.orMore"
   | "product.stores"
   | "sort.price"
   | "sort.unitPrice"
   | "sort.name"
+  | "sort.popular"
   // lista de compra (local)
   | "list.title"
   | "list.empty"
@@ -196,10 +209,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "category.clear": "Limpiar",
     "category.sortBy": "Ordenar por",
     "category.empty": "No hay productos con estos filtros.",
+    "category.popular": "Productos populares",
+    "category.viewMode": "Vista de resultados",
+    "category.viewMode.loadMore": "Cargar más",
+    "category.viewMode.pages": "Páginas",
+    "category.loadMore": "Ver más",
+    "category.seen": "Has visto {shown} de {total} productos",
+    "category.goToPage": "Ir a la página:",
+    "category.go": "Ir",
+    "category.facetMore": "Ver todas ({n})",
+    "category.facetLess": "Ver menos",
+    "category.upTo": "Hasta",
+    "category.orMore": "o más",
     "product.stores": "tiendas",
     "sort.price": "Precio",
     "sort.unitPrice": "Precio/unidad",
     "sort.name": "Nombre",
+    "sort.popular": "Popularidad",
     "list.title": "Tu lista de compra",
     "list.empty": "Tu lista está vacía.",
     "list.total": "Total estimado",
@@ -306,10 +332,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "category.clear": "Clear",
     "category.sortBy": "Sort by",
     "category.empty": "No products match these filters.",
+    "category.popular": "Popular products",
+    "category.viewMode": "Results view",
+    "category.viewMode.loadMore": "Load more",
+    "category.viewMode.pages": "Pages",
+    "category.loadMore": "See more",
+    "category.seen": "You've seen {shown} of {total} products",
+    "category.goToPage": "Go to page:",
+    "category.go": "Go",
+    "category.facetMore": "Show all ({n})",
+    "category.facetLess": "Show less",
+    "category.upTo": "Up to",
+    "category.orMore": "or more",
     "product.stores": "stores",
     "sort.price": "Price",
     "sort.unitPrice": "Price/unit",
     "sort.name": "Name",
+    "sort.popular": "Popularity",
     "list.title": "Your shopping list",
     "list.empty": "Your list is empty.",
     "list.total": "Estimated total",
@@ -416,10 +455,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "category.clear": "Limpar",
     "category.sortBy": "Ordenar por",
     "category.empty": "Nenhum produto com estes filtros.",
+    "category.popular": "Produtos populares",
+    "category.viewMode": "Modo de exibição",
+    "category.viewMode.loadMore": "Carregar mais",
+    "category.viewMode.pages": "Páginas",
+    "category.loadMore": "Ver mais",
+    "category.seen": "Você viu {shown} de {total} produtos",
+    "category.goToPage": "Ir para a página:",
+    "category.go": "Ir",
+    "category.facetMore": "Ver todas ({n})",
+    "category.facetLess": "Ver menos",
+    "category.upTo": "Até",
+    "category.orMore": "ou mais",
     "product.stores": "lojas",
     "sort.price": "Preço",
     "sort.unitPrice": "Preço/unidade",
     "sort.name": "Nome",
+    "sort.popular": "Popularidade",
     "list.title": "Sua lista de compras",
     "list.empty": "Sua lista está vazia.",
     "list.total": "Total estimado",

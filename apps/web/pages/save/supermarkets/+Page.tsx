@@ -11,12 +11,13 @@ import { localeHref } from "@/lib/links";
 import type { SupermarketsData } from "./+data";
 
 // Inicio de Supermercados (Imagen #3): hero de búsqueda · fila de categorías con íconos (Lucide) ·
-// rails de productos reales (Mejor valor, Populares). Rails sin datos no se muestran.
+// rails de productos reales (Ofertas de hoy A7, Populares, Mejor valor). Rails sin datos no se muestran.
 export default function Page() {
   const { locale, country, t } = usePageI18n();
-  const { categories, bestValue, popular } = useData<SupermarketsData>();
+  const { categories, deals, popular, providers, bestValue } = useData<SupermarketsData>();
   const base = (path: string) => localeHref(locale, country, `/save/supermarkets${path}`);
   const productHref = (id: string) => base(`/product/${id}`);
+  const storeHref = (id: string) => base(`/store/${id}`);
 
   return (
     <div>
@@ -57,14 +58,38 @@ export default function Page() {
       </nav>
 
       <SectionRail
-        title={t("super.bestValue")}
-        products={bestValue}
+        title={t("super.bestOffers")}
+        products={deals}
         locale={locale}
         productHref={productHref}
       />
       <SectionRail
         title={t("super.popular")}
         products={popular}
+        locale={locale}
+        productHref={productHref}
+      />
+
+      {providers.length > 0 && (
+        <section className="mx-auto max-w-6xl px-4 py-6">
+          <h2 className="mb-3 text-lg font-semibold">{t("super.offersByStore")}</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
+            {providers.map((p) => (
+              <a
+                key={p.id}
+                href={storeHref(p.id)}
+                className="flex h-16 items-center justify-center rounded-lg border border-border bg-card px-3 text-center text-sm font-bold transition-colors hover:border-primary hover:text-primary"
+              >
+                {p.name}
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <SectionRail
+        title={t("super.bestValue")}
+        products={bestValue}
         locale={locale}
         productHref={productHref}
       />

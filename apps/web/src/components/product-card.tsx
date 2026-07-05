@@ -48,8 +48,13 @@ export function ProductCard({
             <div className="aspect-square rounded-md bg-muted" aria-hidden />
           )}
           {product.display_size && (
-            <span className="absolute left-1 top-1 rounded-md bg-foreground/85 px-1.5 py-0.5 text-[11px] font-medium text-background">
+            <span className="absolute bottom-1 left-1 rounded-md bg-foreground/85 px-1.5 py-0.5 text-[11px] font-medium text-background">
               {product.display_size}
+            </span>
+          )}
+          {product.discount_bps != null && product.discount_bps > 0 && (
+            <span className="absolute left-1 top-1 rounded-md bg-red-600 px-1.5 py-0.5 text-[11px] font-bold text-white">
+              −{Math.round(product.discount_bps / 100)}%
             </span>
           )}
           <button
