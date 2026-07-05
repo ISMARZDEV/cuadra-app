@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CHAR,
     BigInteger,
@@ -162,6 +163,9 @@ class CanonicalProductModel(Base):
         UUID(as_uuid=True), ForeignKey("save.taxonomy_node.id")
     )
     market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # semántico (F2.0 matching, cascada Batch 7): BGE-M3 dim=1024, poblado a escritura de ingesta.
+    # Un solo modelo por deployment — ver CONSTRAINT NOTE en la migración 614e370d452c.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
 
 
 class StoreProductModel(Base):
@@ -292,3 +296,35 @@ class PriceModel(Base):
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     price_type: Mapped[str] = mapped_column(Text, nullable=False)  # online|delivery|shelf|receipt
     source: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ProductMatchModel(Base):
+    """Fuente de verdad del enlace store_product<->canonical_product (F2.0, cascada de matching).
+
+    Único por `store_product_id`: la cascada UPSERTEA (nunca duplica) el intento de enlace de un
+    store_product. `decided_by` es TEXT plano (ADR 33: sin FK cruzando schemas hacia `identity`).
+    """
+
+    __tablename__ = "product_match"
+    __table_args__ = (
+        UniqueConstraint("store_product_id", name="uq_product_match_store_product"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    store_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.store_product.id"), nullable=False
+    )
+    canonical_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.canonical_product.id")
+    )  # NULL mientras status == "pending_review" (aún sin candidato confirmado)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
+    method: Mapped[str] = mapped_column(Text, nullable=False)  # ean|trgm|vector|hybrid|llm|human
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # auto_linked|pending_review|rejected
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(Text)  # 'system' | admin user_id
