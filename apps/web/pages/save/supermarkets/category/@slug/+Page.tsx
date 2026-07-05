@@ -9,19 +9,15 @@ import { CategoryFilters } from "@/components/category-filters";
 import { Pagination } from "@/components/pagination";
 import { ProductCard } from "@/components/product-card";
 import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ProductRail } from "@/features/save/components/product-rail";
+import { DEFAULT_SORT, parseViewMode } from "@/features/save/enums";
+import { asList } from "@/features/save/lib/query";
 import { marketOf } from "@/i18n/config";
 import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
@@ -105,19 +101,7 @@ function CategoryOverview() {
           {popular.length > 0 && (
             <div className="mt-8">
               <h2 className="mb-3 text-lg font-semibold">{t("category.popular")}</h2>
-              <Carousel opts={{ align: "start", dragFree: true }} className="w-full">
-                <CarouselContent className="-ml-4">
-                  {popular.map((p) => (
-                    <CarouselItem key={p.id} className="basis-auto pl-4">
-                      <div className="w-40">
-                        <ProductCard product={p} href={productHref(p.slug)} locale={locale} />
-                      </div>
-                    </CarouselItem>
-                  ))}
-                </CarouselContent>
-                <CarouselPrevious className="left-2 hidden sm:flex" />
-                <CarouselNext className="right-2 hidden sm:flex" />
-              </Carousel>
+              <ProductRail products={popular} locale={locale} productHref={productHref} />
             </div>
           )}
         </div>
@@ -126,16 +110,13 @@ function CategoryOverview() {
   );
 }
 
-const asList = (v: string | undefined): string[] =>
-  v ? v.split(",").map((s) => s.trim()).filter(Boolean) : [];
-
 function CategoryListing() {
   const { locale, country, t } = usePageI18n();
   const cat = useData<CategoryData>();
   const pageContext = usePageContext();
   const search = pageContext.urlParsed.search as Record<string, string | undefined>;
   const slug = pageContext.routeParams.slug as string;
-  const viewMode = search.view === "pages" ? "pages" : "loadmore";
+  const viewMode = parseViewMode(search.view);
 
   // Acumulación de "Ver más": sembrada con el batch SSR, resetea si cambian filtros/orden/slug
   // (llega un `cat.products` nuevo por navegación client-side sin remount del componente).
@@ -151,7 +132,7 @@ function CategoryListing() {
   const navigateWith = (patch: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries({ ...search, ...patch })) {
-      if (v && !(k === "sort" && v === "price")) params.set(k, v);
+      if (v && !(k === "sort" && v === DEFAULT_SORT)) params.set(k, v);
     }
     const qs = params.toString();
     // urlPathname viene SIN el prefijo /{locale}/{country}; re-prefijar o navigate aborta.
@@ -174,7 +155,7 @@ function CategoryListing() {
         brands: asList(search.brands),
         price_min: search.pmin ? Number(search.pmin) : undefined,
         price_max: search.pmax ? Number(search.pmax) : undefined,
-        sort: search.sort ?? "price",
+        sort: search.sort ?? DEFAULT_SORT,
         limit: PAGE_SIZE,
         offset: items.length,
       },
@@ -202,7 +183,7 @@ function CategoryListing() {
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {t("category.sortBy")}
-              <Select value={search.sort ?? "price"} onValueChange={onSort}>
+              <Select value={search.sort ?? DEFAULT_SORT} onValueChange={onSort}>
                 <SelectTrigger size="sm" className="w-auto">
                   <SelectValue />
                 </SelectTrigger>
