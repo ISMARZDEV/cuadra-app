@@ -40,6 +40,7 @@ class VerifiedClaims:
     subject: str
     email: str | None = None
     name: str | None = None
+    username: str | None = None
 
     def __post_init__(self) -> None:
         if not self.subject.strip():

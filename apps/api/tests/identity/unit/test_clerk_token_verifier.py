@@ -70,6 +70,12 @@ def test_missing_email_and_name_are_none() -> None:
     assert claims.name is None
 
 
+def test_extracts_username_custom_claim() -> None:
+    claims = _verifier().verify(_token(username="ada_dev"))
+
+    assert claims.username == "ada_dev"
+
+
 def test_rejects_wrong_issuer() -> None:
     with pytest.raises(InvalidToken):
         _verifier().verify(_token(iss="https://evil.example.com"))

@@ -30,7 +30,7 @@ class ResolveUserFromClaims:
             return existing.user_id
         user_id = self._users.create(
             email=claims.email,
-            name=claims.name or _derive_name(claims.email),
+            name=claims.name or claims.username or _derive_name(claims.email),
             home_market=_DEFAULT_MARKET,
             current_market=_DEFAULT_MARKET,
             role=RoleKey.NORMAL_USER,

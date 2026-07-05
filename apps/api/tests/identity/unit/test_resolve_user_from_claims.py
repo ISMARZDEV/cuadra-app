@@ -65,6 +65,24 @@ def _claims(**overrides) -> VerifiedClaims:  # type: ignore[no-untyped-def]
     return VerifiedClaims(**base)
 
 
+def test_uses_username_as_name_when_full_name_and_email_missing() -> None:
+    users, identities = FakeUserRepo(), FakeAuthIdentityRepo()
+
+    ResolveUserFromClaims(users, identities).execute(
+        _claims(name=None, email=None, username="ada_dev", subject="user_uname")
+    )
+
+    assert users.created[0]["name"] == "ada_dev"  # username tiene prioridad sobre el fallback
+
+
+def test_full_name_wins_over_username() -> None:
+    users, identities = FakeUserRepo(), FakeAuthIdentityRepo()
+
+    ResolveUserFromClaims(users, identities).execute(_claims(name="Ada L.", username="ada_dev"))
+
+    assert users.created[0]["name"] == "Ada L."
+
+
 def test_returns_existing_user_when_identity_known() -> None:
     users, identities = FakeUserRepo(), FakeAuthIdentityRepo()
     identities.link(

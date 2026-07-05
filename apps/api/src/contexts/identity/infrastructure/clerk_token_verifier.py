@@ -65,6 +65,7 @@ class ClerkTokenVerifier:
             subject=subject,
             email=claims.get("email"),
             name=claims.get("name"),
+            username=claims.get("username"),
         )
 
 
