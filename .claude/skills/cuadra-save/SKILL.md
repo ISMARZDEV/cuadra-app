@@ -146,11 +146,14 @@ with a **freshness SLA** (`captured_at`), never through RAG. Faithfulness ≠ co
 - **F0 (done):** domain + unit-price normalization + VtexAdapter (Sirena) + curated basket + compare/search.
 - **F1 (done):** Shopify/Magento adapters + web portal (search→category→product) + shopping list (D1)
   + price alerts (G4) + price history (C9) + curated collections (A6) + product slug SEO + Dagster module.
-- **F2 (next):** auto-matching + admin console (Refine, review queue) + PurchasesAgent + receipt OCR
+- **F2 (in progress):** **auto-matching ✅ CODE-COMPLETE + ship-dark** (the cascade — its own skill
+  `cuadra-save-matching`; flag `SAVE_MATCHING_CASCADE_ENABLED=false`, needs activation). Still to do:
+  admin console (Refine, review queue on `list_review_queue`) + PurchasesAgent + receipt OCR
   (Claude vision) / e-CF spike + aggregators (Apify) + RAGAS/LangSmith evals.
 - **F3:** multi-country via `store_registry` + financial vertical (`provider.type=bank|insurer`).
-- **Known follow-ups:** `docs/pending/save-web-f1-pendientes.md` (SEO leftovers, hardening),
-  `docs/pending/save-alerts-remote-push.md` (remote APNs needs paid Apple account).
+- **Known follow-ups:** `docs/pending/save-matching-batch10-y-activacion.md` (turn the matching
+  cascade from dark to live + the BGE-M3-vs-Qwen3 spike), `docs/pending/save-web-f1-pendientes.md`
+  (SEO leftovers, hardening), `docs/pending/save-alerts-remote-push.md` (remote APNs needs paid Apple).
 
 ## Do / Don't
 
