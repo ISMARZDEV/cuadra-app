@@ -27,9 +27,28 @@ class Settings(BaseSettings):
     langsmith_project: str = "cuadra-api"
     sentry_dsn: str = ""
 
-    # Auth (§12·E E.2) — el JWT lo emite/valida el proveedor; aquí solo la verificación de firma
+    # Auth (§12·E E.2) — el JWT lo emite/valida el proveedor; aquí solo la verificación de firma.
+    # HS256 con secreto compartido = SOLO dev (dev-login). En prod el IdP (Clerk) firma RS256.
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
+
+    # Clerk (IdP real · §12·E E.2). `clerk_issuer` = Frontend API URL (claim `iss`); el JWKS se
+    # deriva como `{issuer}/.well-known/jwks.json`. `clerk_authorized_parties` = orígenes
+    # permitidos para el claim `azp` (anti-CSRF), coma-separado. Vacío = Clerk deshabilitado (dev).
+    clerk_issuer: str = ""
+    clerk_authorized_parties: str = ""
+
+    @property
+    def clerk_enabled(self) -> bool:
+        return bool(self.clerk_issuer)
+
+    @property
+    def clerk_jwks_url(self) -> str:
+        return f"{self.clerk_issuer.rstrip('/')}/.well-known/jwks.json"
+
+    @property
+    def clerk_authorized_party_list(self) -> list[str]:
+        return [p.strip() for p in self.clerk_authorized_parties.split(",") if p.strip()]
 
     # CORS (§12·E E.1) — coma-separado (evita el parseo JSON de listas de pydantic-settings)
     cors_origins: str = "*"
