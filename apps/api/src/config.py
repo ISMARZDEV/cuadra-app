@@ -50,8 +50,9 @@ class Settings(BaseSettings):
     def clerk_authorized_party_list(self) -> list[str]:
         return [p.strip() for p in self.clerk_authorized_parties.split(",") if p.strip()]
 
-    # CORS (§12·E E.1) — coma-separado (evita el parseo JSON de listas de pydantic-settings)
-    cors_origins: str = "*"
+    # CORS (§12·E E.1) — coma-separado (evita el parseo JSON de listas de pydantic-settings).
+    # La web de Cuadra corre SIEMPRE en :3006 (dev). Prod se agrega vía CORS_ORIGINS en el entorno.
+    cors_origins: str = "http://localhost:3006"
 
     @property
     def cors_origin_list(self) -> list[str]:
