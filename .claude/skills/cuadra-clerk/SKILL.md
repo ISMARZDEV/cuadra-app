@@ -59,9 +59,13 @@ metadata:
    `<ClerkProvider>` is never mounted). NEVER hard-require Clerk; NEVER delete the dev-login path.
 3. **Clerk tokens are SHORT-LIVED (~60s).** NEVER cache a Clerk token yourself. Register an **async
    token-getter** (`getToken`) into the SDK client and fetch a FRESH token PER request.
-4. **Backend verifies RS256 via JWKS** — validate `iss` + `exp`/`nbf` + **`azp`** (authorized
-   parties, anti-CSRF). HS256 is dev-login ONLY and is **rejected in prod** (the guard routes by the
-   token's `alg`). Inject the `PyJWKClient` so it's testable without the network.
+4. **Backend verifies RS256 via JWKS** — validate `iss` + `exp`/`nbf`. **`azp` (authorized parties)
+   is OPTIONAL** — Clerk does NOT include `azp` in the default session token (neither web nor
+   native), so validate it ONLY when present (`azp is not None and azp not in parties`), else EVERY
+   authenticated call 401s (`azp no autorizado: None`). The signature + `iss` already prove the token
+   is from our instance; `azp` is defense-in-depth for browser CSRF. HS256 is dev-login ONLY and is
+   **rejected in prod** (the guard routes by the token's `alg`). Inject the `PyJWKClient` so it's
+   testable without the network.
 5. **The custom session claim is REQUIRED.** Clerk's default token has **NO email** (claims:
    `sub/iss/azp/sid/exp/nbf/iat`). Add a custom session token claim in the dashboard so the backend
    can provision the user. JIT name priority: `full_name → username → email local-part → "Usuario"`.
@@ -100,6 +104,10 @@ metadata:
   - `apps/web/.env`  → `VITE_CLERK_PUBLISHABLE_KEY=pk_...`
   - `apps/mobile/.env` → `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...`
   - `apps/api/.env`  → `CLERK_ISSUER=https://<domain>` + `CLERK_AUTHORIZED_PARTIES=http://localhost:3006,<app-origin>`
+  - **`CORS_ORIGINS` (apps/api/.env) MUST include the web dev origin** (`http://localhost:3006`).
+    Authed browser calls send an `Authorization` header → a CORS preflight; if the origin isn't
+    allowed the fetch fails with "No 'Access-Control-Allow-Origin' header" (a stale `:3000` here was
+    a real bug). Native (mobile) has no CORS — only the web needs this.
 - **Custom session token claim** (Configure → Sessions → Customize session token):
   ```json
   { "email": "{{user.primary_email_address}}", "name": "{{user.full_name}}", "username": "{{user.username}}" }
