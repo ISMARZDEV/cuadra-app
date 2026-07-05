@@ -1,19 +1,12 @@
 import type { ProductCardDto } from "@cuadra/api-client";
 
-import type { Locale } from "../i18n/config";
-import { ProductCard } from "./product-card";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "./ui/carousel";
+import { ProductRail } from "@/features/save/components/product-rail";
 
-// Rail horizontal de una sección de la home (Imagen #3): título + "ver todas" + carrusel Embla de
-// ProductCards reales. Snap por ítem + flechas prev/next (solo desktop; en móvil se arrastra).
-// Spacing shadcn: `-ml-4` en CarouselContent + `pl-4` en cada CarouselItem. Si no hay productos, no
-// renderiza nada (no mostramos secciones vacías).
+import type { Locale } from "../i18n/config";
+
+// Sección de rail de la home (Imagen #3): título + "ver todas" + <ProductRail> (carrusel Embla).
+// El rail en sí vive en features/save/components/product-rail (compartido con el Overview de
+// categoría). Si no hay productos, no renderiza nada (no mostramos secciones vacías).
 export function SectionRail({
   title,
   products,
@@ -25,7 +18,7 @@ export function SectionRail({
   title: string;
   products: ProductCardDto[];
   locale: Locale;
-  productHref: (id: string) => string;
+  productHref: (slug: string) => string;
   seeAll?: string;
   seeAllHref?: string;
 }) {
@@ -41,19 +34,7 @@ export function SectionRail({
           </a>
         )}
       </div>
-      <Carousel opts={{ align: "start", dragFree: true }} className="w-full">
-        <CarouselContent className="-ml-4">
-          {products.map((p) => (
-            <CarouselItem key={p.id} className="basis-auto pl-4">
-              <div className="w-40">
-                <ProductCard product={p} href={productHref(p.slug)} locale={locale} />
-              </div>
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        <CarouselPrevious className="left-2 hidden sm:flex" />
-        <CarouselNext className="right-2 hidden sm:flex" />
-      </Carousel>
+      <ProductRail products={products} locale={locale} productHref={productHref} />
     </section>
   );
 }

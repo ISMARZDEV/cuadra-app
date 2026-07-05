@@ -13,15 +13,14 @@ import {
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Slider } from "./ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+import { parseViewMode } from "@/features/save/enums";
+import { asList } from "@/features/save/lib/query";
 import type { Country, Locale } from "../i18n/config";
 import { format, translate } from "../i18n/messages";
 import { formatMoney } from "../lib/format";
 import { localeHref, logicalPath } from "../lib/links";
 
 type Search = Record<string, string | undefined>;
-
-const asList = (v: string | undefined): string[] =>
-  v ? v.split(",").filter(Boolean) : [];
 
 const FACET_LIMIT = 5; // top N facetas antes de "Ver todas (N)" (paridad SupermercadosRD)
 
@@ -159,7 +158,7 @@ export function CategoryFilters({
     b.name.toLowerCase().includes(brandQuery.toLowerCase()),
   );
   const hasFilters = activeStores.length || activeBrands.length || search.pmin || search.pmax;
-  const viewMode = search.view === "pages" ? "pages" : "loadmore";
+  const viewMode = parseViewMode(search.view);
 
   const histogram = facets.price.histogram ?? [];
   const buckets = facets.price.buckets ?? [];
