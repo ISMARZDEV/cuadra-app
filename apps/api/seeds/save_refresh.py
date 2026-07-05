@@ -7,6 +7,7 @@ es `ingestion.definitions` (`make ingestion-dev`); esto es el atajo sin proceso 
 """
 from __future__ import annotations
 
+from ingestion.save.composition import build_matcher
 from ingestion.save.runner import refresh_source
 from ingestion.save.sources import build_sources
 from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
@@ -17,14 +18,16 @@ def main() -> None:
 
     with SessionLocal() as session:
         repo = SqlStoreProductRepository(session)
+        matcher = build_matcher(session)  # None salvo SAVE_MATCHING_CASCADE_ENABLED=true
         for name, adapters in build_sources().items():
-            result = refresh_source(repo, adapters)
+            result = refresh_source(repo, adapters, matcher=matcher)
             print(
                 f"save-refresh {name}: seen={result.seen} "
-                f"refreshed={result.refreshed} unmatched={result.unmatched}"
+                f"refreshed={result.refreshed} unmatched={result.unmatched} "
+                f"matched={result.matched}"
             )
         session.commit()
-    print("save-refresh: OK (change-only; unmatched → matching F2).")
+    print("save-refresh: OK (change-only; desconocidos → cascada F2 si el flag está activo).")
 
 
 if __name__ == "__main__":

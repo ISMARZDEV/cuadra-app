@@ -232,6 +232,15 @@ class SqlStoreProductRepository:
     def exists(self, provider_id: str, external_id: str) -> bool:
         return self._find(provider_id, external_id) is not None
 
+    def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
+        # Escritor del FK denormalizado (F2.0 matching). No commitea: la Session es el UoW y el
+        # use case de la cascada confirma la transacción junto al product_match correspondiente.
+        sp = self._s.get(StoreProductModel, uuid.UUID(store_product_id))
+        if sp is None:
+            return
+        sp.canonical_product_id = uuid.UUID(canonical_product_id)
+        self._s.flush()
+
     def record_observation(
         self,
         *,

@@ -116,6 +116,14 @@ class StoreProductRepository(Protocol):
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]: ...
 
+    def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
+        """Escribe el FK denormalizado `store_product.canonical_product_id` (F2.0 matching).
+
+        Invariante de la cascada (`MatchStoreProduct`): se llama SOLO junto al `product_match`
+        correspondiente, en la MISMA transacción — el use case es el dueño de esa frontera.
+        """
+        ...
+
     def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
         """Puntos de cambio (change-only) de todas las tiendas, ordenados por captured_at."""
         ...
@@ -204,6 +212,15 @@ class ProductMatchRepository(Protocol):
         status: str,
     ) -> str:
         """Inserta/actualiza el `product_match` de `store_product_id` (UNIQUE). Devuelve el id."""
+        ...
+
+    def find_candidates_by_ean(self, ean: str, market_id: str) -> list[MatchCandidate]:
+        """Canonical_products YA enlazados que comparten este EAN en el mercado (score=1.0).
+
+        Etapa 1 de la cascada (señal fuerte). 0 candidatos = sin match EAN (cae a léxico/semántico);
+        1 candidato = enlace exacto; >1 canonical DISTINTO = colisión ambigua (a revisión humana,
+        NO se autolinkea). No hay ranking real: el EAN es exacto, no aproximado.
+        """
         ...
 
     def find_candidates_trgm(

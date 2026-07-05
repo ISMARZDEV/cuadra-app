@@ -87,6 +87,25 @@ class SqlProductMatchRepository:
         self._s.flush()
         return str(m.id)
 
+    def find_candidates_by_ean(self, ean: str, market_id: str) -> list[MatchCandidate]:
+        # canonical_products DISTINTOS ya enlazados que comparten este EAN en el mercado
+        # (vía store_product -> provider, product_match no tiene market_id propio). Score fijo 1.0
+        # (EAN exacto, no aproximado). >1 fila = colisión ambigua; la cascada decide qué hacer.
+        rows = self._s.execute(
+            select(StoreProductModel.canonical_product_id)
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .where(
+                ProviderModel.market_id == market_id,
+                StoreProductModel.ean == ean,
+                StoreProductModel.canonical_product_id.is_not(None),
+            )
+            .distinct()
+        ).all()
+        return [
+            MatchCandidate(canonical_product_id=str(r.canonical_product_id), score=1.0)
+            for r in rows
+        ]
+
     def find_candidates_trgm(
         self, name: str, market_id: str, limit: int = 20
     ) -> list[MatchCandidate]:

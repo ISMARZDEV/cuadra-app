@@ -19,6 +19,7 @@ from src.contexts.save.infrastructure.repositories import (
 )
 from src.shared.db.base import SessionLocal
 
+from .composition import build_matcher
 from .runner import refresh_source
 from .sources import SAVE_MARKET, build_sources
 
@@ -35,17 +36,20 @@ def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
     def _asset(context) -> dg.MaterializeResult:
         adapters = build_sources()[source_key]
         with SessionLocal() as session:
-            result = refresh_source(SqlStoreProductRepository(session), adapters)
+            result = refresh_source(
+                SqlStoreProductRepository(session), adapters, matcher=build_matcher(session)
+            )
             session.commit()
         context.log.info(
             f"{source_key}: seen={result.seen} refreshed={result.refreshed} "
-            f"unmatched={result.unmatched}"
+            f"unmatched={result.unmatched} matched={result.matched}"
         )
         return dg.MaterializeResult(
             metadata={
                 "seen": result.seen,
                 "refreshed": result.refreshed,
                 "unmatched": result.unmatched,
+                "matched": result.matched,
             }
         )
 
