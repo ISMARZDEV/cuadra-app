@@ -34,8 +34,13 @@
 - [x] ~~"Inspiración"~~ — es contenido de News, **deferido, no necesario ahora**.
 
 ### 1.3 Hardening pre-producción (hoy en modo dev)
-- [ ] **IdP real** — el `dev-login` (`/identity/dev-login`) es solo para desarrollo. GRANDE: requiere
-  decidir proveedor (Clerk/Supabase/Auth0/custom) antes de codear.
+- [x] **IdP real → CLERK** ✅ (2026-07-05, rama `feat/identity-clerk`, 18 commits). Integración
+  end-to-end **dual-mode** (Clerk si hay publishable key, dev-login fallback): backend RS256/JWKS +
+  alta JIT `(clerk,sub)→user` (RBAC nuestro, lock-in casi cero), web `@clerk/clerk-react` `<SignIn/>`,
+  mobile `@clerk/expo` AuthView. **Verificado en runtime** (web + mobile simulador): login Google →
+  provisión con email/name del custom claim → alertas + chat autenticados → notificación de bajada.
+  Gotchas resueltos: `expo prebuild --clean` (SPM ClerkExpo), `azp` opcional (Clerk no lo envía),
+  CORS `:3006`. Skill nueva `cuadra-clerk`. Falta prod (instancia Production + Apple de pago).
 - [x] **Matching de alertas como schedule de Dagster** ✅ (2026-07-05, rama `feat/save-web-f1-followups`).
   Nuevo asset `alert_matching` en `apps/api/ingestion/save/assets.py` (hermano de `price_drops`,
   deps de las 3 fuentes): tras el refresh cruza bajadas × suscripciones y persiste las notificaciones
