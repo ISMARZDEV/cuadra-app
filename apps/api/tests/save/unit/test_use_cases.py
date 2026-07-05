@@ -32,6 +32,11 @@ class FakeCanonicalRepo:
     def get_by_id(self, product_id: str) -> CanonicalProduct | None:
         return self._p.get(product_id)
 
+    def get_by_slug(self, slug: str, market_id: str) -> CanonicalProduct | None:
+        return next(
+            (p for p in self._p.values() if p.slug == slug and p.market_id == market_id), None
+        )
+
     def search(self, query: str, market_id: str) -> list[CanonicalProduct]:
         return [
             p for p in self._p.values()
@@ -56,7 +61,11 @@ class FakeStoreRepo:
 
 
 def _canonical(cid: str, name: str, measure: UnitMeasure = UnitMeasure.MASS) -> CanonicalProduct:
-    return CanonicalProduct(cid, name, "La Garza", Quantity(Decimal("2"), measure), "t", "DO")
+    from src.contexts.save.domain.slug import product_slug
+    return CanonicalProduct(
+        cid, name, "La Garza", Quantity(Decimal("2"), measure), "t", "DO",
+        slug=product_slug(name, "La Garza"),
+    )
 
 
 def test_compare_product_builds_sorted_table() -> None:
@@ -69,9 +78,10 @@ def test_compare_product_builds_sorted_table() -> None:
         ]
     }
     uc = CompareProduct(FakeCanonicalRepo([canonical]), FakeStoreRepo(quotes))
-    dto = uc.execute("c1")
+    dto = uc.execute("arroz-la-garza", "DO")
 
     assert dto.name == "Arroz La Garza"
+    assert dto.slug == "arroz-la-garza"
     assert [e.provider_name for e in dto.entries] == ["Merca", "Bravo", "Sirena"]
     assert dto.entries[0].is_cheapest is True
     assert dto.entries[0].price_minor == 42400
@@ -84,7 +94,17 @@ def test_compare_product_builds_sorted_table() -> None:
 def test_compare_product_not_found_raises() -> None:
     uc = CompareProduct(FakeCanonicalRepo([]), FakeStoreRepo({}))
     with pytest.raises(CanonicalProductNotFoundError):
-        uc.execute("nope")
+        uc.execute("nope", "DO")
+
+
+def test_compare_product_falls_back_to_id_when_not_a_slug() -> None:
+    # las páginas privadas (lista local, feed de alertas) linkean por UUID, no por slug legible.
+    canonical = _canonical("c1", "Arroz La Garza")  # slug = "arroz-la-garza", id = "c1"
+    quotes = {"c1": [StoreQuote("p-merca", "Merca", Money(42400, DOP))]}
+    uc = CompareProduct(FakeCanonicalRepo([canonical]), FakeStoreRepo(quotes))
+    dto = uc.execute("c1", "DO")  # "c1" no es el slug → fallback por id
+    assert dto.canonical_product_id == "c1"
+    assert dto.slug == "arroz-la-garza"
 
 
 def test_search_products_filters_by_query_and_market() -> None:

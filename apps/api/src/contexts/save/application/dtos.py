@@ -14,12 +14,13 @@ from ..domain.taxonomy import CategoryNode
 
 class ProductSearchDto(BaseModel):
     id: str
+    slug: str        # llave pública para el href (SEO)
     name: str
     brand: str
 
     @classmethod
     def from_entity(cls, product: CanonicalProduct) -> ProductSearchDto:
-        return cls(id=product.id, name=product.name, brand=product.brand)
+        return cls(id=product.id, slug=product.slug or "", name=product.name, brand=product.brand)
 
 
 class CategoryRefDto(BaseModel):
@@ -45,6 +46,7 @@ class ComparedPriceDto(BaseModel):
 
 class PriceComparisonDto(BaseModel):
     canonical_product_id: str
+    slug: str        # llave pública del producto (SEO / canonical URL)
     name: str
     brand: str
     quality: str | None = None
@@ -79,6 +81,7 @@ class PriceComparisonDto(BaseModel):
         ]
         return cls(
             canonical_product_id=canonical.id,
+            slug=canonical.slug or "",
             name=canonical.name,
             brand=canonical.brand,
             quality=canonical.quality,
@@ -245,6 +248,7 @@ class ProductCardDto(BaseModel):
     """Card de producto en el listado (Imagen #5): precio mínimo, precio/unidad, N tiendas."""
 
     id: str
+    slug: str                 # llave pública para el href de la card (SEO)
     name: str
     brand: str
     quality: str | None = None

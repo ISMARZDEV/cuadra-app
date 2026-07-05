@@ -80,10 +80,13 @@ def test_search_endpoint_finds_product(db_session: Session) -> None:
 
 
 def test_compare_endpoint_returns_sorted_table(db_session: Session) -> None:
-    cid = _seed(db_session)
-    r = _client(db_session).get("/v1/save/compare", params={"product_id": cid})
+    _seed(db_session)  # "Arroz La Garza 10 Lbs" → slug determinista
+    r = _client(db_session).get(
+        "/v1/save/compare", params={"slug": "arroz-la-garza-10-lbs", "market": "DO"}
+    )
     assert r.status_code == 200
     body = r.json()
+    assert body["slug"] == "arroz-la-garza-10-lbs"
     assert body["cheapest_provider"] == "Merca"
     assert body["entries"][0]["provider_name"] == "Merca"
     assert body["entries"][0]["is_cheapest"] is True
@@ -91,7 +94,9 @@ def test_compare_endpoint_returns_sorted_table(db_session: Session) -> None:
 
 
 def test_compare_endpoint_404_when_missing(db_session: Session) -> None:
-    r = _client(db_session).get("/v1/save/compare", params={"product_id": str(uuid.uuid4())})
+    r = _client(db_session).get(
+        "/v1/save/compare", params={"slug": "no-existe", "market": "DO"}
+    )
     assert r.status_code == 404
 
 
@@ -204,9 +209,20 @@ def test_products_endpoint_lists_market_products(db_session: Session) -> None:
     assert any(item["id"] == cid for item in r.json())
 
 
-def test_compare_endpoint_invalid_id_is_404_not_500(db_session: Session) -> None:
-    # soft-404 SEO: un id malformado devuelve 404 (no 500 por ValueError de uuid).
-    r = _client(db_session).get("/v1/save/compare", params={"product_id": "no-es-uuid"})
+def test_compare_endpoint_resolves_by_uuid_fallback(db_session: Session) -> None:
+    # un link privado (lista/alertas) pasa el UUID como `slug` → resuelve igual, canónico = el slug.
+    cid = _seed(db_session)
+    r = _client(db_session).get("/v1/save/compare", params={"slug": cid, "market": "DO"})
+    assert r.status_code == 200
+    assert r.json()["slug"] == "arroz-la-garza-10-lbs"
+
+
+def test_compare_endpoint_wrong_market_is_404(db_session: Session) -> None:
+    # el slug es único POR-MERCADO: existe en DO pero no en US → 404 limpio (no 500).
+    _seed(db_session)
+    r = _client(db_session).get(
+        "/v1/save/compare", params={"slug": "arroz-la-garza-10-lbs", "market": "US"}
+    )
     assert r.status_code == 404
 
 

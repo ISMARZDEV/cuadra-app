@@ -57,6 +57,7 @@ class _Aggregated:
     quantity: Quantity
     min_price: Money
     providers: dict[str, str]  # provider_id → provider_name (tiendas que lo tienen)
+    slug: str = ""             # llave pública para el href de la card
 
     @property
     def unit_price_minor(self) -> int:
@@ -70,7 +71,7 @@ def _aggregate(rows: Iterable[OfferingRow]) -> dict[str, _Aggregated]:
         if agg is None:
             out[r.product_id] = _Aggregated(
                 r.product_id, r.name, r.brand, r.quality, r.display_size, r.image_url,
-                r.quantity, r.price, {r.provider_id: r.provider_name},
+                r.quantity, r.price, {r.provider_id: r.provider_name}, slug=r.slug,
             )
             continue
         agg.providers[r.provider_id] = r.provider_name
@@ -182,6 +183,7 @@ def _sort_key(sort: str):
 def _to_card(p: _Aggregated, discount_bps: int | None = None) -> ProductCardDto:
     return ProductCardDto(
         id=p.product_id,
+        slug=p.slug,
         name=p.name,
         brand=p.brand,
         quality=p.quality,

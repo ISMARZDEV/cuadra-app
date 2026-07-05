@@ -29,6 +29,7 @@ def canonical_to_entity(m: CanonicalProductModel, brand_name: str) -> CanonicalP
         quality=m.quality,
         display_size=m.display_size,
         image_url=m.image_url,
+        slug=m.slug,
     )
 
 

@@ -25,3 +25,4 @@ class OfferingRow:
     provider_id: str
     provider_name: str
     price: Money
+    slug: str = ""  # llave pública para el href de la card

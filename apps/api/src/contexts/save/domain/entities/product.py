@@ -29,6 +29,7 @@ class CanonicalProduct:
     quality: str | None = None       # Premium|Selecto|…
     display_size: str | None = None  # tamaño ORIGINAL de empaque ("10 LB"), no el normalizado
     image_url: str | None = None
+    slug: str | None = None          # llave PÚBLICA URL-safe (SEO); la asigna la infra al persistir
 
     def __post_init__(self) -> None:
         if not self.name.strip():

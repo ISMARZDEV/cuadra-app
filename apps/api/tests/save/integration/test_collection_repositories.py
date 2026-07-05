@@ -17,10 +17,12 @@ from src.contexts.save.infrastructure.repositories import SqlCollectionRepositor
 
 def test_collection_round_trip_and_position_order(db_session) -> None:  # type: ignore[no-untyped-def]
     p1 = CanonicalProductModel(
-        name="Protector A", size_amount=Decimal("1"), size_measure="count", market_id="DO"
+        slug="test-protector-a", name="Protector A",
+        size_amount=Decimal("1"), size_measure="count", market_id="DO",
     )
     p2 = CanonicalProductModel(
-        name="Protector B", size_amount=Decimal("1"), size_measure="count", market_id="DO"
+        slug="test-protector-b", name="Protector B",
+        size_amount=Decimal("1"), size_measure="count", market_id="DO",
     )
     db_session.add_all([p1, p2])
     db_session.flush()
