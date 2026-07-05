@@ -17,16 +17,24 @@ from ingestion.definitions import defs  # noqa: E402
 _SOURCE_KEYS = ("sirena", "nacional", "jumbo")
 
 
-def test_exposes_one_asset_per_source_plus_drops() -> None:
+def test_exposes_one_asset_per_source_plus_drops_and_alert_matching() -> None:
     keys = defs.resolve_asset_graph().get_all_asset_keys()
     for source in _SOURCE_KEYS:
         assert AssetKey(f"{source}_prices") in keys
     assert AssetKey("price_drops") in keys
+    assert AssetKey("alert_matching") in keys
 
 
 def test_price_drops_depends_on_all_sources() -> None:
     graph = defs.resolve_asset_graph()
     parents = graph.get(AssetKey("price_drops")).parent_keys
+    for source in _SOURCE_KEYS:
+        assert AssetKey(f"{source}_prices") in parents
+
+
+def test_alert_matching_depends_on_all_sources() -> None:
+    graph = defs.resolve_asset_graph()
+    parents = graph.get(AssetKey("alert_matching")).parent_keys
     for source in _SOURCE_KEYS:
         assert AssetKey(f"{source}_prices") in parents
 
