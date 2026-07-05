@@ -7,8 +7,10 @@ use cases ya cableados vía `Depends`. La `Session` (`get_session`) es el Unit o
 from __future__ import annotations
 
 from collections.abc import Iterator
+from functools import lru_cache
 
 from fastapi import Depends
+from jwt import PyJWKClient
 from sqlalchemy.orm import Session
 
 from src.contexts.save.application.alerts import (
@@ -46,6 +48,11 @@ from src.contexts.save.infrastructure.repositories import (
 )
 
 from src.contexts.identity.application.queries import GetMe
+from src.contexts.identity.domain.ports import TokenVerifier
+from src.contexts.identity.infrastructure.clerk_token_verifier import (
+    ClerkTokenVerifier,
+    NullTokenVerifier,
+)
 from src.contexts.identity.infrastructure.repositories import (
     SqlCapabilityGatingRepository,
     SqlUserRepository,
@@ -102,6 +109,28 @@ def get_session() -> Iterator[Session]:
 
 def get_get_me(session: Session = Depends(get_session)) -> GetMe:
     return GetMe(SqlUserRepository(session), SqlCapabilityGatingRepository(session))
+
+
+_NULL_VERIFIER = NullTokenVerifier()
+
+
+@lru_cache(maxsize=1)
+def _clerk_verifier_enabled() -> ClerkTokenVerifier:
+    """Verificador Clerk real — un único PyJWKClient (cachea el JWKS entre requests)."""
+    return ClerkTokenVerifier(
+        issuer=settings.clerk_issuer,
+        authorized_parties=settings.clerk_authorized_party_list,
+        jwk_client=PyJWKClient(settings.clerk_jwks_url),
+    )
+
+
+def get_clerk_verifier() -> TokenVerifier:
+    """Verificador de tokens del IdP para la vía RS256 de `get_current_user_id`. Si Clerk no está
+    configurado (dev), devuelve el verificador nulo — así el `Depends` no construye un PyJWKClient
+    con un issuer vacío y el dev-login (HS256) sigue funcionando."""
+    if not settings.clerk_enabled:
+        return _NULL_VERIFIER
+    return _clerk_verifier_enabled()
 
 
 def get_preference_repository(
