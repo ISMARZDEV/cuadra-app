@@ -5,7 +5,7 @@ import type { PageContextServer } from "vike/types";
 import { DEFAULT_COUNTRY, marketOf } from "@/i18n/config";
 import { apiClient } from "@/lib/api";
 
-export type CollectionData = Awaited<ReturnType<typeof data>>;
+export type { CollectionData } from "@/features/save/types";
 
 // SSR: página propia de una colección curada (A6) — su nombre + TODOS sus productos hand-pick.
 // 404 si la colección no existe (soft-404 correcto para SEO).
