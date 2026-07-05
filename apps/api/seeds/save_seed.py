@@ -24,6 +24,8 @@ from src.contexts.save.domain.taxonomy import slugify
 from src.contexts.save.domain.value_objects import parse_size
 from src.contexts.save.infrastructure.models import (
     CanonicalProductModel,
+    CollectionModel,
+    CollectionProductModel,
     PriceModel,
     ProviderModel,
     StoreProductModel,
@@ -254,6 +256,44 @@ _CATALOG: list[tuple[str, str, str, str, str, str | None, str, int, bool]] = [
 ]
 
 
+# ── Colecciones curadas (A6): productos hand-pick de Protector solar y Limpieza, con sus hojas de
+#    taxonomía propias. Se agrupan en dos colecciones EDITORIALES (no responden a "en oferta" ni a
+#    una sola categoría) → alimentan los carruseles curados de la home y su página propia.
+_PROTECTOR_LEAF = ["Cuidado Personal", "Cuidado Corporal", "Protector Solar"]
+_LIMPIEZA_LEAF = ["Cuidado Del Hogar", "Limpieza Del Hogar"]
+
+# (key, brand, name, size, disp, quality, base_minor, on_sale)
+_PROTECTOR_SOLAR: list[tuple[str, str, str, str, str, str | None, int, bool]] = [
+    ("nivea-sun-50", "Nivea", "Protector Solar Nivea Sun FPS 50", "200 ml", "200 ML", None, 89500, False),
+    ("banana-boat-sport-50", "Banana Boat", "Banana Boat Sport FPS 50", "170 gr", "170 GR", None, 79900, True),
+    ("coppertone-ultra-30", "Coppertone", "Coppertone Ultra Guard FPS 30", "148 ml", "148 ML", None, 72500, False),
+    ("neutrogena-sheer-70", "Neutrogena", "Neutrogena Ultra Sheer FPS 70", "88 ml", "88 ML", "Premium", 118000, False),
+    ("eucerin-oil-50", "Eucerin", "Eucerin Sun Oil Control FPS 50", "50 ml", "50 ML", "Premium", 145000, False),
+    ("hawaiian-silk-50", "Hawaiian Tropic", "Hawaiian Tropic Silk Hydration FPS 50", "180 ml", "180 ML", None, 95000, True),
+    ("nivea-kids-50", "Nivea", "Nivea Sun Kids Protect FPS 50", "200 ml", "200 ML", None, 92500, False),
+    ("banana-kids-60", "Banana Boat", "Banana Boat Kids FPS 60", "180 ml", "180 ML", None, 88000, False),
+]
+
+# (key, brand, name, size, disp, quality, base_minor, on_sale)
+_LIMPIEZA: list[tuple[str, str, str, str, str, str | None, int, bool]] = [
+    ("mistolin-lavanda", "Mistolin", "Limpiador Mistolin Lavanda", "1 gl", "1 GL", None, 25900, False),
+    ("clorox-original", "Clorox", "Cloro Clorox Original", "1 gl", "1 GL", None, 19500, True),
+    ("fabuloso-lavanda", "Fabuloso", "Fabuloso Lavanda", "1 gl", "1 GL", None, 22500, False),
+    ("mistolin-brisa", "Mistolin", "Mistolin Brisa Fresca", "1 gl", "1 GL", None, 24900, False),
+    ("ajax-limon", "Ajax", "Ajax Limón Multiusos", "1 gl", "1 GL", None, 21000, True),
+    ("clorox-gel", "Clorox", "Clorox Gel Adherente", "709 ml", "709 ML", None, 15500, False),
+    ("suavitel-primavera", "Suavitel", "Suavizante Suavitel Primavera", "850 ml", "850 ML", None, 17900, False),
+    ("cif-crema", "Cif", "Cif Crema Multiuso", "750 ml", "750 ML", None, 14500, False),
+]
+
+# (slug, name, position, dataset) — el orden del dataset ES el orden hand-pick de la colección.
+_COLLECTIONS: list[tuple[str, str, int, list[tuple[str, str, str, str, str, str | None, int, bool]]]] = [
+    ("protector-solar", "Protector solar", 0, _PROTECTOR_SOLAR),
+    ("limpieza", "Limpieza", 1, _LIMPIEZA),
+]
+_COLLECTION_LEAF = {"protector-solar": _PROTECTOR_LEAF, "limpieza": _LIMPIEZA_LEAF}
+
+
 def _det(*parts: object) -> int:
     """Entero DETERMINISTA de las partes (para precios/subset por tienda estables entre corridas)."""
     return int(uuid.uuid5(_NS, ":".join(str(p) for p in parts)).hex[:8], 16)
@@ -275,39 +315,93 @@ def _has_price_history(session: Session, provider_uuid: uuid.UUID, external_id: 
     return (count or 0) >= 2
 
 
+def _seed_product(  # type: ignore[no-untyped-def]
+    session: Session, canon_repo, store_repo, now: datetime, *,
+    key: str, brand: str, name: str, size: str, disp: str, quality: str | None,
+    node_id: str, base: int, on_sale: bool,
+) -> str:
+    """Siembra UN producto (canónico + subset determinista de tiendas). Devuelve su canonical id."""
+    cid = uuid.uuid5(_NS, f"canonical:DO:{key}")
+    if session.get(CanonicalProductModel, cid) is None:
+        canon_repo.add(
+            CanonicalProduct(
+                str(cid), name, brand, parse_size(size),
+                taxonomy_node_id=node_id, market_id="DO",
+                quality=quality, display_size=disp,
+            )
+        )
+    # subset determinista de tiendas (≥3): la tienda entra si _det no es múltiplo de 4.
+    carried = [n for (n, _) in _PROVIDERS if _det(key, n) % 4 != 0]
+    if len(carried) < 3:
+        carried = [n for (n, _) in _PROVIDERS][:4]
+    for i, pname in enumerate(carried):
+        ext = f"{key}--{slugify(pname)}"
+        delta = ((_det(key, pname) % 11) - 5) * (base // 100)  # ±5% por tienda
+        price = base + delta
+        # producto "en oferta": la 1ª tienda tuvo un precio ~12% más alto hace 3 días (bajada).
+        if on_sale and i == 0 and not _has_price_history(session, provider_id(pname), ext):
+            store_repo.record_observation(
+                provider_id=str(provider_id(pname)), external_id=ext,
+                canonical_product_id=str(cid), price=Money(price + base * 12 // 100, DOP),
+                captured_at=now - timedelta(days=3), price_type=PriceType.ONLINE, source="seed",
+            )
+        store_repo.record_observation(
+            provider_id=str(provider_id(pname)), external_id=ext,
+            canonical_product_id=str(cid), price=Money(price, DOP),
+            captured_at=now, price_type=PriceType.ONLINE, source="seed",
+        )
+    return str(cid)
+
+
 def _seed_catalog(session: Session, canon_repo, store_repo, now: datetime) -> None:  # type: ignore[no-untyped-def]
     """Siembra el catálogo realista (idempotente). Cada producto → subset determinista de tiendas."""
     for key, brand, name, size, disp, quality, leaf, base, on_sale in _CATALOG:
-        node_id = _taxonomy_leaf(session, "DO", _LEAVES[leaf])
-        cid = uuid.uuid5(_NS, f"canonical:DO:{key}")
-        if session.get(CanonicalProductModel, cid) is None:
-            canon_repo.add(
-                CanonicalProduct(
-                    str(cid), name, brand, parse_size(size),
-                    taxonomy_node_id=node_id, market_id="DO",
-                    quality=quality, display_size=disp,
+        _seed_product(
+            session, canon_repo, store_repo, now,
+            key=key, brand=brand, name=name, size=size, disp=disp, quality=quality,
+            node_id=_taxonomy_leaf(session, "DO", _LEAVES[leaf]), base=base, on_sale=on_sale,
+        )
+
+
+def _upsert_collection(  # type: ignore[no-untyped-def]
+    session: Session, *, slug: str, name: str, position: int, product_ids: list[str]
+) -> None:
+    """Crea (idempotente) la colección y engancha sus productos EN ORDEN (position = índice)."""
+    coll_id = uuid.uuid5(_NS, f"collection:DO:{slug}")
+    if session.get(CollectionModel, coll_id) is None:
+        session.add(
+            CollectionModel(
+                id=coll_id, slug=slug, name=name, market_id="DO", position=position
+            )
+        )
+        session.flush()
+    for pos, pid in enumerate(product_ids):
+        cp_id = uuid.uuid5(_NS, f"collection_product:DO:{slug}:{pid}")
+        if session.get(CollectionProductModel, cp_id) is None:
+            session.add(
+                CollectionProductModel(
+                    id=cp_id, collection_id=coll_id,
+                    canonical_product_id=uuid.UUID(pid), position=pos,
                 )
             )
-        # subset determinista de tiendas (≥3): la tienda entra si _det no es múltiplo de 4.
-        carried = [n for (n, _) in _PROVIDERS if _det(key, n) % 4 != 0]
-        if len(carried) < 3:
-            carried = [n for (n, _) in _PROVIDERS][:4]
-        for i, pname in enumerate(carried):
-            ext = f"{key}--{slugify(pname)}"
-            delta = ((_det(key, pname) % 11) - 5) * (base // 100)  # ±5% por tienda
-            price = base + delta
-            # producto "en oferta": la 1ª tienda tuvo un precio ~12% más alto hace 3 días (bajada).
-            if on_sale and i == 0 and not _has_price_history(session, provider_id(pname), ext):
-                store_repo.record_observation(
-                    provider_id=str(provider_id(pname)), external_id=ext,
-                    canonical_product_id=str(cid), price=Money(price + base * 12 // 100, DOP),
-                    captured_at=now - timedelta(days=3), price_type=PriceType.ONLINE, source="seed",
-                )
-            store_repo.record_observation(
-                provider_id=str(provider_id(pname)), external_id=ext,
-                canonical_product_id=str(cid), price=Money(price, DOP),
-                captured_at=now, price_type=PriceType.ONLINE, source="seed",
+    session.flush()
+
+
+def _seed_collections(session: Session, canon_repo, store_repo, now: datetime) -> None:  # type: ignore[no-untyped-def]
+    """Siembra los productos de cada colección curada (A6) y las colecciones (hand-pick, en orden)."""
+    for slug, name, position, dataset in _COLLECTIONS:
+        node_id = _taxonomy_leaf(session, "DO", _COLLECTION_LEAF[slug])
+        product_ids = [
+            _seed_product(
+                session, canon_repo, store_repo, now,
+                key=key, brand=brand, name=pname, size=size, disp=disp, quality=quality,
+                node_id=node_id, base=base, on_sale=on_sale,
             )
+            for key, brand, pname, size, disp, quality, base, on_sale in dataset
+        ]
+        _upsert_collection(
+            session, slug=slug, name=name, position=position, product_ids=product_ids
+        )
 
 
 def seed_save(session: Session) -> None:
@@ -365,3 +459,6 @@ def seed_save(session: Session) -> None:
 
     # 5) catálogo realista (~48 productos bajo Arroz, Granos & Legumbres) para dev/QA visual
     _seed_catalog(session, canon_repo, store_repo, now)
+
+    # 6) colecciones curadas (A6): Protector solar + Limpieza (hand-pick) para los carruseles
+    _seed_collections(session, canon_repo, store_repo, now)

@@ -11,12 +11,14 @@ from pydantic import BaseModel
 
 from src.api.composition_root import (
     get_category,
+    get_collection,
     get_compare_product,
     get_list_alert_notifications,
     get_list_alerts,
     get_list_brand_products,
     get_list_categories,
     get_list_category_products,
+    get_list_collections,
     get_list_featured_products,
     get_list_price_drops,
     get_list_provider_products,
@@ -42,6 +44,7 @@ from src.contexts.save.application.alerts import (
     UnsubscribeAlert,
 )
 from src.contexts.save.application.categories import GetCategory, ListCategories
+from src.contexts.save.application.collections import GetCollection, ListCollections
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.dtos import (
@@ -50,6 +53,7 @@ from src.contexts.save.application.dtos import (
     CategoryListingDto,
     CategoryPageDto,
     CategoryTreeDto,
+    CollectionDto,
     PriceComparisonDto,
     PriceDropDto,
     PriceHistoryDto,
@@ -105,6 +109,30 @@ def featured_products(
     use_case: ListFeaturedProducts = Depends(get_list_featured_products),
 ) -> list[ProductCardDto]:
     return use_case.execute(market, sort=sort, limit=limit)
+
+
+@router.get("/collections")
+def list_collections(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: ListCollections = Depends(get_list_collections),
+) -> list[CollectionDto]:
+    """Colecciones curadas del mercado como rails de la home (A6). Vacías se omiten."""
+    return use_case.execute(market)
+
+
+@router.get("/collection/{slug}")
+def collection_page(
+    slug: str,
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: GetCollection = Depends(get_collection),
+) -> CollectionDto:
+    """Página propia de una colección curada: todos sus productos hand-pick (A6)."""
+    result = use_case.execute(slug, market)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Colección no encontrada."
+        )
+    return result
 
 
 @router.get("/categories")

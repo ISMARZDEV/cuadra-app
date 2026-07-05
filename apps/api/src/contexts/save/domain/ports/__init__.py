@@ -3,6 +3,7 @@ from .push import PushSender
 from .repositories import (
     AlertRepository,
     CanonicalProductRepository,
+    CollectionRepository,
     ProviderRepository,
     StoreProductRepository,
     TaxonomyRepository,
@@ -11,6 +12,7 @@ from .repositories import (
 __all__ = [
     "AlertRepository",
     "CanonicalProductRepository",
+    "CollectionRepository",
     "CatalogSource",
     "ProviderRepository",
     "PushSender",

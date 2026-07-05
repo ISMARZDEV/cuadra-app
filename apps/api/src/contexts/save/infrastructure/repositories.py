@@ -17,7 +17,7 @@ from src.shared.money import Currency, Money
 from ..domain.alerts import Alert, AlertNotification, AlertSubscription
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
-from ..domain.entities import CanonicalProduct, PriceType, Provider, StoreProduct
+from ..domain.entities import CanonicalProduct, Collection, PriceType, Provider, StoreProduct
 from ..domain.history import PricePoint
 from ..domain.listing import OfferingRow
 from ..domain.taxonomy import CategoryNode, slugify
@@ -27,6 +27,8 @@ from .models import (
     AlertNotificationModel,
     BrandModel,
     CanonicalProductModel,
+    CollectionModel,
+    CollectionProductModel,
     PriceAlertModel,
     PriceModel,
     ProviderModel,
@@ -72,6 +74,44 @@ class SqlProviderRepository:
             .order_by(ProviderModel.name)
         ).all()
         return [provider_to_entity(m) for m in models]
+
+
+class SqlCollectionRepository:
+    """Colecciones curadas (A6). Orden por `position` en ambas consultas (rail y pertenencia)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    @staticmethod
+    def _to_entity(m: CollectionModel) -> Collection:
+        return Collection(id=str(m.id), slug=m.slug, name=m.name, market_id=m.market_id)
+
+    def list_by_market(self, market_id: str) -> list[Collection]:
+        models = self._s.scalars(
+            select(CollectionModel)
+            .where(CollectionModel.market_id == market_id)
+            .order_by(CollectionModel.position, CollectionModel.name)
+        ).all()
+        return [self._to_entity(m) for m in models]
+
+    def get_by_slug(self, slug: str, market_id: str) -> Collection | None:
+        m = self._s.scalars(
+            select(CollectionModel).where(
+                CollectionModel.market_id == market_id, CollectionModel.slug == slug
+            )
+        ).first()
+        return self._to_entity(m) if m else None
+
+    def list_product_ids(self, collection_id: str) -> list[str]:
+        cid = _parse_uuid(collection_id)
+        if cid is None:
+            return []
+        rows = self._s.scalars(
+            select(CollectionProductModel.canonical_product_id)
+            .where(CollectionProductModel.collection_id == cid)
+            .order_by(CollectionProductModel.position)
+        ).all()
+        return [str(pid) for pid in rows]
 
 
 class SqlCanonicalProductRepository:

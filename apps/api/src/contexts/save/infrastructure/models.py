@@ -59,6 +59,50 @@ class TaxonomyNodeModel(Base):
     market_id: Mapped[str] = mapped_column(Text, nullable=False)  # cross-context, sin FK
 
 
+class CollectionModel(Base):
+    """Colección curada (A6): grupo hand-pick de productos para un carrusel. Única por (market, slug)."""
+
+    __tablename__ = "collection"
+    __table_args__ = (
+        UniqueConstraint("market_id", "slug", name="uq_collection_market_slug"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    slug: Mapped[str] = mapped_column(Text, nullable=False)   # llave pública (URL)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)  # por ID (ADR 33)
+    position: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
+
+
+class CollectionProductModel(Base):
+    """Pertenencia producto↔colección (M:N) con orden. Única por (colección, producto)."""
+
+    __tablename__ = "collection_product"
+    __table_args__ = (
+        UniqueConstraint(
+            "collection_id", "canonical_product_id", name="uq_collection_product"
+        ),
+        Index("ix_collection_product_collection", "collection_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.collection.id", ondelete="CASCADE"), nullable=False
+    )
+    canonical_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("save.canonical_product.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    position: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
+
+
 class BrandModel(Base):
     """Marca normalizada (como `merchant` en insights). Única por (market, name)."""
 

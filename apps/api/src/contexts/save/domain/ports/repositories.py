@@ -13,7 +13,7 @@ from src.shared.money import Money
 from ..alerts import Alert, AlertNotification, AlertSubscription
 from ..comparison import StoreQuote
 from ..drops import PriceChange
-from ..entities import CanonicalProduct, PriceType, Provider, StoreProduct
+from ..entities import CanonicalProduct, Collection, PriceType, Provider, StoreProduct
 from ..history import PricePoint
 from ..listing import OfferingRow
 from ..taxonomy import CategoryNode
@@ -24,6 +24,22 @@ class ProviderRepository(Protocol):
     def get_by_id(self, provider_id: str) -> Provider | None: ...
     def list_by_market(self, market_id: str) -> list[Provider]:
         """Providers del mercado, para el rail "Ofertas por supermercado" (A9)."""
+        ...
+
+
+class CollectionRepository(Protocol):
+    """Colecciones curadas (A6). La pertenencia (M:N) se resuelve por `list_product_ids`."""
+
+    def list_by_market(self, market_id: str) -> list[Collection]:
+        """Colecciones del mercado, en orden de `position` (rails de la home)."""
+        ...
+
+    def get_by_slug(self, slug: str, market_id: str) -> Collection | None:
+        """Resuelve una colección por su slug público (página propia)."""
+        ...
+
+    def list_product_ids(self, collection_id: str) -> list[str]:
+        """canonical_product_id de la colección, en orden de `position` (hand-pick)."""
         ...
 
 

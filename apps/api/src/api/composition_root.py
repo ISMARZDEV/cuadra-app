@@ -31,12 +31,14 @@ from src.contexts.save.application.listing import (
     ListTodaysDeals,
 )
 from src.contexts.save.application.products import ListProducts
+from src.contexts.save.application.collections import GetCollection, ListCollections
 from src.contexts.save.application.providers import GetProvider, ListProviders
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlCanonicalProductRepository,
+    SqlCollectionRepository,
     SqlProviderRepository,
     SqlStoreProductRepository,
     SqlTaxonomyRepository,
@@ -294,6 +296,14 @@ def get_list_featured_products(
     session: Session = Depends(get_session),
 ) -> ListFeaturedProducts:
     return ListFeaturedProducts(SqlStoreProductRepository(session))
+
+
+def get_list_collections(session: Session = Depends(get_session)) -> ListCollections:
+    return ListCollections(SqlCollectionRepository(session), SqlStoreProductRepository(session))
+
+
+def get_collection(session: Session = Depends(get_session)) -> GetCollection:
+    return GetCollection(SqlCollectionRepository(session), SqlStoreProductRepository(session))
 
 
 def get_list_brand_products(session: Session = Depends(get_session)) -> ListBrandProducts:

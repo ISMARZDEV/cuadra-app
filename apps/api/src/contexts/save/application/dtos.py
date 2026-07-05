@@ -258,6 +258,14 @@ class ProductCardDto(BaseModel):
     discount_bps: int | None = None  # % de bajada reciente (badge −X%), None si no está en oferta
 
 
+class CollectionDto(BaseModel):
+    """Colección curada (A6): rail de la home / página propia con sus productos hand-pick."""
+
+    slug: str
+    name: str
+    products: list[ProductCardDto]
+
+
 class FacetValueDto(BaseModel):
     """Un valor de faceta con su conteo (supermercado o marca)."""
 
