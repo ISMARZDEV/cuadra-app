@@ -1,6 +1,6 @@
 import type { PageContext } from "vike/types";
 
-import type { CategoryData } from "./+data";
+import type { CategoryData } from "@/features/save/types";
 
 export default function title(pageContext: PageContext): string {
   const data = pageContext.data as CategoryData | undefined;
