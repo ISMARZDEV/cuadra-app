@@ -18,7 +18,10 @@ class ListProviders:
         self._repo = provider_repo
 
     def execute(self, market_id: str) -> list[ProviderRefDto]:
-        return [ProviderRefDto(id=p.id, name=p.name) for p in self._repo.list_by_market(market_id)]
+        return [
+            ProviderRefDto(id=p.id, name=p.name, logo_url=p.logo_url)
+            for p in self._repo.list_by_market(market_id)
+        ]
 
 
 class GetProvider:
@@ -29,7 +32,9 @@ class GetProvider:
 
     def execute(self, provider_id: str) -> ProviderRefDto | None:
         provider = self._repo.get_by_id(provider_id)
-        return ProviderRefDto(id=provider.id, name=provider.name) if provider else None
+        if provider is None:
+            return None
+        return ProviderRefDto(id=provider.id, name=provider.name, logo_url=provider.logo_url)
 
 
 class CreateProvider:

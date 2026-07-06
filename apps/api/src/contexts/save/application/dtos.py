@@ -209,6 +209,7 @@ class ProviderRefDto(BaseModel):
 
     id: str
     name: str
+    logo_url: str | None = None
 
 
 class AlertDto(BaseModel):
