@@ -23,6 +23,7 @@ from ..entities import (
     ProductMatch,
     Provider,
     StoreProduct,
+    StoreRegistry,
 )
 from ..history import PricePoint
 from ..listing import OfferingRow
@@ -42,6 +43,24 @@ class ProviderRepository(Protocol):
 
         `provider.id` debe existir — el caller (use case) resuelve el `get_by_id` y arma el
         `Provider` actualizado antes de llamar aquí; este método es I/O puro (ADR 31)."""
+        ...
+
+
+class StoreRegistryRepository(Protocol):
+    """Config de fuente de extracción por Provider — 1:1 (F2·B1/B3, Batch 3B, admin ingesta)."""
+
+    def add(self, source: StoreRegistry) -> None: ...
+    def get_by_id(self, source_id: str) -> StoreRegistry | None: ...
+
+    def get_by_provider_id(self, provider_id: str) -> StoreRegistry | None:
+        """Resuelve la fuente del Provider (relación 1:1, `uq_store_registry_provider`)."""
+        ...
+
+    def update(self, source: StoreRegistry) -> None:
+        """Persiste los campos mutables de un StoreRegistry ya existente.
+
+        `source.id` debe existir — el caller (use case) resuelve el `get_by_id` y arma el
+        `StoreRegistry` actualizado antes de llamar aquí; este método es I/O puro (ADR 31)."""
         ...
 
 

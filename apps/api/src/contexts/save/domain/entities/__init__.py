@@ -9,6 +9,7 @@ from .product_match import (
     ProductMatch,
 )
 from .provider import Provider, ProviderType, SourcePlatform
+from .store_registry import StoreRegistry
 
 __all__ = [
     "CanonicalProduct",
@@ -24,4 +25,5 @@ __all__ = [
     "ProviderType",
     "SourcePlatform",
     "StoreProduct",
+    "StoreRegistry",
 ]

@@ -9,15 +9,36 @@ from ..domain.entities import (
     ProviderType,
     SourcePlatform,
     StoreProduct,
+    StoreRegistry,
 )
 from ..domain.value_objects import Quantity, UnitMeasure
-from .models import CanonicalProductModel, ProviderModel, StoreProductModel
+from .models import (
+    CanonicalProductModel,
+    ProviderModel,
+    StoreProductModel,
+    StoreRegistryModel,
+)
 
 
 def provider_to_entity(m: ProviderModel) -> Provider:
     return Provider(
         str(m.id), m.name, ProviderType(m.type), SourcePlatform(m.platform), m.market_id,
         logo_url=m.logo_url,
+    )
+
+
+def store_registry_to_entity(m: StoreRegistryModel) -> StoreRegistry:
+    return StoreRegistry(
+        str(m.id),
+        str(m.provider_id),
+        SourcePlatform(m.platform),
+        m.base_url,
+        endpoints=m.endpoints,
+        headers=m.headers,
+        auth=m.auth,
+        enabled=m.enabled,
+        health_status=m.health_status,
+        paused_at=m.paused_at,
     )
 
 

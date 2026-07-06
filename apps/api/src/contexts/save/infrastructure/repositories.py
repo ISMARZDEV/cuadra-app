@@ -17,14 +17,26 @@ from src.shared.money import Currency, Money
 from ..domain.alerts import Alert, AlertNotification, AlertSubscription
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
-from ..domain.entities import CanonicalProduct, Collection, PriceType, Provider, StoreProduct
+from ..domain.entities import (
+    CanonicalProduct,
+    Collection,
+    PriceType,
+    Provider,
+    StoreProduct,
+    StoreRegistry,
+)
 from ..domain.history import PricePoint
 from ..domain.listing import OfferingRow
 from ..domain.review_queue import StoreProductRawAttrs
 from ..domain.slug import product_slug
 from ..domain.taxonomy import CategoryNode, slugify
 from ..domain.value_objects import Quantity, UnitMeasure
-from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
+from .mappers import (
+    canonical_to_entity,
+    provider_to_entity,
+    store_product_to_entity,
+    store_registry_to_entity,
+)
 from .models import (
     AlertNotificationModel,
     BrandModel,
@@ -36,6 +48,7 @@ from .models import (
     ProviderModel,
     PushTokenModel,
     StoreProductModel,
+    StoreRegistryModel,
     TaxonomyNodeModel,
 )
 
@@ -88,6 +101,59 @@ class SqlProviderRepository:
         m.platform = provider.platform.value
         m.market_id = provider.market_id
         m.logo_url = provider.logo_url
+        self._s.flush()
+
+
+class SqlStoreRegistryRepository:
+    """Config de fuente de extracción por Provider — 1:1 (F2·B1/B3, Batch 3B)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def add(self, source: StoreRegistry) -> None:
+        self._s.add(
+            StoreRegistryModel(
+                id=uuid.UUID(source.id),
+                provider_id=uuid.UUID(source.provider_id),
+                platform=source.platform.value,
+                base_url=source.base_url,
+                endpoints=source.endpoints,
+                headers=source.headers,
+                auth=source.auth,
+                enabled=source.enabled,
+                health_status=source.health_status,
+                paused_at=source.paused_at,
+            )
+        )
+        self._s.flush()
+
+    def get_by_id(self, source_id: str) -> StoreRegistry | None:
+        sid = _parse_uuid(source_id)
+        m = self._s.get(StoreRegistryModel, sid) if sid else None
+        return store_registry_to_entity(m) if m else None
+
+    def get_by_provider_id(self, provider_id: str) -> StoreRegistry | None:
+        pid = _parse_uuid(provider_id)
+        if pid is None:
+            return None
+        m = self._s.scalars(
+            select(StoreRegistryModel).where(StoreRegistryModel.provider_id == pid)
+        ).first()
+        return store_registry_to_entity(m) if m else None
+
+    def update(self, source: StoreRegistry) -> None:
+        sid = _parse_uuid(source.id)
+        m = self._s.get(StoreRegistryModel, sid) if sid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" es regla de negocio del use case
+            return
+        m.platform = source.platform.value
+        m.base_url = source.base_url
+        m.endpoints = source.endpoints
+        m.headers = source.headers
+        m.auth = source.auth
+        m.enabled = source.enabled
+        m.health_status = source.health_status
+        m.paused_at = source.paused_at
         self._s.flush()
 
 

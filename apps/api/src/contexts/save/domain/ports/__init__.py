@@ -6,6 +6,7 @@ from .repositories import (
     CollectionRepository,
     ProviderRepository,
     StoreProductRepository,
+    StoreRegistryRepository,
     TaxonomyRepository,
 )
 
@@ -18,5 +19,6 @@ __all__ = [
     "PushSender",
     "RawCatalogEntry",
     "StoreProductRepository",
+    "StoreRegistryRepository",
     "TaxonomyRepository",
 ]

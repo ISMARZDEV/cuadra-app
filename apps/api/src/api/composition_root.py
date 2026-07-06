@@ -48,6 +48,12 @@ from src.contexts.save.application.providers import (
 )
 from src.contexts.save.application.resolve_review import ResolveReview
 from src.contexts.save.application.search import SearchProducts
+from src.contexts.save.application.store_registry import (
+    CreateSource,
+    PauseSource,
+    ResumeSource,
+    UpdateSource,
+)
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
 from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
     SqlProductMatchRepository,
@@ -58,6 +64,7 @@ from src.contexts.save.infrastructure.repositories import (
     SqlCollectionRepository,
     SqlProviderRepository,
     SqlStoreProductRepository,
+    SqlStoreRegistryRepository,
     SqlTaxonomyRepository,
 )
 
@@ -338,6 +345,22 @@ def get_update_provider(session: Session = Depends(get_session)) -> UpdateProvid
 
 def get_set_provider_logo(session: Session = Depends(get_session)) -> SetProviderLogo:
     return SetProviderLogo(SqlProviderRepository(session))
+
+
+def get_create_source(session: Session = Depends(get_session)) -> CreateSource:
+    return CreateSource(SqlStoreRegistryRepository(session))
+
+
+def get_update_source(session: Session = Depends(get_session)) -> UpdateSource:
+    return UpdateSource(SqlStoreRegistryRepository(session))
+
+
+def get_pause_source(session: Session = Depends(get_session)) -> PauseSource:
+    return PauseSource(SqlStoreRegistryRepository(session))
+
+
+def get_resume_source(session: Session = Depends(get_session)) -> ResumeSource:
+    return ResumeSource(SqlStoreRegistryRepository(session))
 
 
 def get_list_category_products(

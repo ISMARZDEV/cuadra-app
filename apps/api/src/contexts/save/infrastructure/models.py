@@ -23,6 +23,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CHAR,
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -33,7 +34,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.shared.db.base import Base
@@ -136,6 +137,38 @@ class ProviderModel(Base):
     market_id: Mapped[str] = mapped_column(Text, nullable=False)  # "DO"|"US"|"CO" — por ID (ADR 33)
     base_url: Mapped[str | None] = mapped_column(Text)
     logo_url: Mapped[str | None] = mapped_column(Text)  # F2·B1/B3: logo del súper (migración 09526c5ccaca)
+
+
+class StoreRegistryModel(Base):
+    """Config de fuente de extracción por Provider — 1:1 (F2·B1/B3, Batch 3B). Reemplaza el
+    wiring hardcodeado en `ingestion/save/sources.py::build_sources`."""
+
+    __tablename__ = "store_registry"
+    __table_args__ = (
+        UniqueConstraint("provider_id", name="uq_store_registry_provider"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    provider_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.provider.id"), nullable=False
+    )
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    endpoints: Mapped[dict | None] = mapped_column(JSONB)
+    headers: Mapped[dict | None] = mapped_column(JSONB)
+    auth: Mapped[dict | None] = mapped_column(JSONB)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    health_status: Mapped[str | None] = mapped_column(Text)  # solo-lectura desde 3B; lo escribe 3E
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class CanonicalProductModel(Base):

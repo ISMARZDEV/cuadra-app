@@ -11,6 +11,7 @@ propósito (un rol con solo una de las dos no debe poder tocar la otra).
 """
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -20,11 +21,15 @@ from src.api.composition_root import (
     get_bulk_resolve_review,
     get_create_canonical_and_link,
     get_create_provider,
+    get_create_source,
     get_list_review_queue,
+    get_pause_source,
     get_resolve_review,
+    get_resume_source,
     get_review_detail,
     get_set_provider_logo,
     get_update_provider,
+    get_update_source,
 )
 from src.api.extensions.security import require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
@@ -42,7 +47,13 @@ from src.contexts.save.application.get_review_detail import GetReviewDetail
 from src.contexts.save.application.list_review_queue import ListReviewQueue
 from src.contexts.save.application.providers import CreateProvider, SetProviderLogo, UpdateProvider
 from src.contexts.save.application.resolve_review import ResolveReview
-from src.contexts.save.domain.entities import Provider, ProviderType, SourcePlatform
+from src.contexts.save.application.store_registry import (
+    CreateSource,
+    PauseSource,
+    ResumeSource,
+    UpdateSource,
+)
+from src.contexts.save.domain.entities import Provider, ProviderType, SourcePlatform, StoreRegistry
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 
 router = APIRouter(
@@ -284,3 +295,113 @@ def set_provider_logo(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return ProviderDto.from_entity(provider)
+
+
+class SourceDto(BaseModel):
+    """Proyección admin de StoreRegistry (Fuentes) — config de extracción por Provider (1:1)."""
+
+    id: str
+    provider_id: str
+    platform: SourcePlatform
+    base_url: str
+    endpoints: dict | None = None
+    headers: dict | None = None
+    auth: dict | None = None
+    enabled: bool
+    health_status: str | None = None
+    paused_at: datetime | None = None
+
+    @classmethod
+    def from_entity(cls, source: StoreRegistry) -> SourceDto:
+        return cls(
+            id=source.id,
+            provider_id=source.provider_id,
+            platform=source.platform,
+            base_url=source.base_url,
+            endpoints=source.endpoints,
+            headers=source.headers,
+            auth=source.auth,
+            enabled=source.enabled,
+            health_status=source.health_status,
+            paused_at=source.paused_at,
+        )
+
+
+class CreateSourceRequest(BaseModel):
+    provider_id: str
+    platform: SourcePlatform
+    base_url: str
+    endpoints: dict | None = None
+    headers: dict | None = None
+    auth: dict | None = None
+
+
+@ingestion_router.post("/sources", status_code=status.HTTP_201_CREATED)
+def create_source(
+    body: CreateSourceRequest,
+    use_case: CreateSource = Depends(get_create_source),
+) -> SourceDto:
+    try:
+        source = use_case.execute(
+            provider_id=body.provider_id,
+            platform=body.platform,
+            base_url=body.base_url,
+            endpoints=body.endpoints,
+            headers=body.headers,
+            auth=body.auth,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return SourceDto.from_entity(source)
+
+
+class UpdateSourceRequest(BaseModel):
+    platform: SourcePlatform | None = None
+    base_url: str | None = None
+    endpoints: dict | None = None
+    headers: dict | None = None
+    auth: dict | None = None
+
+
+@ingestion_router.patch("/sources/{source_id}")
+def update_source(
+    source_id: str,
+    body: UpdateSourceRequest,
+    use_case: UpdateSource = Depends(get_update_source),
+) -> SourceDto:
+    try:
+        source = use_case.execute(
+            source_id,
+            platform=body.platform,
+            base_url=body.base_url,
+            endpoints=body.endpoints,
+            headers=body.headers,
+            auth=body.auth,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SourceDto.from_entity(source)
+
+
+@ingestion_router.post("/sources/{source_id}/pause")
+def pause_source(
+    source_id: str,
+    use_case: PauseSource = Depends(get_pause_source),
+) -> SourceDto:
+    try:
+        source = use_case.execute(source_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SourceDto.from_entity(source)
+
+
+@ingestion_router.post("/sources/{source_id}/resume")
+def resume_source(
+    source_id: str,
+    use_case: ResumeSource = Depends(get_resume_source),
+) -> SourceDto:
+    try:
+        source = use_case.execute(source_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return SourceDto.from_entity(source)
