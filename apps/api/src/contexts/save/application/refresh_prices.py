@@ -58,6 +58,10 @@ class RefreshCatalogPrices:
                     source=entry.source,
                     url=entry.url,
                     ean=entry.ean,
+                    name=entry.name,
+                    brand=entry.brand,
+                    size_text=entry.size_text,
+                    image_url=entry.image_url,
                 )
                 self._matcher.execute(
                     IncomingStoreProduct(
@@ -81,6 +85,10 @@ class RefreshCatalogPrices:
                 source=entry.source,
                 url=entry.url,
                 ean=entry.ean,
+                name=entry.name,
+                brand=entry.brand,
+                size_text=entry.size_text,
+                image_url=entry.image_url,
             )
             refreshed += 1
         return RefreshResult(seen=seen, refreshed=refreshed, unmatched=unmatched, matched=matched)

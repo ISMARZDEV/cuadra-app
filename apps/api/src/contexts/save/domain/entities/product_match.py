@@ -52,3 +52,19 @@ class MatchCandidate:
 
     canonical_product_id: str
     score: float
+
+
+@dataclass(frozen=True, slots=True)
+class MatchCandidateSnapshot:
+    """Snapshot de UN candidato ofrecido al revisor humano de un `product_match` `pending_review`
+    (F2·B1, `review_candidate`) — a diferencia de `MatchCandidate` (usado por la cascada para
+    DECIDIR, sin `name`/`brand`), este lleva los campos que la UI de comparación necesita mostrar.
+    `score` es el MEJOR score crudo por-etapa del candidato (mismo criterio que el banding, nunca
+    el score fusionado por RRF) — nunca participa en ninguna decisión, es solo lo que vio el
+    revisor en el momento de la cascada.
+    """
+
+    canonical_product_id: str
+    score: float
+    name: str | None = None
+    brand: str | None = None

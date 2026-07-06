@@ -5,6 +5,7 @@ abstracciones, nunca de la infra. Inyectados por el composition_root.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -17,6 +18,7 @@ from ..entities import (
     CanonicalProduct,
     Collection,
     MatchCandidate,
+    MatchCandidateSnapshot,
     PriceType,
     ProductMatch,
     Provider,
@@ -110,8 +112,17 @@ class StoreProductRepository(Protocol):
         source: str,
         url: str | None = None,
         ean: str | None = None,
+        name: str | None = None,
+        brand: str | None = None,
+        size_text: str | None = None,
+        image_url: str | None = None,
     ) -> str:
-        """Change-only (SCD-4): inserta `price` solo si cambió; si no, actualiza last_seen_at."""
+        """Change-only (SCD-4): inserta `price` solo si cambió; si no, actualiza last_seen_at.
+
+        `name`/`brand`/`size_text`/`image_url` (F2·B1, tarea 1.9-1.10) son los atributos CRUDOS
+        del catálogo — se persisten tal cual llegan (se sobreescriben en cada observación cuando
+        no son `None`), no participan en el change-only del precio.
+        """
         ...
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]: ...
@@ -210,8 +221,15 @@ class ProductMatchRepository(Protocol):
         confidence: float,
         method: str,
         status: str,
+        judge_input_tokens: int | None = None,
+        judge_output_tokens: int | None = None,
+        judge_model: str | None = None,
     ) -> str:
-        """Inserta/actualiza el `product_match` de `store_product_id` (UNIQUE). Devuelve el id."""
+        """Inserta/actualiza el `product_match` de `store_product_id` (UNIQUE). Devuelve el id.
+
+        `judge_*` (F2·B1, tarea 1.13-1.14) es observabilidad de costo — solo lo pasa el caller
+        en el camino grey-band/llm; se ignora (no pisa un valor previo) cuando llega `None`.
+        """
         ...
 
     def find_candidates_by_ean(self, ean: str, market_id: str) -> list[MatchCandidate]:
@@ -258,4 +276,13 @@ class ProductMatchRepository(Protocol):
         Fuerza `method="human"` (la decisión ya no es de la cascada). `reason_code`/`reason_note`
         se persisten tal cual llegan (la validación de "reason_code requerido al rechazar" vive en
         el use case `ResolveReview`, no aquí — este método es I/O puro, ADR 31)."""
+        ...
+
+    def record_candidates(
+        self, match_id: str, candidates: Sequence[MatchCandidateSnapshot]
+    ) -> None:
+        """Persiste el snapshot top-5 (por score, descendente) de candidatos ofrecidos al
+        revisor para un `product_match` `pending_review` (F2·B1, tarea 1.11-1.12). El cap de
+        top-5 se enforce AQUÍ (en código, no en la DB) aunque lleguen más candidatos. NUNCA se
+        llama para un match `auto_linked` — lo decide el use case, no este método."""
         ...

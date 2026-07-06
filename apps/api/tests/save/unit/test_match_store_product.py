@@ -11,7 +11,11 @@ from src.contexts.save.application.match_store_product import (
     IncomingStoreProduct,
     MatchStoreProduct,
 )
-from src.contexts.save.domain.entities import CanonicalProduct, MatchCandidate
+from src.contexts.save.domain.entities import (
+    CanonicalProduct,
+    MatchCandidate,
+    MatchCandidateSnapshot,
+)
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 
 MARKET = "DO"
@@ -38,6 +42,7 @@ class FakeCascadeMatchRepository:
         self.vector_calls: list[tuple[list[float], str]] = []
         self.records: list[dict] = []
         self._by_store_product: dict[str, dict] = {}
+        self.candidate_calls: list[tuple[str, list[MatchCandidateSnapshot]]] = []
 
     def find_candidates_by_ean(self, ean: str, market_id: str) -> list[MatchCandidate]:
         self.ean_calls.append((ean, market_id))
@@ -63,6 +68,9 @@ class FakeCascadeMatchRepository:
         confidence: float,
         method: str,
         status: str,
+        judge_input_tokens: int | None = None,
+        judge_output_tokens: int | None = None,
+        judge_model: str | None = None,
     ) -> str:
         existing = self._by_store_product.get(store_product_id)
         if existing is not None:
@@ -70,6 +78,12 @@ class FakeCascadeMatchRepository:
             existing["confidence"] = confidence
             existing["method"] = method
             existing["status"] = status
+            if judge_input_tokens is not None:
+                existing["judge_input_tokens"] = judge_input_tokens
+            if judge_output_tokens is not None:
+                existing["judge_output_tokens"] = judge_output_tokens
+            if judge_model is not None:
+                existing["judge_model"] = judge_model
             return existing["id"]
         record = {
             "id": f"match-{len(self.records) + 1}",
@@ -79,9 +93,20 @@ class FakeCascadeMatchRepository:
             "method": method,
             "status": status,
         }
+        if judge_input_tokens is not None:
+            record["judge_input_tokens"] = judge_input_tokens
+        if judge_output_tokens is not None:
+            record["judge_output_tokens"] = judge_output_tokens
+        if judge_model is not None:
+            record["judge_model"] = judge_model
         self.records.append(record)
         self._by_store_product[store_product_id] = record
         return record["id"]
+
+    def record_candidates(
+        self, match_id: str, candidates: list[MatchCandidateSnapshot]
+    ) -> None:
+        self.candidate_calls.append((match_id, list(candidates)))
 
     def list_review_queue(self, market_id: str) -> list:  # not used by the use-case
         raise NotImplementedError
@@ -115,6 +140,9 @@ class FakeVerdict:
     decision: str
     confidence: float
     cited_fields: list[str]
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    model: str | None = None
 
 
 class FakeJudge:
@@ -497,3 +525,205 @@ def test_idempotent_rerun_does_not_duplicate_pending_entry() -> None:
 
     assert len(match_repo.records) == 1
     assert match_repo.records[0]["status"] == "pending_review"
+
+
+# ---------------------------------------------------------------- 1.12: review_candidate wiring ----------
+
+
+def test_below_mid_band_persists_review_candidate_snapshot() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.30)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Producto X", brand="Marca X", size="Otro")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    use_case.execute(_incoming())
+
+    assert len(match_repo.candidate_calls) == 1
+    match_id, snapshots = match_repo.candidate_calls[0]
+    assert match_id == match_repo.records[0]["id"]
+    assert snapshots == [
+        MatchCandidateSnapshot(
+            canonical_product_id="canon-1", score=0.30, name="Producto X", brand="Marca X"
+        )
+    ]
+
+
+def test_grey_band_weak_match_persists_review_candidate_snapshot() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.60, ["brand agrees"]))  # below the floor -> review
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
+
+    use_case.execute(_incoming())
+
+    assert len(match_repo.candidate_calls) == 1
+    _match_id, snapshots = match_repo.candidate_calls[0]
+    assert [s.canonical_product_id for s in snapshots] == ["canon-1"]
+
+
+def test_grey_band_no_match_verdict_persists_review_candidate_snapshot() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("no_match", 0.10, ["brand disagrees"]))
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
+
+    use_case.execute(_incoming())
+
+    assert len(match_repo.candidate_calls) == 1
+    _match_id, snapshots = match_repo.candidate_calls[0]
+    assert [s.canonical_product_id for s in snapshots] == ["canon-1"]
+
+
+def test_ean_collision_persists_both_colliding_candidates_as_snapshot() -> None:
+    canonical_repo = FakeCanonicalProductRepository(
+        {
+            "canon-a": _canonical("canon-a", name="Arroz A", brand="Marca A"),
+            "canon-b": _canonical("canon-b", name="Arroz B", brand="Marca B"),
+        }
+    )
+    match_repo = FakeCascadeMatchRepository(
+        ean_candidates=[
+            MatchCandidate(canonical_product_id="canon-a", score=1.0),
+            MatchCandidate(canonical_product_id="canon-b", score=1.0),
+        ]
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    use_case.execute(_incoming(ean="dup-ean"))
+
+    assert len(match_repo.candidate_calls) == 1
+    _match_id, snapshots = match_repo.candidate_calls[0]
+    assert {s.canonical_product_id for s in snapshots} == {"canon-a", "canon-b"}
+    assert {s.name for s in snapshots} == {"Arroz A", "Arroz B"}
+
+
+def test_no_candidates_case_does_not_call_record_candidates() -> None:
+    match_repo = FakeCascadeMatchRepository(trgm_candidates=[], vector_candidates=[])
+    use_case, c = _make_use_case(match_repo=match_repo)
+
+    use_case.execute(_incoming())
+
+    assert match_repo.candidate_calls == []  # nothing to snapshot — fused was empty
+
+
+def test_auto_link_paths_never_persist_review_candidates() -> None:
+    # EAN unique auto-link
+    match_repo = FakeCascadeMatchRepository(
+        ean_candidates=[MatchCandidate(canonical_product_id="canon-ean-1", score=1.0)]
+    )
+    use_case, _c = _make_use_case(match_repo=match_repo)
+
+    use_case.execute(_incoming(ean="7501234567890"))
+
+    assert match_repo.candidate_calls == []
+
+
+def test_high_band_auto_link_never_persists_review_candidates() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    use_case.execute(_incoming())
+
+    assert match_repo.candidate_calls == []
+
+
+def test_grey_band_strong_match_auto_link_never_persists_review_candidates() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
+
+    use_case.execute(_incoming())
+
+    assert match_repo.candidate_calls == []
+
+
+# ---------------------------------------------------------------- 1.14: judge cost wiring ----------
+
+
+def test_grey_band_strong_match_wires_judge_cost_onto_auto_linked_record() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    judge = FakeJudge(
+        FakeVerdict(
+            "match", 0.97, ["brand agrees"],
+            input_tokens=150, output_tokens=40, model="claude-sonnet-fake",
+        )
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
+
+    use_case.execute(_incoming())
+
+    record = match_repo.records[0]
+    assert record["status"] == "auto_linked"
+    assert record["judge_input_tokens"] == 150
+    assert record["judge_output_tokens"] == 40
+    assert record["judge_model"] == "claude-sonnet-fake"
+
+
+def test_grey_band_weak_verdict_wires_judge_cost_onto_pending_review_record() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    judge = FakeJudge(
+        FakeVerdict(
+            "no_match", 0.10, ["brand disagrees"],
+            input_tokens=120, output_tokens=25, model="claude-sonnet-fake",
+        )
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
+
+    use_case.execute(_incoming())
+
+    record = match_repo.records[0]
+    assert record["status"] == "pending_review"
+    assert record["judge_input_tokens"] == 120
+    assert record["judge_output_tokens"] == 25
+    assert record["judge_model"] == "claude-sonnet-fake"
+
+
+def test_human_band_never_wires_judge_cost() -> None:
+    # No judge was invoked at all (below MID) — record_match must not be called with a
+    # judge_input_tokens/output_tokens/model key (they'd all be None; the fake only sets a
+    # key when the value isn't None — so absence of the key IS the assertion).
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.30)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    use_case.execute(_incoming())
+
+    record = match_repo.records[0]
+    assert "judge_input_tokens" not in record
+    assert "judge_output_tokens" not in record
+    assert "judge_model" not in record

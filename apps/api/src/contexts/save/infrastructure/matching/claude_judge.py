@@ -61,11 +61,20 @@ class _Verdict(BaseModel):
 
 @dataclass(frozen=True)
 class JudgeVerdict:
-    """The trusted, already-validated result of a judge call."""
+    """The trusted, already-validated result of a judge call.
+
+    `input_tokens`/`output_tokens`/`model` (F2·B1, tarea 1.13-1.14) are the cost-instrumentation
+    fields carried alongside the decision so the cascade use-case can persist them onto
+    `product_match` on the grey-band/llm path — pure observability, never part of the decision.
+    `None` when there is no usage to report (e.g. the client call raised before any response).
+    """
 
     decision: Literal["match", "no_match", "uncertain"]
     confidence: float
     cited_fields: list[str]
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    model: str | None = None
 
 
 class StructuredChatModel(Protocol):
@@ -107,32 +116,55 @@ class ClaudeJudge:
             return _UNCERTAIN
 
         raw = result.get("raw") if isinstance(result, dict) else None
-        self._log_token_usage(raw)
+        usage = self._log_token_usage(raw)
 
         parsing_error = result.get("parsing_error") if isinstance(result, dict) else "missing raw dict"
         parsed = result.get("parsed") if isinstance(result, dict) else None
         if parsing_error is not None or parsed is None:
             logger.warning("claude_judge: unparseable output, degrading to uncertain")
-            return _UNCERTAIN
+            return self._uncertain_with_usage(usage)
 
         payload = parsed.model_dump() if isinstance(parsed, BaseModel) else parsed
         try:
             verdict = _Verdict.model_validate(payload)
         except ValidationError:
             logger.warning("claude_judge: schema validation failed, degrading to uncertain")
-            return _UNCERTAIN
+            return self._uncertain_with_usage(usage)
 
         return JudgeVerdict(
-            decision=verdict.decision, confidence=verdict.confidence, cited_fields=verdict.cited_fields
+            decision=verdict.decision,
+            confidence=verdict.confidence,
+            cited_fields=verdict.cited_fields,
+            input_tokens=usage.get("input_tokens") if usage else None,
+            output_tokens=usage.get("output_tokens") if usage else None,
+            model=usage.get("model") if usage else None,
         )
 
     @staticmethod
-    def _log_token_usage(raw: Any) -> None:
-        """Cost instrumentation — logged whenever a response came back, even an invalid one
-        (tokens were spent regardless of whether we could trust the content)."""
+    def _uncertain_with_usage(usage: dict[str, Any] | None) -> JudgeVerdict:
+        """Fail-safe `uncertain` verdict that still carries usage when tokens WERE spent (the
+        call succeeded but the output was unparseable/invalid) — cost instrumentation must see
+        it even on a degraded path. Falls back to the shared `_UNCERTAIN` singleton when there's
+        no usage at all (e.g. the client raised before any response came back)."""
+        if usage is None:
+            return _UNCERTAIN
+        return JudgeVerdict(
+            decision="uncertain",
+            confidence=0.0,
+            cited_fields=[],
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            model=usage.get("model"),
+        )
+
+    @staticmethod
+    def _log_token_usage(raw: Any) -> dict[str, Any] | None:
+        """Cost instrumentation — logged AND returned whenever a response came back, even an
+        invalid one (tokens were spent regardless of whether we could trust the content).
+        Returns `None` when there's no usage metadata to report."""
         usage = getattr(raw, "usage_metadata", None) if raw is not None else None
         if not usage:
-            return
+            return None
         model_name = getattr(raw, "response_metadata", {}).get("model", "unknown")
         logger.info(
             "claude_judge token usage: model=%s input_tokens=%s output_tokens=%s",
@@ -140,3 +172,8 @@ class ClaudeJudge:
             usage.get("input_tokens"),
             usage.get("output_tokens"),
         )
+        return {
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "model": model_name,
+        }

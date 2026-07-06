@@ -20,13 +20,20 @@ comparables entre sí (la fusión RRF, Batch 3, opera sobre RANKS, no sobre este
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ....domain.entities import MatchCandidate, ProductMatch
-from ...models import CanonicalProductModel, ProductMatchModel, ProviderModel, StoreProductModel
+from ....domain.entities import MatchCandidate, MatchCandidateSnapshot, ProductMatch
+from ...models import (
+    CanonicalProductModel,
+    ProductMatchModel,
+    ProviderModel,
+    ReviewCandidateModel,
+    StoreProductModel,
+)
 
 
 def _parse_uuid(value: str) -> uuid.UUID | None:
@@ -58,6 +65,9 @@ class SqlProductMatchRepository:
         confidence: float,
         method: str,
         status: str,
+        judge_input_tokens: int | None = None,
+        judge_output_tokens: int | None = None,
+        judge_model: str | None = None,
     ) -> str:
         existing = self._s.scalars(
             select(ProductMatchModel).where(
@@ -71,6 +81,14 @@ class SqlProductMatchRepository:
             existing.confidence = confidence  # type: ignore[assignment]
             existing.method = method
             existing.status = status
+            # F2·B1 (1.14): costo del juez — solo se pisa cuando el caller lo trae (grey/llm);
+            # un reintento sin judge no debe borrar el costo ya registrado.
+            if judge_input_tokens is not None:
+                existing.judge_input_tokens = judge_input_tokens
+            if judge_output_tokens is not None:
+                existing.judge_output_tokens = judge_output_tokens
+            if judge_model is not None:
+                existing.judge_model = judge_model
             self._s.flush()
             return str(existing.id)
 
@@ -82,10 +100,35 @@ class SqlProductMatchRepository:
             confidence=confidence,  # type: ignore[arg-type]
             method=method,
             status=status,
+            judge_input_tokens=judge_input_tokens,
+            judge_output_tokens=judge_output_tokens,
+            judge_model=judge_model,
         )
         self._s.add(m)
         self._s.flush()
         return str(m.id)
+
+    def record_candidates(
+        self, match_id: str, candidates: Sequence[MatchCandidateSnapshot]
+    ) -> None:
+        if not candidates:
+            return
+        mid = _parse_uuid(match_id)
+        if mid is None:
+            return
+        # cap top-5 EN CÓDIGO, por score crudo descendente (nunca el score fusionado por RRF).
+        top5 = sorted(candidates, key=lambda c: c.score, reverse=True)[:5]
+        for candidate in top5:
+            self._s.add(
+                ReviewCandidateModel(
+                    product_match_id=mid,
+                    canonical_product_id=uuid.UUID(candidate.canonical_product_id),
+                    name=candidate.name,
+                    brand=candidate.brand,
+                    score=candidate.score,  # type: ignore[arg-type]
+                )
+            )
+        self._s.flush()
 
     def find_candidates_by_ean(self, ean: str, market_id: str) -> list[MatchCandidate]:
         # canonical_products DISTINTOS ya enlazados que comparten este EAN en el mercado

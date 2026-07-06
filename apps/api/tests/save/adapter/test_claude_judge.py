@@ -65,7 +65,14 @@ def test_valid_match_decision_is_trusted() -> None:
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
-    assert verdict == JudgeVerdict(decision="match", confidence=0.92, cited_fields=["brand", "size"])
+    assert verdict == JudgeVerdict(
+        decision="match",
+        confidence=0.92,
+        cited_fields=["brand", "size"],
+        input_tokens=150,
+        output_tokens=40,
+        model="claude-sonnet-4-6-fake",
+    )
 
 
 def test_valid_no_match_decision_is_trusted() -> None:
@@ -79,7 +86,14 @@ def test_valid_no_match_decision_is_trusted() -> None:
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
-    assert verdict == JudgeVerdict(decision="no_match", confidence=0.81, cited_fields=["brand"])
+    assert verdict == JudgeVerdict(
+        decision="no_match",
+        confidence=0.81,
+        cited_fields=["brand"],
+        input_tokens=140,
+        output_tokens=35,
+        model="claude-sonnet-4-6-fake",
+    )
 
 
 def test_valid_uncertain_decision_is_trusted() -> None:
@@ -93,7 +107,14 @@ def test_valid_uncertain_decision_is_trusted() -> None:
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
-    assert verdict == JudgeVerdict(decision="uncertain", confidence=0.5, cited_fields=["name"])
+    assert verdict == JudgeVerdict(
+        decision="uncertain",
+        confidence=0.5,
+        cited_fields=["name"],
+        input_tokens=130,
+        output_tokens=30,
+        model="claude-sonnet-4-6-fake",
+    )
 
 
 def test_malformed_non_json_output_degrades_to_uncertain() -> None:
@@ -235,6 +256,76 @@ def test_prompt_includes_given_fields_only_no_price_instruction() -> None:
     assert "Leche Entera 1L" in model.last_prompt
     assert "Leche Entera Rica 1 Litro" in model.last_prompt
     assert "7501234567890" in model.last_prompt
+
+
+# ---------------------------------------------------------------- 1.13/1.14: usage dict ----------
+
+
+def test_log_token_usage_returns_dict_with_input_output_tokens_and_model() -> None:
+    """F2·B1 (1.13): `_log_token_usage` must RETURN the usage, not just log it — the cascade
+    use-case needs these values to wire `product_match.judge_*` (1.14)."""
+    raw = _FakeRaw({"input_tokens": 222, "output_tokens": 33})
+
+    result = ClaudeJudge._log_token_usage(raw)
+
+    assert result == {"input_tokens": 222, "output_tokens": 33, "model": "claude-sonnet-4-6-fake"}
+
+
+def test_log_token_usage_returns_none_when_no_usage_metadata() -> None:
+    raw = _FakeRaw(None)
+
+    assert ClaudeJudge._log_token_usage(raw) is None
+
+
+def test_log_token_usage_returns_none_when_raw_is_none() -> None:
+    assert ClaudeJudge._log_token_usage(None) is None
+
+
+def test_valid_verdict_carries_usage_for_cost_tracking() -> None:
+    model = _FakeModel(
+        _response(
+            {"decision": "match", "confidence": 0.9, "cited_fields": ["brand"]},
+            usage={"input_tokens": 180, "output_tokens": 45},
+        )
+    )
+    judge = ClaudeJudge(model=model)
+
+    verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
+
+    assert verdict.input_tokens == 180
+    assert verdict.output_tokens == 45
+    assert verdict.model == "claude-sonnet-4-6-fake"
+
+
+def test_schema_validation_failure_still_carries_usage_for_cost_tracking() -> None:
+    """Tokens were spent even though the output was invalid (confidence out of range) — the
+    degraded `uncertain` verdict must still carry the usage so cost tracking doesn't lose it."""
+    model = _FakeModel(
+        _response(
+            {"decision": "match", "confidence": 1.5, "cited_fields": ["brand"]},
+            usage={"input_tokens": 111, "output_tokens": 22},
+        )
+    )
+    judge = ClaudeJudge(model=model)
+
+    verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
+
+    assert verdict.decision == "uncertain"
+    assert verdict.input_tokens == 111
+    assert verdict.output_tokens == 22
+    assert verdict.model == "claude-sonnet-4-6-fake"
+
+
+def test_client_exception_verdict_has_no_usage() -> None:
+    """No response came back at all — nothing to report, usage fields stay `None`."""
+    model = _FakeModel(raises=TimeoutError("anthropic client timed out"))
+    judge = ClaudeJudge(model=model)
+
+    verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
+
+    assert verdict.input_tokens is None
+    assert verdict.output_tokens is None
+    assert verdict.model is None
 
 
 def test_default_model_is_not_constructed_when_injected() -> None:

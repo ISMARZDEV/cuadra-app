@@ -253,6 +253,10 @@ class SqlStoreProductRepository:
         source: str,
         url: str | None = None,
         ean: str | None = None,
+        name: str | None = None,
+        brand: str | None = None,
+        size_text: str | None = None,
+        image_url: str | None = None,
     ) -> str:
         sp = self._find(provider_id, external_id)
         changed = False
@@ -267,6 +271,10 @@ class SqlStoreProductRepository:
                 currency=price.currency.code,
                 url=url,
                 ean=ean,
+                name=name,
+                brand=brand,
+                size_text=size_text,
+                image_url=image_url,
                 last_seen_at=captured_at,
             )
             self._s.add(sp)
@@ -274,6 +282,16 @@ class SqlStoreProductRepository:
             changed = True
         else:
             sp.last_seen_at = captured_at
+            # F2·B1 (1.9-1.10): refresca los atributos crudos cuando llegan (nunca los borra con
+            # None — una observación posterior sin estos campos no debe pisar los ya conocidos).
+            if name is not None:
+                sp.name = name
+            if brand is not None:
+                sp.brand = brand
+            if size_text is not None:
+                sp.size_text = size_text
+            if image_url is not None:
+                sp.image_url = image_url
             if sp.current_price_minor != price.amount_minor or sp.currency != price.currency.code:
                 sp.current_price_minor = price.amount_minor
                 sp.currency = price.currency.code
