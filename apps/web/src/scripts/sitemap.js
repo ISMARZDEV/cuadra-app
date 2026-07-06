@@ -8,12 +8,16 @@
  * La URL de producto usa el SLUG legible (llave pública/canónica), no el UUID.
  * @param {ProductRef[]} products @returns {string[]} */
 export function logicalPaths(products) {
-  return [
+  const paths = [
     "/",
     "/save/supermarkets",
     "/save/supermarkets/categories",
     ...products.map((p) => `/save/supermarkets/product/${p.slug}`),
   ];
+  // `/admin/*` (consola OFV, F2·B1) es herramienta interna gateada por capability — NUNCA superficie
+  // pública/SEO. Esta lista ya es un allowlist explícito (nunca debería colar admin), pero un filtro
+  // defensivo evita que un futuro paste-error la filtre al sitemap público.
+  return paths.filter((p) => !p.startsWith("/admin"));
 }
 
 /** sitemap.xml: para cada ruta × locale, un <url> con hreflang de todos los locales + x-default.
