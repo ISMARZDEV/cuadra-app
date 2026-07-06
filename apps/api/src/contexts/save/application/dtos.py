@@ -9,7 +9,9 @@ from ..domain.comparison import PriceComparison
 from ..domain.drops import PriceDrop
 from ..domain.entities import CanonicalProduct
 from ..domain.history import PricePoint
+from ..domain.review_queue import ReviewCandidateView, ReviewDetail, ReviewQueueRow
 from ..domain.taxonomy import CategoryNode
+from .bulk_resolve_review import BulkResolveResult
 
 
 class ProductSearchDto(BaseModel):
@@ -324,3 +326,111 @@ class CategoryListingDto(BaseModel):
     products: list[ProductCardDto]
     facets: CategoryFacetsDto
     popular: list[ProductCardDto] = []
+
+
+# ── Admin — cola de revisión de matching (F2 · B1) ──
+
+
+class AdminReviewCandidateDto(BaseModel):
+    """Un candidato ofrecido al revisor, para el diff field-by-field del detalle."""
+
+    canonical_product_id: str
+    name: str | None = None
+    brand: str | None = None
+    score: float
+
+    @classmethod
+    def from_view(cls, c: ReviewCandidateView) -> "AdminReviewCandidateDto":
+        return cls(
+            canonical_product_id=c.canonical_product_id, name=c.name, brand=c.brand, score=c.score
+        )
+
+
+class AdminReviewQueueRowDto(BaseModel):
+    """Una fila de la cola de revisión (`ListReviewQueue`)."""
+
+    match_id: str
+    store_product_id: str
+    confidence: float
+    method: str
+    provider_id: str
+    provider_name: str
+    store_product_name: str | None = None
+    store_product_brand: str | None = None
+    store_product_size_text: str | None = None
+    candidate_count: int
+    created_at: datetime
+
+    @classmethod
+    def from_row(cls, r: ReviewQueueRow) -> "AdminReviewQueueRowDto":
+        return cls(
+            match_id=r.match_id,
+            store_product_id=r.store_product_id,
+            confidence=r.confidence,
+            method=r.method,
+            provider_id=r.provider_id,
+            provider_name=r.provider_name,
+            store_product_name=r.store_product_name,
+            store_product_brand=r.store_product_brand,
+            store_product_size_text=r.store_product_size_text,
+            candidate_count=r.candidate_count,
+            created_at=r.created_at,
+        )
+
+
+class AdminReviewQueueListDto(BaseModel):
+    """Página de la cola de revisión (rows + total real contra limit/offset)."""
+
+    rows: list[AdminReviewQueueRowDto]
+    total: int
+
+    @classmethod
+    def from_page(cls, rows: list[ReviewQueueRow], total: int) -> "AdminReviewQueueListDto":
+        return cls(rows=[AdminReviewQueueRowDto.from_row(r) for r in rows], total=total)
+
+
+class AdminReviewDetailDto(BaseModel):
+    """Detalle de un `product_match` para la UI de comparación (`GetReviewDetail`)."""
+
+    match_id: str
+    store_product_id: str
+    confidence: float
+    method: str
+    store_product_name: str | None = None
+    store_product_brand: str | None = None
+    store_product_size_text: str | None = None
+    store_product_image_url: str | None = None
+    candidates: list[AdminReviewCandidateDto] = []
+
+    @classmethod
+    def from_detail(cls, d: ReviewDetail) -> "AdminReviewDetailDto":
+        return cls(
+            match_id=d.match_id,
+            store_product_id=d.store_product_id,
+            confidence=d.confidence,
+            method=d.method,
+            store_product_name=d.store_product_name,
+            store_product_brand=d.store_product_brand,
+            store_product_size_text=d.store_product_size_text,
+            store_product_image_url=d.store_product_image_url,
+            candidates=[AdminReviewCandidateDto.from_view(c) for c in d.candidates],
+        )
+
+
+class BulkResolveFailureDto(BaseModel):
+    match_id: str
+    error: str
+
+
+class BulkResolveResultDto(BaseModel):
+    """Resultado del bulk-resolve: éxito parcial explícito, nunca un fallo silencioso."""
+
+    succeeded: list[str]
+    failed: list[BulkResolveFailureDto]
+
+    @classmethod
+    def from_result(cls, result: BulkResolveResult) -> "BulkResolveResultDto":
+        return cls(
+            succeeded=result.succeeded,
+            failed=[BulkResolveFailureDto(match_id=f.match_id, error=f.error) for f in result.failed],
+        )

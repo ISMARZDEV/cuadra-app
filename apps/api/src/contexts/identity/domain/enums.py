@@ -47,3 +47,5 @@ class CapabilityKey(StrEnum):
     # Super Admin
     ADMIN_NEWS_PUBLISH = "admin_news_publish"
     ADMIN_DB = "admin_db"
+    ADMIN_SAVE_MATCHING_REVIEW = "admin_save_matching_review"  # F2·B1: cola de revisión de matching
+    ADMIN_SAVE_INGESTION_OPS = "admin_save_ingestion_ops"      # F2·B1/B3: providers/sources/basket/metrics

@@ -22,10 +22,14 @@ from src.contexts.save.application.alerts import (
     SubscribeAlert,
     UnsubscribeAlert,
 )
+from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
 from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
+from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
 from src.contexts.save.application.drops import ListPriceDrops
+from src.contexts.save.application.get_review_detail import GetReviewDetail
 from src.contexts.save.application.history import GetPriceHistory
+from src.contexts.save.application.list_review_queue import ListReviewQueue
 from src.contexts.save.application.listing import (
     ListBrandProducts,
     ListCategoryProducts,
@@ -36,8 +40,12 @@ from src.contexts.save.application.listing import (
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.collections import GetCollection, ListCollections
 from src.contexts.save.application.providers import GetProvider, ListProviders
+from src.contexts.save.application.resolve_review import ResolveReview
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
+    SqlProductMatchRepository,
+)
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlCanonicalProductRepository,
@@ -399,3 +407,34 @@ def get_register_push_token(session: Session = Depends(get_session)) -> Register
 
 def get_list_products(session: Session = Depends(get_session)) -> ListProducts:
     return ListProducts(SqlCanonicalProductRepository(session))
+
+
+# ── Admin — cola de revisión de matching (F2 · B1) ──
+def get_list_review_queue(session: Session = Depends(get_session)) -> ListReviewQueue:
+    return ListReviewQueue(SqlProductMatchRepository(session))
+
+
+def get_review_detail(session: Session = Depends(get_session)) -> GetReviewDetail:
+    return GetReviewDetail(
+        match_repo=SqlProductMatchRepository(session), store_repo=SqlStoreProductRepository(session)
+    )
+
+
+def get_resolve_review(session: Session = Depends(get_session)) -> ResolveReview:
+    return ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session))
+
+
+def get_create_canonical_and_link(
+    session: Session = Depends(get_session),
+) -> CreateCanonicalAndLink:
+    return CreateCanonicalAndLink(
+        canonical_repo=SqlCanonicalProductRepository(session),
+        resolver=ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session)),
+    )
+
+
+def get_bulk_resolve_review(session: Session = Depends(get_session)) -> BulkResolveReview:
+    return BulkResolveReview(
+        scope=session,
+        resolver=ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session)),
+    )
