@@ -20,6 +20,7 @@ from ..domain.drops import PriceChange
 from ..domain.entities import CanonicalProduct, Collection, PriceType, Provider, StoreProduct
 from ..domain.history import PricePoint
 from ..domain.listing import OfferingRow
+from ..domain.review_queue import StoreProductRawAttrs
 from ..domain.slug import product_slug
 from ..domain.taxonomy import CategoryNode, slugify
 from ..domain.value_objects import Quantity, UnitMeasure
@@ -318,6 +319,19 @@ class SqlStoreProductRepository:
             )
         ).all()
         return [store_product_to_entity(m) for m in models]
+
+    def get_raw_attrs(self, store_product_id: str) -> StoreProductRawAttrs | None:
+        sid = _parse_uuid(store_product_id)
+        sp = self._s.get(StoreProductModel, sid) if sid else None
+        if sp is None:
+            return None
+        return StoreProductRawAttrs(
+            store_product_id=str(sp.id),
+            name=sp.name,
+            brand=sp.brand,
+            size_text=sp.size_text,
+            image_url=sp.image_url,
+        )
 
     def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
         rows = self._s.execute(

@@ -6,7 +6,8 @@ Prueba lo CLAVE del repo (infra, ADR 31 — sin lógica de negocio, eso vive en 
 - `find_candidates_trgm`/`find_candidates_vector` devuelven `MatchCandidate` rankeados
   mejor-primero (score descendente), respetan `market_id` y `limit`.
 - `list_review_queue` filtra por mercado (vía provider, product_match no tiene market_id propio)
-  y solo trae `pending_review`.
+  y solo trae `pending_review` (cobertura de filtros/orden/paginación en
+  `test_list_review_queue.py`, a nivel del use case `ListReviewQueue`, F2·B1).
 - `resolve_review` flipea status→auto_linked (o rejected si canonical_product_id es None) y
   setea decided_by/decided_at.
 """
@@ -250,10 +251,10 @@ def test_list_review_queue_returns_only_pending_entries(db_session) -> None:  # 
         confidence=0.99, method="ean", status="auto_linked",
     )
 
-    queue = repo.list_review_queue(market)
+    rows, total = repo.list_review_queue(market)
 
-    assert [m.store_product_id for m in queue] == [sp_pending]
-    assert queue[0].status == "pending_review"
+    assert [r.store_product_id for r in rows] == [sp_pending]
+    assert total == 1
 
 
 def test_list_review_queue_isolated_by_market(db_session) -> None:  # type: ignore[no-untyped-def]
@@ -267,7 +268,9 @@ def test_list_review_queue_isolated_by_market(db_session) -> None:  # type: igno
         confidence=0.3, method="human", status="pending_review",
     )
 
-    assert repo.list_review_queue(market_b) == []
+    rows, total = repo.list_review_queue(market_b)
+    assert rows == []
+    assert total == 0
 
 
 # ---------------------------------------------------------------- resolve_review ----------

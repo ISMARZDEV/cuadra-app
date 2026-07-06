@@ -1,0 +1,67 @@
+"""Read models de la cola de revisión de matching (F2 · B1). PUROS (ADR 31) — igual convención
+que `listing.py`/`history.py`: grain crudo que entrega el repo, sin money-math ni lógica de
+decisión (eso vive en `MatchStoreProduct`/`banding.py`, sin tocar).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewQueueRow:
+    """Una fila de la cola de revisión (`ListReviewQueue`) — un `product_match` `pending_review`
+    con su `store_product` crudo + provider ya resueltos por el JOIN (evita N+1 en la UI)."""
+
+    match_id: str
+    store_product_id: str
+    confidence: float
+    method: str
+    provider_id: str
+    provider_name: str
+    store_product_name: str | None
+    store_product_brand: str | None
+    store_product_size_text: str | None
+    candidate_count: int
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StoreProductRawAttrs:
+    """Atributos crudos de un `store_product` (F2·B1, tarea 1.9-1.10) para el detalle de
+    revisión — tal cual persistidos por `record_observation`, sin normalizar."""
+
+    store_product_id: str
+    name: str | None
+    brand: str | None
+    size_text: str | None
+    image_url: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewCandidateView:
+    """Un candidato ofrecido al revisor (`review_candidate`), para el diff en el detalle."""
+
+    canonical_product_id: str
+    name: str | None
+    brand: str | None
+    score: float
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewDetail:
+    """`GetReviewDetail`: atributos crudos del store_product + candidatos ofrecidos, para el
+    diff field-by-field de la UI de comparación. `candidates` vacío (nunca un error) para filas
+    LEGACY sin `review_candidate` persistidos (pre-batch-1c) o EAN-colisión (que también las
+    salta, ver `MatchStoreProduct._to_review` con `candidates=collision_snapshots` que SÍ las
+    persiste — el caso vacío real es el legacy/pre-wiring)."""
+
+    match_id: str
+    store_product_id: str
+    confidence: float
+    method: str
+    store_product_name: str | None
+    store_product_brand: str | None
+    store_product_size_text: str | None
+    store_product_image_url: str | None
+    candidates: list[ReviewCandidateView] = field(default_factory=list)

@@ -26,6 +26,7 @@ from ..entities import (
 )
 from ..history import PricePoint
 from ..listing import OfferingRow
+from ..review_queue import ReviewCandidateView, ReviewQueueRow, StoreProductRawAttrs
 from ..taxonomy import CategoryNode
 
 
@@ -126,6 +127,12 @@ class StoreProductRepository(Protocol):
         ...
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]: ...
+
+    def get_raw_attrs(self, store_product_id: str) -> StoreProductRawAttrs | None:
+        """Atributos crudos (F2·B1, tarea 1.19-1.20) para el detalle de revisión —
+        name/brand/size_text/image_url tal cual persistidos por `record_observation`.
+        `None` si el `store_product_id` no existe."""
+        ...
 
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         """Escribe el FK denormalizado `store_product.canonical_product_id` (F2.0 matching).
@@ -253,8 +260,30 @@ class ProductMatchRepository(Protocol):
         """Candidatos por similitud semántica (pgvector HNSW) dentro del mercado, mejor primero."""
         ...
 
-    def list_review_queue(self, market_id: str) -> list[ProductMatch]:
-        """Matches en `pending_review` del mercado, para la consola de administración."""
+    def list_review_queue(
+        self,
+        market_id: str,
+        *,
+        provider_id: str | None = None,
+        method: str | None = None,
+        confidence_min: float | None = None,
+        confidence_max: float | None = None,
+        order_by: str = "uncertainty",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[ReviewQueueRow], int]:
+        """Matches en `pending_review` del mercado, para la consola de administración (F2·B1).
+
+        Orden por defecto = incertidumbre primero (distancia al umbral HIGH/MID más cercano de
+        `banding.py` — los casos más difíciles de decidir aparecen primero); `order_by="created_at"`
+        es el override FIFO explícito. Filtros y paginación se resuelven EN SQL (no en memoria)
+        para que `total` (segundo elemento de la tupla) sea correcto con `limit`/`offset` reales."""
+        ...
+
+    def list_candidates(self, match_id: str) -> list[ReviewCandidateView]:
+        """Candidatos `review_candidate` persistidos para un `product_match` (F2·B1, detalle de
+        revisión), mejor score primero. Lista VACÍA (nunca error) si no hay ninguno persistido —
+        camino legacy o auto_linked (que nunca los llama, ver `record_candidates`)."""
         ...
 
     def get_by_id(self, match_id: str) -> ProductMatch | None:
