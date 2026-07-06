@@ -17,7 +17,10 @@ import { apiClient } from "@/lib/api";
 // gate real requiere Clerk activo (que es el modo configurado hoy, ver `apps/web/.env`).
 const SESSION_COOKIE = "__session";
 
-function extractToken(headers: Record<string, string> | null | undefined): string | null {
+// Exportada (no solo interna): `pages/admin/review-queue/+data.ts` (batch 2·11) la reutiliza para
+// adjuntar el MISMO token de sesión a la llamada SSR autenticada de `listReviewQueue` — nunca un
+// segundo mecanismo de extracción de auth.
+export function extractToken(headers: Record<string, string> | null | undefined): string | null {
   if (!headers) return null;
 
   const authHeader = headers.authorization;
