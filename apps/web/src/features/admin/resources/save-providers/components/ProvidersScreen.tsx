@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProviderBadge } from "@/features/save/components/provider-badge";
+import { useAdminList } from "@/features/admin/shell/use-admin-list";
 
-import { createProvider, setProviderLogo, updateProvider } from "../api";
+import { createProvider, listProvidersEntries, setProviderLogo, updateProvider } from "../api";
 import type { ProvidersData } from "../interfaces";
 import { PROVIDER_TYPE_OPTIONS, SOURCE_PLATFORM_OPTIONS } from "../types";
 
@@ -17,10 +18,13 @@ const DEFAULT_MARKET = "DO";
 // Consola de Providers (3.5): alta + edición de supermercados. No hay endpoint admin de LISTADO
 // todavía (ver `api.ts`) — la lista viene del público `listProviders` (SSR, `+data.ts`), así que
 // solo prellenamos/editamos lo que ese DTO trae (name, logo_url); tipo/plataforma/mercado se fijan
-// solo al CREAR. Tras cualquier mutación exitosa, `window.location.reload()` (mismo patrón que
-// `ReviewQueueListScreen`) re-pide la lista SSR — sin TanStack Query en web.
+// solo al CREAR. Tras cualquier mutación exitosa, `useAdminList` refresca la lista client-side
+// (gap F3: reemplaza `window.location.reload()`) — sin TanStack Query en web.
 export function ProvidersScreen() {
-  const { providers } = useData<ProvidersData>();
+  const { providers: initialProviders } = useData<ProvidersData>();
+  const { items: providers, refresh } = useAdminList(initialProviders, () =>
+    listProvidersEntries(DEFAULT_MARKET),
+  );
 
   return (
     <div className="p-6">
@@ -29,7 +33,7 @@ export function ProvidersScreen() {
         Alta y logo por URL pegada (MVP, sin subida de archivos).
       </p>
 
-      <CreateProviderForm />
+      <CreateProviderForm refresh={refresh} />
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">Existentes</h2>
       {providers.length === 0 ? (
@@ -37,7 +41,7 @@ export function ProvidersScreen() {
       ) : (
         <ul className="flex flex-col gap-3">
           {providers.map((p) => (
-            <ProviderRow key={p.id} provider={p} />
+            <ProviderRow key={p.id} provider={p} refresh={refresh} />
           ))}
         </ul>
       )}
@@ -45,7 +49,7 @@ export function ProvidersScreen() {
   );
 }
 
-function CreateProviderForm() {
+function CreateProviderForm({ refresh }: { refresh: () => Promise<void> }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<ProviderType>("supermarket");
   const [platform, setPlatform] = useState<SourcePlatform>("vtex");
@@ -70,7 +74,7 @@ function CreateProviderForm() {
       setError("No se pudo crear el proveedor.");
       return;
     }
-    window.location.reload();
+    await refresh();
   };
 
   return (
@@ -139,7 +143,13 @@ function CreateProviderForm() {
   );
 }
 
-function ProviderRow({ provider }: { provider: ProviderRefDto }) {
+function ProviderRow({
+  provider,
+  refresh,
+}: {
+  provider: ProviderRefDto;
+  refresh: () => Promise<void>;
+}) {
   const [name, setName] = useState(provider.name);
   const [logoUrl, setLogoUrl] = useState(provider.logo_url ?? "");
   const [busyName, setBusyName] = useState(false);
@@ -166,7 +176,7 @@ function ProviderRow({ provider }: { provider: ProviderRefDto }) {
       setError("No se pudo guardar el logo.");
       return;
     }
-    window.location.reload();
+    await refresh();
   };
 
   return (

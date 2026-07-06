@@ -1,9 +1,10 @@
 import {
   createProvider as createProviderRequest,
+  listProviders as listProvidersRequest,
   setProviderLogo as setProviderLogoRequest,
   updateProvider as updateProviderRequest,
 } from "@cuadra/api-client";
-import type { ProviderType, SourcePlatform } from "@cuadra/api-client";
+import type { ProviderRefDto, ProviderType, SourcePlatform } from "@cuadra/api-client";
 
 import { authHeaders } from "@/features/save/hooks/use-auth";
 import { apiClient } from "@/lib/api";
@@ -11,7 +12,15 @@ import { apiClient } from "@/lib/api";
 // Mutaciones client-side de la consola de Providers (3.5) — MISMO mecanismo de auth que
 // save-matching/api.ts (`authHeaders()`, token async de Clerk: cuadra-clerk "short-lived-token /
 // async token-getter rule"). No hay endpoint admin de LISTADO todavía (solo alta/edición) — la
-// pantalla lista vía el público `listProviders` (`+data.ts`) y refresca con un reload tras mutar.
+// pantalla lista vía el público `listProviders` (`+data.ts` para SSR, `listProvidersEntries` para
+// refrescar client-side tras mutar, gap F3: reemplaza `window.location.reload()`).
+const DEFAULT_MARKET = "DO";
+
+export async function listProvidersEntries(market: string = DEFAULT_MARKET): Promise<ProviderRefDto[]> {
+  const res = await listProvidersRequest({ client: apiClient, query: { market } });
+  return res.data ?? [];
+}
+
 export async function createProvider(params: {
   name: string;
   type: ProviderType;

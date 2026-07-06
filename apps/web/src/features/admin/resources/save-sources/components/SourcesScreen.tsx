@@ -6,20 +6,29 @@ import { useData } from "vike-react/useData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useAdminList } from "@/features/admin/shell/use-admin-list";
 import { formatMoney } from "@/features/save/lib/format";
 
 import type { ProbeResult } from "../api";
-import { createSourceConfig, pauseSourceConfig, probeSource, resumeSourceConfig } from "../api";
+import {
+  createSourceConfig,
+  listSourcesHealthEntries,
+  pauseSourceConfig,
+  probeSource,
+  resumeSourceConfig,
+} from "../api";
 import type { SourcesData } from "../interfaces";
 import { SOURCE_PLATFORM_OPTIONS } from "../types";
 import { HealthBadge } from "./HealthBadge";
 
-// Consola de Fuentes (3.11-3.12, 3.19-web): alta + pausa/reanudación + "Probar" (dry-run). El
-// campo Base URL alcanza para el MVP; headers/endpoints/auth avanzados (p.ej. store_code vía
-// headers, caso real de VTEX multi-tienda) quedan para una edición posterior — no bloquear la alta
-// en un form gigante. Tras mutar, `window.location.reload()` (mismo patrón que ProvidersScreen).
+// Consola de Fuentes (3.11-3.12, 3.19-web): alta + pausa/reanudación + "Probar" (dry-run) +
+// headers/endpoints/auth avanzados (gap F3: caso real Jumbo, `headers = {"Store": "jumbo"}` →
+// `CatalogSourceFactory` lo mapea a `store_code`). Tras mutar, `useAdminList` refresca la lista
+// client-side (gap F3: reemplaza `window.location.reload()`, mismo patrón que ProvidersScreen).
 export function SourcesScreen() {
-  const { sources } = useData<SourcesData>();
+  const { sources: initialSources } = useData<SourcesData>();
+  const { items: sources, refresh } = useAdminList(initialSources, () => listSourcesHealthEntries());
 
   return (
     <div className="p-6">
@@ -28,7 +37,7 @@ export function SourcesScreen() {
         Configuración de scraping por proveedor. "Probar" es una vista previa — no guarda nada.
       </p>
 
-      <CreateSourceForm />
+      <CreateSourceForm refresh={refresh} />
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">Existentes</h2>
       {sources.length === 0 ? (
@@ -36,7 +45,7 @@ export function SourcesScreen() {
       ) : (
         <ul className="flex flex-col gap-3">
           {sources.map((s) => (
-            <SourceRow key={s.id} source={s} />
+            <SourceRow key={s.id} source={s} refresh={refresh} />
           ))}
         </ul>
       )}
@@ -44,24 +53,66 @@ export function SourcesScreen() {
   );
 }
 
-function CreateSourceForm() {
+// Parsea un textarea JSON opcional: vacío → `undefined` (campo omitido, nunca `{}`); inválido →
+// error legible que bloquea el submit (SAGRADO: nunca mandar un body con JSON malformado).
+function parseJsonField(
+  raw: string,
+  fieldLabel: string,
+): { ok: true; value: Record<string, unknown> | undefined } | { ok: false; error: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { ok: true, value: undefined };
+  try {
+    return { ok: true, value: JSON.parse(trimmed) as Record<string, unknown> };
+  } catch {
+    return { ok: false, error: `JSON inválido en ${fieldLabel}` };
+  }
+}
+
+function CreateSourceForm({ refresh }: { refresh: () => Promise<void> }) {
   const [providerId, setProviderId] = useState("");
   const [platform, setPlatform] = useState<SourcePlatform>("vtex");
   const [baseUrl, setBaseUrl] = useState("");
+  const [headersRaw, setHeadersRaw] = useState("");
+  const [endpointsRaw, setEndpointsRaw] = useState("");
+  const [authRaw, setAuthRaw] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setBusy(true);
     setError(null);
-    const res = await createSourceConfig({ providerId, platform, baseUrl });
+
+    const headers = parseJsonField(headersRaw, "headers");
+    if (!headers.ok) {
+      setError(headers.error);
+      return;
+    }
+    const endpoints = parseJsonField(endpointsRaw, "endpoints");
+    if (!endpoints.ok) {
+      setError(endpoints.error);
+      return;
+    }
+    const auth = parseJsonField(authRaw, "auth");
+    if (!auth.ok) {
+      setError(auth.error);
+      return;
+    }
+
+    setBusy(true);
+    const res = await createSourceConfig({
+      providerId,
+      platform,
+      baseUrl,
+      headers: headers.value,
+      endpoints: endpoints.value,
+      auth: auth.value,
+    });
     setBusy(false);
     if (res.error) {
       setError("No se pudo crear la fuente.");
       return;
     }
-    window.location.reload();
+    await refresh();
   };
 
   return (
@@ -103,10 +154,24 @@ function CreateSourceForm() {
         />
       </label>
 
-      <p className="text-xs text-muted-foreground">
-        Headers/endpoints/auth avanzados (p.ej. store_code vía headers) se editan luego — esta alta
-        crea con lo mínimo.
-      </p>
+      <label className="flex flex-col gap-1 text-sm">
+        Headers (JSON, opcional)
+        <Textarea
+          value={headersRaw}
+          onChange={(e) => setHeadersRaw(e.target.value)}
+          placeholder={'{"Store": "jumbo"}'}
+        />
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm">
+        Endpoints (JSON, opcional)
+        <Textarea value={endpointsRaw} onChange={(e) => setEndpointsRaw(e.target.value)} />
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm">
+        Auth (JSON, opcional)
+        <Textarea value={authRaw} onChange={(e) => setAuthRaw(e.target.value)} />
+      </label>
 
       <Button type="submit" disabled={busy}>
         Crear fuente
@@ -115,7 +180,13 @@ function CreateSourceForm() {
   );
 }
 
-function SourceRow({ source }: { source: SourceHealthDto }) {
+function SourceRow({
+  source,
+  refresh,
+}: {
+  source: SourceHealthDto;
+  refresh: () => Promise<void>;
+}) {
   const [busyToggle, setBusyToggle] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
@@ -135,7 +206,7 @@ function SourceRow({ source }: { source: SourceHealthDto }) {
       );
       return;
     }
-    window.location.reload();
+    await refresh();
   };
 
   return (

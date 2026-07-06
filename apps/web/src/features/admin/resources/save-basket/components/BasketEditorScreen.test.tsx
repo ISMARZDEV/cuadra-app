@@ -12,10 +12,12 @@ vi.mock("vike-react/useData", () => ({ useData: () => mockData }));
 const createBasketQueryEntry = vi.fn();
 const updateBasketQueryEntry = vi.fn();
 const removeBasketQueryEntry = vi.fn();
+const listBasketQueryEntries = vi.fn();
 vi.mock("../api", () => ({
   createBasketQueryEntry: (...args: unknown[]) => createBasketQueryEntry(...args),
   updateBasketQueryEntry: (...args: unknown[]) => updateBasketQueryEntry(...args),
   removeBasketQueryEntry: (...args: unknown[]) => removeBasketQueryEntry(...args),
+  listBasketQueryEntries: (...args: unknown[]) => listBasketQueryEntries(...args),
 }));
 
 import { BasketEditorScreen } from "./BasketEditorScreen";
@@ -33,17 +35,12 @@ function entry(overrides: Partial<BasketQueryDto>): BasketQueryDto {
 }
 
 describe("BasketEditorScreen", () => {
-  const reloadMock = vi.fn();
-
   beforeEach(() => {
     createBasketQueryEntry.mockReset();
     updateBasketQueryEntry.mockReset();
     removeBasketQueryEntry.mockReset();
-    reloadMock.mockReset();
-    Object.defineProperty(window, "location", {
-      value: { reload: reloadMock },
-      writable: true,
-    });
+    listBasketQueryEntries.mockReset();
+    listBasketQueryEntries.mockResolvedValue([]);
   });
 
   it("lists the curated queries grouped by category_label", () => {
@@ -81,9 +78,12 @@ describe("BasketEditorScreen", () => {
     expect(screen.getByDisplayValue("arroz blanco")).toBeInTheDocument();
   });
 
-  it("adds a new query from the form and calls the api wrapper with its values", async () => {
+  it("adds a new query from the form, refetches the list locally (no reload) and shows the new row", async () => {
     mockData = { entries: [] };
     createBasketQueryEntry.mockResolvedValue({ ok: true, entry: entry({ id: "q9" }) });
+    listBasketQueryEntries.mockResolvedValue([
+      entry({ id: "q9", query_text: "leche deslactosada", category_label: "Lácteos" }),
+    ]);
     render(<BasketEditorScreen />);
 
     fireEvent.change(screen.getByLabelText("Categoría (alta)"), { target: { value: "Lácteos" } });
@@ -101,10 +101,13 @@ describe("BasketEditorScreen", () => {
         }),
       ),
     );
-    expect(reloadMock).toHaveBeenCalled();
+    await waitFor(() => expect(listBasketQueryEntries).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("leche deslactosada")).toBeInTheDocument(),
+    );
   });
 
-  it("shows the duplicate message on a 409 without crashing, and does not reload", async () => {
+  it("shows the duplicate message on a 409 without crashing, and does not refetch", async () => {
     mockData = { entries: [] };
     createBasketQueryEntry.mockResolvedValue({
       ok: false,
@@ -119,12 +122,13 @@ describe("BasketEditorScreen", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("ya existe en la canasta"),
     );
-    expect(reloadMock).not.toHaveBeenCalled();
+    expect(listBasketQueryEntries).not.toHaveBeenCalled();
   });
 
-  it("toggles active via the api wrapper", async () => {
+  it("toggles active via the api wrapper and refetches locally (no reload)", async () => {
     mockData = { entries: [entry({ id: "q1", active: true })] };
     updateBasketQueryEntry.mockResolvedValue({ data: entry({ id: "q1", active: false }) });
+    listBasketQueryEntries.mockResolvedValue([entry({ id: "q1", active: false })]);
     render(<BasketEditorScreen />);
 
     fireEvent.click(screen.getByRole("button", { name: "Desactivar q1" }));
@@ -132,11 +136,13 @@ describe("BasketEditorScreen", () => {
     await waitFor(() =>
       expect(updateBasketQueryEntry).toHaveBeenCalledWith("q1", expect.objectContaining({ active: false })),
     );
+    await waitFor(() => expect(listBasketQueryEntries).toHaveBeenCalled());
   });
 
-  it("edits query_text inline via the api wrapper", async () => {
+  it("edits query_text inline via the api wrapper and refetches locally (no reload)", async () => {
     mockData = { entries: [entry({ id: "q1", query_text: "leche entera" })] };
     updateBasketQueryEntry.mockResolvedValue({ data: entry({ id: "q1", query_text: "leche light" }) });
+    listBasketQueryEntries.mockResolvedValue([entry({ id: "q1", query_text: "leche light" })]);
     render(<BasketEditorScreen />);
 
     fireEvent.change(screen.getByDisplayValue("leche entera"), {
@@ -150,11 +156,13 @@ describe("BasketEditorScreen", () => {
         expect.objectContaining({ queryText: "leche light" }),
       ),
     );
+    await waitFor(() => expect(listBasketQueryEntries).toHaveBeenCalled());
   });
 
-  it("deletes a query only after confirming (hard remove needs a confirm step)", async () => {
+  it("deletes a query only after confirming (hard remove needs a confirm step), then refetches locally", async () => {
     mockData = { entries: [entry({ id: "q1", query_text: "leche entera" })] };
     removeBasketQueryEntry.mockResolvedValue({});
+    listBasketQueryEntries.mockResolvedValue([]);
     render(<BasketEditorScreen />);
 
     fireEvent.click(screen.getByRole("button", { name: "Eliminar q1" }));
@@ -163,5 +171,48 @@ describe("BasketEditorScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmar eliminar q1" }));
 
     await waitFor(() => expect(removeBasketQueryEntry).toHaveBeenCalledWith("q1"));
+    await waitFor(() => expect(listBasketQueryEntries).toHaveBeenCalled());
+  });
+
+  it("moving a middle row up swaps its position with the previous row via the api wrapper", async () => {
+    mockData = {
+      entries: [
+        entry({ id: "q1", query_text: "leche entera", position: 1 }),
+        entry({ id: "q2", query_text: "arroz blanco", position: 2 }),
+        entry({ id: "q3", query_text: "azucar", position: 3 }),
+      ],
+    };
+    updateBasketQueryEntry.mockResolvedValue({ data: {} });
+    listBasketQueryEntries.mockResolvedValue(mockData.entries);
+    render(<BasketEditorScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Subir q2" }));
+
+    await waitFor(() => expect(updateBasketQueryEntry).toHaveBeenCalledTimes(2));
+    expect(updateBasketQueryEntry).toHaveBeenCalledWith(
+      "q2",
+      expect.objectContaining({ position: 1 }),
+    );
+    expect(updateBasketQueryEntry).toHaveBeenCalledWith(
+      "q1",
+      expect.objectContaining({ position: 2 }),
+    );
+    await waitFor(() => expect(listBasketQueryEntries).toHaveBeenCalled());
+  });
+
+  it("disables (no-ops) the up button on the first row and the down button on the last row", () => {
+    mockData = {
+      entries: [
+        entry({ id: "q1", query_text: "leche entera", position: 1 }),
+        entry({ id: "q2", query_text: "arroz blanco", position: 2 }),
+      ],
+    };
+    render(<BasketEditorScreen />);
+
+    expect(screen.getByRole("button", { name: "Subir q1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Bajar q2" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Subir q1" }));
+    expect(updateBasketQueryEntry).not.toHaveBeenCalled();
   });
 });

@@ -12,10 +12,12 @@ vi.mock("vike-react/useData", () => ({ useData: () => mockData }));
 const createProvider = vi.fn();
 const updateProvider = vi.fn();
 const setProviderLogo = vi.fn();
+const listProvidersEntries = vi.fn();
 vi.mock("../api", () => ({
   createProvider: (...args: unknown[]) => createProvider(...args),
   updateProvider: (...args: unknown[]) => updateProvider(...args),
   setProviderLogo: (...args: unknown[]) => setProviderLogo(...args),
+  listProvidersEntries: (...args: unknown[]) => listProvidersEntries(...args),
 }));
 
 import { ProvidersScreen } from "./ProvidersScreen";
@@ -29,6 +31,7 @@ describe("ProvidersScreen", () => {
     createProvider.mockReset();
     updateProvider.mockReset();
     setProviderLogo.mockReset();
+    listProvidersEntries.mockReset();
   });
 
   it("lists the existing providers by name", () => {
@@ -61,9 +64,10 @@ describe("ProvidersScreen", () => {
     expect(screen.queryByRole("img", { name: "Sirena" })).not.toBeInTheDocument();
   });
 
-  it("creates a new provider from the form and calls the api wrapper with its values", async () => {
+  it("creates a new provider from the form, refetches the list locally (no reload) and shows the new row", async () => {
     mockData = { providers: [] };
     createProvider.mockResolvedValue({ data: { id: "p9", name: "Nacional" } });
+    listProvidersEntries.mockResolvedValue([provider({ id: "p9", name: "Nacional" })]);
     render(<ProvidersScreen />);
 
     fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Nacional" } });
@@ -75,6 +79,8 @@ describe("ProvidersScreen", () => {
         expect.objectContaining({ name: "Nacional", marketId: "DO" }),
       ),
     );
+    await waitFor(() => expect(listProvidersEntries).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("Nacional")).toBeInTheDocument());
   });
 
   it("shows an error and does not crash when create fails", async () => {
@@ -91,9 +97,12 @@ describe("ProvidersScreen", () => {
     );
   });
 
-  it("saves a pasted logo URL for an existing provider (paste-URL MVP, no file upload)", async () => {
+  it("saves a pasted logo URL for an existing provider, refetches locally (no reload) and shows the new logo", async () => {
     mockData = { providers: [provider({ id: "p1", name: "Sirena", logo_url: null })] };
     setProviderLogo.mockResolvedValue({ data: {} });
+    listProvidersEntries.mockResolvedValue([
+      provider({ id: "p1", name: "Sirena", logo_url: "https://cdn.example.com/sirena.png" }),
+    ]);
     render(<ProvidersScreen />);
 
     fireEvent.change(screen.getByLabelText("Logo de Sirena"), {
@@ -106,6 +115,13 @@ describe("ProvidersScreen", () => {
         providerId: "p1",
         logoUrl: "https://cdn.example.com/sirena.png",
       }),
+    );
+    await waitFor(() => expect(listProvidersEntries).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: "Sirena" })).toHaveAttribute(
+        "src",
+        "https://cdn.example.com/sirena.png",
+      ),
     );
   });
 
