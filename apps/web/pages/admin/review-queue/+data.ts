@@ -7,6 +7,8 @@ import type { ReviewQueueData } from "@/features/admin/resources/save-matching/t
 import { extractToken } from "@/features/admin/shell/require-admin";
 import { apiClient } from "@/lib/api";
 
+import { data as adminShellData } from "../+data";
+
 // SSR de la cola de revisión: los filtros/orden/paginación viven en la URL (`?provider_id=&
 // method=&confidence_min=&confidence_max=&order_by=&limit=&offset=`, ver `review-queue-params.ts`,
 // batch 2.14/2.15) → estado shareable-por-link, el server SIEMPRE resuelve con el filtro vigente
@@ -14,7 +16,14 @@ import { apiClient } from "@/lib/api";
 // ANTES de llegar acá; esta llamada igual necesita el token para que el backend la autentique
 // (`require_capability` en `admin_save.py`) — se extrae con el MISMO mecanismo que
 // `require-admin.ts` (NUNCA un segundo canal de auth).
-export async function data(pageContext: PageContextServer): Promise<ReviewQueueData> {
+//
+// Compone la data del `+data.ts` padre (`pages/admin/+data.ts`, batch 2e): Vike no acumula hooks
+// `data()` automáticamente, así que esta página SIEMPRE debe fusionar `capabilities` a mano —
+// `+Layout.tsx` la necesita para el nav de `AdminLayout`.
+export async function data(
+  pageContext: PageContextServer,
+): Promise<ReviewQueueData & { capabilities: string[] }> {
+  const { capabilities } = await adminShellData(pageContext);
   const params = parseReviewQueueParams(pageContext.urlParsed.search);
   const token = extractToken(pageContext.headers);
 
@@ -37,5 +46,5 @@ export async function data(pageContext: PageContextServer): Promise<ReviewQueueD
     throw render(500, "No se pudo cargar la cola de revisión.");
   }
 
-  return { rows: res.data.rows, total: res.data.total, params };
+  return { rows: res.data.rows, total: res.data.total, params, capabilities };
 }

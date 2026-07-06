@@ -4,14 +4,18 @@ import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
 
 import { resolveReviewMatch } from "../api";
+import { useKeyboardReview } from "../hooks/useKeyboardReview";
+import { ADMIN_DECIDED_BY } from "../lib/decided-by";
 import { CompareDiff } from "./CompareDiff";
 import { ReasonCodeSelect } from "./ReasonCodeSelect";
 
-const ADMIN_DECIDED_BY = "admin"; // placeholder: la identidad real llega vía Clerk (userId); ver TODO abajo
-
 // Pantalla de detalle (features #1-#4, P0): store_product crudo vs cada candidato lado a lado
 // (SIEMPRE con diff resaltado), aprobar eligiendo un candidato o rechazar con motivo obligatorio.
-// Tras resolver, vuelve a la lista (la navegación "siguiente" con teclado es el batch 2e).
+// Tras resolver, vuelve a la lista. Atajos de teclado (batch 2e, 2.21/2.22): a=aprobar el candidato
+// TOP (primero de `candidates`, que ya llega ordenado por score desc — ver
+// `product_match_repository.py::list_candidates`), r=enfocar el selector de motivo de rechazo,
+// n/→=siguiente (sin contexto de posición-en-cola todavía → vuelve a la lista, misma navegación que
+// ya usa el flujo de click; simplificación anotada en el batch).
 export function ReviewDetailScreen() {
   const { detail } = useData<{ detail: AdminReviewDetailDto }>();
   const [busy, setBusy] = useState(false);
@@ -23,6 +27,7 @@ export function ReviewDetailScreen() {
     sizeText: detail.store_product_size_text ?? null,
   };
   const candidates = detail.candidates ?? [];
+  const topCandidate = candidates[0];
 
   const handleApprove = async (canonicalProductId: string) => {
     setBusy(true);
@@ -64,12 +69,29 @@ export function ReviewDetailScreen() {
     void navigate("/admin/review-queue");
   };
 
+  useKeyboardReview({
+    onApprove: () => {
+      if (topCandidate) void handleApprove(topCandidate.canonical_product_id);
+    },
+    onReject: () => {
+      document.getElementById("reason-code-select")?.focus();
+    },
+    onNext: () => {
+      void navigate("/admin/review-queue");
+    },
+    disabled: busy,
+  });
+
   return (
     <div className="p-6">
       <h1 className="mb-1 text-xl font-bold">Revisar match</h1>
       <p className="mb-4 text-sm text-muted-foreground">
         {storeProduct.name ?? "(sin nombre)"} · confianza {Math.round(detail.confidence * 100)}% ·{" "}
         {detail.method}
+      </p>
+      <p className="mb-4 text-xs text-muted-foreground" data-testid="keyboard-hint">
+        Atajos: <kbd>a</kbd> aprobar candidato top · <kbd>r</kbd> enfocar motivo de rechazo ·{" "}
+        <kbd>n</kbd> siguiente
       </p>
 
       {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
