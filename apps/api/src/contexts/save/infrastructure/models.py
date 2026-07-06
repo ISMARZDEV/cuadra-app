@@ -135,6 +135,7 @@ class ProviderModel(Base):
     platform: Mapped[str] = mapped_column(Text, nullable=False)   # vtex|magento|shopify|aggregator|spa
     market_id: Mapped[str] = mapped_column(Text, nullable=False)  # "DO"|"US"|"CO" — por ID (ADR 33)
     base_url: Mapped[str | None] = mapped_column(Text)
+    logo_url: Mapped[str | None] = mapped_column(Text)  # F2·B1/B3: logo del súper (migración 09526c5ccaca)
 
 
 class CanonicalProductModel(Base):

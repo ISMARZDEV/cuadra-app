@@ -37,6 +37,13 @@ class ProviderRepository(Protocol):
         """Providers del mercado, para el rail "Ofertas por supermercado" (A9)."""
         ...
 
+    def update(self, provider: Provider) -> None:
+        """Persiste los campos mutables de un Provider ya existente (F2·B1/B3, admin ingesta).
+
+        `provider.id` debe existir — el caller (use case) resuelve el `get_by_id` y arma el
+        `Provider` actualizado antes de llamar aquí; este método es I/O puro (ADR 31)."""
+        ...
+
 
 class CollectionRepository(Protocol):
     """Colecciones curadas (A6). La pertenencia (M:N) se resuelve por `list_product_ids`."""

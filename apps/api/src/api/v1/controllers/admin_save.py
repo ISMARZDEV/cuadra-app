@@ -1,9 +1,13 @@
-"""Admin Save controller — HTTP boundary de la consola de administración de Save (F2 · B1).
+"""Admin Save controller — HTTP boundary de la consola de administración de Save (F2 · B1/B3).
 
 Cola de revisión de matching: listar/ver detalle/resolver (aprobar-rechazar)/crear-canónico y
 enlazar/bulk-resolver. Thin (SRP, igual convención que `save.py`): parsea el request, delega en
 el use case, devuelve el DTO. TODA ruta exige `require_capability(ADMIN_SAVE_MATCHING_REVIEW)` —
 este es el gate real (server-side); nunca confiar en un chequeo solo-cliente (SACRED).
+
+`ingestion_router` (Batch 3A, F2·B1/B3): CRUD de Provider para la consola de "Ops de ingesta" —
+capability DISTINTA (`ADMIN_SAVE_INGESTION_OPS`), separada de la cola de revisión de matching a
+propósito (un rol con solo una de las dos no debe poder tocar la otra).
 """
 from __future__ import annotations
 
@@ -15,9 +19,12 @@ from pydantic import BaseModel
 from src.api.composition_root import (
     get_bulk_resolve_review,
     get_create_canonical_and_link,
+    get_create_provider,
     get_list_review_queue,
     get_resolve_review,
     get_review_detail,
+    get_set_provider_logo,
+    get_update_provider,
 )
 from src.api.extensions.security import require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
@@ -33,13 +40,21 @@ from src.contexts.save.application.dtos import (
 )
 from src.contexts.save.application.get_review_detail import GetReviewDetail
 from src.contexts.save.application.list_review_queue import ListReviewQueue
+from src.contexts.save.application.providers import CreateProvider, SetProviderLogo, UpdateProvider
 from src.contexts.save.application.resolve_review import ResolveReview
+from src.contexts.save.domain.entities import Provider, ProviderType, SourcePlatform
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 
 router = APIRouter(
     prefix="/admin/save",
     tags=["admin-save"],
     dependencies=[Depends(require_capability(CapabilityKey.ADMIN_SAVE_MATCHING_REVIEW))],
+)
+
+ingestion_router = APIRouter(
+    prefix="/admin/save",
+    tags=["admin-save-ingestion"],
+    dependencies=[Depends(require_capability(CapabilityKey.ADMIN_SAVE_INGESTION_OPS))],
 )
 
 
@@ -178,3 +193,94 @@ def bulk_resolve_review(
         ]
     )
     return BulkResolveResultDto.from_result(result)
+
+
+class ProviderDto(BaseModel):
+    """Proyección admin de Provider (incluye `logo_url`, ausente del DTO público `ProviderRefDto`)."""
+
+    id: str
+    name: str
+    type: ProviderType
+    platform: SourcePlatform
+    market_id: str
+    logo_url: str | None = None
+
+    @classmethod
+    def from_entity(cls, provider: Provider) -> ProviderDto:
+        return cls(
+            id=provider.id,
+            name=provider.name,
+            type=provider.type,
+            platform=provider.platform,
+            market_id=provider.market_id,
+            logo_url=provider.logo_url,
+        )
+
+
+class CreateProviderRequest(BaseModel):
+    name: str
+    type: ProviderType
+    platform: SourcePlatform
+    market_id: str
+    logo_url: str | None = None
+
+
+@ingestion_router.post("/providers", status_code=status.HTTP_201_CREATED)
+def create_provider(
+    body: CreateProviderRequest,
+    use_case: CreateProvider = Depends(get_create_provider),
+) -> ProviderDto:
+    try:
+        provider = use_case.execute(
+            name=body.name,
+            type=body.type,
+            platform=body.platform,
+            market_id=body.market_id,
+            logo_url=body.logo_url,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return ProviderDto.from_entity(provider)
+
+
+class UpdateProviderRequest(BaseModel):
+    name: str | None = None
+    type: ProviderType | None = None
+    platform: SourcePlatform | None = None
+    market_id: str | None = None
+
+
+@ingestion_router.patch("/providers/{provider_id}")
+def update_provider(
+    provider_id: str,
+    body: UpdateProviderRequest,
+    use_case: UpdateProvider = Depends(get_update_provider),
+) -> ProviderDto:
+    try:
+        provider = use_case.execute(
+            provider_id,
+            name=body.name,
+            type=body.type,
+            platform=body.platform,
+            market_id=body.market_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return ProviderDto.from_entity(provider)
+
+
+class SetProviderLogoRequest(BaseModel):
+    logo_url: str | None = None
+
+
+@ingestion_router.patch("/providers/{provider_id}/logo")
+def set_provider_logo(
+    provider_id: str,
+    body: SetProviderLogoRequest,
+    use_case: SetProviderLogo = Depends(get_set_provider_logo),
+) -> ProviderDto:
+    try:
+        provider = use_case.execute(provider_id, body.logo_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return ProviderDto.from_entity(provider)

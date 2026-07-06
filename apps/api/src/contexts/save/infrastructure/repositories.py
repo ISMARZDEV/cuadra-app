@@ -60,6 +60,7 @@ class SqlProviderRepository:
                 type=provider.type.value,
                 platform=provider.platform.value,
                 market_id=provider.market_id,
+                logo_url=provider.logo_url,
             )
         )
         self._s.flush()
@@ -76,6 +77,18 @@ class SqlProviderRepository:
             .order_by(ProviderModel.name)
         ).all()
         return [provider_to_entity(m) for m in models]
+
+    def update(self, provider: Provider) -> None:
+        pid = _parse_uuid(provider.id)
+        m = self._s.get(ProviderModel, pid) if pid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" es regla de negocio del use case
+            return
+        m.name = provider.name
+        m.type = provider.type.value
+        m.platform = provider.platform.value
+        m.market_id = provider.market_id
+        m.logo_url = provider.logo_url
+        self._s.flush()
 
 
 class SqlCollectionRepository:

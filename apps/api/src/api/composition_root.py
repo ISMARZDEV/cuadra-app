@@ -39,7 +39,13 @@ from src.contexts.save.application.listing import (
 )
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.collections import GetCollection, ListCollections
-from src.contexts.save.application.providers import GetProvider, ListProviders
+from src.contexts.save.application.providers import (
+    CreateProvider,
+    GetProvider,
+    ListProviders,
+    SetProviderLogo,
+    UpdateProvider,
+)
 from src.contexts.save.application.resolve_review import ResolveReview
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
@@ -320,6 +326,18 @@ def get_list_providers(session: Session = Depends(get_session)) -> ListProviders
 
 def get_provider(session: Session = Depends(get_session)) -> GetProvider:
     return GetProvider(SqlProviderRepository(session))
+
+
+def get_create_provider(session: Session = Depends(get_session)) -> CreateProvider:
+    return CreateProvider(SqlProviderRepository(session))
+
+
+def get_update_provider(session: Session = Depends(get_session)) -> UpdateProvider:
+    return UpdateProvider(SqlProviderRepository(session))
+
+
+def get_set_provider_logo(session: Session = Depends(get_session)) -> SetProviderLogo:
+    return SetProviderLogo(SqlProviderRepository(session))
 
 
 def get_list_category_products(

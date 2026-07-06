@@ -31,6 +31,7 @@ class Provider:
     type: ProviderType
     platform: SourcePlatform
     market_id: str  # "DO" → "US" → "CO" … (ADR 33: por ID)
+    logo_url: str | None = None  # F2·B1/B3: logo del súper (MVP = URL pegada, sin storage)
 
     def __post_init__(self) -> None:
         if not self.name.strip():
