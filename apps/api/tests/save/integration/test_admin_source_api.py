@@ -244,3 +244,37 @@ def test_test_source_with_http_base_url_returns_422(db_session) -> None:  # type
         assert r.status_code == 422, r.text
     finally:
         _clear()
+
+
+def test_non_admin_gets_403_on_sources_health_route(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Batch 3E (3.18-3.19): mismo gate `ADMIN_SAVE_INGESTION_OPS` que el resto de `/sources/*`."""
+    user_id = _seed_role_user(db_session, "normal_user")
+    client = _client(db_session, user_id)
+    try:
+        assert client.get("/v1/admin/save/sources/health?market=DO").status_code == 403
+    finally:
+        _clear()
+
+
+def test_super_admin_gets_health_badge_for_paused_and_stale_sources(  # type: ignore[no-untyped-def]
+    db_session,
+) -> None:
+    admin_id = _seed_role_user(db_session, "super_admin")
+    client = _client(db_session, admin_id)
+    try:
+        paused_provider_id = _create_provider(client)
+        paused_source_id = _create_source(client, paused_provider_id, "https://jumbo.com.do")
+        client.post(f"/v1/admin/save/sources/{paused_source_id}/pause")
+
+        r = client.get("/v1/admin/save/sources/health?market=DO")
+        assert r.status_code == 200, r.text
+        rows = r.json()
+        assert len(rows) == 1
+        assert rows[0]["id"] == paused_source_id
+        assert rows[0]["health"] == "paused"
+
+        r_other_market = client.get("/v1/admin/save/sources/health?market=US")
+        assert r_other_market.status_code == 200, r_other_market.text
+        assert r_other_market.json() == []
+    finally:
+        _clear()

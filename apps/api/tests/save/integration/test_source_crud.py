@@ -139,3 +139,36 @@ def test_pause_source_raises_when_not_found(db_session) -> None:  # type: ignore
     repo = SqlStoreRegistryRepository(db_session)
     with pytest.raises(ValueError, match="no encontrada"):
         PauseSource(repo).execute(str(uuid.uuid4()))
+
+
+def test_pause_source_sets_health_status_paused(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Batch 3E (3.18-3.19): la parte MANUAL de `health_status` se persiste en Pause/Resume."""
+    provider_id = _make_provider(db_session)
+    repo = SqlStoreRegistryRepository(db_session)
+    source = CreateSource(repo).execute(
+        provider_id=provider_id, platform=SourcePlatform.MAGENTO, base_url="https://jumbo.com.do",
+    )
+
+    updated = PauseSource(repo).execute(source.id)
+
+    assert updated.health_status == "paused"
+    persisted = repo.get_by_id(source.id)
+    assert persisted is not None
+    assert persisted.health_status == "paused"
+
+
+def test_resume_source_clears_health_status(db_session) -> None:  # type: ignore[no-untyped-def]
+    provider_id = _make_provider(db_session)
+    repo = SqlStoreRegistryRepository(db_session)
+    source = CreateSource(repo).execute(
+        provider_id=provider_id, platform=SourcePlatform.MAGENTO, base_url="https://jumbo.com.do",
+    )
+    paused = PauseSource(repo).execute(source.id)
+    assert paused.health_status == "paused"  # precondición: si esto falla, Resume no prueba nada
+
+    updated = ResumeSource(repo).execute(source.id)
+
+    assert updated.health_status is None
+    persisted = repo.get_by_id(source.id)
+    assert persisted is not None
+    assert persisted.health_status is None

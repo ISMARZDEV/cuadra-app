@@ -144,6 +144,15 @@ class SqlStoreRegistryRepository:
         ).first()
         return store_registry_to_entity(m) if m else None
 
+    def list_by_market(self, market_id: str) -> list[StoreRegistry]:
+        models = self._s.scalars(
+            select(StoreRegistryModel)
+            .join(ProviderModel, StoreRegistryModel.provider_id == ProviderModel.id)
+            .where(ProviderModel.market_id == market_id)
+            .order_by(ProviderModel.name)
+        ).all()
+        return [store_registry_to_entity(m) for m in models]
+
     def update(self, source: StoreRegistry) -> None:
         sid = _parse_uuid(source.id)
         m = self._s.get(StoreRegistryModel, sid) if sid else None
@@ -375,6 +384,13 @@ class SqlStoreProductRepository:
 
     def exists(self, provider_id: str, external_id: str) -> bool:
         return self._find(provider_id, external_id) is not None
+
+    def max_last_seen_at(self, provider_id: str) -> datetime | None:
+        return self._s.scalar(
+            select(func.max(StoreProductModel.last_seen_at)).where(
+                StoreProductModel.provider_id == uuid.UUID(provider_id)
+            )
+        )
 
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         # Escritor del FK denormalizado (F2.0 matching). No commitea: la Session es el UoW y el

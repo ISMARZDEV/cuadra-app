@@ -57,6 +57,11 @@ class StoreRegistryRepository(Protocol):
         """Resuelve la fuente del Provider (relación 1:1, `uq_store_registry_provider`)."""
         ...
 
+    def list_by_market(self, market_id: str) -> list[StoreRegistry]:
+        """Fuentes del mercado (join a Provider — `store_registry` no tiene `market_id` propio),
+        para el badge de salud de la consola admin (F2·B1/B3, Batch 3E)."""
+        ...
+
     def update(self, source: StoreRegistry) -> None:
         """Persiste los campos mutables de un StoreRegistry ya existente.
 
@@ -181,6 +186,11 @@ class StoreProductRepository(Protocol):
         ...
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]: ...
+
+    def max_last_seen_at(self, provider_id: str) -> datetime | None:
+        """Señal de frescura para el badge de salud (F2·B1/B3, Batch 3E): MAX `last_seen_at` de
+        todos los `store_product` del Provider. `None` si nunca se ingirió nada de esta fuente."""
+        ...
 
     def get_raw_attrs(self, store_product_id: str) -> StoreProductRawAttrs | None:
         """Atributos crudos (F2·B1, tarea 1.19-1.20) para el detalle de revisión —

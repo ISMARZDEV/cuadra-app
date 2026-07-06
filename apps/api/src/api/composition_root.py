@@ -56,6 +56,7 @@ from src.contexts.save.application.resolve_review import ResolveReview
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.application.store_registry import (
     CreateSource,
+    ListSourcesHealth,
     PauseSource,
     ResumeSource,
     UpdateSource,
@@ -373,6 +374,10 @@ def get_resume_source(session: Session = Depends(get_session)) -> ResumeSource:
 
 def get_test_source(session: Session = Depends(get_session)) -> TestSource:
     return TestSource(SqlStoreRegistryRepository(session), SqlProviderRepository(session))
+
+
+def get_list_sources_health(session: Session = Depends(get_session)) -> ListSourcesHealth:
+    return ListSourcesHealth(SqlStoreRegistryRepository(session), SqlStoreProductRepository(session))
 
 
 def get_list_basket_queries(session: Session = Depends(get_session)) -> ListBasketQueries:

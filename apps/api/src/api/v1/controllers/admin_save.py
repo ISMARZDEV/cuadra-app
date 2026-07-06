@@ -25,6 +25,7 @@ from src.api.composition_root import (
     get_create_source,
     get_list_basket_queries,
     get_list_review_queue,
+    get_list_sources_health,
     get_pause_source,
     get_remove_basket_query,
     get_resolve_review,
@@ -60,6 +61,7 @@ from src.contexts.save.application.providers import CreateProvider, SetProviderL
 from src.contexts.save.application.resolve_review import ResolveReview
 from src.contexts.save.application.store_registry import (
     CreateSource,
+    ListSourcesHealth,
     PauseSource,
     ResumeSource,
     UpdateSource,
@@ -76,6 +78,7 @@ from src.contexts.save.domain.entities import (
     SourcePlatform,
     StoreRegistry,
 )
+from src.contexts.save.domain.source_health import SourceHealth, SourceHealthRow
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 
 router = APIRouter(
@@ -427,6 +430,39 @@ def resume_source(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return SourceDto.from_entity(source)
+
+
+class SourceHealthDto(BaseModel):
+    """Fuente + salud EFECTIVA (F2·B1/B3, Batch 3E, tareas 3.18-3.19): pausa manual + frescura
+    derivada a lectura de `store_product.last_seen_at`. Sin auto-detección de rotura de esquema."""
+
+    id: str
+    provider_id: str
+    platform: SourcePlatform
+    base_url: str
+    enabled: bool
+    paused_at: datetime | None = None
+    health: SourceHealth
+
+    @classmethod
+    def from_row(cls, row: SourceHealthRow) -> SourceHealthDto:
+        return cls(
+            id=row.source.id,
+            provider_id=row.source.provider_id,
+            platform=row.source.platform,
+            base_url=row.source.base_url,
+            enabled=row.source.enabled,
+            paused_at=row.source.paused_at,
+            health=row.health,
+        )
+
+
+@ingestion_router.get("/sources/health")
+def list_sources_health(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: ListSourcesHealth = Depends(get_list_sources_health),
+) -> list[SourceHealthDto]:
+    return [SourceHealthDto.from_row(row) for row in use_case.execute(market)]
 
 
 class TestSourceRequest(BaseModel):
