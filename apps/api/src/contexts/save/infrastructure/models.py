@@ -328,3 +328,5 @@ class ProductMatchModel(Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[str | None] = mapped_column(Text)  # 'system' | admin user_id
+    reason_code: Mapped[str | None] = mapped_column(Text)  # motivo del rechazo (F2·B1, active-learning)
+    reason_note: Mapped[str | None] = mapped_column(Text)

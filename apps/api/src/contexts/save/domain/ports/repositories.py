@@ -239,8 +239,23 @@ class ProductMatchRepository(Protocol):
         """Matches en `pending_review` del mercado, para la consola de administración."""
         ...
 
+    def get_by_id(self, match_id: str) -> ProductMatch | None:
+        """Recupera un `product_match` por id (incluye `store_product_id`) — lo usa
+        `ResolveReview` (F2·B1) para conocer a qué store_product enlazar el FK antes de resolver."""
+        ...
+
     def resolve_review(
-        self, match_id: str, canonical_product_id: str | None, decided_by: str
+        self,
+        match_id: str,
+        canonical_product_id: str | None,
+        decided_by: str,
+        *,
+        reason_code: str | None = None,
+        reason_note: str | None = None,
     ) -> None:
-        """Resuelve un match pendiente (enlaza o rechaza) por decisión humana."""
+        """Resuelve un match pendiente (enlaza o rechaza) por decisión humana.
+
+        Fuerza `method="human"` (la decisión ya no es de la cascada). `reason_code`/`reason_note`
+        se persisten tal cual llegan (la validación de "reason_code requerido al rechazar" vive en
+        el use case `ResolveReview`, no aquí — este método es I/O puro, ADR 31)."""
         ...

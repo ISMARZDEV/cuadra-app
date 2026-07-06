@@ -152,8 +152,19 @@ class SqlProductMatchRepository:
         ).all()
         return [_to_entity(m) for m in rows]
 
+    def get_by_id(self, match_id: str) -> ProductMatch | None:
+        mid = _parse_uuid(match_id)
+        m = self._s.get(ProductMatchModel, mid) if mid else None
+        return _to_entity(m) if m is not None else None
+
     def resolve_review(
-        self, match_id: str, canonical_product_id: str | None, decided_by: str
+        self,
+        match_id: str,
+        canonical_product_id: str | None,
+        decided_by: str,
+        *,
+        reason_code: str | None = None,
+        reason_note: str | None = None,
     ) -> None:
         mid = _parse_uuid(match_id)
         m = self._s.get(ProductMatchModel, mid) if mid else None
@@ -163,6 +174,11 @@ class SqlProductMatchRepository:
             uuid.UUID(canonical_product_id) if canonical_product_id else None
         )
         m.status = "auto_linked" if canonical_product_id else "rejected"
+        m.method = "human"  # F2·B1: la decisión humana SIEMPRE sobrescribe el method de la cascada
         m.decided_by = decided_by
         m.decided_at = datetime.now(timezone.utc)
+        if reason_code is not None:
+            m.reason_code = reason_code
+        if reason_note is not None:
+            m.reason_note = reason_note
         self._s.flush()
