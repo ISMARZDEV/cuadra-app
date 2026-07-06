@@ -20,8 +20,9 @@ class SourcePlatform(StrEnum):
     VTEX = "vtex"
     MAGENTO = "magento"
     SHOPIFY = "shopify"
-    AGGREGATOR = "aggregator"  # PedidosYa / UberEats
-    SPA = "spa"                # sitio custom → agente-IA
+    AGGREGATOR = "aggregator"          # PedidosYa / UberEats
+    SPA = "spa"                        # sitio custom → agente-IA
+    REST_CATALOG = "rest_catalog"      # API REST/JSON propia (Bravo Va, etc.) → RestCatalogAdapter + profile
 
 
 @dataclass(frozen=True, slots=True)

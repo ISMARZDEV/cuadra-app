@@ -13,6 +13,7 @@ import pytest
 from src.contexts.save.domain.entities import SourcePlatform
 from src.contexts.save.infrastructure.catalog_sources.factory import CatalogSourceFactory
 from src.contexts.save.infrastructure.catalog_sources.magento_adapter import MagentoAdapter
+from src.contexts.save.infrastructure.catalog_sources.rest_catalog_adapter import RestCatalogAdapter
 from src.contexts.save.infrastructure.catalog_sources.vtex_adapter import VtexAdapter
 
 
@@ -43,3 +44,32 @@ def test_build_magento_without_store_header_has_no_store_code() -> None:
 def test_build_unsupported_platform_raises_clear_error() -> None:
     with pytest.raises(ValueError, match="sin adapter"):
         CatalogSourceFactory.build(SourcePlatform.SHOPIFY, "https://x.myshopify.com")
+
+
+def test_build_rest_catalog_returns_rest_catalog_adapter() -> None:
+    # REST_CATALOG resuelve el profile + secciones + tienda desde `endpoints` (StoreRegistry).
+    builder = CatalogSourceFactory.build(
+        SourcePlatform.REST_CATALOG,
+        "https://bravova-api.superbravo.com.do",
+        endpoints={"profile": "bravova", "sections": ["3"], "store_id": "1000"},
+    )
+
+    source = builder.for_query("provider-1", "DO", "arroz")  # query se ignora (browse-full)
+
+    assert isinstance(source, RestCatalogAdapter)
+
+
+def test_build_rest_catalog_unknown_profile_raises() -> None:
+    builder = CatalogSourceFactory.build(
+        SourcePlatform.REST_CATALOG,
+        "https://x.test",
+        endpoints={"profile": "no-existe", "sections": ["1"], "store_id": "1"},
+    )
+    with pytest.raises(ValueError, match="profile"):
+        builder.for_query("p", "DO", "q")
+
+
+def test_build_rest_catalog_missing_endpoints_raises() -> None:
+    builder = CatalogSourceFactory.build(SourcePlatform.REST_CATALOG, "https://x.test")
+    with pytest.raises(ValueError):
+        builder.for_query("p", "DO", "q")

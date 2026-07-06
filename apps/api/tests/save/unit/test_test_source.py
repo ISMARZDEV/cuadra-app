@@ -48,6 +48,18 @@ def _vtex_item(idx: int) -> dict:
     }
 
 
+def _bravova_item(idx: int) -> dict:
+    return {
+        "idexternoArticulo": str(idx),
+        "nombreArticulo": f"Producto {idx}",
+        "familiaArticulo": "GR",
+        "subfamiliaArticulo": "GR-003",
+        "associatedTienda": [{"pvpArticuloTienda": 100.000}],
+        "associatedEan": [],
+        "associatedPvp": 100.000,
+    }
+
+
 class _StubSourceRepo:
     def __init__(self, source: StoreRegistry | None) -> None:
         self._source = source
@@ -126,6 +138,31 @@ def test_ssrf_rejection_surfaces_as_config_error(monkeypatch: pytest.MonkeyPatch
     use_case = TestSource(_StubSourceRepo(_source()), _StubProviderRepo(_provider()))
     with pytest.raises(TestSourceConfigError):
         use_case.execute("src-1", "arroz")
+
+
+def test_rest_catalog_source_dry_run_maps_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    # el botón "Probar" del panel para una fuente REST_CATALOG (Bravo Va): compone factory +
+    # RestCatalogAdapter + profile + el HTTP SSRF-guardado, sin persistir.
+    source = StoreRegistry(
+        "src-1",
+        "prov-1",
+        SourcePlatform.REST_CATALOG,
+        "https://bravova-api.superbravo.com.do",
+        endpoints={"profile": "bravova", "sections": ["3"], "store_id": "1000"},
+    )
+
+    def _fake_get(url: str) -> dict:
+        if "paginationOffset=0" in url:
+            return {"data": {"totalCount": 1, "list": [_bravova_item(1)]}}
+        return {"data": {"totalCount": 0, "list": []}}
+
+    monkeypatch.setattr(ssrf_guard, "guarded_get", _fake_get)
+
+    use_case = TestSource(_StubSourceRepo(source), _StubProviderRepo(_provider()))
+    result = use_case.execute("src-1", "arroz")
+
+    assert len(result) == 1
+    assert result[0].source == "bravova"
 
 
 def test_caps_sample_at_ten_and_does_not_pull_next_page(monkeypatch: pytest.MonkeyPatch) -> None:

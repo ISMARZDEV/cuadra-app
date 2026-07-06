@@ -18,10 +18,22 @@ from dataclasses import dataclass
 
 from ...domain.entities import SourcePlatform
 from ...domain.ports import CatalogSource
+from .bravova_profile import BRAVOVA_PROFILE
 from .magento_adapter import HttpPost, MagentoAdapter
+from .rest_catalog_adapter import CatalogProfile, RestCatalogAdapter
 from .vtex_adapter import VtexAdapter
 
-_SUPPORTED_PLATFORMS = (SourcePlatform.VTEX, SourcePlatform.MAGENTO)
+_SUPPORTED_PLATFORMS = (
+    SourcePlatform.VTEX,
+    SourcePlatform.MAGENTO,
+    SourcePlatform.REST_CATALOG,
+)
+
+# Registro de profiles REST_CATALOG por clave (la que viaja en `endpoints["profile"]`).
+# Sumar un súper con API propia = un `*_profile.py` nuevo + una entrada aquí. Nada más.
+_REST_CATALOG_PROFILES: dict[str, CatalogProfile] = {
+    "bravova": BRAVOVA_PROFILE,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +43,7 @@ class SourceBuilder:
     platform: SourcePlatform
     base_url: str
     store_code: str | None = None
+    endpoints: dict | None = None  # REST_CATALOG lee de aquí: profile, sections, store_id
 
     def for_query(
         self,
@@ -56,7 +69,37 @@ class SourceBuilder:
                 store_code=self.store_code,
                 http_post=http_post,
             )
+        if self.platform is SourcePlatform.REST_CATALOG:
+            return self._build_rest_catalog(provider_id, market_id, http_get)
         raise ValueError(f"Plataforma sin adapter de ingesta: {self.platform!r}")
+
+    def _build_rest_catalog(
+        self,
+        provider_id: str,
+        market_id: str,
+        http_get: Callable[[str], dict] | None,
+    ) -> CatalogSource:
+        """REST_CATALOG (browse-full): el `query` NO aplica. Toda la config viene de `endpoints`:
+        `profile` (clave del `_REST_CATALOG_PROFILES`), `sections` (categorías a iterar) y `store_id`."""
+        endpoints = self.endpoints or {}
+        profile = _REST_CATALOG_PROFILES.get(endpoints.get("profile", ""))
+        if profile is None:
+            raise ValueError(
+                f"REST_CATALOG sin profile registrado: {endpoints.get('profile')!r}"
+            )
+        sections = endpoints.get("sections")
+        store_id = endpoints.get("store_id")
+        if not sections or not store_id:
+            raise ValueError("REST_CATALOG requiere 'sections' y 'store_id' en endpoints")
+        return RestCatalogAdapter(
+            self.base_url,
+            provider_id,
+            market_id,
+            profile,
+            sections=list(sections),
+            store_id=str(store_id),
+            http_get=http_get,
+        )
 
 
 class CatalogSourceFactory:
@@ -73,4 +116,6 @@ class CatalogSourceFactory:
         if platform not in _SUPPORTED_PLATFORMS:
             raise ValueError(f"Plataforma sin adapter de ingesta: {platform!r}")
         store_code = (headers or {}).get("Store")
-        return SourceBuilder(platform=platform, base_url=base_url, store_code=store_code)
+        return SourceBuilder(
+            platform=platform, base_url=base_url, store_code=store_code, endpoints=endpoints
+        )
