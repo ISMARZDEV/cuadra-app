@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ListChecks, Store } from "lucide-react";
+import { Database, ListChecks, Store } from "lucide-react";
 
 // Seam de extensibilidad de la OFV (back-office único): cada módulo admin futuro (News,
 // accesos/RBAC, financieros...) se registra acá — F2·B1 habilita SOLO la cola de revisión de
@@ -31,5 +31,12 @@ export const ADMIN_RESOURCES: AdminResource[] = [
     path: "/admin/providers",
     capability: "admin_save_ingestion_ops", // = CapabilityKey.ADMIN_SAVE_INGESTION_OPS
     navIcon: Store,
+  },
+  {
+    key: "save-sources",
+    label: "Fuentes (Save)",
+    path: "/admin/sources",
+    capability: "admin_save_ingestion_ops", // = CapabilityKey.ADMIN_SAVE_INGESTION_OPS
+    navIcon: Database,
   },
 ];
