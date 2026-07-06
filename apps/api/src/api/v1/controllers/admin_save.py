@@ -28,6 +28,7 @@ from src.api.composition_root import (
     get_resume_source,
     get_review_detail,
     get_set_provider_logo,
+    get_test_source,
     get_update_provider,
     get_update_source,
 )
@@ -52,6 +53,11 @@ from src.contexts.save.application.store_registry import (
     PauseSource,
     ResumeSource,
     UpdateSource,
+)
+from src.contexts.save.application.test_source import (
+    TestSource,
+    TestSourceConfigError,
+    TestSourceUpstreamError,
 )
 from src.contexts.save.domain.entities import Provider, ProviderType, SourcePlatform, StoreRegistry
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
@@ -405,3 +411,49 @@ def resume_source(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return SourceDto.from_entity(source)
+
+
+class TestSourceRequest(BaseModel):
+    query: str
+
+
+class SampleEntryDto(BaseModel):
+    """Proyección admin de `RawCatalogEntry` — la "muestra" del dry-run (features.md #13)."""
+
+    external_id: str
+    name: str
+    brand: str
+    price_minor: int
+    currency: str
+    ean: str | None = None
+    url: str | None = None
+    image_url: str | None = None
+
+
+@ingestion_router.post("/sources/{source_id}/test")
+def test_source(
+    source_id: str,
+    body: TestSourceRequest,
+    use_case: TestSource = Depends(get_test_source),
+) -> list[SampleEntryDto]:
+    try:
+        sample = use_case.execute(source_id, body.query)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TestSourceConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except TestSourceUpstreamError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return [
+        SampleEntryDto(
+            external_id=entry.external_id,
+            name=entry.name,
+            brand=entry.brand,
+            price_minor=entry.price.amount_minor,
+            currency=str(entry.price.currency),
+            ean=entry.ean,
+            url=entry.url,
+            image_url=entry.image_url,
+        )
+        for entry in sample
+    ]

@@ -13,11 +13,12 @@ llega cuando `basket_query` esté disponible.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ...domain.entities import SourcePlatform
 from ...domain.ports import CatalogSource
-from .magento_adapter import MagentoAdapter
+from .magento_adapter import HttpPost, MagentoAdapter
 from .vtex_adapter import VtexAdapter
 
 _SUPPORTED_PLATFORMS = (SourcePlatform.VTEX, SourcePlatform.MAGENTO)
@@ -31,12 +32,29 @@ class SourceBuilder:
     base_url: str
     store_code: str | None = None
 
-    def for_query(self, provider_id: str, market_id: str, query: str) -> CatalogSource:
+    def for_query(
+        self,
+        provider_id: str,
+        market_id: str,
+        query: str,
+        *,
+        http_get: Callable[[str], list[dict]] | None = None,
+        http_post: HttpPost | None = None,
+    ) -> CatalogSource:
+        """`http_get`/`http_post` son overrides opcionales (F2·B1/B3, Batch 3C) — el hook que usa
+        `TestSource` para inyectar el HTTP SSRF-guardado (`ssrf_guard.py`) en el adapter real, en
+        vez del `httpx.get`/`post` crudo por defecto. `None` (default) preserva el comportamiento
+        previo de cada adapter — cambio retrocompatible, sin impacto en callers existentes."""
         if self.platform is SourcePlatform.VTEX:
-            return VtexAdapter(self.base_url, provider_id, market_id, query)
+            return VtexAdapter(self.base_url, provider_id, market_id, query, http_get=http_get)
         if self.platform is SourcePlatform.MAGENTO:
             return MagentoAdapter(
-                self.base_url, provider_id, market_id, query, store_code=self.store_code
+                self.base_url,
+                provider_id,
+                market_id,
+                query,
+                store_code=self.store_code,
+                http_post=http_post,
             )
         raise ValueError(f"Plataforma sin adapter de ingesta: {self.platform!r}")
 

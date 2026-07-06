@@ -1,18 +1,25 @@
-"""Integration — RBAC de las rutas `/admin/save/sources/*` (F2·B1/B3, Batch 3B, tareas 3.6-3.7).
+"""Integration — RBAC de las rutas `/admin/save/sources/*` (F2·B1/B3, Batch 3B, tareas 3.6-3.7;
+`/sources/{id}/test`, Batch 3C, tareas 3.8-3.10).
 
 Mismo gate que Provider (`ADMIN_SAVE_INGESTION_OPS`), mismo router (`ingestion_router`) —
-un rol con SOLO `ADMIN_SAVE_MATCHING_REVIEW` NO debe poder tocar estas rutas.
+un rol con SOLO `ADMIN_SAVE_MATCHING_REVIEW` NO debe poder tocar estas rutas. Las pruebas del
+guard SSRF en sí viven en `tests/save/unit/test_ssrf_guard.py`; acá se prueba el boundary HTTP
+(RBAC + status codes + zero-persistence de extremo a extremo) mockeando DNS y HTTP.
 """
 from __future__ import annotations
 
+import socket
 import uuid
+from unittest.mock import patch
 
+import httpx
 from fastapi.testclient import TestClient
 
 from seeds.identity_seed import seed_identity
 from src.api.composition_root import get_session
 from src.api.extensions.security import get_current_user_id
 from src.contexts.identity.infrastructure.models import UserModel, UserRoleModel
+from src.contexts.save.infrastructure.catalog_sources import ssrf_guard
 from src.main import app
 
 
@@ -138,5 +145,102 @@ def test_update_unknown_source_returns_404(db_session) -> None:  # type: ignore[
             f"/v1/admin/save/sources/{uuid.uuid4()}", json={"base_url": "https://x.do"}
         )
         assert r.status_code == 404
+    finally:
+        _clear()
+
+
+def _create_source(client: TestClient, provider_id: str, base_url: str) -> str:
+    r = client.post(
+        "/v1/admin/save/sources",
+        json={"provider_id": provider_id, "platform": "vtex", "base_url": base_url},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def test_non_admin_gets_403_on_test_route(db_session) -> None:  # type: ignore[no-untyped-def]
+    user_id = _seed_role_user(db_session, "normal_user")
+    client = _client(db_session, user_id)
+    try:
+        fake_id = str(uuid.uuid4())
+        r = client.post(f"/v1/admin/save/sources/{fake_id}/test", json={"query": "arroz"})
+        assert r.status_code == 403
+    finally:
+        _clear()
+
+
+def test_test_unknown_source_returns_404(db_session) -> None:  # type: ignore[no-untyped-def]
+    admin_id = _seed_role_user(db_session, "super_admin")
+    client = _client(db_session, admin_id)
+    try:
+        r = client.post(
+            f"/v1/admin/save/sources/{uuid.uuid4()}/test", json={"query": "arroz"}
+        )
+        assert r.status_code == 404
+    finally:
+        _clear()
+
+
+def test_super_admin_can_test_source_and_gets_sample_without_persisting(  # type: ignore[no-untyped-def]
+    db_session,
+) -> None:
+    admin_id = _seed_role_user(db_session, "super_admin")
+    client = _client(db_session, admin_id)
+    try:
+        provider_id = _create_provider(client)
+        source_id = _create_source(client, provider_id, "https://legit.example.com")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "productId": "1",
+                        "productName": "Arroz Selecto 5lb",
+                        "brand": "Selecto",
+                        "items": [
+                            {
+                                "images": [{"imageUrl": "https://cdn.example.com/x.jpg"}],
+                                "ean": "7890000000001",
+                                "sellers": [{"commertialOffer": {"Price": 150.5}}],
+                            }
+                        ],
+                        "categories": ["Alimentos/Arroz"],
+                        "link": "https://legit.example.com/arroz-selecto",
+                    }
+                ],
+            )
+
+        addr = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]
+        with (
+            patch.object(ssrf_guard, "_make_client", lambda: httpx.Client(transport=httpx.MockTransport(handler))),
+            patch("socket.getaddrinfo", return_value=addr),
+        ):
+            r = client.post(f"/v1/admin/save/sources/{source_id}/test", json={"query": "arroz"})
+
+        assert r.status_code == 200, r.text
+        sample = r.json()
+        assert len(sample) == 1
+        assert sample[0]["name"] == "Arroz Selecto 5lb"
+        assert sample[0]["price_minor"] == 15050
+
+        # zero-persistence de extremo a extremo: la muestra no debe existir en store_product
+        from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
+
+        assert SqlStoreProductRepository(db_session).exists(provider_id, "1") is False
+    finally:
+        _clear()
+
+
+def test_test_source_with_http_base_url_returns_422(db_session) -> None:  # type: ignore[no-untyped-def]
+    admin_id = _seed_role_user(db_session, "super_admin")
+    client = _client(db_session, admin_id)
+    try:
+        provider_id = _create_provider(client)
+        source_id = _create_source(client, provider_id, "http://insecure.example.com")
+
+        r = client.post(f"/v1/admin/save/sources/{source_id}/test", json={"query": "arroz"})
+
+        assert r.status_code == 422, r.text
     finally:
         _clear()

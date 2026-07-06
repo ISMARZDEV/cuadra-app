@@ -54,6 +54,7 @@ from src.contexts.save.application.store_registry import (
     ResumeSource,
     UpdateSource,
 )
+from src.contexts.save.application.test_source import TestSource
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
 from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
     SqlProductMatchRepository,
@@ -361,6 +362,10 @@ def get_pause_source(session: Session = Depends(get_session)) -> PauseSource:
 
 def get_resume_source(session: Session = Depends(get_session)) -> ResumeSource:
     return ResumeSource(SqlStoreRegistryRepository(session))
+
+
+def get_test_source(session: Session = Depends(get_session)) -> TestSource:
+    return TestSource(SqlStoreRegistryRepository(session), SqlProviderRepository(session))
 
 
 def get_list_category_products(
