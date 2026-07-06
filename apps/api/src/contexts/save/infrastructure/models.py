@@ -171,6 +171,32 @@ class StoreRegistryModel(Base):
     )
 
 
+class BasketQueryModel(Base):
+    """Canasta curada como dato (F2·B1/B3, Batch 3D) — reemplaza `BASKET_QUERIES` hardcodeado en
+    `ingestion/save/sources.py` (backfill en la migración de este batch)."""
+
+    __tablename__ = "basket_query"
+    __table_args__ = (
+        UniqueConstraint("market_id", "query_text", name="uq_basket_query_market_text"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    category_label: Mapped[str | None] = mapped_column(Text)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class CanonicalProductModel(Base):
     """Producto canónico (resultado del matching), POR-MERCADO. Cuelga de una hoja de taxonomía."""
 

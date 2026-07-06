@@ -1,3 +1,4 @@
+from .basket_query import BasketQuery
 from .collection import Collection
 from .price import Price, PriceType
 from .product import CanonicalProduct, StoreProduct
@@ -12,6 +13,7 @@ from .provider import Provider, ProviderType, SourcePlatform
 from .store_registry import StoreRegistry
 
 __all__ = [
+    "BasketQuery",
     "CanonicalProduct",
     "Collection",
     "MatchCandidate",

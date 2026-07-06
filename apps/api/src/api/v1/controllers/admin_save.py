@@ -19,21 +19,31 @@ from pydantic import BaseModel
 
 from src.api.composition_root import (
     get_bulk_resolve_review,
+    get_create_basket_query,
     get_create_canonical_and_link,
     get_create_provider,
     get_create_source,
+    get_list_basket_queries,
     get_list_review_queue,
     get_pause_source,
+    get_remove_basket_query,
     get_resolve_review,
     get_resume_source,
     get_review_detail,
     get_set_provider_logo,
     get_test_source,
+    get_update_basket_query,
     get_update_provider,
     get_update_source,
 )
 from src.api.extensions.security import require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
+from src.contexts.save.application.basket_query import (
+    CreateBasketQuery,
+    ListBasketQueries,
+    RemoveBasketQuery,
+    UpdateBasketQuery,
+)
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview, BulkResolveRow
 from src.contexts.save.application.create_canonical_and_link import (
     CreateCanonicalAndLink,
@@ -59,7 +69,13 @@ from src.contexts.save.application.test_source import (
     TestSourceConfigError,
     TestSourceUpstreamError,
 )
-from src.contexts.save.domain.entities import Provider, ProviderType, SourcePlatform, StoreRegistry
+from src.contexts.save.domain.entities import (
+    BasketQuery,
+    Provider,
+    ProviderType,
+    SourcePlatform,
+    StoreRegistry,
+)
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 
 router = APIRouter(
@@ -457,3 +473,96 @@ def test_source(
         )
         for entry in sample
     ]
+
+
+class BasketQueryDto(BaseModel):
+    """Proyección admin de BasketQuery — una query de la canasta curada (F2·B1/B3, Batch 3D)."""
+
+    id: str
+    market_id: str
+    category_label: str | None = None
+    query_text: str
+    position: int
+    active: bool
+
+    @classmethod
+    def from_entity(cls, query: BasketQuery) -> BasketQueryDto:
+        return cls(
+            id=query.id,
+            market_id=query.market_id,
+            category_label=query.category_label,
+            query_text=query.query_text,
+            position=query.position,
+            active=query.active,
+        )
+
+
+@ingestion_router.get("/basket-queries")
+def list_basket_queries(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: ListBasketQueries = Depends(get_list_basket_queries),
+) -> list[BasketQueryDto]:
+    return [BasketQueryDto.from_entity(q) for q in use_case.execute(market)]
+
+
+class CreateBasketQueryRequest(BaseModel):
+    market_id: str
+    query_text: str
+    category_label: str | None = None
+    position: int = 0
+    active: bool = True
+
+
+@ingestion_router.post("/basket-queries", status_code=status.HTTP_201_CREATED)
+def create_basket_query(
+    body: CreateBasketQueryRequest,
+    use_case: CreateBasketQuery = Depends(get_create_basket_query),
+) -> BasketQueryDto:
+    try:
+        query = use_case.execute(
+            market_id=body.market_id,
+            query_text=body.query_text,
+            category_label=body.category_label,
+            position=body.position,
+            active=body.active,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return BasketQueryDto.from_entity(query)
+
+
+class UpdateBasketQueryRequest(BaseModel):
+    category_label: str | None = None
+    query_text: str | None = None
+    position: int | None = None
+    active: bool | None = None
+
+
+@ingestion_router.patch("/basket-queries/{query_id}")
+def update_basket_query(
+    query_id: str,
+    body: UpdateBasketQueryRequest,
+    use_case: UpdateBasketQuery = Depends(get_update_basket_query),
+) -> BasketQueryDto:
+    try:
+        query = use_case.execute(
+            query_id,
+            category_label=body.category_label,
+            query_text=body.query_text,
+            position=body.position,
+            active=body.active,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return BasketQueryDto.from_entity(query)
+
+
+@ingestion_router.delete("/basket-queries/{query_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_basket_query(
+    query_id: str,
+    use_case: RemoveBasketQuery = Depends(get_remove_basket_query),
+) -> None:
+    try:
+        use_case.execute(query_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

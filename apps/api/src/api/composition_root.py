@@ -22,6 +22,12 @@ from src.contexts.save.application.alerts import (
     SubscribeAlert,
     UnsubscribeAlert,
 )
+from src.contexts.save.application.basket_query import (
+    CreateBasketQuery,
+    ListBasketQueries,
+    RemoveBasketQuery,
+    UpdateBasketQuery,
+)
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
 from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
@@ -61,6 +67,7 @@ from src.contexts.save.infrastructure.matching.repository.product_match_reposito
 )
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
+    SqlBasketQueryRepository,
     SqlCanonicalProductRepository,
     SqlCollectionRepository,
     SqlProviderRepository,
@@ -366,6 +373,22 @@ def get_resume_source(session: Session = Depends(get_session)) -> ResumeSource:
 
 def get_test_source(session: Session = Depends(get_session)) -> TestSource:
     return TestSource(SqlStoreRegistryRepository(session), SqlProviderRepository(session))
+
+
+def get_list_basket_queries(session: Session = Depends(get_session)) -> ListBasketQueries:
+    return ListBasketQueries(SqlBasketQueryRepository(session))
+
+
+def get_create_basket_query(session: Session = Depends(get_session)) -> CreateBasketQuery:
+    return CreateBasketQuery(SqlBasketQueryRepository(session))
+
+
+def get_update_basket_query(session: Session = Depends(get_session)) -> UpdateBasketQuery:
+    return UpdateBasketQuery(SqlBasketQueryRepository(session))
+
+
+def get_remove_basket_query(session: Session = Depends(get_session)) -> RemoveBasketQuery:
+    return RemoveBasketQuery(SqlBasketQueryRepository(session))
 
 
 def get_list_category_products(

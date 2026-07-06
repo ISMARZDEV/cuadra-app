@@ -4,6 +4,7 @@ from __future__ import annotations
 from src.shared.money import Currency, Money
 
 from ..domain.entities import (
+    BasketQuery,
     CanonicalProduct,
     Provider,
     ProviderType,
@@ -13,6 +14,7 @@ from ..domain.entities import (
 )
 from ..domain.value_objects import Quantity, UnitMeasure
 from .models import (
+    BasketQueryModel,
     CanonicalProductModel,
     ProviderModel,
     StoreProductModel,
@@ -24,6 +26,17 @@ def provider_to_entity(m: ProviderModel) -> Provider:
     return Provider(
         str(m.id), m.name, ProviderType(m.type), SourcePlatform(m.platform), m.market_id,
         logo_url=m.logo_url,
+    )
+
+
+def basket_query_to_entity(m: BasketQueryModel) -> BasketQuery:
+    return BasketQuery(
+        str(m.id),
+        m.market_id,
+        m.query_text,
+        category_label=m.category_label,
+        position=m.position,
+        active=m.active,
     )
 
 

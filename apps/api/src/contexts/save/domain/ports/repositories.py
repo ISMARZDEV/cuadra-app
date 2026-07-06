@@ -15,6 +15,7 @@ from ..alerts import Alert, AlertNotification, AlertSubscription
 from ..comparison import StoreQuote
 from ..drops import PriceChange
 from ..entities import (
+    BasketQuery,
     CanonicalProduct,
     Collection,
     MatchCandidate,
@@ -61,6 +62,33 @@ class StoreRegistryRepository(Protocol):
 
         `source.id` debe existir — el caller (use case) resuelve el `get_by_id` y arma el
         `StoreRegistry` actualizado antes de llamar aquí; este método es I/O puro (ADR 31)."""
+        ...
+
+
+class BasketQueryRepository(Protocol):
+    """Canasta curada como dato (F2·B1/B3, Batch 3D) — reemplaza `BASKET_QUERIES` hardcodeado."""
+
+    def add(self, query: BasketQuery) -> None: ...
+    def get_by_id(self, query_id: str) -> BasketQuery | None: ...
+
+    def get_by_market_and_text(self, market_id: str, query_text: str) -> BasketQuery | None:
+        """Resuelve por la llave natural (`uq_basket_query_market_text`) — pre-check de
+        `CreateBasketQuery` antes del insert (mismo patrón que `StoreRegistryRepository`)."""
+        ...
+
+    def list_by_market(self, market_id: str) -> list[BasketQuery]:
+        """Queries del mercado, en orden de `position` (canasta curada)."""
+        ...
+
+    def update(self, query: BasketQuery) -> None:
+        """Persiste los campos mutables de un BasketQuery ya existente.
+
+        `query.id` debe existir — el caller (use case) resuelve el `get_by_id` y arma el
+        `BasketQuery` actualizado antes de llamar aquí; este método es I/O puro (ADR 31)."""
+        ...
+
+    def remove(self, query_id: str) -> None:
+        """Borra la fila — la query sale definitivamente de la canasta curada (poda dura)."""
         ...
 
 

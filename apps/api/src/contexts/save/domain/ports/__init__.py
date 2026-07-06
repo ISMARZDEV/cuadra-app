@@ -2,6 +2,7 @@ from .catalog_source import CatalogSource, RawCatalogEntry
 from .push import PushSender
 from .repositories import (
     AlertRepository,
+    BasketQueryRepository,
     CanonicalProductRepository,
     CollectionRepository,
     ProviderRepository,
@@ -12,6 +13,7 @@ from .repositories import (
 
 __all__ = [
     "AlertRepository",
+    "BasketQueryRepository",
     "CanonicalProductRepository",
     "CollectionRepository",
     "CatalogSource",

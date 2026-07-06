@@ -18,6 +18,7 @@ from ..domain.alerts import Alert, AlertNotification, AlertSubscription
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
 from ..domain.entities import (
+    BasketQuery,
     CanonicalProduct,
     Collection,
     PriceType,
@@ -32,6 +33,7 @@ from ..domain.slug import product_slug
 from ..domain.taxonomy import CategoryNode, slugify
 from ..domain.value_objects import Quantity, UnitMeasure
 from .mappers import (
+    basket_query_to_entity,
     canonical_to_entity,
     provider_to_entity,
     store_product_to_entity,
@@ -39,6 +41,7 @@ from .mappers import (
 )
 from .models import (
     AlertNotificationModel,
+    BasketQueryModel,
     BrandModel,
     CanonicalProductModel,
     CollectionModel,
@@ -154,6 +157,67 @@ class SqlStoreRegistryRepository:
         m.enabled = source.enabled
         m.health_status = source.health_status
         m.paused_at = source.paused_at
+        self._s.flush()
+
+
+class SqlBasketQueryRepository:
+    """Canasta curada como dato — reemplaza `BASKET_QUERIES` hardcodeado (F2·B1/B3, Batch 3D)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def add(self, query: BasketQuery) -> None:
+        self._s.add(
+            BasketQueryModel(
+                id=uuid.UUID(query.id),
+                market_id=query.market_id,
+                category_label=query.category_label,
+                query_text=query.query_text,
+                position=query.position,
+                active=query.active,
+            )
+        )
+        self._s.flush()
+
+    def get_by_id(self, query_id: str) -> BasketQuery | None:
+        qid = _parse_uuid(query_id)
+        m = self._s.get(BasketQueryModel, qid) if qid else None
+        return basket_query_to_entity(m) if m else None
+
+    def get_by_market_and_text(self, market_id: str, query_text: str) -> BasketQuery | None:
+        m = self._s.scalars(
+            select(BasketQueryModel).where(
+                BasketQueryModel.market_id == market_id,
+                BasketQueryModel.query_text == query_text,
+            )
+        ).first()
+        return basket_query_to_entity(m) if m else None
+
+    def list_by_market(self, market_id: str) -> list[BasketQuery]:
+        models = self._s.scalars(
+            select(BasketQueryModel)
+            .where(BasketQueryModel.market_id == market_id)
+            .order_by(BasketQueryModel.position)
+        ).all()
+        return [basket_query_to_entity(m) for m in models]
+
+    def update(self, query: BasketQuery) -> None:
+        qid = _parse_uuid(query.id)
+        m = self._s.get(BasketQueryModel, qid) if qid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" es regla de negocio del use case
+            return
+        m.category_label = query.category_label
+        m.query_text = query.query_text
+        m.position = query.position
+        m.active = query.active
+        self._s.flush()
+
+    def remove(self, query_id: str) -> None:
+        qid = _parse_uuid(query_id)
+        m = self._s.get(BasketQueryModel, qid) if qid else None
+        if m is None:
+            return
+        self._s.delete(m)
         self._s.flush()
 
 
