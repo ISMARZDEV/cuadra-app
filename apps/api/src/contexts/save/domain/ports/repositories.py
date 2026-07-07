@@ -142,6 +142,16 @@ class CanonicalProductRepository(Protocol):
         """Todos los productos del mercado (para el sitemap y el browse del portal)."""
         ...
 
+    def list_without_embedding(
+        self, market_id: str, limit: int = 500
+    ) -> list[CanonicalProduct]:
+        """Canónicos del mercado con `embedding` NULL — para el backfill semántico de la cascada."""
+        ...
+
+    def set_embedding(self, product_id: str, embedding: list[float]) -> None:
+        """Escribe el vector de embedding de un canónico (índice de la etapa vectorial)."""
+        ...
+
 
 class StoreProductRepository(Protocol):
     def exists(self, provider_id: str, external_id: str) -> bool:

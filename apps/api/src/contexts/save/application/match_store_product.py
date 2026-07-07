@@ -34,6 +34,7 @@ from ..domain.ports import (
 )
 from ..domain.ports.repositories import EmbeddingProvider, ProductMatchRepository
 from ..infrastructure.matching.cascade.banding import JUDGE_MATCH_MIN_CONFIDENCE, determine_band
+from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
 from ..infrastructure.matching.cascade.scoring import apply_boosts
 
@@ -114,7 +115,7 @@ class MatchStoreProduct:
 
         # --- Etapa 2/3: léxico (trgm) + semántico (vector), fusionados por RRF ---
         trgm_candidates = self._match_repo.find_candidates_trgm(product.name, product.market_id)
-        embedding_text = f"{product.name} {product.brand} {product.size}".strip()
+        embedding_text = build_embedding_text(product.name, product.brand, product.size)
         embedding = self._embedder.embed([embedding_text])[0]
         vector_candidates = self._match_repo.find_candidates_vector(embedding, product.market_id)
 

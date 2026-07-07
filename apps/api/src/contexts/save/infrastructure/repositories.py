@@ -369,6 +369,27 @@ class SqlCanonicalProductRepository:
         ).all()
         return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
 
+    def list_without_embedding(
+        self, market_id: str, limit: int = 500
+    ) -> list[CanonicalProduct]:
+        models = self._s.scalars(
+            select(CanonicalProductModel)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.embedding.is_(None),
+            )
+            .limit(limit)
+        ).all()
+        return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
+
+    def set_embedding(self, product_id: str, embedding: list[float]) -> None:
+        pid = _parse_uuid(product_id)
+        m = self._s.get(CanonicalProductModel, pid) if pid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" lo maneja el use case
+            return
+        m.embedding = embedding
+        self._s.flush()
+
 
 class SqlStoreProductRepository:
     def __init__(self, session: Session) -> None:
