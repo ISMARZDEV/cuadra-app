@@ -1,0 +1,7 @@
+#!/bin/sh
+# react-doctor — advisory scan of staged React changes.
+# Non-blocking by design (--blocking none): it prints findings but NEVER fails the commit.
+# Wired via core.hooksPath (.githooks); the root "prepare" script sets that on pnpm install.
+if [ -x ./node_modules/.bin/react-doctor ]; then
+  ./node_modules/.bin/react-doctor --staged --blocking none --no-telemetry || true
+fi
