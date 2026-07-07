@@ -29,6 +29,23 @@ del catálogo (regla de oro de embeddings, ver plan §2). El spike solo decide S
 
 ---
 
+## 0. Actualización 2026-07-06 (rama `feat/save-bravova-adapter`)
+
+Trabajo hecho que ADELANTA la activación (más allá del estado 2026-07-05 de arriba):
+
+- **Gap crítico encontrado + resuelto — escritura de embeddings de canónicos.** Nada poblaba
+  `canonical_product.embedding` en runtime → la etapa vectorial era **inerte** (0 candidatos
+  siempre). Añadido: `build_embedding_text` (receta ÚNICA compartida query/índice),
+  `EmbedCanonicalProducts` (backfill idempotente), `CanonicalProductRepository.list_without_embedding`
+  + `set_embedding`. **Wired** en la ingesta: `build_canonical_embedder` (`composition.py`, mismo
+  gate/modelo que `build_matcher`), corre en `save-refresh` (CLI) y en el nuevo asset Dagster
+  `embed_canonicals` (upstream de las fuentes). Todo flag-gated (no-op si dark).
+- **La consola admin de revisión YA EXISTE** (el paso 3 de abajo decía que no). Es `feat/save-admin-review`
+  (cola de revisión + resolve, RBAC). La revisión ya NO es solo por SQL.
+
+**Lo que queda para encender es ahora puramente OPERATIVO** (no código): endpoint de embeddings +
+env vars + correr. Ver secuencia abajo.
+
 ## 2. Secuencia para ENCENDER la cascada (de dark a live)
 
 La cascada está enchufada pero apagada. Para activarla, en orden:
@@ -41,9 +58,9 @@ La cascada está enchufada pero apagada. Para activarla, en orden:
    - `make save-refresh` (CLI) o el asset de Dagster `save_daily_refresh`.
    - Esto materializa `store_product` desde las 213 queries y los enruta a la cascada → llena
      `product_match` (auto-links + cola de revisión).
-3. **Revisar la cola humana** — hoy la persistencia existe (`ProductMatchRepository.list_review_queue`),
-   pero la **consola admin (Refine) NO** — es un milestone F2 posterior. Hasta entonces la revisión es
-   vía SQL/script. Sin revisar la cola, la calidad del matching queda sin validar humanamente.
+3. **Revisar la cola humana** — la persistencia (`ProductMatchRepository.list_review_queue`) Y la
+   **consola admin de revisión YA EXISTEN** (`feat/save-admin-review`, actualización 2026-07-06). Se
+   revisa/resuelve desde el panel, no por SQL. Sin revisar la cola, la calidad queda sin validar.
 4. **Tunear umbrales** con los resultados reales (ver Batch 10, paso 5).
 5. **Correr Batch 10** (spike) para confirmar/cambiar el modelo de embeddings.
 6. Solo entonces, **activar el flag en producción** por entorno.
