@@ -269,9 +269,9 @@ def test_super_admin_gets_health_badge_for_paused_and_stale_sources(  # type: ig
         r = client.get("/v1/admin/save/sources/health?market=DO")
         assert r.status_code == 200, r.text
         rows = r.json()
-        assert len(rows) == 1
-        assert rows[0]["id"] == paused_source_id
-        assert rows[0]["health"] == "paused"
+        # el endpoint lista TODAS las fuentes DO (incl. sembradas, p.ej. Bravo) → filtrar a la propia
+        mine = next(row for row in rows if row["id"] == paused_source_id)
+        assert mine["health"] == "paused"
 
         r_other_market = client.get("/v1/admin/save/sources/health?market=US")
         assert r_other_market.status_code == 200, r_other_market.text

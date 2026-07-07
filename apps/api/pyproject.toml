@@ -34,6 +34,7 @@ dev = [
 ingestion = [
     "dagster>=1.9",
     "dagster-webserver>=1.9",
+    "sentence-transformers>=3.0",  # BGE-M3 in-process (EmbeddingProvider local, sin endpoint HTTP)
 ]
 
 [tool.ruff]

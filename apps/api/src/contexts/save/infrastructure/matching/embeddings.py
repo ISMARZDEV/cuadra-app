@@ -47,3 +47,34 @@ class BgeM3EmbeddingProvider:
         if not texts:
             return []
         return self._embed_fn(self._endpoint_url, texts)
+
+
+class SentenceTransformersEmbeddingProvider:
+    """`EmbeddingProvider` BGE-M3 IN-PROCESS (sentence-transformers), sin endpoint HTTP.
+
+    Para la ingesta batch (dev o despliegues chicos): el modelo corre en el mismo proceso, no en un
+    servicio aparte. Es un patrón válido de producción para un pipeline batch (los embeddings se
+    computan en la escritura de la ingesta, no en el path de request). Carga PEREZOSA del modelo —
+    la dep pesada (torch) vive solo en el dep-group de ingesta y solo se importa al usarse de verdad.
+    `encode_fn` inyectable para testear sin torch. MISMO modelo (`BAAI/bge-m3`, 1024-dim) que el
+    adapter HTTP → los vectores son comparables (regla de oro de embeddings)."""
+
+    _MODEL_NAME = "BAAI/bge-m3"
+
+    def __init__(
+        self, encode_fn: Callable[[list[str]], list[list[float]]] | None = None
+    ) -> None:
+        self._encode_fn = encode_fn
+        self._model = None
+
+    def _encode(self, texts: list[str]) -> list[list[float]]:
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer  # dep pesada, import perezoso
+
+            self._model = SentenceTransformer(self._MODEL_NAME)
+        return [v.tolist() for v in self._model.encode(texts, normalize_embeddings=True)]
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        return (self._encode_fn or self._encode)(texts)

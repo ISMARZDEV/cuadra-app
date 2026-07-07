@@ -26,6 +26,12 @@ from src.shared.money import Currency, Money
 DOP = Currency("DOP")
 
 
+def _row_for(rows, source_id):  # type: ignore[no-untyped-def]
+    """La fila de salud de ESTA fuente. `execute` lista TODAS las fuentes del mercado (incl. las
+    sembradas, p.ej. Bravo), así que no se puede asumir `rows[0]`."""
+    return next(r for r in rows if r.source.id == source_id)
+
+
 def _make_provider(db_session, name: str) -> str:  # type: ignore[no-untyped-def]
     repo = SqlProviderRepository(db_session)
     provider = CreateProvider(repo).execute(
@@ -52,45 +58,45 @@ def test_paused_source_is_paused_regardless_of_freshness(db_session) -> None:  #
 
     rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("DO")
 
-    assert rows[0].health is SourceHealth.PAUSED
+    assert _row_for(rows, source.id).health is SourceHealth.PAUSED
 
 
 def test_stale_source_when_last_observation_is_old(db_session) -> None:  # type: ignore[no-untyped-def]
     provider_id = _make_provider(db_session, "Sirena")
     registry_repo = SqlStoreRegistryRepository(db_session)
-    CreateSource(registry_repo).execute(
+    source = CreateSource(registry_repo).execute(
         provider_id=provider_id, platform=SourcePlatform.VTEX, base_url="https://sirena.com.do",
     )
     _observe(db_session, provider_id, datetime.now(UTC) - timedelta(hours=48))
 
     rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("DO")
 
-    assert rows[0].health is SourceHealth.STALE
+    assert _row_for(rows, source.id).health is SourceHealth.STALE
 
 
 def test_ok_source_when_recently_observed(db_session) -> None:  # type: ignore[no-untyped-def]
     provider_id = _make_provider(db_session, "Nacional")
     registry_repo = SqlStoreRegistryRepository(db_session)
-    CreateSource(registry_repo).execute(
+    source = CreateSource(registry_repo).execute(
         provider_id=provider_id, platform=SourcePlatform.VTEX, base_url="https://nacional.com.do",
     )
     _observe(db_session, provider_id, datetime.now(UTC) - timedelta(hours=1))
 
     rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("DO")
 
-    assert rows[0].health is SourceHealth.OK
+    assert _row_for(rows, source.id).health is SourceHealth.OK
 
 
 def test_never_ingested_source_is_stale_without_crashing(db_session) -> None:  # type: ignore[no-untyped-def]
     provider_id = _make_provider(db_session, "PlazaLama")
     registry_repo = SqlStoreRegistryRepository(db_session)
-    CreateSource(registry_repo).execute(
+    source = CreateSource(registry_repo).execute(
         provider_id=provider_id, platform=SourcePlatform.VTEX, base_url="https://plazalama.com.do",
     )
 
     rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("DO")
 
-    assert rows[0].health is SourceHealth.STALE
+    assert _row_for(rows, source.id).health is SourceHealth.STALE
 
 
 def test_only_lists_sources_of_the_requested_market(db_session) -> None:  # type: ignore[no-untyped-def]

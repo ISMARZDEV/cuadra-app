@@ -12,13 +12,25 @@ from sqlalchemy.orm import Session
 from src.config import settings
 from src.contexts.save.application.embed_canonical_products import EmbedCanonicalProducts
 from src.contexts.save.application.match_store_product import MatchStoreProduct
+from src.contexts.save.domain.ports.repositories import EmbeddingProvider
 from src.contexts.save.infrastructure.matching.claude_judge import ClaudeJudge
-from src.contexts.save.infrastructure.matching.embeddings import BgeM3EmbeddingProvider
+from src.contexts.save.infrastructure.matching.embeddings import (
+    BgeM3EmbeddingProvider,
+    SentenceTransformersEmbeddingProvider,
+)
 from src.contexts.save.infrastructure.matching.repository import SqlProductMatchRepository
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlStoreProductRepository,
 )
+
+
+def build_embedding_provider() -> EmbeddingProvider:
+    """Elige el adapter de embeddings: si `SAVE_BGE_M3_ENDPOINT_URL` está seteado → endpoint HTTP
+    (patrón de prod, servicio dedicado); si no → BGE-M3 in-process (sentence-transformers), para
+    dev/batch chico. Mismo modelo en ambos → vectores comparables."""
+    url = settings.save_bge_m3_endpoint_url
+    return BgeM3EmbeddingProvider(url) if url else SentenceTransformersEmbeddingProvider()
 
 
 def build_matcher(session: Session) -> MatchStoreProduct | None:
@@ -45,5 +57,5 @@ def build_canonical_embedder(session: Session) -> EmbedCanonicalProducts | None:
         return None
     return EmbedCanonicalProducts(
         SqlCanonicalProductRepository(session),
-        BgeM3EmbeddingProvider(settings.save_bge_m3_endpoint_url),
+        build_embedding_provider(),
     )
