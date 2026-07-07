@@ -1,6 +1,6 @@
-"""Adapter — Claude-judge, grey-band arbitration (F2.0 cascade, design step 6).
+"""Adapter — LLM judge, grey-band arbitration (F2.0 cascade, design step 6).
 
-The Anthropic/LangChain client is ALWAYS mocked here — no real API call, no tokens burned.
+The LangChain chat client is ALWAYS mocked here — no real API call, no tokens burned.
 Every invalid/error path MUST degrade to `uncertain` (Sacred rule #4: fail-safe to the human
 review queue, never a false auto-link via method="llm").
 """
@@ -11,8 +11,8 @@ from typing import Any
 
 import pytest
 
-from src.contexts.save.infrastructure.matching.claude_judge import (
-    ClaudeJudge,
+from src.contexts.save.infrastructure.matching.llm_judge import (
+    LlmJudge,
     JudgeVerdict,
 )
 
@@ -61,7 +61,7 @@ def test_valid_match_decision_is_trusted() -> None:
             usage={"input_tokens": 150, "output_tokens": 40},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -82,7 +82,7 @@ def test_valid_no_match_decision_is_trusted() -> None:
             usage={"input_tokens": 140, "output_tokens": 35},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -103,7 +103,7 @@ def test_valid_uncertain_decision_is_trusted() -> None:
             usage={"input_tokens": 130, "output_tokens": 30},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -121,7 +121,7 @@ def test_malformed_non_json_output_degrades_to_uncertain() -> None:
     model = _FakeModel(
         _response(None, usage={"input_tokens": 100, "output_tokens": 10}, parsing_error=ValueError("not valid JSON"))
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -133,7 +133,7 @@ def test_missing_fields_degrades_to_uncertain() -> None:
     model = _FakeModel(
         _response({"decision": "match", "confidence": 0.9}, usage={"input_tokens": 100, "output_tokens": 10})
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -147,7 +147,7 @@ def test_confidence_above_one_degrades_to_uncertain() -> None:
             usage={"input_tokens": 100, "output_tokens": 10},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -161,7 +161,7 @@ def test_confidence_below_zero_degrades_to_uncertain() -> None:
             usage={"input_tokens": 100, "output_tokens": 10},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -175,7 +175,7 @@ def test_invalid_decision_literal_degrades_to_uncertain() -> None:
             usage={"input_tokens": 100, "output_tokens": 10},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -184,7 +184,7 @@ def test_invalid_decision_literal_degrades_to_uncertain() -> None:
 
 def test_client_exception_degrades_to_uncertain_never_raises() -> None:
     model = _FakeModel(raises=TimeoutError("anthropic client timed out"))
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -201,7 +201,7 @@ def test_never_returns_match_on_any_error_path() -> None:
         _FakeModel(raises=RuntimeError("boom")),
     ]
     for model in error_models:
-        verdict = ClaudeJudge(model=model).judge(
+        verdict = LlmJudge(model=model).judge(
             store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT
         )
         assert verdict.decision == "uncertain"
@@ -215,7 +215,7 @@ def test_token_usage_is_logged_per_call(caplog: pytest.LogCaptureFixture) -> Non
             usage={"input_tokens": 222, "output_tokens": 33},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     with caplog.at_level(logging.INFO):
         judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
@@ -231,7 +231,7 @@ def test_token_usage_is_logged_even_when_output_is_invalid(caplog: pytest.LogCap
             usage={"input_tokens": 111, "output_tokens": 22},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     with caplog.at_level(logging.INFO):
         verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
@@ -248,7 +248,7 @@ def test_prompt_includes_given_fields_only_no_price_instruction() -> None:
             usage={"input_tokens": 100, "output_tokens": 10},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -266,7 +266,7 @@ def test_log_token_usage_returns_dict_with_input_output_tokens_and_model() -> No
     use-case needs these values to wire `product_match.judge_*` (1.14)."""
     raw = _FakeRaw({"input_tokens": 222, "output_tokens": 33})
 
-    result = ClaudeJudge._log_token_usage(raw)
+    result = LlmJudge._log_token_usage(raw)
 
     assert result == {"input_tokens": 222, "output_tokens": 33, "model": "claude-sonnet-4-6-fake"}
 
@@ -274,11 +274,11 @@ def test_log_token_usage_returns_dict_with_input_output_tokens_and_model() -> No
 def test_log_token_usage_returns_none_when_no_usage_metadata() -> None:
     raw = _FakeRaw(None)
 
-    assert ClaudeJudge._log_token_usage(raw) is None
+    assert LlmJudge._log_token_usage(raw) is None
 
 
 def test_log_token_usage_returns_none_when_raw_is_none() -> None:
-    assert ClaudeJudge._log_token_usage(None) is None
+    assert LlmJudge._log_token_usage(None) is None
 
 
 def test_valid_verdict_carries_usage_for_cost_tracking() -> None:
@@ -288,7 +288,7 @@ def test_valid_verdict_carries_usage_for_cost_tracking() -> None:
             usage={"input_tokens": 180, "output_tokens": 45},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -306,7 +306,7 @@ def test_schema_validation_failure_still_carries_usage_for_cost_tracking() -> No
             usage={"input_tokens": 111, "output_tokens": 22},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -319,7 +319,7 @@ def test_schema_validation_failure_still_carries_usage_for_cost_tracking() -> No
 def test_client_exception_verdict_has_no_usage() -> None:
     """No response came back at all — nothing to report, usage fields stay `None`."""
     model = _FakeModel(raises=TimeoutError("anthropic client timed out"))
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     verdict = judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
@@ -336,7 +336,7 @@ def test_default_model_is_not_constructed_when_injected() -> None:
             usage={"input_tokens": 10, "output_tokens": 5},
         )
     )
-    judge = ClaudeJudge(model=model)
+    judge = LlmJudge(model=model)
 
     judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 

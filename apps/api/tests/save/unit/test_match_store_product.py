@@ -1,5 +1,5 @@
 """Unit — MatchStoreProduct (F2.0 cascada de matching, application layer). PURA (fakes, sin DB
-ni LLM real): EAN exacto -> trgm/vector fusionados por RRF -> boosts -> banding -> Claude-judge
+ni LLM real): EAN exacto -> trgm/vector fusionados por RRF -> boosts -> banding -> LLM judge
 (solo banda gris) -> cola humana. Ver design §Cascade Contract.
 """
 from __future__ import annotations

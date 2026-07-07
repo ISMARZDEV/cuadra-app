@@ -24,9 +24,9 @@ from src.contexts.save.infrastructure.matching.embeddings import (
 @pytest.fixture
 def _cascade_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "save_matching_cascade_enabled", True)
-    # Construir un ClaudeJudge real armaría un cliente LLM (get_chat_model): fuera del scope de
+    # Construir un LlmJudge real armaría un cliente LLM (get_chat_model): fuera del scope de
     # este test de wiring — lo reemplazamos por un stub.
-    monkeypatch.setattr(composition, "ClaudeJudge", lambda: MagicMock())
+    monkeypatch.setattr(composition, "LlmJudge", lambda: MagicMock())
 
 
 def test_embedding_provider_falls_back_to_in_process_without_endpoint(

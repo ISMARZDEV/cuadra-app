@@ -1,4 +1,8 @@
-"""Claude-judge adapter — arbitrates the grey-band candidate pair (F2.0 cascade, design step 6).
+"""LLM judge adapter — arbitrates the grey-band candidate pair (F2.0 cascade, design step 6).
+
+Provider-agnostic ON PURPOSE: the concrete model is whatever `LLM_PROVIDER` selects
+(`get_chat_model("smart")` → gpt-4o in dev / claude-sonnet-4-6 in prod). The name is generic so it
+never lies about which vendor runs — this file must NOT hardcode a provider.
 
 Called ONLY for the single top grey-band candidate handed to it by the cascade use-case
 (Batch 7). It does NOT run the cascade, does NOT pick which candidate to judge, and must NEVER
@@ -11,8 +15,8 @@ missing/invalid field, out-of-range confidence, unrecognized `decision`, or clie
 exception/timeout degrades to `uncertain` (which routes to the human review queue upstream).
 There is no code path that can turn an error into `match`.
 
-Reuses the existing `LLMPort` (`src.shared.llm.get_chat_model`, §7.8) rather than talking to the
-Anthropic SDK directly, so the provider stays swappable and this file needs no new client/config.
+Reuses the existing `LLMPort` (`src.shared.llm.get_chat_model`, §7.8) rather than talking to any
+vendor SDK directly, so the provider stays swappable and this file needs no new client/config.
 The model is dependency-injected (`model` param) so tests never touch the real client or burn
 tokens.
 """
@@ -89,8 +93,8 @@ class StructuredChatModel(Protocol):
 _UNCERTAIN = JudgeVerdict(decision="uncertain", confidence=0.0, cited_fields=[])
 
 
-class ClaudeJudge:
-    """Adapter around the LLM judge for the grey-band cascade step."""
+class LlmJudge:
+    """Adapter around the LLM judge for the grey-band cascade step (provider chosen by config)."""
 
     def __init__(self, model: StructuredChatModel | None = None) -> None:
         self._model = model or get_chat_model("smart").with_structured_output(
@@ -112,7 +116,7 @@ class ClaudeJudge:
         try:
             result = self._model.invoke(prompt)
         except Exception:
-            logger.warning("claude_judge: client call failed, degrading to uncertain", exc_info=True)
+            logger.warning("llm_judge: client call failed, degrading to uncertain", exc_info=True)
             return _UNCERTAIN
 
         raw = result.get("raw") if isinstance(result, dict) else None
@@ -121,14 +125,14 @@ class ClaudeJudge:
         parsing_error = result.get("parsing_error") if isinstance(result, dict) else "missing raw dict"
         parsed = result.get("parsed") if isinstance(result, dict) else None
         if parsing_error is not None or parsed is None:
-            logger.warning("claude_judge: unparseable output, degrading to uncertain")
+            logger.warning("llm_judge: unparseable output, degrading to uncertain")
             return self._uncertain_with_usage(usage)
 
         payload = parsed.model_dump() if isinstance(parsed, BaseModel) else parsed
         try:
             verdict = _Verdict.model_validate(payload)
         except ValidationError:
-            logger.warning("claude_judge: schema validation failed, degrading to uncertain")
+            logger.warning("llm_judge: schema validation failed, degrading to uncertain")
             return self._uncertain_with_usage(usage)
 
         return JudgeVerdict(
@@ -167,7 +171,7 @@ class ClaudeJudge:
             return None
         model_name = getattr(raw, "response_metadata", {}).get("model", "unknown")
         logger.info(
-            "claude_judge token usage: model=%s input_tokens=%s output_tokens=%s",
+            "llm_judge token usage: model=%s input_tokens=%s output_tokens=%s",
             model_name,
             usage.get("input_tokens"),
             usage.get("output_tokens"),
