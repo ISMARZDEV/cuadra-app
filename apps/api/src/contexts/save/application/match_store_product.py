@@ -37,6 +37,7 @@ from ..infrastructure.matching.cascade.banding import JUDGE_MATCH_MIN_CONFIDENCE
 from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
 from ..infrastructure.matching.cascade.scoring import apply_boosts
+from ..infrastructure.matching.cascade.size_gate import sizes_conflict
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +141,17 @@ class MatchStoreProduct:
         band = determine_band(final_score)
         stage_method = "hybrid" if (in_trgm and in_vector) else ("trgm" if in_trgm else "vector")
 
+        # Size gate (Batch 10): el score lo domina el nombre y confundía tamaños (colapsaba
+        # 1/5/20/50 Lb del mismo arroz en un canónico). Un tamaño comparable y en conflicto es
+        # señal DURA de SKU distinto: NUNCA auto-linkea, va a revisión — en ninguna banda.
+        size_conflict = sizes_conflict(product.size, canonical.quantity if canonical else None)
+
         if band == "auto_link":
+            if size_conflict:
+                return self._to_review(
+                    product, method=stage_method, confidence=final_score,
+                    candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
+                )
             return self._auto_link(product, winner_id, confidence=final_score, method=stage_method)
 
         if band == "grey":
@@ -161,7 +172,11 @@ class MatchStoreProduct:
             # CRITICAL-1 (verify follow-up): un veredicto "match" del judge SOLO autolinkea si su
             # propia confianza alcanza el piso — por debajo, es un match débil y va a revisión
             # (method="llm", NO "human": el judge SÍ corrió, solo no fue lo bastante seguro).
-            if verdict.decision == "match" and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE:
+            if (
+                verdict.decision == "match"
+                and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE
+                and not size_conflict
+            ):
                 return self._auto_link(
                     product, winner_id, confidence=verdict.confidence, method="llm",
                     judge_input_tokens=verdict.input_tokens,

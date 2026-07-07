@@ -361,6 +361,40 @@ def test_high_band_boosts_from_exact_brand_and_size_match() -> None:
     assert result.method == "trgm"  # single stage contributed
 
 
+def test_size_conflict_blocks_deterministic_auto_link_and_goes_to_review() -> None:
+    """Batch 10 size gate: aunque el score determinista supere HIGH, un tamaño que NO concuerda con
+    el del canónico (distinto SKU) NUNCA auto-linkea — va a revisión. Detiene el colapso de
+    1/5/20/50 Lb de un mismo arroz en un solo canónico."""
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    # canónico = 5 LB (quantity 2.267 kg); la tienda trae 20 Lb (9.07 kg) -> conflicto de tamaño
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(size="20 Lb"))
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []  # NUNCA escribió el FK denormalizado
+
+
+def test_size_agreement_still_auto_links() -> None:
+    """Contraparte: cuando los tamaños concuerdan, el gate NO interfiere — auto-linkea normal."""
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(size="5 LB"))  # 2.268 kg ≈ 2.267 kg -> concuerda
+
+    assert result.status == "auto_linked"
+    assert result.canonical_product_id == "canon-1"
+
+
 def test_grey_band_invokes_judge_and_auto_links_on_match_verdict() -> None:
     match_repo = FakeCascadeMatchRepository(
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
