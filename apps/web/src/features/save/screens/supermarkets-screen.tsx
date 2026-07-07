@@ -7,6 +7,7 @@ import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
 
 import { categoryIcon } from "../components/category-icons";
+import { ProviderBadge } from "../components/provider-badge";
 import { SectionRail } from "../components/section-rail";
 import type { SupermarketsData } from "../types";
 
@@ -96,7 +97,7 @@ export function SupermarketsScreen() {
                 href={storeHref(p.id)}
                 className="flex h-16 items-center justify-center rounded-lg border border-border bg-card px-3 text-center text-sm font-bold transition-colors hover:border-primary hover:text-primary"
               >
-                {p.name}
+                <ProviderBadge name={p.name} logoUrl={p.logo_url} />
               </a>
             ))}
           </div>

@@ -19,7 +19,7 @@ from src.contexts.save.domain.entities import (
     SourcePlatform,
 )
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
-from src.contexts.save.infrastructure.models import PriceModel, TaxonomyNodeModel
+from src.contexts.save.infrastructure.models import PriceModel, StoreProductModel, TaxonomyNodeModel
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlCanonicalProductRepository,
@@ -118,6 +118,50 @@ def test_change_only_updates_current_price_and_last_seen(db_session) -> None:  #
     stores = sp.list_by_canonical(cid)
     assert len(stores) == 1
     assert stores[0].current_price == Money(150, DOP)  # actual actualizado
+
+
+def test_record_observation_persists_raw_attributes(db_session) -> None:  # type: ignore[no-untyped-def]
+    """F2·B1 (tarea 1.9-1.10): name/brand/size_text/image_url — hoy la ingesta los descarta
+    tras el matching; el revisor humano los necesita ver en la cola de revisión."""
+    pid, cid = _seed_provider_and_canonical(db_session)
+    sp = SqlStoreProductRepository(db_session)
+
+    sp_id = sp.record_observation(
+        provider_id=pid, external_id="sku-raw-1", canonical_product_id=cid,
+        price=Money(42400, DOP), captured_at=datetime(2026, 7, 1, 8),
+        price_type=PriceType.ONLINE, source="vtex",
+        name="Arroz La Garza 10 Lbs", brand="LA GARZA", size_text="10 Lbs",
+        image_url="https://cdn.example.com/arroz.jpg",
+    )
+
+    row = db_session.get(StoreProductModel, uuid.UUID(sp_id))
+    assert row is not None
+    assert row.name == "Arroz La Garza 10 Lbs"
+    assert row.brand == "LA GARZA"
+    assert row.size_text == "10 Lbs"
+    assert row.image_url == "https://cdn.example.com/arroz.jpg"
+
+
+def test_record_observation_refreshes_raw_attributes_without_erasing_on_none(db_session) -> None:  # type: ignore[no-untyped-def]
+    pid, cid = _seed_provider_and_canonical(db_session)
+    sp = SqlStoreProductRepository(db_session)
+    kw = dict(
+        provider_id=pid, external_id="sku-raw-2", canonical_product_id=cid,
+        price_type=PriceType.ONLINE, source="vtex",
+    )
+    sp_id = sp.record_observation(
+        price=Money(100, DOP), captured_at=datetime(2026, 7, 1), name="Nombre viejo",
+        brand="Marca vieja", size_text="1kg", image_url="https://old.example.com/a.jpg", **kw,
+    )
+    # observación posterior SIN estos campos (None) -> no debe borrar lo ya conocido
+    sp.record_observation(price=Money(150, DOP), captured_at=datetime(2026, 7, 5), **kw)
+
+    row = db_session.get(StoreProductModel, uuid.UUID(sp_id))
+    assert row is not None
+    assert row.name == "Nombre viejo"
+    assert row.brand == "Marca vieja"
+    assert row.size_text == "1kg"
+    assert row.image_url == "https://old.example.com/a.jpg"
 
 
 def test_canonical_get_by_id_reconstructs_brand_and_quantity(db_session) -> None:  # type: ignore[no-untyped-def]

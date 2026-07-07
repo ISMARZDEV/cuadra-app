@@ -19,6 +19,7 @@ from src.contexts.save.domain.entities import (
     Provider,
     ProviderType,
     SourcePlatform,
+    StoreRegistry,
 )
 from src.contexts.save.domain.taxonomy import slugify
 from src.contexts.save.domain.value_objects import parse_size
@@ -35,6 +36,7 @@ from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlProviderRepository,
     SqlStoreProductRepository,
+    SqlStoreRegistryRepository,
 )
 from src.shared.money import Currency, Money
 
@@ -44,7 +46,7 @@ DOP = Currency("DOP")
 # cadenas RD (mercado DO) + su plataforma detectada (spikes docs 02/09)
 _PROVIDERS: list[tuple[str, SourcePlatform]] = [
     ("Merca Jumbo", SourcePlatform.MAGENTO),
-    ("Bravo", SourcePlatform.SPA),
+    ("Bravo", SourcePlatform.REST_CATALOG),  # API propia "bravova" → RestCatalogAdapter + profile
     ("Jumbo", SourcePlatform.MAGENTO),
     ("Ritmo", SourcePlatform.AGGREGATOR),
     ("Nacional", SourcePlatform.MAGENTO),
@@ -52,6 +54,36 @@ _PROVIDERS: list[tuple[str, SourcePlatform]] = [
     ("Plaza Lama", SourcePlatform.SPA),
     ("Sirena", SourcePlatform.VTEX),
 ]
+
+# ── Fuente de extracción de Bravo Va (StoreRegistry, REST_CATALOG). Secciones (idSeccion) de su API
+#    (/public/seccion/list, capturado 2026-07-06): SOLO categorías de PRODUCTO reales. EXCLUIDAS las
+#    vistas promo/meta (OFERTAS 1108, PROMOCIÓN 3X2 1096, PROMOCION 2X1 1097, Productos Nuevos 1098,
+#    Bodega 3X2 7, Cafetería Bravo 1095, Arca 4, CAT_ARC_017 1117): son filtros de productos que ya
+#    viven en su categoría real → ingerirlas es redundante. La sobre/sub-inclusión es data-safe igual
+#    (store_product va por (provider_id, external_id): un producto en 2 secciones se RE-observa, no
+#    duplica). Lista ajustable desde el catálogo Apidog.
+_BRAVO_SECTIONS: list[tuple[str, str]] = [
+    ("3", "Alimentación general"), ("5", "Bebés"), ("8", "Cereales"), ("9", "Congelados"),
+    ("11", "Embutidos"), ("12", "Especias"), ("13", "Frutas y vegetales"), ("14", "Granos"),
+    ("15", "Hogar y limpieza"), ("16", "Higiene y salud"), ("17", "Lácteos"),
+    ("18", "Panes y galletas"), ("19", "Víveres"), ("20", "Vida sana"), ("1016", "Pasta"),
+    ("1017", "Salsa y aderezos"), ("1018", "Enlatados"), ("1019", "Comida mexicana"),
+    ("1020", "Dulces y caramelos"), ("1021", "Aceitunas y encurtidos"), ("1022", "Pollo y aves"),
+    ("1023", "Carnes"), ("1024", "Pescados y mariscos"), ("1025", "Agua y refrescos"),
+    ("1026", "Jugos"), ("1031", "Aceites y vinagres"), ("1045", "Alimentos otras mascotas"),
+    ("1046", "Higiene felinos"), ("1047", "Higiene caninos"), ("1048", "Salud y bienestar"),
+    ("1049", "Pro Plan caninos"), ("1050", "Accesorios felinos y otros"),
+    ("1051", "Alimentos felinos"), ("1052", "Royal Canin caninos"), ("1053", "Accesorios caninos"),
+    ("1054", "Treats caninos"), ("1055", "Taste of the Wild caninos"), ("1056", "Comida mascotas"),
+    ("1065", "Desechables"), ("1093", "Picaderas, Snacks, Chips"), ("1094", "Acuario"),
+]
+
+BRAVO_BASE_URL = "https://bravova-api.superbravo.com.do"
+BRAVO_SOURCE_ENDPOINTS: dict = {
+    "profile": "bravova",
+    "sections": [sid for sid, _ in _BRAVO_SECTIONS],
+    "store_id": "1000",
+}
 
 # Arroz Enriquecido La Garza 10 LB — (external_id, precio minor DOP).
 # Cadenas con fuente API viva (Sirena/Nacional/Jumbo): external_id = SKU REAL verificado en vivo
@@ -404,6 +436,26 @@ def _seed_collections(session: Session, canon_repo, store_repo, now: datetime) -
         )
 
 
+def _seed_sources(session: Session) -> None:
+    """Siembra el `StoreRegistry` de las fuentes con adapter propio (hoy: Bravo Va, REST_CATALOG).
+
+    Idempotente (1:1 con Provider): no re-crea si ya existe. Es lo que hace aparecer la fuente en el
+    panel de ingesta y habilita su botón "Probar". El resto de cadenas (VTEX/Magento/agregadores) aún
+    no tienen StoreRegistry sembrado — su wiring vive en `ingestion/save/sources.py` (bridge F1)."""
+    registry_repo = SqlStoreRegistryRepository(session)
+    bravo_pid = str(provider_id("Bravo"))
+    if registry_repo.get_by_provider_id(bravo_pid) is None:
+        registry_repo.add(
+            StoreRegistry(
+                id=str(uuid.uuid5(_NS, "store_registry:DO:Bravo")),
+                provider_id=bravo_pid,
+                platform=SourcePlatform.REST_CATALOG,
+                base_url=BRAVO_BASE_URL,
+                endpoints=BRAVO_SOURCE_ENDPOINTS,
+            )
+        )
+
+
 def seed_save(session: Session) -> None:
     prov_repo = SqlProviderRepository(session)
     canon_repo = SqlCanonicalProductRepository(session)
@@ -414,6 +466,9 @@ def seed_save(session: Session) -> None:
         pid = provider_id(name)
         if session.get(ProviderModel, pid) is None:
             prov_repo.add(Provider(str(pid), name, ProviderType.SUPERMARKET, platform, "DO"))
+
+    # 1.5) fuentes de extracción (StoreRegistry) — Bravo Va (REST_CATALOG)
+    _seed_sources(session)
 
     # 2) taxonomía: las 15 categorías top + TODAS sus subcategorías + la hoja "Arroz Blanco"
     #    (misma llave uuid5 determinista: el prefijo compartido con _ARROZ_PATH reusa el nodo).

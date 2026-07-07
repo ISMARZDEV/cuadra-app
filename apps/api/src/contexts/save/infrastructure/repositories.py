@@ -17,15 +17,31 @@ from src.shared.money import Currency, Money
 from ..domain.alerts import Alert, AlertNotification, AlertSubscription
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
-from ..domain.entities import CanonicalProduct, Collection, PriceType, Provider, StoreProduct
+from ..domain.entities import (
+    BasketQuery,
+    CanonicalProduct,
+    Collection,
+    PriceType,
+    Provider,
+    StoreProduct,
+    StoreRegistry,
+)
 from ..domain.history import PricePoint
 from ..domain.listing import OfferingRow
+from ..domain.review_queue import StoreProductRawAttrs
 from ..domain.slug import product_slug
 from ..domain.taxonomy import CategoryNode, slugify
 from ..domain.value_objects import Quantity, UnitMeasure
-from .mappers import canonical_to_entity, provider_to_entity, store_product_to_entity
+from .mappers import (
+    basket_query_to_entity,
+    canonical_to_entity,
+    provider_to_entity,
+    store_product_to_entity,
+    store_registry_to_entity,
+)
 from .models import (
     AlertNotificationModel,
+    BasketQueryModel,
     BrandModel,
     CanonicalProductModel,
     CollectionModel,
@@ -35,6 +51,7 @@ from .models import (
     ProviderModel,
     PushTokenModel,
     StoreProductModel,
+    StoreRegistryModel,
     TaxonomyNodeModel,
 )
 
@@ -59,6 +76,7 @@ class SqlProviderRepository:
                 type=provider.type.value,
                 platform=provider.platform.value,
                 market_id=provider.market_id,
+                logo_url=provider.logo_url,
             )
         )
         self._s.flush()
@@ -75,6 +93,141 @@ class SqlProviderRepository:
             .order_by(ProviderModel.name)
         ).all()
         return [provider_to_entity(m) for m in models]
+
+    def update(self, provider: Provider) -> None:
+        pid = _parse_uuid(provider.id)
+        m = self._s.get(ProviderModel, pid) if pid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" es regla de negocio del use case
+            return
+        m.name = provider.name
+        m.type = provider.type.value
+        m.platform = provider.platform.value
+        m.market_id = provider.market_id
+        m.logo_url = provider.logo_url
+        self._s.flush()
+
+
+class SqlStoreRegistryRepository:
+    """Config de fuente de extracción por Provider — 1:1 (F2·B1/B3, Batch 3B)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def add(self, source: StoreRegistry) -> None:
+        self._s.add(
+            StoreRegistryModel(
+                id=uuid.UUID(source.id),
+                provider_id=uuid.UUID(source.provider_id),
+                platform=source.platform.value,
+                base_url=source.base_url,
+                endpoints=source.endpoints,
+                headers=source.headers,
+                auth=source.auth,
+                enabled=source.enabled,
+                health_status=source.health_status,
+                paused_at=source.paused_at,
+            )
+        )
+        self._s.flush()
+
+    def get_by_id(self, source_id: str) -> StoreRegistry | None:
+        sid = _parse_uuid(source_id)
+        m = self._s.get(StoreRegistryModel, sid) if sid else None
+        return store_registry_to_entity(m) if m else None
+
+    def get_by_provider_id(self, provider_id: str) -> StoreRegistry | None:
+        pid = _parse_uuid(provider_id)
+        if pid is None:
+            return None
+        m = self._s.scalars(
+            select(StoreRegistryModel).where(StoreRegistryModel.provider_id == pid)
+        ).first()
+        return store_registry_to_entity(m) if m else None
+
+    def list_by_market(self, market_id: str) -> list[StoreRegistry]:
+        models = self._s.scalars(
+            select(StoreRegistryModel)
+            .join(ProviderModel, StoreRegistryModel.provider_id == ProviderModel.id)
+            .where(ProviderModel.market_id == market_id)
+            .order_by(ProviderModel.name)
+        ).all()
+        return [store_registry_to_entity(m) for m in models]
+
+    def update(self, source: StoreRegistry) -> None:
+        sid = _parse_uuid(source.id)
+        m = self._s.get(StoreRegistryModel, sid) if sid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" es regla de negocio del use case
+            return
+        m.platform = source.platform.value
+        m.base_url = source.base_url
+        m.endpoints = source.endpoints
+        m.headers = source.headers
+        m.auth = source.auth
+        m.enabled = source.enabled
+        m.health_status = source.health_status
+        m.paused_at = source.paused_at
+        self._s.flush()
+
+
+class SqlBasketQueryRepository:
+    """Canasta curada como dato — reemplaza `BASKET_QUERIES` hardcodeado (F2·B1/B3, Batch 3D)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def add(self, query: BasketQuery) -> None:
+        self._s.add(
+            BasketQueryModel(
+                id=uuid.UUID(query.id),
+                market_id=query.market_id,
+                category_label=query.category_label,
+                query_text=query.query_text,
+                position=query.position,
+                active=query.active,
+            )
+        )
+        self._s.flush()
+
+    def get_by_id(self, query_id: str) -> BasketQuery | None:
+        qid = _parse_uuid(query_id)
+        m = self._s.get(BasketQueryModel, qid) if qid else None
+        return basket_query_to_entity(m) if m else None
+
+    def get_by_market_and_text(self, market_id: str, query_text: str) -> BasketQuery | None:
+        m = self._s.scalars(
+            select(BasketQueryModel).where(
+                BasketQueryModel.market_id == market_id,
+                BasketQueryModel.query_text == query_text,
+            )
+        ).first()
+        return basket_query_to_entity(m) if m else None
+
+    def list_by_market(self, market_id: str) -> list[BasketQuery]:
+        models = self._s.scalars(
+            select(BasketQueryModel)
+            .where(BasketQueryModel.market_id == market_id)
+            .order_by(BasketQueryModel.position)
+        ).all()
+        return [basket_query_to_entity(m) for m in models]
+
+    def update(self, query: BasketQuery) -> None:
+        qid = _parse_uuid(query.id)
+        m = self._s.get(BasketQueryModel, qid) if qid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" es regla de negocio del use case
+            return
+        m.category_label = query.category_label
+        m.query_text = query.query_text
+        m.position = query.position
+        m.active = query.active
+        self._s.flush()
+
+    def remove(self, query_id: str) -> None:
+        qid = _parse_uuid(query_id)
+        m = self._s.get(BasketQueryModel, qid) if qid else None
+        if m is None:
+            return
+        self._s.delete(m)
+        self._s.flush()
 
 
 class SqlCollectionRepository:
@@ -216,6 +369,27 @@ class SqlCanonicalProductRepository:
         ).all()
         return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
 
+    def list_without_embedding(
+        self, market_id: str, limit: int = 500
+    ) -> list[CanonicalProduct]:
+        models = self._s.scalars(
+            select(CanonicalProductModel)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.embedding.is_(None),
+            )
+            .limit(limit)
+        ).all()
+        return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
+
+    def set_embedding(self, product_id: str, embedding: list[float]) -> None:
+        pid = _parse_uuid(product_id)
+        m = self._s.get(CanonicalProductModel, pid) if pid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" lo maneja el use case
+            return
+        m.embedding = embedding
+        self._s.flush()
+
 
 class SqlStoreProductRepository:
     def __init__(self, session: Session) -> None:
@@ -231,6 +405,13 @@ class SqlStoreProductRepository:
 
     def exists(self, provider_id: str, external_id: str) -> bool:
         return self._find(provider_id, external_id) is not None
+
+    def max_last_seen_at(self, provider_id: str) -> datetime | None:
+        return self._s.scalar(
+            select(func.max(StoreProductModel.last_seen_at)).where(
+                StoreProductModel.provider_id == uuid.UUID(provider_id)
+            )
+        )
 
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         # Escritor del FK denormalizado (F2.0 matching). No commitea: la Session es el UoW y el
@@ -253,6 +434,10 @@ class SqlStoreProductRepository:
         source: str,
         url: str | None = None,
         ean: str | None = None,
+        name: str | None = None,
+        brand: str | None = None,
+        size_text: str | None = None,
+        image_url: str | None = None,
     ) -> str:
         sp = self._find(provider_id, external_id)
         changed = False
@@ -267,6 +452,10 @@ class SqlStoreProductRepository:
                 currency=price.currency.code,
                 url=url,
                 ean=ean,
+                name=name,
+                brand=brand,
+                size_text=size_text,
+                image_url=image_url,
                 last_seen_at=captured_at,
             )
             self._s.add(sp)
@@ -274,6 +463,16 @@ class SqlStoreProductRepository:
             changed = True
         else:
             sp.last_seen_at = captured_at
+            # F2·B1 (1.9-1.10): refresca los atributos crudos cuando llegan (nunca los borra con
+            # None — una observación posterior sin estos campos no debe pisar los ya conocidos).
+            if name is not None:
+                sp.name = name
+            if brand is not None:
+                sp.brand = brand
+            if size_text is not None:
+                sp.size_text = size_text
+            if image_url is not None:
+                sp.image_url = image_url
             if sp.current_price_minor != price.amount_minor or sp.currency != price.currency.code:
                 sp.current_price_minor = price.amount_minor
                 sp.currency = price.currency.code
@@ -300,6 +499,19 @@ class SqlStoreProductRepository:
             )
         ).all()
         return [store_product_to_entity(m) for m in models]
+
+    def get_raw_attrs(self, store_product_id: str) -> StoreProductRawAttrs | None:
+        sid = _parse_uuid(store_product_id)
+        sp = self._s.get(StoreProductModel, sid) if sid else None
+        if sp is None:
+            return None
+        return StoreProductRawAttrs(
+            store_product_id=str(sp.id),
+            name=sp.name,
+            brand=sp.brand,
+            size_text=sp.size_text,
+            image_url=sp.image_url,
+        )
 
     def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
         rows = self._s.execute(

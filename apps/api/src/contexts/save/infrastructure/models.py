@@ -23,16 +23,18 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CHAR,
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     SmallInteger,
     Text,
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.shared.db.base import Base
@@ -134,6 +136,65 @@ class ProviderModel(Base):
     platform: Mapped[str] = mapped_column(Text, nullable=False)   # vtex|magento|shopify|aggregator|spa
     market_id: Mapped[str] = mapped_column(Text, nullable=False)  # "DO"|"US"|"CO" — por ID (ADR 33)
     base_url: Mapped[str | None] = mapped_column(Text)
+    logo_url: Mapped[str | None] = mapped_column(Text)  # F2·B1/B3: logo del súper (migración 09526c5ccaca)
+
+
+class StoreRegistryModel(Base):
+    """Config de fuente de extracción por Provider — 1:1 (F2·B1/B3, Batch 3B). Reemplaza el
+    wiring hardcodeado en `ingestion/save/sources.py::build_sources`."""
+
+    __tablename__ = "store_registry"
+    __table_args__ = (
+        UniqueConstraint("provider_id", name="uq_store_registry_provider"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    provider_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.provider.id"), nullable=False
+    )
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    endpoints: Mapped[dict | None] = mapped_column(JSONB)
+    headers: Mapped[dict | None] = mapped_column(JSONB)
+    auth: Mapped[dict | None] = mapped_column(JSONB)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    health_status: Mapped[str | None] = mapped_column(Text)  # solo-lectura desde 3B; lo escribe 3E
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class BasketQueryModel(Base):
+    """Canasta curada como dato (F2·B1/B3, Batch 3D) — reemplaza `BASKET_QUERIES` hardcodeado en
+    `ingestion/save/sources.py` (backfill en la migración de este batch)."""
+
+    __tablename__ = "basket_query"
+    __table_args__ = (
+        UniqueConstraint("market_id", "query_text", name="uq_basket_query_market_text"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    category_label: Mapped[str | None] = mapped_column(Text)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class CanonicalProductModel(Base):
@@ -196,6 +257,12 @@ class StoreProductModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # F2·B1 (tarea 1.1/1.10): atributos crudos que la ingesta hoy descarta tras el matching —
+    # el revisor humano los necesita ver (poblados en write-time por record_observation).
+    name: Mapped[str | None] = mapped_column(Text)
+    brand: Mapped[str | None] = mapped_column(Text)
+    size_text: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
 
 
 class PriceAlertModel(Base):
@@ -328,3 +395,43 @@ class ProductMatchModel(Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[str | None] = mapped_column(Text)  # 'system' | admin user_id
+    reason_code: Mapped[str | None] = mapped_column(Text)  # motivo del rechazo (F2·B1, active-learning)
+    reason_note: Mapped[str | None] = mapped_column(Text)
+    # F2·B1 (tarea 1.2/1.14): costo del juez por fila, SOLO en el camino grey-band/llm — nunca
+    # se recalcula, es observabilidad (percentiles p50/p95/p99), no una entrada a la decisión.
+    judge_input_tokens: Mapped[int | None] = mapped_column(Integer)
+    judge_output_tokens: Mapped[int | None] = mapped_column(Integer)
+    judge_model: Mapped[str | None] = mapped_column(Text)
+
+
+class ReviewCandidateModel(Base):
+    """Snapshot de los top-5 candidatos ofrecidos al revisor humano de un `product_match`
+    `pending_review` (F2·B1, tarea 1.3/1.11-1.12) — capturado en el momento de la cascada
+    (score CRUDO por-etapa, no el score fusionado por RRF), nunca recalculado después.
+    CASCADE al borrar el `product_match`; nunca se persisten filas para un match `auto_linked`
+    (lo decide el use case, `MatchStoreProduct._to_review` vs `_auto_link` — no esta tabla)."""
+
+    __tablename__ = "review_candidate"
+    __table_args__ = (
+        UniqueConstraint(
+            "product_match_id", "canonical_product_id", name="uq_review_candidate_match_canonical"
+        ),
+        Index("ix_review_candidate_product_match", "product_match_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    product_match_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.product_match.id", ondelete="CASCADE"), nullable=False
+    )
+    canonical_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.canonical_product.id"), nullable=False
+    )
+    name: Mapped[str | None] = mapped_column(Text)
+    brand: Mapped[str | None] = mapped_column(Text)
+    score: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

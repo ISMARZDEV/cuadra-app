@@ -20,8 +20,9 @@ class SourcePlatform(StrEnum):
     VTEX = "vtex"
     MAGENTO = "magento"
     SHOPIFY = "shopify"
-    AGGREGATOR = "aggregator"  # PedidosYa / UberEats
-    SPA = "spa"                # sitio custom → agente-IA
+    AGGREGATOR = "aggregator"          # PedidosYa / UberEats
+    SPA = "spa"                        # sitio custom → agente-IA
+    REST_CATALOG = "rest_catalog"      # API REST/JSON propia (Bravo Va, etc.) → RestCatalogAdapter + profile
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,7 @@ class Provider:
     type: ProviderType
     platform: SourcePlatform
     market_id: str  # "DO" → "US" → "CO" … (ADR 33: por ID)
+    logo_url: str | None = None  # F2·B1/B3: logo del súper (MVP = URL pegada, sin storage)
 
     def __post_init__(self) -> None:
         if not self.name.strip():

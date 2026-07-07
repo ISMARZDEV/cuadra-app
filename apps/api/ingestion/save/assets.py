@@ -19,7 +19,7 @@ from src.contexts.save.infrastructure.repositories import (
 )
 from src.shared.db.base import SessionLocal
 
-from .composition import build_matcher
+from .composition import build_canonical_embedder, build_matcher
 from .runner import refresh_source
 from .sources import SAVE_MARKET, build_sources
 
@@ -27,9 +27,26 @@ SOURCE_KEYS: tuple[str, ...] = ("sirena", "nacional", "jumbo")
 _DROPS_WINDOW_DAYS = 7
 
 
+@dg.asset(
+    name="embed_canonicals",
+    group_name="save_catalog",
+    description="Backfill del índice semántico: embebe los canónicos antes del matching (no-op si dark).",
+)
+def embed_canonicals(context) -> dg.MaterializeResult:
+    """Upstream de las fuentes: la etapa vectorial de la cascada necesita canónicos ya embebidos.
+    No-op cuando `SAVE_MATCHING_CASCADE_ENABLED=false` (`build_canonical_embedder` → None)."""
+    with SessionLocal() as session:
+        embedder = build_canonical_embedder(session)
+        embedded = embedder.execute(SAVE_MARKET) if embedder is not None else 0
+        session.commit()
+    context.log.info(f"embed_canonicals: {embedded} canónicos embebidos")
+    return dg.MaterializeResult(metadata={"embedded": embedded})
+
+
 def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
     @dg.asset(
         name=f"{source_key}_prices",
+        deps=[dg.AssetKey("embed_canonicals")],  # matching necesita el índice semántico poblado
         group_name="save_catalog",
         description=f"Refresh de precios vivos (change-only) — {source_key}",
     )

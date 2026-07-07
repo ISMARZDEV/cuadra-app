@@ -7,7 +7,12 @@ from __future__ import annotations
 
 import dagster as dg
 
-from ingestion.save.assets import alert_matching, price_drops, source_assets
+from ingestion.save.assets import (
+    alert_matching,
+    embed_canonicals,
+    price_drops,
+    source_assets,
+)
 
 save_catalog_job = dg.define_asset_job("save_catalog_refresh", selection="*")
 
@@ -18,7 +23,7 @@ save_daily_refresh = dg.ScheduleDefinition(
 )
 
 defs = dg.Definitions(
-    assets=[*source_assets, price_drops, alert_matching],
+    assets=[embed_canonicals, *source_assets, price_drops, alert_matching],
     jobs=[save_catalog_job],
     schedules=[save_daily_refresh],
 )

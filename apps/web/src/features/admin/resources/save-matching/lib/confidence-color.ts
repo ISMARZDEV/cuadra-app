@@ -1,0 +1,28 @@
+// Color-coding de confianza para la lista de la cola de revisión (feature #8, F2·B1).
+// PURA (sin React, sin I/O): triage de un vistazo — oscuro = casi seguro, claro = necesita ojo.
+//
+// Los umbrales MIRRORAN los mismos umbrales semánticos que la cascada de matching en el backend
+// (fuente de verdad: apps/api/src/contexts/save/infrastructure/matching/cascade/banding.py —
+// MATCH_HIGH_THRESHOLD=0.85, MATCH_MID_THRESHOLD=0.55). Hardcodeados a propósito para este batch
+// (sin abstracción prematura); si el Batch 10 spike retunea esos umbrales, actualizar ambos lados.
+const CONFIDENCE_HIGH_THRESHOLD = 0.85;
+const CONFIDENCE_MID_THRESHOLD = 0.55;
+
+/**
+ * Mapea un `confidence` (0..1, o `null` si no hubo candidatos) a una clase Tailwind para la fila
+ * de la lista de revisión.
+ *
+ * - `>= 0.85` (banda "auto_link" del backend, casi nunca visible en la cola porque se auto-enlaza,
+ *   pero puede aparecer si el filtro de la lista lo incluye igual) → estilo más oscuro/seguro.
+ * - `[0.55, 0.85)` (banda "grey", territorio del Claude-judge) → estilo intermedio.
+ * - `< 0.55`, o `null` (lista de candidatos vacía) → estilo más claro, señal de "necesita ojo".
+ */
+export function confidenceColor(confidence: number | null): string {
+  if (confidence === null || confidence < CONFIDENCE_MID_THRESHOLD) {
+    return "bg-rose-100 text-rose-900";
+  }
+  if (confidence < CONFIDENCE_HIGH_THRESHOLD) {
+    return "bg-amber-500 text-white";
+  }
+  return "bg-emerald-700 text-white";
+}

@@ -60,6 +60,7 @@ async function startServer() {
       const pageContext = await renderPage({
         urlOriginal: req.originalUrl,
         acceptLanguage: req.headers["accept-language"], // → el guard negocia el idioma
+        headersOriginal: req.headers, // → pageContext.headers (SSR): gate de /admin/* (require-admin.ts)
       });
       if (pageContext.errorWhileRendering) {
         console.error("[render error]", pageContext.errorWhileRendering);

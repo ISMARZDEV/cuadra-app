@@ -27,13 +27,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..domain.entities import MatchCandidate, ProductMatch
+from ..domain.entities import MatchCandidate, MatchCandidateSnapshot, ProductMatch
 from ..domain.ports import (
     CanonicalProductRepository,
     StoreProductRepository,
 )
 from ..domain.ports.repositories import EmbeddingProvider, ProductMatchRepository
 from ..infrastructure.matching.cascade.banding import JUDGE_MATCH_MIN_CONFIDENCE, determine_band
+from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
 from ..infrastructure.matching.cascade.scoring import apply_boosts
 
@@ -71,6 +72,10 @@ class _JudgeVerdictLike(Protocol):
     decision: str
     confidence: float
     cited_fields: list[str]
+    # F2·B1 (1.14): costo del juez, para wirearlo a `product_match` en el camino grey-band/llm.
+    input_tokens: int | None
+    output_tokens: int | None
+    model: str | None
 
 
 class MatchStoreProduct:
@@ -101,12 +106,16 @@ class MatchStoreProduct:
             if len(distinct_ids) > 1:
                 # EAN ambiguo (colisión): NO se autolinkea, ni se intentan las demás etapas —
                 # una señal fuerte contradictoria no se "arregla" cayendo a un score más débil.
-                return self._to_review(product, method="human", confidence=0.0)
+                # El revisor necesita VER los canónicos que colisionan (1.11/1.12).
+                collision_snapshots = [self._snapshot(cid, 1.0) for cid in distinct_ids]
+                return self._to_review(
+                    product, method="human", confidence=0.0, candidates=collision_snapshots
+                )
             # 0 candidatos -> cae a la etapa léxica/semántica (EAN null se salta este bloque igual)
 
         # --- Etapa 2/3: léxico (trgm) + semántico (vector), fusionados por RRF ---
         trgm_candidates = self._match_repo.find_candidates_trgm(product.name, product.market_id)
-        embedding_text = f"{product.name} {product.brand} {product.size}".strip()
+        embedding_text = build_embedding_text(product.name, product.brand, product.size)
         embedding = self._embedder.embed([embedding_text])[0]
         vector_candidates = self._match_repo.find_candidates_vector(embedding, product.market_id)
 
@@ -153,11 +162,25 @@ class MatchStoreProduct:
             # propia confianza alcanza el piso — por debajo, es un match débil y va a revisión
             # (method="llm", NO "human": el judge SÍ corrió, solo no fue lo bastante seguro).
             if verdict.decision == "match" and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE:
-                return self._auto_link(product, winner_id, confidence=verdict.confidence, method="llm")
-            return self._to_review(product, method="llm", confidence=verdict.confidence)
+                return self._auto_link(
+                    product, winner_id, confidence=verdict.confidence, method="llm",
+                    judge_input_tokens=verdict.input_tokens,
+                    judge_output_tokens=verdict.output_tokens,
+                    judge_model=verdict.model,
+                )
+            return self._to_review(
+                product, method="llm", confidence=verdict.confidence,
+                candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
+                judge_input_tokens=verdict.input_tokens,
+                judge_output_tokens=verdict.output_tokens,
+                judge_model=verdict.model,
+            )
 
         # band == "human": score debajo de MID
-        return self._to_review(product, method="human", confidence=final_score)
+        return self._to_review(
+            product, method="human", confidence=final_score,
+            candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
+        )
 
     # ---------------------------------------------------------------- helpers ----------
 
@@ -181,8 +204,44 @@ class MatchStoreProduct:
             return False
         return incoming.strip().casefold() == candidate.strip().casefold()
 
+    def _snapshot(self, canonical_product_id: str, score: float) -> MatchCandidateSnapshot:
+        """Arma el snapshot de UN candidato para `review_candidate` (1.11/1.12): busca su
+        name/brand en el canónico — la cascada de decisión (MatchCandidate) no los lleva."""
+        canonical = self._canonical_repo.get_by_id(canonical_product_id)
+        return MatchCandidateSnapshot(
+            canonical_product_id=canonical_product_id,
+            score=score,
+            name=canonical.name if canonical else None,
+            brand=canonical.brand if canonical else None,
+        )
+
+    def _fused_snapshots(
+        self,
+        fused: Sequence[MatchCandidate],
+        trgm_candidates: Sequence[MatchCandidate],
+        vector_candidates: Sequence[MatchCandidate],
+    ) -> list[MatchCandidateSnapshot]:
+        """Snapshots de TODOS los candidatos fusionados, con el MEJOR score crudo por-etapa
+        (nunca el score fusionado por RRF, que solo sirve para elegir el ganador por consenso —
+        ver la nota de diseño al tope del archivo). El repo enforce el cap top-5 (1.11)."""
+        return [
+            self._snapshot(
+                c.canonical_product_id,
+                self._best_raw_score(c.canonical_product_id, trgm_candidates, vector_candidates),
+            )
+            for c in fused
+        ]
+
     def _auto_link(
-        self, product: IncomingStoreProduct, canonical_product_id: str, *, confidence: float, method: str
+        self,
+        product: IncomingStoreProduct,
+        canonical_product_id: str,
+        *,
+        confidence: float,
+        method: str,
+        judge_input_tokens: int | None = None,
+        judge_output_tokens: int | None = None,
+        judge_model: str | None = None,
     ) -> ProductMatch:
         # Invariante de misma-transacción: ambas escrituras se disparan aquí, contra los mismos
         # colaboradores inyectados (misma Session/UoW en producción) — este use case es el dueño
@@ -194,7 +253,11 @@ class MatchStoreProduct:
             confidence=confidence,
             method=method,
             status="auto_linked",
+            judge_input_tokens=judge_input_tokens,
+            judge_output_tokens=judge_output_tokens,
+            judge_model=judge_model,
         )
+        # Un match auto_linked NUNCA persiste review_candidate (1.11/1.12) — nada que revisar.
         return ProductMatch(
             store_product_id=product.store_product_id,
             canonical_product_id=canonical_product_id,
@@ -204,15 +267,28 @@ class MatchStoreProduct:
         )
 
     def _to_review(
-        self, product: IncomingStoreProduct, *, method: str, confidence: float
+        self,
+        product: IncomingStoreProduct,
+        *,
+        method: str,
+        confidence: float,
+        candidates: Sequence[MatchCandidateSnapshot] = (),
+        judge_input_tokens: int | None = None,
+        judge_output_tokens: int | None = None,
+        judge_model: str | None = None,
     ) -> ProductMatch:
-        self._match_repo.record_match(
+        match_id = self._match_repo.record_match(
             store_product_id=product.store_product_id,
             canonical_product_id=None,
             confidence=confidence,
             method=method,
             status="pending_review",
+            judge_input_tokens=judge_input_tokens,
+            judge_output_tokens=judge_output_tokens,
+            judge_model=judge_model,
         )
+        if candidates:
+            self._match_repo.record_candidates(match_id, candidates)
         return ProductMatch(
             store_product_id=product.store_product_id,
             canonical_product_id=None,

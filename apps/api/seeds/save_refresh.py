@@ -7,9 +7,9 @@ es `ingestion.definitions` (`make ingestion-dev`); esto es el atajo sin proceso 
 """
 from __future__ import annotations
 
-from ingestion.save.composition import build_matcher
+from ingestion.save.composition import build_canonical_embedder, build_matcher
 from ingestion.save.runner import refresh_source
-from ingestion.save.sources import build_sources
+from ingestion.save.sources import SAVE_MARKET, build_sources
 from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
 
 
@@ -18,6 +18,11 @@ def main() -> None:
 
     with SessionLocal() as session:
         repo = SqlStoreProductRepository(session)
+        # Backfill del índice semántico ANTES del matching (no-op si la cascada está dark).
+        embedder = build_canonical_embedder(session)
+        if embedder is not None:
+            embedded = embedder.execute(SAVE_MARKET)
+            print(f"save-refresh embeddings: {embedded} canónicos embebidos (índice semántico)")
         matcher = build_matcher(session)  # None salvo SAVE_MATCHING_CASCADE_ENABLED=true
         for name, adapters in build_sources().items():
             result = refresh_source(repo, adapters, matcher=matcher)
