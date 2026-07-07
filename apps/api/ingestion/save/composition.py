@@ -44,7 +44,7 @@ def build_matcher(session: Session) -> MatchStoreProduct | None:
         match_repo=SqlProductMatchRepository(session),
         store_repo=SqlStoreProductRepository(session),
         canonical_repo=SqlCanonicalProductRepository(session),
-        embedding_provider=BgeM3EmbeddingProvider(settings.save_bge_m3_endpoint_url),
+        embedding_provider=build_embedding_provider(),
         judge=ClaudeJudge(),
     )
 
