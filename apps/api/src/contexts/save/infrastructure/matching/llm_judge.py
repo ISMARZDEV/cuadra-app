@@ -169,7 +169,10 @@ class LlmJudge:
         usage = getattr(raw, "usage_metadata", None) if raw is not None else None
         if not usage:
             return None
-        model_name = getattr(raw, "response_metadata", {}).get("model", "unknown")
+        # Provider-agnóstico: langchain-openai expone el modelo en `model_name`, langchain-anthropic
+        # en `model`. Leer solo "model" dejaba judge_model en 'unknown' con LLM_PROVIDER=openai.
+        metadata = getattr(raw, "response_metadata", {}) or {}
+        model_name = metadata.get("model_name") or metadata.get("model") or "unknown"
         logger.info(
             "llm_judge token usage: model=%s input_tokens=%s output_tokens=%s",
             model_name,

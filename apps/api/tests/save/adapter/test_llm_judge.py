@@ -21,11 +21,22 @@ _CANONICAL_PRODUCT = {"name": "Leche Entera Rica 1 Litro", "brand": "Rica", "siz
 
 
 class _FakeRaw:
-    """Stand-in for the LangChain `AIMessage` returned alongside the parsed verdict."""
+    """Stand-in for the LangChain `AIMessage` returned alongside the parsed verdict.
 
-    def __init__(self, usage_metadata: dict[str, int] | None) -> None:
+    `response_metadata` defaults to the Anthropic shape (`{"model": ...}`); pass it explicitly to
+    simulate the OpenAI shape (`{"model_name": ...}`)."""
+
+    def __init__(
+        self,
+        usage_metadata: dict[str, int] | None,
+        response_metadata: dict[str, str] | None = None,
+    ) -> None:
         self.usage_metadata = usage_metadata
-        self.response_metadata = {"model": "claude-sonnet-4-6-fake"}
+        self.response_metadata = (
+            response_metadata
+            if response_metadata is not None
+            else {"model": "claude-sonnet-4-6-fake"}
+        )
 
 
 class _FakeModel:
@@ -269,6 +280,31 @@ def test_log_token_usage_returns_dict_with_input_output_tokens_and_model() -> No
     result = LlmJudge._log_token_usage(raw)
 
     assert result == {"input_tokens": 222, "output_tokens": 33, "model": "claude-sonnet-4-6-fake"}
+
+
+def test_log_token_usage_extracts_model_from_openai_model_name_key() -> None:
+    """langchain-openai pone el modelo en `response_metadata["model_name"]` (NO "model"). El
+    extractor debe leerlo, o `product_match.judge_model` se persiste como 'unknown' (bug de
+    observabilidad detectado en el humo de activación, provider dev = openai/gpt-4o)."""
+    raw = _FakeRaw(
+        {"input_tokens": 100, "output_tokens": 20},
+        response_metadata={"model_name": "gpt-4o-fake"},
+    )
+
+    result = LlmJudge._log_token_usage(raw)
+
+    assert result == {"input_tokens": 100, "output_tokens": 20, "model": "gpt-4o-fake"}
+
+
+def test_log_token_usage_falls_back_to_unknown_when_no_model_key() -> None:
+    """Sin ninguna clave de modelo reconocida, degrada a 'unknown' (no revienta)."""
+    raw = _FakeRaw({"input_tokens": 5, "output_tokens": 1}, response_metadata={})
+
+    assert LlmJudge._log_token_usage(raw) == {
+        "input_tokens": 5,
+        "output_tokens": 1,
+        "model": "unknown",
+    }
 
 
 def test_log_token_usage_returns_none_when_no_usage_metadata() -> None:
