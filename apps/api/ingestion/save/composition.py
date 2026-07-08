@@ -13,7 +13,7 @@ from src.config import settings
 from src.contexts.save.application.embed_canonical_products import EmbedCanonicalProducts
 from src.contexts.save.application.match_store_product import MatchStoreProduct
 from src.contexts.save.domain.ports.repositories import EmbeddingProvider
-from src.contexts.save.infrastructure.matching.claude_judge import ClaudeJudge
+from src.contexts.save.infrastructure.matching.llm_judge import LlmJudge
 from src.contexts.save.infrastructure.matching.embeddings import (
     BgeM3EmbeddingProvider,
     SentenceTransformersEmbeddingProvider,
@@ -44,8 +44,8 @@ def build_matcher(session: Session) -> MatchStoreProduct | None:
         match_repo=SqlProductMatchRepository(session),
         store_repo=SqlStoreProductRepository(session),
         canonical_repo=SqlCanonicalProductRepository(session),
-        embedding_provider=BgeM3EmbeddingProvider(settings.save_bge_m3_endpoint_url),
-        judge=ClaudeJudge(),
+        embedding_provider=build_embedding_provider(),
+        judge=LlmJudge(),
     )
 
 

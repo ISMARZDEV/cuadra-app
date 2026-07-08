@@ -46,6 +46,17 @@ Trabajo hecho que ADELANTA la activación (más allá del estado 2026-07-05 de a
 **Lo que queda para encender es ahora puramente OPERATIVO** (no código): endpoint de embeddings +
 env vars + correr. Ver secuencia abajo.
 
+### Actualización 2026-07-07 (rama `feat/save-matching-activacion`)
+
+- **Bug de wiring corregido — provider inconsistente matcher vs índice (gotcha #5).** `build_matcher`
+  (`ingestion/save/composition.py`) construía `BgeM3EmbeddingProvider(save_bge_m3_endpoint_url)` DIRECTO,
+  mientras `build_canonical_embedder` usaba `build_embedding_provider()` (que cae a in-process sin URL).
+  Resultado: sin `SAVE_BGE_M3_ENDPOINT_URL`, el ÍNDICE de canónicos se escribía in-process
+  (SentenceTransformers) pero el MATCHER consultaba vía `BgeM3EmbeddingProvider("")` → base HTTP vacía
+  que revienta en query time, y providers distintos (viola la regla de vectores comparables). **Fix:**
+  `build_matcher` ahora usa `build_embedding_provider()` — matcher e índice comparten selección. El
+  camino de activación in-process (sin endpoint) queda funcional. Cubierto por `tests/ingestion/test_composition.py` (TDD).
+
 ## 2. Secuencia para ENCENDER la cascada (de dark a live)
 
 La cascada está enchufada pero apagada. Para activarla, en orden:

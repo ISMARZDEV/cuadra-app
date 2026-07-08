@@ -132,7 +132,30 @@ type MessageKey =
   // genéricos
   | "common.comingSoon"
   | "footer.tagline"
-  | "meta.home.description";
+  | "meta.home.description"
+  // admin sidebar (Figma nodo 483:13776) — namespace propio, admin es SSR-scoped
+  // y usa `useAdminI18n(locale)` (locale explícito vía AdminShellData), NO `usePageI18n`.
+  | "admin.nav.section.menu"
+  | "admin.nav.section.users"
+  | "admin.nav.section.news"
+  | "admin.nav.section.save"
+  | "admin.nav.dashboard"
+  | "admin.nav.dashboard.users"
+  | "admin.nav.dashboard.news"
+  | "admin.nav.dashboard.save"
+  | "admin.nav.users.support"
+  | "admin.nav.users.management"
+  | "admin.nav.news.publications"
+  | "admin.nav.save.supermarket"
+  | "admin.nav.save.metrics"
+  | "admin.nav.save.reviewQueue"
+  | "admin.nav.save.providers"
+  | "admin.nav.save.sources"
+  | "admin.nav.save.basket"
+  | "admin.nav.save.financialProducts"
+  | "admin.nav.wip"
+  | "admin.nav.footer.feedback"
+  | "admin.nav.footer.help";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -259,6 +282,27 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "common.comingSoon": "Próximamente",
     "footer.tagline": "Precios de catálogo online",
     "meta.home.description": "Cuadra — administra tu dinero y compara precios de supermercado.",
+    "admin.nav.section.menu": "Menú",
+    "admin.nav.section.users": "Usuarios",
+    "admin.nav.section.news": "Noticias",
+    "admin.nav.section.save": "Save",
+    "admin.nav.dashboard": "Dashboard",
+    "admin.nav.dashboard.users": "Usuarios",
+    "admin.nav.dashboard.news": "Noticias",
+    "admin.nav.dashboard.save": "Save",
+    "admin.nav.users.support": "Soporte a usuarios",
+    "admin.nav.users.management": "Gestión de usuarios",
+    "admin.nav.news.publications": "Publicaciones",
+    "admin.nav.save.supermarket": "Supermercado",
+    "admin.nav.save.metrics": "Métricas",
+    "admin.nav.save.reviewQueue": "Cola de revisión",
+    "admin.nav.save.providers": "Proveedores",
+    "admin.nav.save.sources": "Fuentes",
+    "admin.nav.save.basket": "Canasta curada",
+    "admin.nav.save.financialProducts": "Productos Financieros",
+    "admin.nav.wip": "🚧 En construcción — aún no disponible",
+    "admin.nav.footer.feedback": "Feedback",
+    "admin.nav.footer.help": "Ayuda",
   },
   en: {
     "nav.save": "Save",
@@ -383,6 +427,27 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "common.comingSoon": "Coming soon",
     "footer.tagline": "Online catalog prices",
     "meta.home.description": "Cuadra — manage your money and compare supermarket prices.",
+    "admin.nav.section.menu": "Menu",
+    "admin.nav.section.users": "Users",
+    "admin.nav.section.news": "News",
+    "admin.nav.section.save": "Save",
+    "admin.nav.dashboard": "Dashboard",
+    "admin.nav.dashboard.users": "Users",
+    "admin.nav.dashboard.news": "News",
+    "admin.nav.dashboard.save": "Save",
+    "admin.nav.users.support": "User support",
+    "admin.nav.users.management": "User management",
+    "admin.nav.news.publications": "Posts",
+    "admin.nav.save.supermarket": "Supermarket",
+    "admin.nav.save.metrics": "Metrics",
+    "admin.nav.save.reviewQueue": "Review queue",
+    "admin.nav.save.providers": "Providers",
+    "admin.nav.save.sources": "Sources",
+    "admin.nav.save.basket": "Curated basket",
+    "admin.nav.save.financialProducts": "Financial products",
+    "admin.nav.wip": "🚧 Under construction — not available yet",
+    "admin.nav.footer.feedback": "Feedback",
+    "admin.nav.footer.help": "Help",
   },
   pt: {
     "nav.save": "Save",
@@ -507,6 +572,27 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "common.comingSoon": "Em breve",
     "footer.tagline": "Preços de catálogo online",
     "meta.home.description": "Cuadra — gerencie seu dinheiro e compare preços de supermercado.",
+    "admin.nav.section.menu": "Menu",
+    "admin.nav.section.users": "Usuários",
+    "admin.nav.section.news": "Notícias",
+    "admin.nav.section.save": "Save",
+    "admin.nav.dashboard": "Painel",
+    "admin.nav.dashboard.users": "Usuários",
+    "admin.nav.dashboard.news": "Notícias",
+    "admin.nav.dashboard.save": "Save",
+    "admin.nav.users.support": "Suporte a usuários",
+    "admin.nav.users.management": "Gestão de usuários",
+    "admin.nav.news.publications": "Publicações",
+    "admin.nav.save.supermarket": "Supermercado",
+    "admin.nav.save.metrics": "Métricas",
+    "admin.nav.save.reviewQueue": "Fila de revisão",
+    "admin.nav.save.providers": "Fornecedores",
+    "admin.nav.save.sources": "Fontes",
+    "admin.nav.save.basket": "Cesta curada",
+    "admin.nav.save.financialProducts": "Produtos Financeiros",
+    "admin.nav.wip": "🚧 Em construção — ainda não disponível",
+    "admin.nav.footer.feedback": "Feedback",
+    "admin.nav.footer.help": "Ajuda",
   },
 };
 

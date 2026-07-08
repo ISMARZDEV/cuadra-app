@@ -32,6 +32,20 @@
   /* Marca (constantes) — para elementos de énfasis. */
   --brand: #16a34a;
   --lime: #7eb427;
+
+  /* Sidebar del admin/OFV — tokens exactos del Figma (nodo 483:13776). */
+  --sidebar: #f5faed;
+  --sidebar-foreground: #1c614e;
+  --sidebar-primary: #16a34a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #daff9f;
+  --sidebar-accent-foreground: #015442;
+  --sidebar-accent-border: #b7e36f;
+  --sidebar-border: #e2efce;
+  --sidebar-ring: #b7e36f;
+  --sidebar-section-label: #015442;
+  --sidebar-group-item: #1c614e;
+  --sidebar-muted: #718b8b;
 }
 
 .dark {
@@ -54,6 +68,20 @@
   --border: #1e3a2a;
   --input: #1e3a2a;
   --ring: #16a34a;
+
+  /* Sidebar del admin/OFV — variante oscura (el Figma es claro; derivado coherente con el tema dark). */
+  --sidebar: #101d16;
+  --sidebar-foreground: #d7e8dc;
+  --sidebar-primary: #16a34a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #26421d;
+  --sidebar-accent-foreground: #cdf19a;
+  --sidebar-accent-border: #3f5f22;
+  --sidebar-border: #1e3a2a;
+  --sidebar-ring: #7eb427;
+  --sidebar-section-label: #93d555;
+  --sidebar-group-item: #b8d8c4;
+  --sidebar-muted: #7f9a9a;
 }
 
 /* Mapea los tokens a utilidades de Tailwind (bg-background, text-primary, border-border, …). */
@@ -80,6 +108,19 @@
   --color-brand: var(--brand);
   --color-lime: var(--lime);
 
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent-border: var(--sidebar-accent-border);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-section-label: var(--sidebar-section-label);
+  --color-sidebar-group-item: var(--sidebar-group-item);
+  --color-sidebar-muted: var(--sidebar-muted);
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -93,5 +134,15 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+}
+
+/* Admin/OFV: el `EcosystemRail` (70px, fijo) va a la izquierda del sidebar. El `Sidebar` de Base UI
+   se posiciona `fixed left-0` (tapa el rail), así que lo desplazamos 70px en desktop. Scopeado a
+   `.admin-shell` + mayor especificidad para ganarle al `data-[side=left]:left-0` del primitivo. En
+   móvil el sidebar es un sheet y el rail está oculto (`hidden md:flex`), así que no aplica. */
+@media (min-width: 768px) {
+  .admin-shell [data-slot="sidebar-container"][data-side="left"] {
+    left: 70px;
   }
 }
