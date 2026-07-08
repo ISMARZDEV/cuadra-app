@@ -44,6 +44,12 @@ export interface AdminIdentity {
   /** Locale crudo de `MeResponse` (`string`, sin validar contra el union `Locale` de i18n —
    * `+data.ts` lo normaliza con `isLocale` + fallback a `DEFAULT_LOCALE` antes de exponerlo). */
   locale: string;
+  /** `MeResponse.name` — threadeado igual que `locale`, para el user chip de `AdminTopBar`
+   * (batch 4). `MeResponse.name` es siempre `string` (no-nullable en el DTO). */
+  name: string;
+  /** `MeResponse.email` — nullable en el DTO; threadeado por si un follow-up lo necesita
+   * (tooltip/dropdown del user chip). No se renderiza todavía. */
+  email: string | null;
 }
 
 /** Resuelve la identidad admin del request (o `null` sin sesión válida). */
@@ -56,7 +62,13 @@ export async function resolveAdminIdentity(
   const res = await getMe({ client: apiClient, headers: { authorization: `Bearer ${token}` } });
   if (res.error || !res.data) return null;
 
-  return { userId: res.data.id, capabilities: res.data.capabilities, locale: res.data.locale };
+  return {
+    userId: res.data.id,
+    capabilities: res.data.capabilities,
+    locale: res.data.locale,
+    name: res.data.name,
+    email: res.data.email,
+  };
 }
 
 /** true solo si el request trae una identidad válida CON la capability pedida. */

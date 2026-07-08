@@ -11,6 +11,10 @@ import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/config";
 export interface AdminShellData {
   capabilities: string[];
   locale: Locale;
+  /** `MeResponse.name` — para el user chip de `AdminTopBar` (batch 4). */
+  name: string;
+  /** `MeResponse.email` — threadeado por si un follow-up lo necesita; no se renderiza aún. */
+  email: string | null;
 }
 
 // Vike NO acumula `+data.ts` automáticamente entre niveles de ruta: el `+data.ts` más específico
@@ -27,5 +31,7 @@ export async function data(pageContext: PageContextServer): Promise<AdminShellDa
   return {
     capabilities: identity?.capabilities ?? [],
     locale: isLocale(identity?.locale) ? identity.locale : DEFAULT_LOCALE,
+    name: identity?.name ?? "",
+    email: identity?.email ?? null,
   };
 }

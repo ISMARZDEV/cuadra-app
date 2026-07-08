@@ -6,7 +6,7 @@ import type { SourcesData } from "@/features/admin/resources/save-sources/interf
 import { extractToken } from "@/features/admin/shell/require-admin";
 import { apiClient } from "@/lib/api";
 
-import { data as adminShellData } from "../+data";
+import { data as adminShellData, type AdminShellData } from "../+data";
 
 // SSR de la lista de fuentes: a diferencia de `providers/+data.ts` (público, `listProviders`),
 // `listSourcesHealth` SÍ es un endpoint admin gateado (`admin_save_ingestion_ops`) — la llamada
@@ -15,8 +15,8 @@ import { data as adminShellData } from "../+data";
 // niveles) porque `+Layout.tsx` necesita `capabilities` para el nav.
 export async function data(
   pageContext: PageContextServer,
-): Promise<SourcesData & { capabilities: string[] }> {
-  const { capabilities } = await adminShellData(pageContext);
+): Promise<SourcesData & AdminShellData> {
+  const shell = await adminShellData(pageContext);
   const token = extractToken(pageContext.headers);
 
   const res = await listSourcesHealth({
@@ -27,5 +27,5 @@ export async function data(
     throw render(500, "No se pudo cargar la lista de fuentes.");
   }
 
-  return { sources: res.data, capabilities };
+  return { sources: res.data, ...shell };
 }

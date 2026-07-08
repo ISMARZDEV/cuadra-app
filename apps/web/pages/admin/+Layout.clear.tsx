@@ -21,7 +21,12 @@ import "../../src/styles/globals.css";
 export default function Layout({ children }: { children: ReactNode }) {
   const data = useData<Partial<AdminShellData>>();
   return (
-    <AdminLayout capabilities={data?.capabilities ?? []} locale={data?.locale ?? DEFAULT_LOCALE}>
+    <AdminLayout
+      capabilities={data?.capabilities ?? []}
+      locale={data?.locale ?? DEFAULT_LOCALE}
+      name={data?.name ?? ""}
+      email={data?.email ?? null}
+    >
       {children}
     </AdminLayout>
   );

@@ -6,7 +6,7 @@ import type { BasketQueriesData } from "@/features/admin/resources/save-basket/i
 import { extractToken } from "@/features/admin/shell/require-admin";
 import { apiClient } from "@/lib/api";
 
-import { data as adminShellData } from "../+data";
+import { data as adminShellData, type AdminShellData } from "../+data";
 
 // SSR de la canasta curada: `listBasketQueries` es un endpoint admin gateado
 // (`admin_save_ingestion_ops`) — la llamada necesita el token de sesión, MISMO mecanismo que
@@ -14,8 +14,8 @@ import { data as adminShellData } from "../+data";
 // a mano (Vike no acumula `data()` entre niveles) porque `+Layout.tsx` necesita `capabilities`.
 export async function data(
   pageContext: PageContextServer,
-): Promise<BasketQueriesData & { capabilities: string[] }> {
-  const { capabilities } = await adminShellData(pageContext);
+): Promise<BasketQueriesData & AdminShellData> {
+  const shell = await adminShellData(pageContext);
   const token = extractToken(pageContext.headers);
 
   const res = await listBasketQueries({
@@ -26,5 +26,5 @@ export async function data(
     throw render(500, "No se pudo cargar la canasta curada.");
   }
 
-  return { entries: res.data, capabilities };
+  return { entries: res.data, ...shell };
 }

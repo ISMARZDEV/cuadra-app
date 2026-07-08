@@ -155,7 +155,17 @@ type MessageKey =
   | "admin.nav.save.financialProducts"
   | "admin.nav.wip"
   | "admin.nav.footer.feedback"
-  | "admin.nav.footer.help";
+  | "admin.nav.footer.help"
+  // Batch 3 — componentes de dominio (CategoryBadge / MethodBadge)
+  | "admin.category.none"
+  | "admin.method.ean"
+  | "admin.method.trgm"
+  | "admin.method.vector"
+  | "admin.method.hybrid"
+  | "admin.method.llm"
+  | "admin.method.human"
+  | "admin.topbar.notifications"
+  | "admin.topbar.settings";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -303,6 +313,15 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.wip": "🚧 En construcción — aún no disponible",
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Ayuda",
+    "admin.category.none": "Sin categoría",
+    "admin.method.ean": "EAN",
+    "admin.method.trgm": "Similitud de texto",
+    "admin.method.vector": "Vector",
+    "admin.method.hybrid": "Híbrido",
+    "admin.method.llm": "IA",
+    "admin.method.human": "Humano",
+    "admin.topbar.notifications": "Notificaciones",
+    "admin.topbar.settings": "Configuración",
   },
   en: {
     "nav.save": "Save",
@@ -448,6 +467,15 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.wip": "🚧 Under construction — not available yet",
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Help",
+    "admin.category.none": "No category",
+    "admin.method.ean": "EAN",
+    "admin.method.trgm": "Text similarity",
+    "admin.method.vector": "Vector",
+    "admin.method.hybrid": "Hybrid",
+    "admin.method.llm": "AI",
+    "admin.method.human": "Human",
+    "admin.topbar.notifications": "Notifications",
+    "admin.topbar.settings": "Settings",
   },
   pt: {
     "nav.save": "Save",
@@ -593,6 +621,15 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.wip": "🚧 Em construção — ainda não disponível",
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Ajuda",
+    "admin.category.none": "Sem categoria",
+    "admin.method.ean": "EAN",
+    "admin.method.trgm": "Similaridade de texto",
+    "admin.method.vector": "Vetor",
+    "admin.method.hybrid": "Híbrido",
+    "admin.method.llm": "IA",
+    "admin.method.human": "Humano",
+    "admin.topbar.notifications": "Notificações",
+    "admin.topbar.settings": "Configurações",
   },
 };
 

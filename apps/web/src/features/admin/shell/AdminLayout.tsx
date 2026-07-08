@@ -12,6 +12,7 @@ import { Toaster } from "@/components/ui-base/sonner";
 import type { Locale } from "@/i18n/config";
 
 import { AdminSidebar } from "./AdminSidebar";
+import { AdminTopBar } from "./AdminTopBar";
 import { EcosystemRail } from "./rail/EcosystemRail";
 
 // Familia aplicada SOLO al subárbol admin (vía `style` en el `SidebarProvider` de más abajo, que
@@ -25,6 +26,10 @@ interface AdminLayoutProps {
   /** Locale explícito, resuelto SSR (`AdminShellData.locale`) — `/admin/*` está exento del prefijo
    * `/{locale}/{country}` de la URL, así que NO puede derivarse ahí (ver `useAdminI18n`). */
   locale: Locale;
+  /** `MeResponse.name` para el user chip del `AdminTopBar` (threadeado por `AdminShellData`). */
+  name: string;
+  /** `MeResponse.email` — threadeado, no renderizado aún. */
+  email?: string | null;
   children: ReactNode;
 }
 
@@ -43,7 +48,7 @@ interface AdminLayoutProps {
 // Regla sagrada: `SidebarProvider` NO es un `ClerkProvider` — el único `<ClerkProvider>` sigue
 // viviendo en `pages/+Wrapper.tsx` (raíz). NUNCA agregar otro acá (ver
 // `admin-layout-no-double-provider.test.tsx`).
-export function AdminLayout({ capabilities, locale, children }: AdminLayoutProps) {
+export function AdminLayout({ capabilities, locale, name, email, children }: AdminLayoutProps) {
   return (
     <div className="admin-shell flex min-h-screen">
       <EcosystemRail />
@@ -52,7 +57,10 @@ export function AdminLayout({ capabilities, locale, children }: AdminLayoutProps
         style={{ fontFamily: ADMIN_FONT_FAMILY }}
       >
         <AdminSidebar capabilities={capabilities} locale={locale} />
-        <SidebarInset>{children}</SidebarInset>
+        <SidebarInset>
+          <AdminTopBar name={name} email={email} locale={locale} />
+          {children}
+        </SidebarInset>
         <Toaster richColors position="bottom-right" />
       </SidebarProvider>
     </div>
