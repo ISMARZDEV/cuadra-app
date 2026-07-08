@@ -1,46 +1,66 @@
-import type { BulkResolveResultDto } from "@cuadra/api-client";
+import type { AdminReviewQueueRowDto, BulkResolveResultDto } from "@cuadra/api-client";
+import { ArrowUpDown, Info } from "lucide-react";
 import { useState } from "react";
 import { usePageContext } from "vike-react/usePageContext";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
+import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
+import { DEFAULT_LOCALE } from "@/i18n/config";
 
-import { bulkResolveReviewMatches, fetchTopCandidateId } from "../api";
+import { bulkResolveReviewMatches, fetchReviewQueue, fetchTopCandidateId } from "../api";
 import { ADMIN_DECIDED_BY } from "../lib/decided-by";
 import { serializeReviewQueueParams } from "../lib/review-queue-params";
-import { REVIEW_METHOD, REVIEW_ORDER_BY, type ReviewQueueData, type ReviewQueueParams } from "../types";
+import type { ReviewQueueData, ReviewQueueParams } from "../types";
 import { ReasonCodeSelect } from "./ReasonCodeSelect";
+import { ReviewQueueToolbar, type ReviewQueueView } from "./ReviewQueueToolbar";
 import { ReviewRow } from "./ReviewRow";
 
 type BulkOutcome = { succeeded: string[]; failed: { match_id: string; error: string }[] };
 
-// Sentinel de radix-ui Select: no acepta `value=""` en un SelectItem, así que "todos" viaja como
-// este string y se traduce a `undefined` (= sin filtro) al navegar.
-const ALL = "__all__";
+// Opciones fijas de "por página" (Figma: "Mostrar [5 ▾] por página") — si el `limit` vigente (URL)
+// no está en esta lista (ej. el default de 50 del backend) se agrega dinámicamente para que el
+// <Select> siempre tenga un valor válido seleccionado.
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
-// Pantalla de la cola de revisión (feature #8, F2·B1): lee la página SSR (`+data.ts`, batch 2.11)
-// vía `useData` (mismo patrón que ProductScreen/CategoryListing) y escribe cada cambio de filtro
-// en la URL vía `navigate()` (mismo patrón que CategoryFilters) → el servidor re-renderiza con el
-// filtro aplicado, estado 100% shareable por link (batch 2.14/2.15). El orden de las filas es
-// EXACTAMENTE el que trae `rows` — el default "uncertainty-first" es responsabilidad del backend
-// (`ListReviewQueue`, ya testeado en Fase 1); esta pantalla nunca reordena client-side.
+// Pantalla de la cola de revisión (feature #8, F2·B1; restyle Figma 483:12411 en Batch 6): lee la
+// página SSR (`+data.ts`) vía `useData` y escribe cada cambio de filtro/orden/página en la URL vía
+// `navigate()` — estado 100% shareable por link. El orden de las filas es EXACTAMENTE el que trae
+// `rows` (uncertainty-first es responsabilidad del backend); esta pantalla nunca reordena
+// client-side — el único filtro client-side es el de `search` (por nombre), documentado en
+// `ReviewQueueToolbar`.
 export function ReviewQueueListScreen() {
-  const { rows, total, params } = useData<ReviewQueueData>();
+  const { rows: initialRows, total, params, locale = DEFAULT_LOCALE } = useData<ReviewQueueData>();
   const pageContext = usePageContext();
+  const { t } = useAdminI18n(locale);
+
+  // Reemplaza el `window.location.reload()` post-bulk-mutación: refetch client-side de la MISMA
+  // página (mismos `params`) con `useAdminList` (shell/use-admin-list.ts), sin recargar. El `total`
+  // del footer no se re-sincroniza tras un bulk-resolve (mismo alcance que `ProvidersScreen` — un
+  // filtro/página nuevo vía URL siempre trae el total correcto); flag de follow-up si se necesita
+  // exacto en caliente.
+  const { items: rows, refresh } = useAdminList<AdminReviewQueueRowDto>(initialRows, async () => {
+    const res = await fetchReviewQueue(params);
+    return res?.rows ?? initialRows;
+  });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [showBulkReject, setShowBulkReject] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkOutcome | null>(null);
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<ReviewQueueView>("list");
 
   const navigateWith = (patch: Partial<ReviewQueueParams>) => {
     const next: ReviewQueueParams = { ...params, ...patch };
@@ -48,10 +68,20 @@ export function ReviewQueueListScreen() {
     void navigate(qs ? `${pageContext.urlPathname}?${qs}` : pageContext.urlPathname);
   };
 
+  // Filtro CLIENT-SIDE por nombre de producto sobre las filas YA cargadas (el backend no tiene un
+  // parámetro de texto todavía) — ver doc del prop `search` en `ReviewQueueToolbar`.
+  const visibleRows = search.trim()
+    ? rows.filter((r) => (r.store_product_name ?? "").toLowerCase().includes(search.trim().toLowerCase()))
+    : rows;
+
   const from = params.limit && total > 0 ? params.offset + 1 : 0;
   const to = Math.min(params.offset + params.limit, total);
-  const hasPrev = params.offset > 0;
-  const hasNext = params.offset + params.limit < total;
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, params.limit)));
+  const currentPage = Math.min(totalPages, Math.floor(params.offset / Math.max(1, params.limit)) + 1);
+  const pageNumbers = pageWindow(currentPage, totalPages);
+  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(params.limit)
+    ? PAGE_SIZE_OPTIONS
+    : [...PAGE_SIZE_OPTIONS, params.limit].sort((a, b) => a - b);
 
   const toggleSelect = (matchId: string) => {
     setSelected((prev) => {
@@ -63,15 +93,31 @@ export function ReviewQueueListScreen() {
   };
 
   const toggleSelectAll = () => {
-    setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.match_id))));
+    setSelected((prev) =>
+      visibleRows.length > 0 && prev.size === visibleRows.length
+        ? new Set()
+        : new Set(visibleRows.map((r) => r.match_id)),
+    );
   };
 
-  const applyResult = (server: BulkResolveResultDto | null, localFailed: { match_id: string; error: string }[]) => {
+  // "Eliminar" del menú Acciones por fila (Batch 6): reusa el flujo de rechazo EXISTENTE — se
+  // selecciona SOLO esta fila y se abre el mismo panel `ReasonCodeSelect` que el bulk-reject, en
+  // vez de inventar un segundo camino de rechazo individual.
+  const handleDeleteRow = (matchId: string) => {
+    setSelected(new Set([matchId]));
+    setShowBulkReject(true);
+  };
+
+  const applyResult = async (
+    server: BulkResolveResultDto | null,
+    localFailed: { match_id: string; error: string }[],
+  ) => {
     setBulkResult({
       succeeded: server?.succeeded ?? [],
       failed: [...(server?.failed ?? []), ...localFailed],
     });
     setSelected(new Set());
+    await refresh();
   };
 
   // Bulk-approve (feature #10, batch 2e): la lista SOLO trae `candidate_count` (nunca el id del
@@ -107,12 +153,13 @@ export function ReviewQueueListScreen() {
         : null;
 
     setBulkBusy(false);
-    applyResult(server, localFailed);
+    await applyResult(server, localFailed);
   };
 
   // Bulk-reject: UN request al endpoint atómico-por-fila (nunca N requests sueltos ni una
   // reimplementación del invariante same-tx en el cliente). El motivo es obligatorio (mismo guard
-  // de `ReasonCodeSelect` que el rechazo individual) — aplica a TODAS las filas seleccionadas.
+  // de `ReasonCodeSelect` que el rechazo individual) — aplica a TODAS las filas seleccionadas (que
+  // puede ser una sola, si vino de "Eliminar" en el menú Acciones de una fila).
   const handleBulkReject = async ({ reasonCode, reasonNote }: { reasonCode: string; reasonNote: string }) => {
     const ids = Array.from(selected);
     setBulkBusy(true);
@@ -130,7 +177,7 @@ export function ReviewQueueListScreen() {
 
     setBulkBusy(false);
     setShowBulkReject(false);
-    applyResult(
+    await applyResult(
       server,
       server
         ? []
@@ -140,139 +187,40 @@ export function ReviewQueueListScreen() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold">Cola de revisión (Save)</h1>
-
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label htmlFor="provider-filter" className="mb-1 block text-xs text-muted-foreground">
-            Proveedor (id)
-          </label>
-          <Input
-            id="provider-filter"
-            placeholder="provider_id"
-            defaultValue={params.provider_id ?? ""}
-            className="w-40"
-            onBlur={(e) =>
-              navigateWith({ provider_id: e.target.value.trim() || undefined, offset: 0 })
-            }
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Método</label>
-          <Select
-            value={params.method ?? ALL}
-            onValueChange={(v) =>
-              navigateWith({ method: v === ALL ? undefined : v, offset: 0 })
-            }
-          >
-            <SelectTrigger size="sm" className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos</SelectItem>
-              {REVIEW_METHOD.map((m) => (
-                <SelectItem key={m} value={m}>
-                  {m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <label htmlFor="confidence-min" className="mb-1 block text-xs text-muted-foreground">
-            Confianza mín.
-          </label>
-          <Input
-            id="confidence-min"
-            type="number"
-            min={0}
-            max={1}
-            step={0.01}
-            defaultValue={params.confidence_min ?? ""}
-            className="w-24"
-            onBlur={(e) =>
-              navigateWith({
-                confidence_min: e.target.value ? Number(e.target.value) : undefined,
-                offset: 0,
-              })
-            }
-          />
-        </div>
-
-        <div>
-          <label htmlFor="confidence-max" className="mb-1 block text-xs text-muted-foreground">
-            Confianza máx.
-          </label>
-          <Input
-            id="confidence-max"
-            type="number"
-            min={0}
-            max={1}
-            step={0.01}
-            defaultValue={params.confidence_max ?? ""}
-            className="w-24"
-            onBlur={(e) =>
-              navigateWith({
-                confidence_max: e.target.value ? Number(e.target.value) : undefined,
-                offset: 0,
-              })
-            }
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Orden</label>
-          <Select
-            value={params.order_by}
-            onValueChange={(v) => navigateWith({ order_by: v, offset: 0 })}
-          >
-            <SelectTrigger size="sm" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {REVIEW_ORDER_BY.map((o) => (
-                <SelectItem key={o} value={o}>
-                  {o === "uncertainty" ? "Incertidumbre (default)" : "Más antiguo primero"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <input
-          type="checkbox"
-          data-testid="select-all"
-          checked={rows.length > 0 && selected.size === rows.length}
-          onChange={toggleSelectAll}
-          aria-label="Seleccionar todos"
-          disabled={rows.length === 0}
+      <div className="mb-1 flex items-center gap-2">
+        <h1 className="text-xl font-bold">{t("admin.reviewQueue.title")}</h1>
+        <Info
+          className="size-4 text-muted-foreground"
+          aria-label={t("admin.reviewQueue.info")}
+          role="img"
         />
-        <span className="text-xs text-muted-foreground">{selected.size} seleccionado(s)</span>
-        {selected.size > 0 ? (
-          <>
-            <Button size="sm" disabled={bulkBusy} onClick={() => void handleBulkApprove()}>
-              Aprobar (candidato top)
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={bulkBusy}
-              onClick={() => setShowBulkReject((v) => !v)}
-            >
-              Rechazar seleccionados…
-            </Button>
-          </>
-        ) : null}
+        <span className="text-sm font-semibold text-primary">({total})</span>
       </div>
+
+      <ReviewQueueToolbar
+        params={params}
+        onParamsChange={(patch) => navigateWith({ ...patch, offset: 0 })}
+        search={search}
+        onSearchChange={setSearch}
+        view={view}
+        onViewChange={setView}
+        selectedCount={selected.size}
+        onBulkApprove={() => void handleBulkApprove()}
+        onBulkReject={() => setShowBulkReject(true)}
+        bulkBusy={bulkBusy}
+        locale={locale}
+      />
+
+      {selected.size > 0 ? (
+        <p className="mb-2 text-xs text-muted-foreground">
+          {selected.size} {t("admin.reviewQueue.selectedSuffix")}
+        </p>
+      ) : null}
 
       {showBulkReject ? (
         <div className="mb-4" data-testid="bulk-reject-panel">
           <ReasonCodeSelect
-            submitLabel={`Rechazar ${selected.size} seleccionado(s)`}
+            submitLabel={`${t("admin.toolbar.actions.reject")} (${selected.size})`}
             onReject={(payload) => void handleBulkReject(payload)}
           />
         </div>
@@ -281,7 +229,8 @@ export function ReviewQueueListScreen() {
       {bulkResult ? (
         <div className="mb-4 rounded-md border border-border p-3 text-sm" data-testid="bulk-result">
           <p>
-            {bulkResult.succeeded.length} aprobado(s)/rechazado(s) · {bulkResult.failed.length} fallaron
+            {bulkResult.succeeded.length} {t("admin.reviewQueue.bulkResult.summary")} ·{" "}
+            {bulkResult.failed.length} {t("admin.reviewQueue.bulkResult.failedSuffix")}
           </p>
           {bulkResult.failed.length > 0 ? (
             <ul className="mt-1 list-disc pl-4 text-destructive">
@@ -292,72 +241,138 @@ export function ReviewQueueListScreen() {
               ))}
             </ul>
           ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-2"
-            onClick={() => window.location.reload()}
-          >
-            Refrescar lista
-          </Button>
         </div>
       ) : null}
 
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="border-b border-border text-left text-xs text-muted-foreground">
-            <th className="py-2 pr-2 font-medium" />
-            <th className="py-2 pr-4 font-medium">Confianza</th>
-            <th className="py-2 pr-4 font-medium">Producto</th>
-            <th className="py-2 pr-4 font-medium">Tamaño</th>
-            <th className="py-2 pr-4 font-medium">Tienda</th>
-            <th className="py-2 pr-4 font-medium">Método</th>
-            <th className="py-2 pr-4 text-center font-medium">Candidatos</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>
+              <input
+                type="checkbox"
+                data-testid="select-all"
+                checked={visibleRows.length > 0 && selected.size === visibleRows.length}
+                onChange={toggleSelectAll}
+                aria-label={t("admin.reviewQueue.selectAll")}
+                disabled={visibleRows.length === 0}
+              />
+            </TableHead>
+            <TableHead>{t("admin.reviewQueue.column.info")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.product")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.size")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.weightType")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.description")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.category")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.brand")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.store")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.method")}</TableHead>
+            <TableHead>
+              {/* Única columna sortable hoy: `order_by` solo admite "uncertainty" | "created_at"
+                  (ver `types.ts`) y "Fecha del match" es la única del Figma que mapea a ese eje. */}
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 font-medium"
+                onClick={() =>
+                  navigateWith({
+                    order_by: params.order_by === "created_at" ? "uncertainty" : "created_at",
+                    offset: 0,
+                  })
+                }
+                aria-sort={params.order_by === "created_at" ? "ascending" : "none"}
+              >
+                {t("admin.reviewQueue.column.matchDate")}
+                <ArrowUpDown className="size-3" aria-hidden="true" />
+              </button>
+            </TableHead>
+            <TableHead>{t("admin.reviewQueue.column.actions")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visibleRows.map((r) => (
             <ReviewRow
               key={r.match_id}
               row={r}
               href={`/admin/review-queue/${r.match_id}`}
+              locale={locale}
               selected={selected.has(r.match_id)}
               onToggleSelect={toggleSelect}
+              onDelete={handleDeleteRow}
             />
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
 
-      {rows.length === 0 ? (
-        <p className="mt-6 text-sm text-muted-foreground">
-          No hay elementos en la cola con estos filtros.
-        </p>
+      {visibleRows.length === 0 ? (
+        <p className="mt-6 text-sm text-muted-foreground">{t("admin.reviewQueue.empty")}</p>
       ) : null}
 
-      <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-        <span>
-          {from}–{to} de {total}
-        </span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!hasPrev}
-            onClick={() => navigateWith({ offset: Math.max(0, params.offset - params.limit) })}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <span>{t("admin.reviewQueue.pagination.showing")}</span>
+          <Select
+            value={String(params.limit)}
+            onValueChange={(v) => navigateWith({ limit: Number(v), offset: 0 })}
           >
-            Anterior
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!hasNext}
-            onClick={() => navigateWith({ offset: params.offset + params.limit })}
-          >
-            Siguiente
-          </Button>
+            <SelectTrigger size="sm" className="w-16">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {pageSizeOptions.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span>{t("admin.reviewQueue.pagination.perPage")}</span>
         </div>
+
+        <span>
+          {from}–{to} {t("admin.reviewQueue.pagination.of")} {total}
+        </span>
+
+        <Pagination className="mx-0 w-auto justify-end">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                onClick={() => navigateWith({ offset: Math.max(0, params.offset - params.limit) })}
+                aria-disabled={currentPage <= 1}
+                className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
+              />
+            </PaginationItem>
+            {pageNumbers.map((p) => (
+              <PaginationItem key={p}>
+                <PaginationLink
+                  isActive={p === currentPage}
+                  onClick={() => navigateWith({ offset: (p - 1) * params.limit })}
+                >
+                  {p}
+                </PaginationLink>
+              </PaginationItem>
+            ))}
+            <PaginationItem>
+              <PaginationNext
+                onClick={() => navigateWith({ offset: params.offset + params.limit })}
+                aria-disabled={currentPage >= totalPages}
+                className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
       </div>
     </div>
   );
+}
+
+// Ventana contigua de hasta `max` números de página centrada en `current` (Figma: "1 2 3 4 5", sin
+// elipsis) — PURA, sin estado; se recalcula en cada render a partir de `total`/`current`.
+function pageWindow(current: number, total: number, max = 5): number[] {
+  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
+  let start = Math.max(1, current - Math.floor(max / 2));
+  let end = start + max - 1;
+  if (end > total) {
+    end = total;
+    start = end - max + 1;
+  }
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }

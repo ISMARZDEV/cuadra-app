@@ -165,7 +165,58 @@ type MessageKey =
   | "admin.method.llm"
   | "admin.method.human"
   | "admin.topbar.notifications"
-  | "admin.topbar.settings";
+  | "admin.topbar.settings"
+  // Batch 5 — Toolbar (Cola de revisión)
+  | "admin.toolbar.search.placeholder"
+  | "admin.toolbar.filters"
+  | "admin.toolbar.filter.provider"
+  | "admin.toolbar.filter.method"
+  | "admin.toolbar.filter.method.all"
+  | "admin.toolbar.filter.confidenceMin"
+  | "admin.toolbar.filter.confidenceMax"
+  | "admin.toolbar.filter.orderBy"
+  | "admin.toolbar.filter.orderBy.uncertainty"
+  | "admin.toolbar.filter.orderBy.createdAt"
+  | "admin.toolbar.view.list"
+  | "admin.toolbar.view.grid"
+  | "admin.toolbar.export"
+  | "admin.toolbar.showAll"
+  | "admin.toolbar.showAll.optionAll"
+  | "admin.toolbar.showAll.optionUncertain"
+  | "admin.toolbar.actions"
+  | "admin.toolbar.actions.approve"
+  | "admin.toolbar.actions.reject"
+  // Batch 6 — Restyle de la tabla (Cola de revisión)
+  | "admin.reviewQueue.title"
+  | "admin.reviewQueue.info"
+  | "admin.reviewQueue.selectAll"
+  | "admin.reviewQueue.selectedSuffix"
+  | "admin.reviewQueue.selectRow"
+  | "admin.reviewQueue.empty"
+  | "admin.reviewQueue.noImage"
+  | "admin.reviewQueue.noDescription"
+  | "admin.reviewQueue.column.info"
+  | "admin.reviewQueue.column.product"
+  | "admin.reviewQueue.column.size"
+  | "admin.reviewQueue.column.weightType"
+  | "admin.reviewQueue.column.description"
+  | "admin.reviewQueue.column.category"
+  | "admin.reviewQueue.column.brand"
+  | "admin.reviewQueue.column.store"
+  | "admin.reviewQueue.column.method"
+  | "admin.reviewQueue.column.matchDate"
+  | "admin.reviewQueue.column.actions"
+  | "admin.reviewQueue.actions.menuLabel"
+  | "admin.reviewQueue.actions.view"
+  | "admin.reviewQueue.actions.edit"
+  | "admin.reviewQueue.actions.share"
+  | "admin.reviewQueue.actions.delete"
+  | "admin.reviewQueue.actions.comingSoon"
+  | "admin.reviewQueue.pagination.showing"
+  | "admin.reviewQueue.pagination.perPage"
+  | "admin.reviewQueue.pagination.of"
+  | "admin.reviewQueue.bulkResult.summary"
+  | "admin.reviewQueue.bulkResult.failedSuffix";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -322,6 +373,55 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Humano",
     "admin.topbar.notifications": "Notificaciones",
     "admin.topbar.settings": "Configuración",
+    "admin.toolbar.search.placeholder": "Buscar...",
+    "admin.toolbar.filters": "Filtros",
+    "admin.toolbar.filter.provider": "Proveedor (id)",
+    "admin.toolbar.filter.method": "Método",
+    "admin.toolbar.filter.method.all": "Todos",
+    "admin.toolbar.filter.confidenceMin": "Confianza mín.",
+    "admin.toolbar.filter.confidenceMax": "Confianza máx.",
+    "admin.toolbar.filter.orderBy": "Orden",
+    "admin.toolbar.filter.orderBy.uncertainty": "Incertidumbre (default)",
+    "admin.toolbar.filter.orderBy.createdAt": "Más antiguo primero",
+    "admin.toolbar.view.list": "Vista de lista",
+    "admin.toolbar.view.grid": "Vista de cuadrícula (próximamente)",
+    "admin.toolbar.export": "Exportar (próximamente)",
+    "admin.toolbar.showAll": "Mostrar todos",
+    "admin.toolbar.showAll.optionAll": "Mostrar todos",
+    "admin.toolbar.showAll.optionUncertain": "Solo inciertos",
+    "admin.toolbar.actions": "Acciones",
+    "admin.toolbar.actions.approve": "Aprobar seleccionados",
+    "admin.toolbar.actions.reject": "Rechazar seleccionados",
+    "admin.reviewQueue.title": "Cola de revisión (Save)",
+    "admin.reviewQueue.info": "Información",
+    "admin.reviewQueue.selectAll": "Seleccionar todos",
+    "admin.reviewQueue.selectedSuffix": "seleccionado(s)",
+    "admin.reviewQueue.selectRow": "Seleccionar",
+    "admin.reviewQueue.empty": "No hay elementos en la cola con estos filtros.",
+    "admin.reviewQueue.noImage": "Sin imagen",
+    "admin.reviewQueue.noDescription": "—",
+    "admin.reviewQueue.column.info": "Inf. Producto",
+    "admin.reviewQueue.column.product": "Producto",
+    "admin.reviewQueue.column.size": "Tamaño",
+    "admin.reviewQueue.column.weightType": "Tipo Peso",
+    "admin.reviewQueue.column.description": "Descripción",
+    "admin.reviewQueue.column.category": "Categoría",
+    "admin.reviewQueue.column.brand": "Marca",
+    "admin.reviewQueue.column.store": "Tienda",
+    "admin.reviewQueue.column.method": "Método",
+    "admin.reviewQueue.column.matchDate": "Fecha del match",
+    "admin.reviewQueue.column.actions": "Acciones",
+    "admin.reviewQueue.actions.menuLabel": "Más acciones",
+    "admin.reviewQueue.actions.view": "Ver",
+    "admin.reviewQueue.actions.edit": "Editar",
+    "admin.reviewQueue.actions.share": "Compartir",
+    "admin.reviewQueue.actions.delete": "Eliminar",
+    "admin.reviewQueue.actions.comingSoon": "Próximamente",
+    "admin.reviewQueue.pagination.showing": "Mostrar",
+    "admin.reviewQueue.pagination.perPage": "por página",
+    "admin.reviewQueue.pagination.of": "de",
+    "admin.reviewQueue.bulkResult.summary": "aprobado(s)/rechazado(s)",
+    "admin.reviewQueue.bulkResult.failedSuffix": "fallaron",
   },
   en: {
     "nav.save": "Save",
@@ -476,6 +576,55 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Human",
     "admin.topbar.notifications": "Notifications",
     "admin.topbar.settings": "Settings",
+    "admin.toolbar.search.placeholder": "Search...",
+    "admin.toolbar.filters": "Filters",
+    "admin.toolbar.filter.provider": "Provider (id)",
+    "admin.toolbar.filter.method": "Method",
+    "admin.toolbar.filter.method.all": "All",
+    "admin.toolbar.filter.confidenceMin": "Min. confidence",
+    "admin.toolbar.filter.confidenceMax": "Max. confidence",
+    "admin.toolbar.filter.orderBy": "Order",
+    "admin.toolbar.filter.orderBy.uncertainty": "Uncertainty (default)",
+    "admin.toolbar.filter.orderBy.createdAt": "Oldest first",
+    "admin.toolbar.view.list": "List view",
+    "admin.toolbar.view.grid": "Grid view (coming soon)",
+    "admin.toolbar.export": "Export (coming soon)",
+    "admin.toolbar.showAll": "Show all",
+    "admin.toolbar.showAll.optionAll": "Show all",
+    "admin.toolbar.showAll.optionUncertain": "Uncertain only",
+    "admin.toolbar.actions": "Actions",
+    "admin.toolbar.actions.approve": "Approve selected",
+    "admin.toolbar.actions.reject": "Reject selected",
+    "admin.reviewQueue.title": "Review queue (Save)",
+    "admin.reviewQueue.info": "Information",
+    "admin.reviewQueue.selectAll": "Select all",
+    "admin.reviewQueue.selectedSuffix": "selected",
+    "admin.reviewQueue.selectRow": "Select",
+    "admin.reviewQueue.empty": "No items in the queue with these filters.",
+    "admin.reviewQueue.noImage": "No image",
+    "admin.reviewQueue.noDescription": "—",
+    "admin.reviewQueue.column.info": "Product info",
+    "admin.reviewQueue.column.product": "Product",
+    "admin.reviewQueue.column.size": "Size",
+    "admin.reviewQueue.column.weightType": "Weight type",
+    "admin.reviewQueue.column.description": "Description",
+    "admin.reviewQueue.column.category": "Category",
+    "admin.reviewQueue.column.brand": "Brand",
+    "admin.reviewQueue.column.store": "Store",
+    "admin.reviewQueue.column.method": "Method",
+    "admin.reviewQueue.column.matchDate": "Match date",
+    "admin.reviewQueue.column.actions": "Actions",
+    "admin.reviewQueue.actions.menuLabel": "More actions",
+    "admin.reviewQueue.actions.view": "View",
+    "admin.reviewQueue.actions.edit": "Edit",
+    "admin.reviewQueue.actions.share": "Share",
+    "admin.reviewQueue.actions.delete": "Delete",
+    "admin.reviewQueue.actions.comingSoon": "Coming soon",
+    "admin.reviewQueue.pagination.showing": "Show",
+    "admin.reviewQueue.pagination.perPage": "per page",
+    "admin.reviewQueue.pagination.of": "of",
+    "admin.reviewQueue.bulkResult.summary": "approved/rejected",
+    "admin.reviewQueue.bulkResult.failedSuffix": "failed",
   },
   pt: {
     "nav.save": "Save",
@@ -630,6 +779,55 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Humano",
     "admin.topbar.notifications": "Notificações",
     "admin.topbar.settings": "Configurações",
+    "admin.toolbar.search.placeholder": "Buscar...",
+    "admin.toolbar.filters": "Filtros",
+    "admin.toolbar.filter.provider": "Fornecedor (id)",
+    "admin.toolbar.filter.method": "Método",
+    "admin.toolbar.filter.method.all": "Todos",
+    "admin.toolbar.filter.confidenceMin": "Confiança mín.",
+    "admin.toolbar.filter.confidenceMax": "Confiança máx.",
+    "admin.toolbar.filter.orderBy": "Ordem",
+    "admin.toolbar.filter.orderBy.uncertainty": "Incerteza (padrão)",
+    "admin.toolbar.filter.orderBy.createdAt": "Mais antigo primeiro",
+    "admin.toolbar.view.list": "Visualização em lista",
+    "admin.toolbar.view.grid": "Visualização em grade (em breve)",
+    "admin.toolbar.export": "Exportar (em breve)",
+    "admin.toolbar.showAll": "Mostrar todos",
+    "admin.toolbar.showAll.optionAll": "Mostrar todos",
+    "admin.toolbar.showAll.optionUncertain": "Somente incertos",
+    "admin.toolbar.actions": "Ações",
+    "admin.toolbar.actions.approve": "Aprovar selecionados",
+    "admin.toolbar.actions.reject": "Rejeitar selecionados",
+    "admin.reviewQueue.title": "Fila de revisão (Save)",
+    "admin.reviewQueue.info": "Informação",
+    "admin.reviewQueue.selectAll": "Selecionar todos",
+    "admin.reviewQueue.selectedSuffix": "selecionado(s)",
+    "admin.reviewQueue.selectRow": "Selecionar",
+    "admin.reviewQueue.empty": "Não há itens na fila com estes filtros.",
+    "admin.reviewQueue.noImage": "Sem imagem",
+    "admin.reviewQueue.noDescription": "—",
+    "admin.reviewQueue.column.info": "Info. Produto",
+    "admin.reviewQueue.column.product": "Produto",
+    "admin.reviewQueue.column.size": "Tamanho",
+    "admin.reviewQueue.column.weightType": "Tipo Peso",
+    "admin.reviewQueue.column.description": "Descrição",
+    "admin.reviewQueue.column.category": "Categoria",
+    "admin.reviewQueue.column.brand": "Marca",
+    "admin.reviewQueue.column.store": "Loja",
+    "admin.reviewQueue.column.method": "Método",
+    "admin.reviewQueue.column.matchDate": "Data do match",
+    "admin.reviewQueue.column.actions": "Ações",
+    "admin.reviewQueue.actions.menuLabel": "Mais ações",
+    "admin.reviewQueue.actions.view": "Ver",
+    "admin.reviewQueue.actions.edit": "Editar",
+    "admin.reviewQueue.actions.share": "Compartilhar",
+    "admin.reviewQueue.actions.delete": "Excluir",
+    "admin.reviewQueue.actions.comingSoon": "Em breve",
+    "admin.reviewQueue.pagination.showing": "Mostrar",
+    "admin.reviewQueue.pagination.perPage": "por página",
+    "admin.reviewQueue.pagination.of": "de",
+    "admin.reviewQueue.bulkResult.summary": "aprovado(s)/rejeitado(s)",
+    "admin.reviewQueue.bulkResult.failedSuffix": "falharam",
   },
 };
 

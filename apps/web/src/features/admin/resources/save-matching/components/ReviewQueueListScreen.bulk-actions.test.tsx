@@ -7,6 +7,13 @@ import type { ReviewQueueData } from "../types";
 // Mismo patrón de mocks que `ReviewQueueListScreen.test.tsx` (useData/usePageContext/navigate),
 // más el mock de `../api` para aislar las mutaciones de red (batch 2e, tasks 2.23/2.24): el bulk
 // action NUNCA debe tragarse un fallo parcial — se testea que se muestra explícitamente.
+//
+// Batch 6: los botones "Aprobar (candidato top)"/"Rechazar seleccionados…" ya NO están sueltos en
+// la pantalla — viven en el dropdown "Acciones" de `ReviewQueueToolbar` (mismo patrón ya probado
+// en `ReviewQueueToolbar.test.tsx`: abrir el trigger, después buscar el item). Además, tras
+// aplicar el resultado, la pantalla llama `refresh()` (`useAdminList`) en vez de
+// `window.location.reload()` — se mockea `fetchReviewQueue` (usado por el fetcher de `useAdminList`)
+// para que ese refresh no rompa el test.
 let mockData: ReviewQueueData;
 vi.mock("vike-react/useData", () => ({ useData: () => mockData }));
 vi.mock("vike-react/usePageContext", () => ({
@@ -16,9 +23,11 @@ vi.mock("vike/client/router", () => ({ navigate: vi.fn() }));
 
 const bulkResolveReviewMatches = vi.fn();
 const fetchTopCandidateId = vi.fn();
+const fetchReviewQueue = vi.fn();
 vi.mock("../api", () => ({
   bulkResolveReviewMatches: (...args: unknown[]) => bulkResolveReviewMatches(...args),
   fetchTopCandidateId: (...args: unknown[]) => fetchTopCandidateId(...args),
+  fetchReviewQueue: (...args: unknown[]) => fetchReviewQueue(...args),
 }));
 
 import { ReviewQueueListScreen } from "./ReviewQueueListScreen";
@@ -44,6 +53,8 @@ describe("ReviewQueueListScreen bulk actions", () => {
   beforeEach(() => {
     bulkResolveReviewMatches.mockReset();
     fetchTopCandidateId.mockReset();
+    fetchReviewQueue.mockReset();
+    fetchReviewQueue.mockResolvedValue({ rows: [], total: 0 });
     mockData = {
       rows: [row({ match_id: "m1" }), row({ match_id: "m2", store_product_name: "Aceite Mazorca" })],
       total: 2,
@@ -61,7 +72,8 @@ describe("ReviewQueueListScreen bulk actions", () => {
 
     fireEvent.click(screen.getByTestId("row-select-m1"));
     fireEvent.click(screen.getByTestId("row-select-m2"));
-    fireEvent.click(screen.getByRole("button", { name: /rechazar seleccionados/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Acciones" }));
+    fireEvent.click(screen.getByText("Rechazar seleccionados"));
 
     // el submit está bloqueado sin motivo (mismo guard que el rechazo individual)
     fireEvent.click(screen.getByTestId("reject-submit"));
@@ -94,7 +106,8 @@ describe("ReviewQueueListScreen bulk actions", () => {
 
     fireEvent.click(screen.getByTestId("row-select-m1"));
     fireEvent.click(screen.getByTestId("row-select-m2"));
-    fireEvent.click(screen.getByRole("button", { name: /aprobar/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Acciones" }));
+    fireEvent.click(screen.getByText("Aprobar seleccionados"));
 
     await waitFor(() => expect(fetchTopCandidateId).toHaveBeenCalledTimes(2));
     expect(fetchTopCandidateId).toHaveBeenCalledWith("m1");
