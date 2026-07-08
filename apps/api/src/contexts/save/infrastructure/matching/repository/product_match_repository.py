@@ -232,6 +232,7 @@ class SqlProductMatchRepository:
                 StoreProductModel,
                 ProviderModel.id,
                 ProviderModel.name,
+                ProviderModel.logo_url,
                 candidate_count,
             )
             .join(StoreProductModel, ProductMatchModel.store_product_id == StoreProductModel.id)
@@ -266,8 +267,14 @@ class SqlProductMatchRepository:
                 store_product_size_text=sp.size_text,
                 candidate_count=int(ccount or 0),
                 created_at=m.created_at,
+                provider_logo_url=plogo,
+                store_product_image_url=sp.image_url,
+                # admin-workspace (Batch 1): sin clasificación de categorías todavía
+                # (`save-category-classification`, cambio de backend separado) — SIEMPRE None.
+                category_slug=None,
+                category_name=None,
             )
-            for m, sp, pid, pname, ccount in rows
+            for m, sp, pid, pname, plogo, ccount in rows
         ]
         return result, int(total)
 

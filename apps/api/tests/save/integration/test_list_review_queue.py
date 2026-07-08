@@ -168,3 +168,31 @@ def test_row_carries_provider_name_raw_attrs_and_candidate_count(db_session) -> 
     assert row.store_product_name == "Arroz Selecto 10lb"
     assert row.store_product_brand == "La Garza"
     assert row.candidate_count == 0  # nadie llamó record_candidates para este match
+
+
+def test_row_carries_provider_logo_store_product_image_and_null_category(db_session) -> None:  # type: ignore[no-untyped-def]
+    """admin-workspace Batch 1: la row de la cola de revisión trae `provider_logo_url`
+    (join a `provider.logo_url`) y `store_product_image_url` (mismo campo que ya usa el
+    detail), para el thumbnail/logo de la tabla del admin (Figma 483:12411). `category_*`
+    queda SIEMPRE None este batch — la clasificación (`save-category-classification`) es un
+    cambio de backend separado que todavía no existe."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, _cid = _seed_provider_and_canonical(
+        db_session, market_id=market, logo_url="https://cdn.cuadra.app/logos/sirena.png"
+    )
+    sp_id, match_id = _seed_pending_match(db_session, pid, confidence=0.4)
+    from src.contexts.save.infrastructure.models import StoreProductModel
+
+    sp_row = db_session.get(StoreProductModel, uuid.UUID(sp_id))
+    sp_row.image_url = "https://cdn.provider.com/arroz.png"
+    db_session.flush()
+
+    use_case = ListReviewQueue(SqlProductMatchRepository(db_session))
+    rows, _total = use_case.execute(market, limit=50, offset=0)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.provider_logo_url == "https://cdn.cuadra.app/logos/sirena.png"
+    assert row.store_product_image_url == "https://cdn.provider.com/arroz.png"
+    assert row.category_slug is None
+    assert row.category_name is None

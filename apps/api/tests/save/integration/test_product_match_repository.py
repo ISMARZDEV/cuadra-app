@@ -46,11 +46,16 @@ def _uuid() -> str:
 
 
 def _seed_provider_and_canonical(
-    db_session, market_id: str = "DO", name: str = "Arroz La Garza"
+    db_session, market_id: str = "DO", name: str = "Arroz La Garza", logo_url: str | None = None
 ) -> tuple[str, str]:  # type: ignore[no-untyped-def]
     prov = SqlProviderRepository(db_session)
     pid = _uuid()
-    prov.add(Provider(pid, "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, market_id))
+    prov.add(
+        Provider(
+            pid, "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, market_id,
+            logo_url=logo_url,
+        )
+    )
     node = TaxonomyNodeModel(name="Arroz", level=0, market_id=market_id)
     db_session.add(node)
     db_session.flush()
