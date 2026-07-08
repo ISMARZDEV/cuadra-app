@@ -94,6 +94,31 @@ metadata:
   clean regen is SAFE and is the intended workflow. Confirm success in the log: `Build Succeeded` +
   `WARN Clerk: ...loaded with development keys`.
 - Any native-dep install (`@clerk/expo`, `expo-web-browser`) needs a rebuild — the fix is the same.
+- **🔴 Free Apple ID + PHYSICAL device: the paid-entitlements blocker.** Building to a REAL device
+  (`expo run:ios --device`) with a FREE Apple ID **fails at signing** (`xcodebuild` error 65,
+  BEFORE the long compile) because the app declares two entitlements a free account can't provision:
+  - `aps-environment` (Push Notifications) ← added by `expo-notifications`
+  - `com.apple.developer.applesignin` (Sign In with Apple) ← added by `@clerk/expo`
+
+  Errors: *"Provisioning Profile … does not support the Push Notifications / Sign In with Apple
+  capability"* / *"doesn't include the aps-environment and com.apple.developer.applesignin
+  entitlements"*. Both features are ALREADY paid-blocked (see the Apple Sign In + remote-push notes),
+  so stripping them from the DEV build loses nothing — Clerk **Email/Google login still works**.
+  **THE FIX (durable):** an env-gated config plugin `apps/mobile/plugins/with-free-signing.js` (added
+  LAST in `app.json` `plugins`) that deletes both entitlements ONLY when `EXPO_FREE_SIGNING=1` →
+  production (paid account) keeps them. Dev device build:
+
+  ```bash
+  cd apps/mobile
+  # UDID = the one from `xcrun xctrace list devices` (NOT the devicectl CoreDevice UUID — expo won't match it)
+  EXPO_FREE_SIGNING=1 npx expo run:ios --device <udid>
+  ```
+
+  The device must be **paired** (`xcrun xctrace list devices`), the app loads JS from Metro (`:8081`),
+  and on first install the phone shows **"Untrusted Developer"** → *Settings → General → VPN & Device
+  Management → trust*. Simulator builds don't need any of this (no real signing). NEVER strip the
+  entitlements by hand-editing `ios/Cuadra/Cuadra.entitlements` — `prebuild --clean` regenerates it;
+  only the env-gated plugin survives a clean prebuild.
 
 ### 3. Dashboard + env setup (the config the code needs)
 
@@ -152,6 +177,7 @@ the dev store otherwise (the `CLERK_ENABLED` branch is a build-time constant →
 | Fetch a fresh token per request (async getter) | Cache a Clerk token (it expires in ~60s) |
 | Verify RS256 + `iss`/`exp`/`nbf`/`azp` (JWKS) | Accept HS256 in prod / skip `azp` |
 | `expo prebuild --clean` after installing a native dep | `expo run:ios` on a stale `ios/` (SPM nil-target crash) |
+| Build a PHYSICAL device on a FREE Apple ID with `EXPO_FREE_SIGNING=1` (env-gated plugin) | Hand-edit `ios/Cuadra/Cuadra.entitlements` (a clean prebuild wipes the strip) |
 | Set the custom session claim before first login | Assume the token carries email (it doesn't by default) |
 | Derive the issuer by decoding the publishable key | Hunt/guess the Frontend API URL |
 | Integrate manually (our dual-mode) | Run `clerk init` (clobbers our wiring) |
@@ -164,8 +190,13 @@ printf '%s' "${PK#pk_test_}" | base64 -d | tr -d '$'
 # Verify Clerk is live end-to-end
 curl -s -o /dev/null -w "%{http_code}\n" https://<domain>/.well-known/jwks.json   # → 200
 cd apps/api && uv run python -c "from src.config import settings; print(settings.clerk_enabled, settings.clerk_jwks_url)"
-# Mobile: the ONLY reliable path after installing @clerk/expo
+# Mobile: after installing @clerk/expo (or any native dep) — the ClerkExpo SPM target lands via a clean prebuild
 cd apps/mobile && npx expo prebuild --clean -p ios && npx expo run:ios
+# Mobile: PHYSICAL device + FREE Apple ID — env-gated plugin strips Push + Apple-Sign-In entitlements.
+# UDID = from `xcrun xctrace list devices` (NOT the devicectl CoreDevice UUID).
+cd apps/mobile && EXPO_FREE_SIGNING=1 npx expo run:ios --device <udid>
+# A NEW device is NOT auto-registered by the CLI on a free PERSONAL team → register it ONCE via Xcode GUI:
+#   open apps/mobile/ios/Cuadra.xcworkspace → pick the device → Run (Xcode auto-registers) → then the CLI works.
 # Tests
 cd apps/api && uv run pytest tests/identity          # verifier + JIT + guard
 pnpm --filter @cuadra/web test && pnpm --filter @cuadra/mobile test   # bridge + useAuth/useSession + login switch
