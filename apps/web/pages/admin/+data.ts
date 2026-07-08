@@ -1,11 +1,16 @@
 import type { PageContextServer } from "vike/types";
 
 import { resolveAdminIdentity } from "@/features/admin/shell/require-admin";
+import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/config";
 
 /** Data compartida por TODO el subárbol `/admin/*` — las capabilities del usuario actual,
- * consumidas por `+Layout.tsx` (vía `useData`) para filtrar el nav de `AdminLayout`. */
+ * consumidas por `+Layout.tsx` (vía `useData`) para filtrar el nav de `AdminLayout`, y el `locale`
+ * para `useAdminI18n(locale)`. `/admin/*` está exento del prefijo `/{locale}/{country}` (ver
+ * `+guard.ts`), así que el locale NO puede leerse de la URL como en el resto del sitio
+ * (`usePageI18n`) — viaja explícito acá, resuelto de `MeResponse.locale` (SSR). */
 export interface AdminShellData {
   capabilities: string[];
+  locale: Locale;
 }
 
 // Vike NO acumula `+data.ts` automáticamente entre niveles de ruta: el `+data.ts` más específico
@@ -19,5 +24,8 @@ export interface AdminShellData {
 // pageContext con un campo custom, y el volumen de tráfico admin es bajo.
 export async function data(pageContext: PageContextServer): Promise<AdminShellData> {
   const identity = await resolveAdminIdentity(pageContext.headers);
-  return { capabilities: identity?.capabilities ?? [] };
+  return {
+    capabilities: identity?.capabilities ?? [],
+    locale: isLocale(identity?.locale) ? identity.locale : DEFAULT_LOCALE,
+  };
 }

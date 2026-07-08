@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useData } from "vike-react/useData";
 
 import { AdminLayout } from "@/features/admin/shell/AdminLayout";
+import { DEFAULT_LOCALE } from "@/i18n/config";
 import type { AdminShellData } from "./+data";
 
 import "../../src/styles/globals.css";
@@ -19,5 +20,9 @@ import "../../src/styles/globals.css";
 // hooks `data()` entre niveles de ruta; ver el comentario ahí).
 export default function Layout({ children }: { children: ReactNode }) {
   const data = useData<Partial<AdminShellData>>();
-  return <AdminLayout capabilities={data?.capabilities ?? []}>{children}</AdminLayout>;
+  return (
+    <AdminLayout capabilities={data?.capabilities ?? []} locale={data?.locale ?? DEFAULT_LOCALE}>
+      {children}
+    </AdminLayout>
+  );
 }

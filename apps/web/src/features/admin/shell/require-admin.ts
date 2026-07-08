@@ -41,6 +41,9 @@ export function extractToken(headers: Record<string, string> | null | undefined)
 export interface AdminIdentity {
   userId: string;
   capabilities: string[];
+  /** Locale crudo de `MeResponse` (`string`, sin validar contra el union `Locale` de i18n —
+   * `+data.ts` lo normaliza con `isLocale` + fallback a `DEFAULT_LOCALE` antes de exponerlo). */
+  locale: string;
 }
 
 /** Resuelve la identidad admin del request (o `null` sin sesión válida). */
@@ -53,7 +56,7 @@ export async function resolveAdminIdentity(
   const res = await getMe({ client: apiClient, headers: { authorization: `Bearer ${token}` } });
   if (res.error || !res.data) return null;
 
-  return { userId: res.data.id, capabilities: res.data.capabilities };
+  return { userId: res.data.id, capabilities: res.data.capabilities, locale: res.data.locale };
 }
 
 /** true solo si el request trae una identidad válida CON la capability pedida. */
