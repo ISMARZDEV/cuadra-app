@@ -24,6 +24,12 @@ class ReviewQueueRow:
     store_product_size_text: str | None
     candidate_count: int
     created_at: datetime
+    provider_logo_url: str | None = None
+    store_product_image_url: str | None = None
+    # admin-workspace (Batch 1): SIEMPRE None hasta que exista `save-category-classification`
+    # (cambio de backend separado que asignará categoría vía los mecanismos del matching).
+    category_slug: str | None = None
+    category_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,5 +1,7 @@
 import type { AdminReviewQueueRowDto } from "@cuadra/api-client";
 
+import type { Locale } from "@/i18n/config";
+
 // Valores de WIRE de la cola de revisión (params de URL) → union string-literal `as const`, misma
 // regla de tipos que `apps/web/src/features/save/enums.ts` (enum = dominio cerrado; `as const` =
 // lo que viaja por la red/URL). `method` refleja los métodos reales de la cascada de matching
@@ -32,4 +34,8 @@ export interface ReviewQueueData {
   rows: AdminReviewQueueRowDto[];
   total: number;
   params: ReviewQueueParams;
+  /** Locale del admin (Batch 6, `AdminShellData.locale` fusionado en `+data.ts`) — el screen lo usa
+   * para `CategoryBadge`/`MethodBadge`/`formatMatchDate`/`useAdminI18n`. Opcional para no romper
+   * los mocks de test existentes que aún no lo setean (cae a `DEFAULT_LOCALE`). */
+  locale?: Locale;
 }

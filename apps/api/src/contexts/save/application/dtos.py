@@ -356,9 +356,14 @@ class AdminReviewQueueRowDto(BaseModel):
     method: str
     provider_id: str
     provider_name: str
+    provider_logo_url: str | None = None
     store_product_name: str | None = None
     store_product_brand: str | None = None
     store_product_size_text: str | None = None
+    store_product_image_url: str | None = None
+    # admin-workspace (Batch 1): NULL hasta que exista `save-category-classification` (cambio de
+    # backend separado que asignará categoría vía los mecanismos del matching: trgm/vector/LLM).
+    category: CategoryRefDto | None = None
     candidate_count: int
     created_at: datetime
 
@@ -371,9 +376,16 @@ class AdminReviewQueueRowDto(BaseModel):
             method=r.method,
             provider_id=r.provider_id,
             provider_name=r.provider_name,
+            provider_logo_url=r.provider_logo_url,
             store_product_name=r.store_product_name,
             store_product_brand=r.store_product_brand,
             store_product_size_text=r.store_product_size_text,
+            store_product_image_url=r.store_product_image_url,
+            category=(
+                CategoryRefDto(slug=r.category_slug, name=r.category_name)
+                if r.category_slug and r.category_name
+                else None
+            ),
             candidate_count=r.candidate_count,
             created_at=r.created_at,
         )

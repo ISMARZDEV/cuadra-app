@@ -7,7 +7,7 @@ import type { ReviewQueueData } from "@/features/admin/resources/save-matching/t
 import { extractToken } from "@/features/admin/shell/require-admin";
 import { apiClient } from "@/lib/api";
 
-import { data as adminShellData } from "../+data";
+import { data as adminShellData, type AdminShellData } from "../+data";
 
 // SSR de la cola de revisión: los filtros/orden/paginación viven en la URL (`?provider_id=&
 // method=&confidence_min=&confidence_max=&order_by=&limit=&offset=`, ver `review-queue-params.ts`,
@@ -22,8 +22,10 @@ import { data as adminShellData } from "../+data";
 // `+Layout.tsx` la necesita para el nav de `AdminLayout`.
 export async function data(
   pageContext: PageContextServer,
-): Promise<ReviewQueueData & { capabilities: string[] }> {
-  const { capabilities } = await adminShellData(pageContext);
+): Promise<ReviewQueueData & AdminShellData> {
+  // Fusiona TODO el shell data (capabilities + locale + name + email) — `AdminLayout`/`AdminTopBar`
+  // los necesitan (Vike no acumula `data()` entre niveles, ver `pages/admin/+data.ts`).
+  const shell = await adminShellData(pageContext);
   const params = parseReviewQueueParams(pageContext.urlParsed.search);
   const token = extractToken(pageContext.headers);
 
@@ -46,5 +48,5 @@ export async function data(
     throw render(500, "No se pudo cargar la cola de revisión.");
   }
 
-  return { rows: res.data.rows, total: res.data.total, params, capabilities };
+  return { rows: res.data.rows, total: res.data.total, params, ...shell };
 }

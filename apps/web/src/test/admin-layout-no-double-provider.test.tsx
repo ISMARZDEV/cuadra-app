@@ -18,7 +18,12 @@ const { clerkShellMock } = vi.hoisted(() => ({
 }));
 vi.mock("@/components/layout/clerk-shell", () => ({ ClerkShell: clerkShellMock }));
 vi.mock("vike-react/useData", () => ({
-  useData: () => ({ capabilities: ["admin_save_matching_review", "admin_save_ingestion_ops"], locale: "es" }),
+  useData: () => ({
+    capabilities: ["admin_save_matching_review", "admin_save_ingestion_ops"],
+    locale: "es",
+    name: "Ismael Martínez",
+    email: "ismael@example.com",
+  }),
 }));
 vi.mock("vike-react/usePageContext", () => ({
   usePageContext: () => ({ urlPathname: "/admin/review-queue" }),

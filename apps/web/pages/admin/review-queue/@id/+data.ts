@@ -5,7 +5,7 @@ import type { PageContextServer } from "vike/types";
 import { extractToken } from "@/features/admin/shell/require-admin";
 import { apiClient } from "@/lib/api";
 
-import { data as adminShellData } from "../../+data";
+import { data as adminShellData, type AdminShellData } from "../../+data";
 
 // SSR del detalle de un match (feature #1, P0): atributos crudos + candidatos, para la vista
 // comparativa. Mismo mecanismo de auth que la lista (`extractToken`, batch 2.11) — nunca un
@@ -15,7 +15,7 @@ import { data as adminShellData } from "../../+data";
 // Compone la data del `+data.ts` de `pages/admin/` (batch 2e) — mismo motivo que la lista: Vike no
 // acumula hooks `data()`, `+Layout.tsx` necesita `capabilities` para el nav.
 export async function data(pageContext: PageContextServer) {
-  const { capabilities } = await adminShellData(pageContext);
+  const shell = await adminShellData(pageContext);
   const matchId = pageContext.routeParams.id;
   const token = extractToken(pageContext.headers);
 
@@ -29,5 +29,5 @@ export async function data(pageContext: PageContextServer) {
     throw render(404, "Match no encontrado.");
   }
 
-  return { detail: res.data, capabilities };
+  return { detail: res.data, ...shell };
 }

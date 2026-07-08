@@ -1,8 +1,16 @@
-import type { BulkResolveResultDto } from "@cuadra/api-client";
-import { bulkResolveReview, createCanonicalAndLink, resolveReview, reviewDetail } from "@cuadra/api-client";
+import type { AdminReviewQueueRowDto, BulkResolveResultDto } from "@cuadra/api-client";
+import {
+  bulkResolveReview,
+  createCanonicalAndLink,
+  listReviewQueue,
+  resolveReview,
+  reviewDetail,
+} from "@cuadra/api-client";
 
 import { authHeaders } from "@/features/save/hooks/use-auth";
 import { apiClient } from "@/lib/api";
+
+import type { ReviewQueueParams } from "./types";
 
 // Mutaciones client-side (click del revisor) — MISMO mecanismo de auth que el resto de la app
 // (`authHeaders()`, token async de Clerk: nunca reusar el `extractToken` SSR de `require-admin.ts`,
@@ -75,6 +83,32 @@ export async function fetchTopCandidateId(matchId: string): Promise<string | nul
   if (res.error || !res.data) return null;
   const [top] = res.data.candidates ?? [];
   return top?.canonical_product_id ?? null;
+}
+
+/** Refetch client-side de la página vigente de la cola (Batch 6): reemplaza el
+ * `window.location.reload()` post-bulk-mutación de `ReviewQueueListScreen` — `useAdminList` llama
+ * a esto con los MISMOS `params` que resolvieron el SSR inicial (filtros/orden/paginación no
+ * cambian por una mutación), así el `total` se ajusta sin recargar la página. `null` en caso de
+ * error de red (mismo contrato que el resto de este archivo: nunca lanza, el llamador decide). */
+export async function fetchReviewQueue(
+  params: ReviewQueueParams,
+): Promise<{ rows: AdminReviewQueueRowDto[]; total: number } | null> {
+  const res = await listReviewQueue({
+    client: apiClient,
+    headers: await authHeaders(),
+    query: {
+      market: params.market,
+      provider_id: params.provider_id,
+      method: params.method,
+      confidence_min: params.confidence_min,
+      confidence_max: params.confidence_max,
+      order_by: params.order_by,
+      limit: params.limit,
+      offset: params.offset,
+    },
+  });
+  if (res.error || !res.data) return null;
+  return { rows: res.data.rows, total: res.data.total };
 }
 
 export async function createCanonicalAndLinkMatch(params: {
