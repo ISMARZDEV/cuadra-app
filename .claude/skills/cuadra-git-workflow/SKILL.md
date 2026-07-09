@@ -48,6 +48,13 @@ chore/<scope>
 7. **NEVER delete REMOTE branches.** After a merge, delete ONLY the local branch (`git branch -d`).
    Do NOT pass `--delete-branch` to `gh pr merge`, and do NOT run `git push origin --delete`. The
    remote branch stays on GitHub (history/reference); only the local copy is cleaned up.
+8. **NEVER commit, push, or open a PR mid-flight without the user explicitly asking in the
+   CURRENT turn.** "Tests green" or a finished batch is NOT permission — the user repeatedly had
+   to say "no hagas commits si no te indico" / "no pushees" (2026-07-09 friction audit). Finish,
+   report, and wait for the instruction.
+9. **Never make the user babysit CI.** After opening a PR, run `gh pr checks <n> --watch` as a
+   background task with a completion notification — the user should be TOLD when it's green, not
+   have to ask "¿ya pasó?".
 
 ## A. Start a work branch
 
