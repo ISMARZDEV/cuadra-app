@@ -63,7 +63,13 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        # En dev el web corre SIEMPRE en :3006. Un `CORS_ORIGINS` fantasma exportado a mano en la
+        # shell (la env var del OS le gana al `.env` en pydantic-settings) no debe poder tumbar el
+        # preflight del web: garantizamos su origen pase lo que pase. Prod queda intacto.
+        if self.app_env == "dev" and "http://localhost:3006" not in origins:
+            origins.append("http://localhost:3006")
+        return origins
 
 
 settings = Settings()
