@@ -50,6 +50,14 @@ In the app's `ios/<App>.xcodeproj/project.pbxproj`, the app target needs
 `CODE_SIGN_STYLE = Automatic` + `DEVELOPMENT_TEAM = <real team id>`. Keep it **Automatic** (the
 profile is Xcode-managed; Manual signing rejects a managed profile). Build with
 `-allowProvisioningUpdates`. ⚠ `expo prebuild` regenerates `ios/` and wipes this — reinject after.
+- **Paid-only entitlements block free signing.** If the app declares `aps-environment` (Push, added by
+  `expo-notifications`) or `com.apple.developer.applesignin` (Apple Sign In, added by `@clerk/expo`), a
+  FREE account can't provision them → `xcodebuild` **error 65** at the planning/signing step (*"Provisioning
+  Profile … does not support the Push Notifications / Sign In with Apple capability"*). Both are already
+  paid-blocked, so stripping them from the DEV build loses nothing. Fix: an **env-gated config plugin**
+  (`apps/mobile/plugins/with-free-signing.js`, added LAST in `app.json` `plugins`) that deletes those
+  entitlements ONLY when `EXPO_FREE_SIGNING=1` → prod (paid) keeps them. Build with `EXPO_FREE_SIGNING=1`.
+  Hand-editing `ios/Cuadra/Cuadra.entitlements` does NOT survive a clean prebuild — use the plugin. (See `cuadra-clerk`.)
 
 **3. Toolchain must match the SDK (compile errors ≠ your code).**
 - `'weak' must be a mutable variable` in `expo-modules-jsi` → your **Swift is too old** for the SDK
@@ -61,10 +69,20 @@ profile is Xcode-managed; Manual signing rejects a managed profile). Build with
 `localhost` on the phone = the phone. Point the app at the **Mac's LAN IP** and bind the backend to
 all interfaces. Expo inlines `EXPO_PUBLIC_*` into the **JS bundle at Metro time**, so changing it +
 restarting Metro is enough — **no native rebuild**. Phone and Mac must share Wi-Fi.
+  **NEVER start Metro with a plain `npx expo start`** — it bakes `localhost` (from `.env`) into the bundle,
+  so on a PHYSICAL device every backend call fails: symptom = chat *"No pude responder"* / *"Productos que
+  sigues"* empty ON THE DEVICE but fine in the SIMULATOR (where `localhost` reaches the Mac). **ALWAYS use
+  `./scripts/dev-up.sh`** — it detects the LAN IP, injects `EXPO_PUBLIC_API_URL`, binds the API to `0.0.0.0`,
+  and runs Metro on **:8087**. Cuadra's `.env` is permission-protected (can't edit it) → the env override at
+  Metro start (what dev-up.sh does) is the way, not a `.env` edit.
 
-**5. Each extra device must be registered.** A free profile only covers devices present when it was
-made. For a second device (e.g. iPad), rebuild to it with `-allowProvisioningDeviceRegistration`
-(regenerates the profile). Free certs/profiles **expire in 7 days** → rebuild to renew.
+**5. A NEW device needs `-allowProvisioningDeviceRegistration` — and `expo run:ios` does NOT pass it.**
+A free profile only covers devices present when it was made. `npx expo run:ios --device <new>` **FAILS**
+on an unregistered device (*"provisioning profile doesn't include the currently selected device"*) because
+it passes `-allowProvisioningUpdates` but NOT `-allowProvisioningDeviceRegistration`. Once a cert already
+exists (the first device worked), you do NOT need the Xcode GUI — register + install the 2nd device
+(e.g. iPad) fully by CLI via **`xcodebuild` directly with BOTH flags**, then `devicectl install` (see
+Commands). Free certs/profiles **expire in 7 days** → rebuild to renew.
 
 ## Commands
 
@@ -75,15 +93,17 @@ xcrun xctrace list devices                       # device UDIDs (hardware UDID, 
 security find-identity -v -p codesigning         # 0 = no usable identity yet (do the dummy trick)
 xcodebuild -downloadPlatform iOS                 # install missing iOS platform
 
-# Build + free-sign + install to a connected device (UDID = hardware udid)
+# Build + free-sign + REGISTER + install to a device (works for a NEW device; UDID = hardware udid).
+# EXPO_FREE_SIGNING=1 first only matters if you re-prebuild; xcodebuild uses the already-stripped entitlements.
 xcodebuild -workspace ios/<App>.xcworkspace -scheme <App> -configuration Debug \
   -destination "id=<UDID>" -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
 xcrun devicectl device install app --device <UDID> "<path>/<App>.app"
 
-# Run the JS + reach a LAN backend (no native rebuild needed)
-IP=$(ipconfig getifaddr en0)
-# backend must bind 0.0.0.0, e.g.:  uvicorn app:app --host 0.0.0.0 --port 8005
-EXPO_PUBLIC_API_URL="http://$IP:8005" npx expo start --dev-client
+# Run the JS + reach a LAN backend (no native rebuild needed).
+# BEST (Cuadra): one command — DB + API(0.0.0.0:8005) + Metro(:8087) all wired to the LAN IP:
+./scripts/dev-up.sh                 # add --clear to reset Metro cache after a native/asset change
+# Manual equivalent (NEVER a plain `expo start` — that bakes localhost):
+IP=$(ipconfig getifaddr en0); EXPO_PUBLIC_API_URL="http://$IP:8005" npx expo start --dev-client --port 8087
 ```
 
 ## Resources
