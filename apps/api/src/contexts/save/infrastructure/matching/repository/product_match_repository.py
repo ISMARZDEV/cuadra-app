@@ -24,16 +24,19 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from sqlalchemy import Float, cast, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from ....domain.entities import MatchCandidate, MatchCandidateSnapshot, ProductMatch
 from ....domain.review_queue import ReviewCandidateView, ReviewQueueRow
+from ....domain.taxonomy import slugify
 from ...models import (
     CanonicalProductModel,
+    CategoryClassificationModel,
     ProductMatchModel,
     ProviderModel,
     ReviewCandidateModel,
     StoreProductModel,
+    TaxonomyNodeModel,
 )
 from ..cascade.banding import MATCH_HIGH_THRESHOLD, MATCH_MID_THRESHOLD
 
@@ -226,6 +229,13 @@ class SqlProductMatchRepository:
             .correlate(ProductMatchModel)
             .scalar_subquery()
         )
+        # Categoría (save-category-classification): la clasificación `active` del store_product →
+        # su hoja → ancestro TOPE (la taxonomía es 2 niveles, así que el tope es el padre de la hoja;
+        # COALESCE cae a la hoja si por defensa fuera level-0). Sin clasificación → NULL → badge N/A.
+        leaf = aliased(TaxonomyNodeModel)
+        top = aliased(TaxonomyNodeModel)
+        cc = CategoryClassificationModel
+        category_top_name = func.coalesce(top.name, leaf.name)
         stmt = (
             select(
                 ProductMatchModel,
@@ -234,9 +244,15 @@ class SqlProductMatchRepository:
                 ProviderModel.name,
                 ProviderModel.logo_url,
                 candidate_count,
+                category_top_name,
             )
             .join(StoreProductModel, ProductMatchModel.store_product_id == StoreProductModel.id)
             .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .outerjoin(
+                cc, (cc.store_product_id == StoreProductModel.id) & (cc.status == "active")
+            )
+            .outerjoin(leaf, leaf.id == cc.taxonomy_node_id)
+            .outerjoin(top, top.id == leaf.parent_id)
             .where(*conditions)
         )
         if order_by == "created_at":
@@ -269,12 +285,12 @@ class SqlProductMatchRepository:
                 created_at=m.created_at,
                 provider_logo_url=plogo,
                 store_product_image_url=sp.image_url,
-                # admin-workspace (Batch 1): sin clasificación de categorías todavía
-                # (`save-category-classification`, cambio de backend separado) — SIEMPRE None.
-                category_slug=None,
-                category_name=None,
+                # Categoría TOPE (save-category-classification): slug derivado en read-time
+                # (sin columna). Sin clasificación `active` → None → badge "N/A".
+                category_slug=slugify(cat_name) if cat_name else None,
+                category_name=cat_name,
             )
-            for m, sp, pid, pname, plogo, ccount in rows
+            for m, sp, pid, pname, plogo, ccount, cat_name in rows
         ]
         return result, int(total)
 

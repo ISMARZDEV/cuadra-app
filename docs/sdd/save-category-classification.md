@@ -454,9 +454,9 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 10.2 Wiring: `refresh_source(..., classifier=)` (runner) + `save_refresh.py` (build_classifier + build_category_embedder) + `assets.py` (embed de categorías en `embed_canonicals` + classifier en el refresh).
 - [x] 10.3 Unit (3): nuevo → clasifica; conocido en refresh → clasifica (idempotente); flag OFF → intacto (R14). RED→GREEN. 23 verdes en la batería refresh+clasificación+composición.
 
-### Batch 11 — Wiring cola de revisión [R12] (depende de 1, 7)
-- [ ] 11.1 `list_review_queue`: `LEFT JOIN category_classification (active) → taxonomy_node → ancestro tope`; poblar `category_slug`/`category_name` con la TOPE. Sin clasificación → `None`.
-- [ ] 11.2 Test integración (`test_list_review_queue`): `store_product` con hoja `Frutas` → row `category={slug:'frutas-verduras', name:'Frutas & Verduras'}`; sin clasificación → `None`. Sin tocar DTO ni UI.
+### Batch 11 — Wiring cola de revisión [R12] ✅ DONE (depende de 1, 7)
+- [x] 11.1 `list_review_queue`: `outerjoin category_classification (active) → leaf → top (leaf.parent_id)`; `COALESCE(top.name, leaf.name)` = categoría TOPE. `slugify` en read-time (sin columna). Sin clasificación → `None`. Índice único parcial garantiza ≤1 activa → sin fan-out.
+- [x] 11.2 Test integración `test_review_queue_category.py` (2): hoja `Arroz, Granos & Legumbres` → row `category={slug:'despensa-abarrotes', name:'Despensa & Abarrotes'}` (tope, no la hoja); sin clasificación → `None`. Review-queue existente 8/8 sin regresión. Sin tocar DTO ni UI.
 
 ### Batch 12 — VERIFY [R14] (depende de todo)
 - [ ] 12.1 Suite backend completa verde; matching intacto; typecheck/lint.
