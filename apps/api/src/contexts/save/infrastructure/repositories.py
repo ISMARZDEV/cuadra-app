@@ -11,12 +11,16 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import and_, func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from src.shared.money import Currency, Money
 
 from ..domain.alerts import Alert, AlertNotification, AlertSubscription
-from ..domain.classification import CategoryClassification, ClassifiableProduct
+from ..domain.classification import (
+    CategoryCandidate,
+    CategoryClassification,
+    ClassifiableProduct,
+)
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
 from ..domain.entities import (
@@ -1026,5 +1030,73 @@ class SqlCategoryClassificationRepository:
                 brand=r[2] or "",
                 size_text=r[3] or "",
             )
+            for r in rows
+        ]
+
+
+class SqlCategoryIndexRepository:
+    """Index-side de embeddings de categoría — hojas (level=1) del market."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def leaves_without_embedding(
+        self, market_id: str, limit: int
+    ) -> list[tuple[str, str, str | None]]:
+        parent = aliased(TaxonomyNodeModel)
+        rows = self._s.execute(
+            select(TaxonomyNodeModel.id, TaxonomyNodeModel.name, parent.name)
+            .outerjoin(parent, parent.id == TaxonomyNodeModel.parent_id)
+            .where(
+                TaxonomyNodeModel.market_id == market_id,
+                TaxonomyNodeModel.level == 1,
+                TaxonomyNodeModel.embedding.is_(None),
+            )
+            .limit(limit)
+        ).all()
+        return [(str(r[0]), r[1], r[2]) for r in rows]
+
+    def set_embedding(self, node_id: str, embedding: list[float]) -> None:
+        node = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
+        assert node is not None
+        node.embedding = embedding
+        self._s.flush()
+
+
+class SqlCategoryCandidateRepository:
+    """Búsqueda de hojas candidatas (level=1) por trgm (léxico) y pgvector (semántico)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def find_leaves_trgm(self, name: str, market_id: str, limit: int) -> list[CategoryCandidate]:
+        score = func.similarity(TaxonomyNodeModel.name, name)
+        rows = self._s.execute(
+            select(TaxonomyNodeModel.id, score)
+            .where(TaxonomyNodeModel.market_id == market_id, TaxonomyNodeModel.level == 1)
+            .order_by(score.desc())
+            .limit(limit)
+        ).all()
+        return [
+            CategoryCandidate(taxonomy_node_id=str(r[0]), score=float(r[1]), source="trgm")
+            for r in rows
+        ]
+
+    def find_leaves_vector(
+        self, embedding: list[float], market_id: str, limit: int
+    ) -> list[CategoryCandidate]:
+        dist = TaxonomyNodeModel.embedding.cosine_distance(embedding)
+        rows = self._s.execute(
+            select(TaxonomyNodeModel.id, dist)
+            .where(
+                TaxonomyNodeModel.market_id == market_id,
+                TaxonomyNodeModel.level == 1,
+                TaxonomyNodeModel.embedding.is_not(None),
+            )
+            .order_by(dist.asc())
+            .limit(limit)
+        ).all()
+        return [
+            CategoryCandidate(taxonomy_node_id=str(r[0]), score=1.0 - float(r[1]), source="vector")
             for r in rows
         ]

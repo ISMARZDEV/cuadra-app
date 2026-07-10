@@ -427,11 +427,11 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 4.3 Tests integración (3): round-trip; supersede (1 active + 1 superseded, `active_for` = la nueva); `list_unclassified` excluye clasificados. RED (ImportError) → GREEN.
 - **Hallazgo**: `store_product` NO tiene `market_id` (el de línea 290 era `PriceAlertModel`) → el backfill filtra por market vía `JOIN provider`.
 
-### Batch 5 — Candidatos trgm/vector + embeddings de categoría [R4, R5] (depende de 1, 2)
-- [ ] 5.1 `infrastructure/classification/category_embedding_text.py`: `build_category_embedding_text(node, parent)` (receta ÚNICA). Test: index-side lo usa; garantía de receta compartida.
-- [ ] 5.2 `SqlCategoryIndexRepository` (`leaves_without_embedding`, `set_embedding`) + `EmbedCategories` use case (batched). Unit con fakes (mirror `test_embed_canonical_products`).
-- [ ] 5.3 `SqlCategoryCandidateRepository.find_leaves_trgm` (`similarity`+`%`, `level=1`, por market). Test integración: `"Detergente en polvo"` rankea `Lavado De Ropa`.
-- [ ] 5.4 `find_leaves_vector` (`cosine_distance`, HNSW). Test integración: cercanía semántica sin tokens compartidos.
+### Batch 5 — Candidatos trgm/vector + embeddings de categoría [R4, R5] ✅ DONE (depende de 1, 2)
+- [x] 5.1 `category_embedding_text.py`: `build_category_embedding_text(node, parent)` = `"{padre} {subcategoría}"` (contexto). **Corrección de spec**: NO es receta compartida query/index — index embeddea CATEGORÍAS, query embeddea PRODUCTOS (entidades distintas, mismo espacio BGE-M3, distancias comparables). 2 tests unit.
+- [x] 5.2 `SqlCategoryIndexRepository` (`leaves_without_embedding` con self-join a padre, `set_embedding`) + `EmbedCategories` use case (batched, idempotente, mirror `EmbedCanonicalProducts`). Puertos `CategoryIndexRepository`. 2 tests unit con fakes.
+- [x] 5.3 `SqlCategoryCandidateRepository.find_leaves_trgm` (`func.similarity`, `level=1`, order desc, sin filtro `%` — tabla chica ~135 filas, seq scan OK). Puerto `CategoryCandidateRepository`. Test integración: `"Arroz Blanco"` → `Arroz, Granos & Legumbres` primero.
+- [x] 5.4 `find_leaves_vector` (`cosine_distance`, order asc, score=1-dist). Test integración: vector idéntico → hoja target primera. **Sin HNSW** (tabla ~135 filas, seq scan instantáneo; el índice sería sobre-ingeniería). RED (ImportError) → GREEN 6/6.
 
 ### Batch 6 — Juez de categoría [R7 parcial] (depende de 3)
 - [ ] 6.1 `infrastructure/classification/category_judge.py`: adapter sobre `get_chat_model("smart")`, fail-safe (parse/validation/client error → `uncertain`, nunca inventa). Prompt de clasificación (EN, per skill cuadra-agent-prompts). Test adapter con `chat_model` fake.

@@ -12,7 +12,7 @@ from typing import Protocol
 from src.shared.money import Money
 
 from ..alerts import Alert, AlertNotification, AlertSubscription
-from ..classification import CategoryClassification, ClassifiableProduct
+from ..classification import CategoryCandidate, CategoryClassification, ClassifiableProduct
 from ..comparison import StoreQuote
 from ..drops import PriceChange
 from ..entities import (
@@ -148,6 +148,34 @@ class CategoryClassificationRepository(Protocol):
         self, market_id: str, *, is_canonical: bool, limit: int
     ) -> list[ClassifiableProduct]:
         """Productos del mercado SIN clasificación `active` (gate del backfill)."""
+        ...
+
+
+class CategoryCandidateRepository(Protocol):
+    """Búsqueda de hojas de taxonomía candidatas (nivel 1) para clasificar un producto."""
+
+    def find_leaves_trgm(self, name: str, market_id: str, limit: int) -> list[CategoryCandidate]:
+        """Candidatas por similitud léxica (pg_trgm) del nombre vs nombres de subcategoría."""
+        ...
+
+    def find_leaves_vector(
+        self, embedding: list[float], market_id: str, limit: int
+    ) -> list[CategoryCandidate]:
+        """Candidatas por cercanía coseno (pgvector) del embedding del producto."""
+        ...
+
+
+class CategoryIndexRepository(Protocol):
+    """Index-side de embeddings de categoría (para EmbedCategories)."""
+
+    def leaves_without_embedding(
+        self, market_id: str, limit: int
+    ) -> list[tuple[str, str, str | None]]:
+        """(node_id, name, parent_name) de las hojas nivel-1 aún sin embedding."""
+        ...
+
+    def set_embedding(self, node_id: str, embedding: list[float]) -> None:
+        """Persiste el embedding BGE-M3 de una hoja."""
         ...
 
 
