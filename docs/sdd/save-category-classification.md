@@ -433,8 +433,8 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 5.3 `SqlCategoryCandidateRepository.find_leaves_trgm` (`func.similarity`, `level=1`, order desc, sin filtro `%` — tabla chica ~135 filas, seq scan OK). Puerto `CategoryCandidateRepository`. Test integración: `"Arroz Blanco"` → `Arroz, Granos & Legumbres` primero.
 - [x] 5.4 `find_leaves_vector` (`cosine_distance`, order asc, score=1-dist). Test integración: vector idéntico → hoja target primera. **Sin HNSW** (tabla ~135 filas, seq scan instantáneo; el índice sería sobre-ingeniería). RED (ImportError) → GREEN 6/6.
 
-### Batch 6 — Juez de categoría [R7 parcial] (depende de 3)
-- [ ] 6.1 `infrastructure/classification/category_judge.py`: adapter sobre `get_chat_model("smart")`, fail-safe (parse/validation/client error → `uncertain`, nunca inventa). Prompt de clasificación (EN, per skill cuadra-agent-prompts). Test adapter con `chat_model` fake.
+### Batch 6 — Juez de categoría [R7 parcial] ✅ DONE (depende de 3)
+- [x] 6.1 `infrastructure/classification/category_judge.py`: `CategoryJudge` sobre `get_chat_model("smart")`, structured output `_Verdict`, fail-safe (client error/unparseable/validación → `uncertain`, NUNCA `match`). Prompt EN (pertenencia producto→categoría). Puerto `CategoryJudgePort` + `CategoryVerdict` PURO en domain (no viola hexagonal: el puerto no referencia el `JudgeVerdict` de infra). Modelo inyectado → tests sin red. 4 tests adapter (RED→GREEN).
 
 ### Batch 7 — Orquestador `ClassifyStoreProduct` [R6, R7, R8, R9] (depende de 3,4,5,6)
 - [ ] 7.1 `application/classify_store_product.py`: cascada léxico→(trgm+vector)→RRF→boosts→banding→juez(grey)→persist. Reusa `reciprocal_rank_fusion`/`determine_band`/`apply_boosts`.

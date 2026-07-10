@@ -12,7 +12,12 @@ from typing import Protocol
 from src.shared.money import Money
 
 from ..alerts import Alert, AlertNotification, AlertSubscription
-from ..classification import CategoryCandidate, CategoryClassification, ClassifiableProduct
+from ..classification import (
+    CategoryCandidate,
+    CategoryClassification,
+    CategoryVerdict,
+    ClassifiableProduct,
+)
 from ..comparison import StoreQuote
 from ..drops import PriceChange
 from ..entities import (
@@ -176,6 +181,14 @@ class CategoryIndexRepository(Protocol):
 
     def set_embedding(self, node_id: str, embedding: list[float]) -> None:
         """Persiste el embedding BGE-M3 de una hoja."""
+        ...
+
+
+class CategoryJudgePort(Protocol):
+    """Juez LLM de la banda grey: ¿el producto pertenece a la categoría candidata? (fail-safe)."""
+
+    def judge(self, product: ClassifiableProduct, candidate_name: str) -> CategoryVerdict:
+        """Veredicto validado. Ante cualquier error/duda → `uncertain` (nunca inventa `match`)."""
         ...
 
 

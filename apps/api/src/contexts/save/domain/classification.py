@@ -7,7 +7,8 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,16 @@ class ClassificationResult:
     confidence: float
     method: str  # lexicon|trgm|vector|hybrid|llm|human|none
     band: str  # auto|grey|human
+
+
+@dataclass(frozen=True, slots=True)
+class CategoryVerdict:
+    """Veredicto (ya validado) del juez LLM sobre si un producto pertenece a una categoría candidata.
+    `match` = pertenece; `no_match` = no pertenece; `uncertain` = ambiguo (fail-safe, no asigna)."""
+
+    decision: Literal["match", "no_match", "uncertain"]
+    confidence: float
+    cited_fields: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
