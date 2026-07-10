@@ -12,6 +12,12 @@ from typing import Protocol
 from src.shared.money import Money
 
 from ..alerts import Alert, AlertNotification, AlertSubscription
+from ..classification import (
+    CategoryCandidate,
+    CategoryClassification,
+    CategoryVerdict,
+    ClassifiableProduct,
+)
 from ..comparison import StoreQuote
 from ..drops import PriceChange
 from ..entities import (
@@ -128,6 +134,61 @@ class TaxonomyRepository(Protocol):
 
     def list_products_under(self, node_id: str) -> list[CanonicalProduct]:
         """Productos canónicos cuyo nodo es `node_id` o un descendiente."""
+        ...
+
+
+class CategoryClassificationRepository(Protocol):
+    """Registro de decisión de clasificación de categoría (A2). Una sola fila `active` por producto."""
+
+    def active_for(self, ref_id: str, *, is_canonical: bool) -> CategoryClassification | None:
+        """La clasificación `active` actual del producto (o None si no está clasificado)."""
+        ...
+
+    def save_active(self, classification: CategoryClassification) -> None:
+        """Marca `superseded` la `active` previa del mismo producto e inserta la nueva `active`
+        (MISMA transacción — invariante: a lo sumo una activa por producto)."""
+        ...
+
+    def list_unclassified(
+        self, market_id: str, *, is_canonical: bool, limit: int, offset: int = 0
+    ) -> list[ClassifiableProduct]:
+        """Productos del mercado SIN clasificación `active` (gate del backfill), orden estable por id."""
+        ...
+
+
+class CategoryCandidateRepository(Protocol):
+    """Búsqueda de hojas de taxonomía candidatas (nivel 1) para clasificar un producto."""
+
+    def find_leaves_trgm(self, name: str, market_id: str, limit: int) -> list[CategoryCandidate]:
+        """Candidatas por similitud léxica (pg_trgm) del nombre vs nombres de subcategoría."""
+        ...
+
+    def find_leaves_vector(
+        self, embedding: list[float], market_id: str, limit: int
+    ) -> list[CategoryCandidate]:
+        """Candidatas por cercanía coseno (pgvector) del embedding del producto."""
+        ...
+
+
+class CategoryIndexRepository(Protocol):
+    """Index-side de embeddings de categoría (para EmbedCategories)."""
+
+    def leaves_without_embedding(
+        self, market_id: str, limit: int
+    ) -> list[tuple[str, str, str | None]]:
+        """(node_id, name, parent_name) de las hojas nivel-1 aún sin embedding."""
+        ...
+
+    def set_embedding(self, node_id: str, embedding: list[float]) -> None:
+        """Persiste el embedding BGE-M3 de una hoja."""
+        ...
+
+
+class CategoryJudgePort(Protocol):
+    """Juez LLM de la banda grey: ¿el producto pertenece a la categoría candidata? (fail-safe)."""
+
+    def judge(self, product: ClassifiableProduct, candidate_name: str) -> CategoryVerdict:
+        """Veredicto validado. Ante cualquier error/duda → `uncertain` (nunca inventa `match`)."""
         ...
 
 

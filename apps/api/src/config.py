@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     save_matching_cascade_enabled: bool = False
     save_bge_m3_endpoint_url: str = ""
 
+    # Save · clasificación de categoría (save-category-classification). Ship-dark, igual que la
+    # cascada de matching: el clasificador (léxico→trgm→vector→juez) solo se engancha a la ingesta
+    # cuando `save_classification_enabled=true` (tras sembrar la taxonomía + embeddear categorías).
+    # Reusa `save_bge_m3_endpoint_url` (mismo BGE-M3) y `llm_provider` (juez).
+    save_classification_enabled: bool = False
+
     # CORS (§12·E E.1) — coma-separado (evita el parseo JSON de listas de pydantic-settings).
     # La web de Cuadra corre SIEMPRE en :3006 (dev). Prod se agrega vía CORS_ORIGINS en el entorno.
     cors_origins: str = "http://localhost:3006"
