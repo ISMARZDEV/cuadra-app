@@ -417,9 +417,9 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 2.2 **Coexistencia RESUELTA**: reusar `_NS` + esquema `uuid5(taxonomy:{market}/...)` → el seed real es idempotente y COMPATIBLE con la demo (mismos ids para los mismos nodos; las hojas profundas de la demo quedan como hijos extra). **Cero limpieza.** Verificado: tras correr el seed, DO tiene exactamente **15 raíces** (el "Despensa & Abarrotes" de la demo se fusionó, no duplicó).
 - [x] 2.3 Tests (7): unit del parser (4, incl. MD real → 15 cats) + integración (3: idempotencia 2×, 15 raíces + subcats, `ListCategories`). RED (ModuleNotFound) → GREEN 7/7. Seed real ejercitado: **DO = 15 tope + 120 subcategorías**.
 
-### Batch 3 — Domain puro [R3 parcial] (sin dependencia de DB — paralelizable con 1-2)
-- [ ] 3.1 `domain/classification.py`: `CategoryCandidate`, `ClassificationResult`, `CategoryClassification`, `ClassifiableProduct` (dataclasses frozen, PUROS). Test de construcción/invariantes.
-- [ ] 3.2 `infrastructure/classification/lexicon.py`: `build_lexicon_index(leaves)` + `lexicon_match(name, index)`. Unit puro: token `arroz` → hoja; sin keyword → `None`; normalización con `slugify`/tokens.
+### Batch 3 — Domain puro [R3 parcial] ✅ DONE (sin dependencia de DB)
+- [x] 3.1 `domain/classification.py`: `ClassifiableProduct`, `CategoryCandidate`, `ClassificationResult`, `CategoryClassification` (frozen slots, PUROS). 4 tests de construcción. lint-imports: domain sigue puro.
+- [x] 3.2 `infrastructure/classification/lexicon.py`: `build_lexicon_index(leaves)` + `lexicon_match(name, index)`. Alta precisión: tokens ≥3 sin stopwords, token ambiguo (>1 hoja) DESCARTADO, match solo si pega UNA hoja. Reusa `slugify` (normaliza acento/caja). 6 tests unit (keyword distintivo, single-word, sin-keyword→None, acento, ambiguo→None, stopwords). RED (ModuleNotFound) → GREEN 10/10.
 
 ### Batch 4 — Puertos + repo de clasificación [R8 storage] (depende de 1, 3)
 - [ ] 4.1 Protocols en `domain/ports/repositories.py`: `CategoryClassificationRepository`, `CategoryCandidateRepository`, `CategoryIndexRepository`, `CategoryJudgePort`.
