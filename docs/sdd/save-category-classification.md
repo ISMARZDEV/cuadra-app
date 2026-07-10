@@ -458,9 +458,10 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 11.1 `list_review_queue`: `outerjoin category_classification (active) → leaf → top (leaf.parent_id)`; `COALESCE(top.name, leaf.name)` = categoría TOPE. `slugify` en read-time (sin columna). Sin clasificación → `None`. Índice único parcial garantiza ≤1 activa → sin fan-out.
 - [x] 11.2 Test integración `test_review_queue_category.py` (2): hoja `Arroz, Granos & Legumbres` → row `category={slug:'despensa-abarrotes', name:'Despensa & Abarrotes'}` (tope, no la hoja); sin clasificación → `None`. Review-queue existente 8/8 sin regresión. Sin tocar DTO ni UI.
 
-### Batch 12 — VERIFY [R14] (depende de todo)
-- [ ] 12.1 Suite backend completa verde; matching intacto; typecheck/lint.
-- [ ] 12.2 (Opcional, en vivo) Spike de calibración: activar el flag en dev, correr un refresh chico, medir % que cae a grey (costo del juez) antes de un backfill masivo. Verificar el badge real en `/admin/review-queue` (smoke visual del usuario — el agente no puede por el SSR gate de Clerk).
+### Batch 12 — VERIFY [R14] ✅ DONE (depende de todo)
+- [x] 12.1 Suite backend: **771 passed, 1 fallo PRE-EXISTENTE** (`test_admin_api::test_super_admin_gets_200_on_review_queue_routes`) — verificado con evidencia que falla IDÉNTICO con el `product_match_repository.py` de `developer` (fixture roto post-size-gate, ajeno a este cambio). lint-imports 2/2 en cada batch. Matching intacto.
+- [x] 12.2 **Spike EN VIVO** (flag ON, DB real dev): 120 categorías embebidas (BGE-M3 in-process); 25 store_products DO clasificados → **23 vía léxico** (instantáneo, sin LLM) a `Despensa & Abarrotes·(Arroz, Granos & Legumbres)`; **2 sin clasificar** = el guard de ambigüedad funcionando (`Vinagre De Arroz`, `Crema De Arroz` → 2 hojas → no fuerza). 23 clasificaciones `active` persistidas. Flag queda OFF en `.env` (ship-dark). Badge visual en `/admin/review-queue` = smoke del usuario (SSR gate Clerk).
+- **Nota operativa**: el backfill masivo (516 DO) queda como paso de activación cuando el usuario decida encender el flag; el léxico resuelve el grueso sin costo LLM.
 
 ### Orden sugerido de PRs
 1. **PR-1** (Batches 0-3): guardas + migración + seed + domain puro. Base sin comportamiento activo.
@@ -470,4 +471,4 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 ---
 
 ## Contrato de fase
-`status: tasks-complete` · Storage = A2 · 12 batches (0-12) · Próximo: **apply** faseado (Batch 0 primero: decisión import-linter). Rama `feat/save-category-classification` off `developer`.
+`status: apply-complete + verify-en-vivo` · Storage = A2 · **12/12 batches DONE** · ~55 tests nuevos verdes · lint-imports 2/2 · suite 771 passed (1 pre-existente ajeno). Rama `feat/save-category-classification` off `developer`, 12 commits. **Ship-dark**: flag `save_classification_enabled=false` en `.env`; encender = correr backfill (léxico resuelve el grueso sin LLM). Pendiente: smoke visual del badge en `/admin/review-queue` (usuario), y PR → developer.
