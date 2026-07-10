@@ -436,10 +436,10 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 ### Batch 6 — Juez de categoría [R7 parcial] ✅ DONE (depende de 3)
 - [x] 6.1 `infrastructure/classification/category_judge.py`: `CategoryJudge` sobre `get_chat_model("smart")`, structured output `_Verdict`, fail-safe (client error/unparseable/validación → `uncertain`, NUNCA `match`). Prompt EN (pertenencia producto→categoría). Puerto `CategoryJudgePort` + `CategoryVerdict` PURO en domain (no viola hexagonal: el puerto no referencia el `JudgeVerdict` de infra). Modelo inyectado → tests sin red. 4 tests adapter (RED→GREEN).
 
-### Batch 7 — Orquestador `ClassifyStoreProduct` [R6, R7, R8, R9] (depende de 3,4,5,6)
-- [ ] 7.1 `application/classify_store_product.py`: cascada léxico→(trgm+vector)→RRF→boosts→banding→juez(grey)→persist. Reusa `reciprocal_rank_fusion`/`determine_band`/`apply_boosts`.
-- [ ] 7.2 Roll-up: helper que resuelve hoja→ancestro tope (via `ancestors()`), usado por el wiring de review (Batch 11); el use case persiste la HOJA.
-- [ ] 7.3 Unit con fakes (mirror `test_match_store_product`): léxico-hit → 1 fila `lexicon`, sin embedder/juez; grey+match≥piso → `llm`; grey+uncertain → NULL; auto → `hybrid`; human → NULL; re-clasificar → supersede.
+### Batch 7 — Orquestador `ClassifyStoreProduct` [R6, R7, R8, R9] ✅ DONE (depende de 3,4,5,6)
+- [x] 7.1 `application/classify_store_product.py`: cascada léxico→(trgm+vector)→RRF(consenso)→banding(score CRUDO del ganador, NO el RRF)→juez(grey, piso 0.70)→persist. Reusa `determine_band`/`JUDGE_MATCH_MIN_CONFIDENCE`. RRF propio (`_rrf_winner`, ~8 líneas): el del matching está acoplado a `MatchCandidate` (lee `canonical_product_id`). NO usa `apply_boosts` (no hay marca/tamaño de "categoría" que comparar).
+- [x] 7.2 Roll-up: **sin helper nuevo** — el ancestro tope se resuelve con el `ancestors()` existente en el wiring de review (Batch 11). El use case persiste la HOJA. Se agregó `name` a `CategoryCandidate` (+ queries de Batch 5) para que el juez reciba el nombre de la categoría ganadora.
+- [x] 7.3 Unit con fakes (7): léxico-hit → `lexicon` sin embedder/juez; auto → `hybrid`; grey+match≥0.70 → `llm`; grey+match<0.70 → sin clasificar; grey+uncertain → sin clasificar; human → sin clasificar; sin candidatos → sin clasificar. RED→GREEN. Batería 1-7 = 42 verdes, lint-imports 2/2.
 
 ### Batch 8 — Backfill de clasificación [R10] (depende de 7)
 - [ ] 8.1 `application/classify_backfill.py`: loop `list_unclassified` → `ClassifyStoreProduct.execute` → hasta vacío, batched, para `store_product` Y `canonical_product` NULL.

@@ -1072,13 +1072,15 @@ class SqlCategoryCandidateRepository:
     def find_leaves_trgm(self, name: str, market_id: str, limit: int) -> list[CategoryCandidate]:
         score = func.similarity(TaxonomyNodeModel.name, name)
         rows = self._s.execute(
-            select(TaxonomyNodeModel.id, score)
+            select(TaxonomyNodeModel.id, TaxonomyNodeModel.name, score)
             .where(TaxonomyNodeModel.market_id == market_id, TaxonomyNodeModel.level == 1)
             .order_by(score.desc())
             .limit(limit)
         ).all()
         return [
-            CategoryCandidate(taxonomy_node_id=str(r[0]), score=float(r[1]), source="trgm")
+            CategoryCandidate(
+                taxonomy_node_id=str(r[0]), name=r[1], score=float(r[2]), source="trgm"
+            )
             for r in rows
         ]
 
@@ -1087,7 +1089,7 @@ class SqlCategoryCandidateRepository:
     ) -> list[CategoryCandidate]:
         dist = TaxonomyNodeModel.embedding.cosine_distance(embedding)
         rows = self._s.execute(
-            select(TaxonomyNodeModel.id, dist)
+            select(TaxonomyNodeModel.id, TaxonomyNodeModel.name, dist)
             .where(
                 TaxonomyNodeModel.market_id == market_id,
                 TaxonomyNodeModel.level == 1,
@@ -1097,6 +1099,8 @@ class SqlCategoryCandidateRepository:
             .limit(limit)
         ).all()
         return [
-            CategoryCandidate(taxonomy_node_id=str(r[0]), score=1.0 - float(r[1]), source="vector")
+            CategoryCandidate(
+                taxonomy_node_id=str(r[0]), name=r[1], score=1.0 - float(r[2]), source="vector"
+            )
             for r in rows
         ]

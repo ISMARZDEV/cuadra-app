@@ -25,6 +25,7 @@ class CategoryCandidate:
     taxonomy_node_id: str
     score: float
     source: str  # "trgm" | "vector"
+    name: str = ""  # nombre de la subcategoría (para el juez de la banda grey)
 
 
 @dataclass(frozen=True, slots=True)
