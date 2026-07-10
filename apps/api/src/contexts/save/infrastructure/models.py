@@ -24,6 +24,7 @@ from sqlalchemy import (
     CHAR,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -33,6 +34,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -60,6 +62,9 @@ class TaxonomyNodeModel(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     level: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
     market_id: Mapped[str] = mapped_column(Text, nullable=False)  # cross-context, sin FK
+    # BGE-M3 (mismo modelo que canonical_product.embedding) — índice semántico de categorías
+    # (save-category-classification). NULL hasta que EmbedCategories lo puebla. Solo hojas (level=1).
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
 
 
 class CollectionModel(Base):
@@ -402,6 +407,58 @@ class ProductMatchModel(Base):
     judge_input_tokens: Mapped[int | None] = mapped_column(Integer)
     judge_output_tokens: Mapped[int | None] = mapped_column(Integer)
     judge_model: Mapped[str | None] = mapped_column(Text)
+
+
+class CategoryClassificationModel(Base):
+    """Registro de decisión de clasificación de categoría (save-category-classification, A2).
+
+    Tabla dedicada (NO columna en store_product): guarda la HOJA asignada + confianza + método +
+    estado, para store_product Y canonical_product de forma uniforme. Invariantes:
+    - CHECK XOR: exactamente uno de (store_product_id, canonical_product_id) NO nulo.
+    - Índice único parcial `WHERE status='active'` por FK: a lo sumo UNA clasificación activa por
+      producto (la 'actual'). Re-clasificar marca la anterior 'superseded' e inserta una nueva
+      'active' (historial preservado, sin anomalía de actualización — normalización).
+    """
+
+    __tablename__ = "category_classification"
+    __table_args__ = (
+        CheckConstraint(
+            "(store_product_id IS NULL) <> (canonical_product_id IS NULL)",
+            name="ck_category_classification_xor_ref",
+        ),
+        Index(
+            "uq_category_classification_active_store_product",
+            "store_product_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+        Index(
+            "uq_category_classification_active_canonical",
+            "canonical_product_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    store_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.store_product.id", ondelete="CASCADE")
+    )
+    canonical_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.canonical_product.id", ondelete="CASCADE")
+    )
+    taxonomy_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.taxonomy_node.id"), nullable=False
+    )  # la HOJA asignada; el badge/filtro tope se deriva por ancestros
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
+    method: Mapped[str] = mapped_column(Text, nullable=False)  # lexicon|trgm|vector|hybrid|llm|human
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # active|superseded|rejected
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class ReviewCandidateModel(Base):
