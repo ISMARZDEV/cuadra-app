@@ -445,9 +445,9 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 8.1 `application/classify_backfill.py`: **snapshot-then-classify** (lee TODO lo sin clasificar paginado por offset ANTES de mutar) para `store_product` o `canonical_product`. **Gotcha resuelto**: un loop ingenuo `while list_unclassified` sería INFINITO — los productos sin resolver (juez uncertain/banda human no persisten fila) se re-devuelven eternamente. El snapshot los procesa 1 vez y termina. Agregado `offset` + `order_by(id)` a `list_unclassified` (Batch 4).
 - [x] 8.2 Unit con fakes (3): procesa los 3 sin clasificar 1 vez; 2ª corrida = 0; **caso sin-resolución no hace loop infinito**. RED→GREEN.
 
-### Batch 9 — Composición + flag [R13] (depende de 7, 8)
-- [ ] 9.1 `config.py`: `save_classification_enabled: bool = False` (docstring ship-dark).
-- [ ] 9.2 `ingestion/save/composition.py`: `build_classifier(session)` + `build_category_embedder(session)` (None si flag OFF, reusan `build_embedding_provider`). Test: flag OFF → None.
+### Batch 9 — Composición + flag [R13] ✅ DONE (depende de 7, 8)
+- [x] 9.1 `config.py`: `save_classification_enabled: bool = False` (ship-dark, reusa `save_bge_m3_endpoint_url`+`llm_provider`).
+- [x] 9.2 `composition.py`: `build_classifier` + `build_category_embedder` + `build_classify_backfill` (None si flag OFF, reusan `build_embedding_provider`). `_build_lexicon(session, SAVE_MARKET)` construye el índice léxico desde la taxonomía sembrada (ingesta single-market; multi-market=F3). Batch 7 intacto (recibe el dict prebuild). 2 tests integración (flag off→None, flag on→objetos reales). RED→GREEN.
 
 ### Batch 10 — Enganche inline [R11] (depende de 7, 9)
 - [ ] 10.1 `RefreshCatalogPrices.__init__(classifier=None)` + llamada tras `record_observation` con gate "sin active". Threading de `name`/`brand`/`size_text`.

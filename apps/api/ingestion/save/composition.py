@@ -10,9 +10,14 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from src.config import settings
+from src.contexts.save.application.classify_backfill import ClassifyBackfill
+from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.embed_canonical_products import EmbedCanonicalProducts
+from src.contexts.save.application.embed_categories import EmbedCategories
 from src.contexts.save.application.match_store_product import MatchStoreProduct
 from src.contexts.save.domain.ports.repositories import EmbeddingProvider
+from src.contexts.save.infrastructure.classification.category_judge import CategoryJudge
+from src.contexts.save.infrastructure.classification.lexicon import build_lexicon_index
 from src.contexts.save.infrastructure.matching.llm_judge import LlmJudge
 from src.contexts.save.infrastructure.matching.embeddings import (
     BgeM3EmbeddingProvider,
@@ -21,7 +26,11 @@ from src.contexts.save.infrastructure.matching.embeddings import (
 from src.contexts.save.infrastructure.matching.repository import SqlProductMatchRepository
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
+    SqlCategoryCandidateRepository,
+    SqlCategoryClassificationRepository,
+    SqlCategoryIndexRepository,
     SqlStoreProductRepository,
+    SqlTaxonomyRepository,
 )
 
 
@@ -59,3 +68,44 @@ def build_canonical_embedder(session: Session) -> EmbedCanonicalProducts | None:
         SqlCanonicalProductRepository(session),
         build_embedding_provider(),
     )
+
+
+def _build_lexicon(session: Session, market_id: str):  # type: ignore[no-untyped-def]
+    """Índice léxico keyword→hoja para el market de ingesta, derivado de la taxonomía sembrada
+    (subcategorías = nivel 1). Ingesta single-market (`SAVE_MARKET`); multi-market = F3."""
+    tree = SqlTaxonomyRepository(session).list_tree(market_id)
+    leaves = [(child.id, child.name) for root in tree for child in root.children]
+    return build_lexicon_index(leaves)
+
+
+def build_classifier(session: Session) -> ClassifyStoreProduct | None:
+    """Clasificador de categoría REAL solo cuando `SAVE_CLASSIFICATION_ENABLED` está activo (ship-dark).
+    Comparte la `session` del refresh. Reusa `build_embedding_provider` (mismo BGE-M3) y el juez LLM.
+    `None` = dark (la ingesta no clasifica)."""
+    if not settings.save_classification_enabled:
+        return None
+    from ingestion.save.sources import SAVE_MARKET
+
+    return ClassifyStoreProduct(
+        SqlCategoryClassificationRepository(session),
+        SqlCategoryCandidateRepository(session),
+        build_embedding_provider(),
+        CategoryJudge(),
+        _build_lexicon(session, SAVE_MARKET),
+    )
+
+
+def build_category_embedder(session: Session) -> EmbedCategories | None:
+    """Backfill del índice semántico de CATEGORÍAS: embebe las hojas sin embedding ANTES de clasificar,
+    para que `find_leaves_vector` tenga contra qué comparar. Mismo gate y modelo que `build_classifier`."""
+    if not settings.save_classification_enabled:
+        return None
+    return EmbedCategories(SqlCategoryIndexRepository(session), build_embedding_provider())
+
+
+def build_classify_backfill(session: Session) -> ClassifyBackfill | None:
+    """Backfill de clasificación (job): clasifica lo existente sin `active`. Mismo gate ship-dark."""
+    classifier = build_classifier(session)
+    if classifier is None:
+        return None
+    return ClassifyBackfill(SqlCategoryClassificationRepository(session), classifier)
