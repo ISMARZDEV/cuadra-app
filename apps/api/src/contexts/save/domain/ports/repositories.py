@@ -150,9 +150,9 @@ class CategoryClassificationRepository(Protocol):
         ...
 
     def list_unclassified(
-        self, market_id: str, *, is_canonical: bool, limit: int
+        self, market_id: str, *, is_canonical: bool, limit: int, offset: int = 0
     ) -> list[ClassifiableProduct]:
-        """Productos del mercado SIN clasificación `active` (gate del backfill)."""
+        """Productos del mercado SIN clasificación `active` (gate del backfill), orden estable por id."""
         ...
 
 

@@ -985,7 +985,7 @@ class SqlCategoryClassificationRepository:
         self._s.flush()
 
     def list_unclassified(
-        self, market_id: str, *, is_canonical: bool, limit: int
+        self, market_id: str, *, is_canonical: bool, limit: int, offset: int = 0
     ) -> list[ClassifiableProduct]:
         cc = CategoryClassificationModel
         if is_canonical:
@@ -1002,7 +1002,9 @@ class SqlCategoryClassificationRepository:
                     and_(cc.canonical_product_id == CanonicalProductModel.id, cc.status == "active"),
                 )
                 .where(CanonicalProductModel.market_id == market_id, cc.id.is_(None))
+                .order_by(CanonicalProductModel.id)
                 .limit(limit)
+                .offset(offset)
             )
         else:
             # store_product no tiene market_id → se deriva por el provider
@@ -1019,7 +1021,9 @@ class SqlCategoryClassificationRepository:
                     and_(cc.store_product_id == StoreProductModel.id, cc.status == "active"),
                 )
                 .where(ProviderModel.market_id == market_id, cc.id.is_(None))
+                .order_by(StoreProductModel.id)
                 .limit(limit)
+                .offset(offset)
             )
         rows = self._s.execute(stmt).all()
         return [

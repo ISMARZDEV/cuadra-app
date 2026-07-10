@@ -441,9 +441,9 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 7.2 Roll-up: **sin helper nuevo** — el ancestro tope se resuelve con el `ancestors()` existente en el wiring de review (Batch 11). El use case persiste la HOJA. Se agregó `name` a `CategoryCandidate` (+ queries de Batch 5) para que el juez reciba el nombre de la categoría ganadora.
 - [x] 7.3 Unit con fakes (7): léxico-hit → `lexicon` sin embedder/juez; auto → `hybrid`; grey+match≥0.70 → `llm`; grey+match<0.70 → sin clasificar; grey+uncertain → sin clasificar; human → sin clasificar; sin candidatos → sin clasificar. RED→GREEN. Batería 1-7 = 42 verdes, lint-imports 2/2.
 
-### Batch 8 — Backfill de clasificación [R10] (depende de 7)
-- [ ] 8.1 `application/classify_backfill.py`: loop `list_unclassified` → `ClassifyStoreProduct.execute` → hasta vacío, batched, para `store_product` Y `canonical_product` NULL.
-- [ ] 8.2 Unit con fakes: 3 sin clasificar + 1 active → procesa 3, salta 1; 2ª corrida procesa 0.
+### Batch 8 — Backfill de clasificación [R10] ✅ DONE (depende de 7)
+- [x] 8.1 `application/classify_backfill.py`: **snapshot-then-classify** (lee TODO lo sin clasificar paginado por offset ANTES de mutar) para `store_product` o `canonical_product`. **Gotcha resuelto**: un loop ingenuo `while list_unclassified` sería INFINITO — los productos sin resolver (juez uncertain/banda human no persisten fila) se re-devuelven eternamente. El snapshot los procesa 1 vez y termina. Agregado `offset` + `order_by(id)` a `list_unclassified` (Batch 4).
+- [x] 8.2 Unit con fakes (3): procesa los 3 sin clasificar 1 vez; 2ª corrida = 0; **caso sin-resolución no hace loop infinito**. RED→GREEN.
 
 ### Batch 9 — Composición + flag [R13] (depende de 7, 8)
 - [ ] 9.1 `config.py`: `save_classification_enabled: bool = False` (docstring ship-dark).
