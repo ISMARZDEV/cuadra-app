@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.match_store_product import MatchStoreProduct
 from src.contexts.save.application.refresh_prices import RefreshCatalogPrices, RefreshResult
 from src.contexts.save.domain.ports import CatalogSource, StoreProductRepository
@@ -19,13 +20,16 @@ def refresh_source(
     adapters: list[CatalogSource],
     captured_at: datetime | None = None,
     matcher: MatchStoreProduct | None = None,
+    classifier: ClassifyStoreProduct | None = None,
 ) -> RefreshResult:
     """Corre el refresh sobre cada adapter de la fuente y agrega los conteos.
 
     `matcher` opcional (cascada F2.0): cuando se pasa, los store_products desconocidos se enrutan
     al matching en vez de descartarse. `None` = comportamiento legacy F1.
+    `classifier` opcional (save-category-classification): clasifica inline la categoría de cada
+    store_product materializado (idempotente). `None` = clasificación dark.
     """
-    use_case = RefreshCatalogPrices(store_repo, matcher=matcher)
+    use_case = RefreshCatalogPrices(store_repo, matcher=matcher, classifier=classifier)
     seen = refreshed = unmatched = matched = 0
     for adapter in adapters:
         result = use_case.execute(adapter, captured_at=captured_at)

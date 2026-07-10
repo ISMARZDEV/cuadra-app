@@ -145,3 +145,24 @@ def test_no_candidates_does_not_persist() -> None:
 
     assert uc.execute(_PRODUCT, "DO").taxonomy_node_id is None
     assert cls.saved == []
+
+
+def test_already_classified_is_idempotent() -> None:
+    # producto con clasificación active previa → NO re-corre la cascada (R11), devuelve la existente
+    from src.contexts.save.domain.classification import CategoryClassification
+
+    class _WithActive:
+        def save_active(self, c):  # type: ignore[no-untyped-def]
+            raise AssertionError("no debe persistir de nuevo")
+
+        def active_for(self, ref_id, *, is_canonical):  # type: ignore[no-untyped-def]
+            return CategoryClassification(
+                id="c1", store_product_id=ref_id, canonical_product_id=None,
+                taxonomy_node_id="leaf-existente", confidence=0.9, method="lexicon", status="active",
+            )
+
+    emb, jdg = _FakeEmbedder(), _FakeJudge()
+    result = _make(_WithActive(), _FakeCandidates(), emb, jdg).execute(_PRODUCT, "DO")
+
+    assert result.taxonomy_node_id == "leaf-existente"
+    assert emb.called is False and jdg.called is False

@@ -449,10 +449,10 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 9.1 `config.py`: `save_classification_enabled: bool = False` (ship-dark, reusa `save_bge_m3_endpoint_url`+`llm_provider`).
 - [x] 9.2 `composition.py`: `build_classifier` + `build_category_embedder` + `build_classify_backfill` (None si flag OFF, reusan `build_embedding_provider`). `_build_lexicon(session, SAVE_MARKET)` construye el índice léxico desde la taxonomía sembrada (ingesta single-market; multi-market=F3). Batch 7 intacto (recibe el dict prebuild). 2 tests integración (flag off→None, flag on→objetos reales). RED→GREEN.
 
-### Batch 10 — Enganche inline [R11] (depende de 7, 9)
-- [ ] 10.1 `RefreshCatalogPrices.__init__(classifier=None)` + llamada tras `record_observation` con gate "sin active". Threading de `name`/`brand`/`size_text`.
-- [ ] 10.2 Wiring en `seeds/save_refresh.py` + `ingestion/save/assets.py` (pasan `classifier=`).
-- [ ] 10.3 Unit: producto nuevo con flag ON → 1 clasificación; mismo producto (refresh de precio) → 0; flag OFF → comportamiento idéntico a hoy (R14).
+### Batch 10 — Enganche inline [R11] ✅ DONE (depende de 7, 9)
+- [x] 10.1 `RefreshCatalogPrices.__init__(classifier=None)` + `_classify()` tras `record_observation` en AMBOS caminos (nuevo con matcher + refresh de conocido, capturando el `store_product_id`). **Gate = idempotencia del clasificador** (`execute` checa `active_for` al inicio → no reclasifica en cada refresh, R11) — más limpio que un gate en el caller. Test de idempotencia en Batch 7.
+- [x] 10.2 Wiring: `refresh_source(..., classifier=)` (runner) + `save_refresh.py` (build_classifier + build_category_embedder) + `assets.py` (embed de categorías en `embed_canonicals` + classifier en el refresh).
+- [x] 10.3 Unit (3): nuevo → clasifica; conocido en refresh → clasifica (idempotente); flag OFF → intacto (R14). RED→GREEN. 23 verdes en la batería refresh+clasificación+composición.
 
 ### Batch 11 — Wiring cola de revisión [R12] (depende de 1, 7)
 - [ ] 11.1 `list_review_queue`: `LEFT JOIN category_classification (active) → taxonomy_node → ancestro tope`; poblar `category_slug`/`category_name` con la TOPE. Sin clasificación → `None`.

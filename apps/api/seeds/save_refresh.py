@@ -7,7 +7,12 @@ es `ingestion.definitions` (`make ingestion-dev`); esto es el atajo sin proceso 
 """
 from __future__ import annotations
 
-from ingestion.save.composition import build_canonical_embedder, build_matcher
+from ingestion.save.composition import (
+    build_canonical_embedder,
+    build_category_embedder,
+    build_classifier,
+    build_matcher,
+)
 from ingestion.save.runner import refresh_source
 from ingestion.save.sources import SAVE_MARKET, build_sources
 from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
@@ -23,9 +28,15 @@ def main() -> None:
         if embedder is not None:
             embedded = embedder.execute(SAVE_MARKET)
             print(f"save-refresh embeddings: {embedded} canónicos embebidos (índice semántico)")
+        # Backfill de embeddings de CATEGORÍA antes de clasificar (no-op si la clasificación está dark).
+        cat_embedder = build_category_embedder(session)
+        if cat_embedder is not None:
+            cat_embedded = cat_embedder.execute(SAVE_MARKET)
+            print(f"save-refresh embeddings: {cat_embedded} categorías embebidas (índice semántico)")
         matcher = build_matcher(session)  # None salvo SAVE_MATCHING_CASCADE_ENABLED=true
+        classifier = build_classifier(session)  # None salvo SAVE_CLASSIFICATION_ENABLED=true
         for name, adapters in build_sources().items():
-            result = refresh_source(repo, adapters, matcher=matcher)
+            result = refresh_source(repo, adapters, matcher=matcher, classifier=classifier)
             print(
                 f"save-refresh {name}: seen={result.seen} "
                 f"refreshed={result.refreshed} unmatched={result.unmatched} "

@@ -19,7 +19,12 @@ from src.contexts.save.infrastructure.repositories import (
 )
 from src.shared.db.base import SessionLocal
 
-from .composition import build_canonical_embedder, build_matcher
+from .composition import (
+    build_canonical_embedder,
+    build_category_embedder,
+    build_classifier,
+    build_matcher,
+)
 from .runner import refresh_source
 from .sources import SAVE_MARKET, build_sources
 
@@ -38,9 +43,12 @@ def embed_canonicals(context) -> dg.MaterializeResult:
     with SessionLocal() as session:
         embedder = build_canonical_embedder(session)
         embedded = embedder.execute(SAVE_MARKET) if embedder is not None else 0
+        # Índice semántico de CATEGORÍAS (no-op si la clasificación está dark).
+        cat_embedder = build_category_embedder(session)
+        cat_embedded = cat_embedder.execute(SAVE_MARKET) if cat_embedder is not None else 0
         session.commit()
-    context.log.info(f"embed_canonicals: {embedded} canónicos embebidos")
-    return dg.MaterializeResult(metadata={"embedded": embedded})
+    context.log.info(f"embed_canonicals: {embedded} canónicos + {cat_embedded} categorías embebidos")
+    return dg.MaterializeResult(metadata={"embedded": embedded, "categories": cat_embedded})
 
 
 def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
@@ -54,7 +62,8 @@ def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
         adapters = build_sources()[source_key]
         with SessionLocal() as session:
             result = refresh_source(
-                SqlStoreProductRepository(session), adapters, matcher=build_matcher(session)
+                SqlStoreProductRepository(session), adapters,
+                matcher=build_matcher(session), classifier=build_classifier(session),
             )
             session.commit()
         context.log.info(

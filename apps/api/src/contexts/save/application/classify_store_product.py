@@ -78,6 +78,16 @@ class ClassifyStoreProduct:
         self._lexicon = lexicon_index
 
     def execute(self, product: ClassifiableProduct, market_id: str) -> ClassificationResult:
+        # Idempotente: si el producto YA tiene clasificación `active`, no re-corre la cascada (así
+        # el enganche inline no reclasifica en cada refresh de precio, R11). Devuelve la existente.
+        existing = self._classifications.active_for(
+            product.ref_id, is_canonical=product.is_canonical
+        )
+        if existing is not None:
+            return ClassificationResult(
+                existing.taxonomy_node_id, existing.confidence, existing.method, "auto_link"
+            )
+
         # --- Etapa 1: léxico determinista ---
         hit = lexicon_match(product.name, self._lexicon)
         if hit is not None:
