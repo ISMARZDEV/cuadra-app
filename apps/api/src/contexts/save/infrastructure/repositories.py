@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.orm import Session
 
 from src.shared.money import Currency, Money
 
 from ..domain.alerts import Alert, AlertNotification, AlertSubscription
+from ..domain.classification import CategoryClassification, ClassifiableProduct
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
 from ..domain.entities import (
@@ -44,6 +46,7 @@ from .models import (
     BasketQueryModel,
     BrandModel,
     CanonicalProductModel,
+    CategoryClassificationModel,
     CollectionModel,
     CollectionProductModel,
     PriceAlertModel,
@@ -908,3 +911,120 @@ class SqlTaxonomyRepository:
             .order_by(CanonicalProductModel.name)
         ).all()
         return [canonical_to_entity(p, self._brand_name(p.brand_id)) for p in products]
+
+
+def _classification_to_entity(m: CategoryClassificationModel) -> CategoryClassification:
+    return CategoryClassification(
+        id=str(m.id),
+        store_product_id=str(m.store_product_id) if m.store_product_id else None,
+        canonical_product_id=str(m.canonical_product_id) if m.canonical_product_id else None,
+        taxonomy_node_id=str(m.taxonomy_node_id),
+        confidence=float(m.confidence),
+        method=m.method,
+        status=m.status,
+    )
+
+
+class SqlCategoryClassificationRepository:
+    """Registro de decisión de clasificación (A2). Única `active` por producto (índice parcial)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def _ref_column(self, is_canonical: bool):  # type: ignore[no-untyped-def]
+        return (
+            CategoryClassificationModel.canonical_product_id
+            if is_canonical
+            else CategoryClassificationModel.store_product_id
+        )
+
+    def active_for(self, ref_id: str, *, is_canonical: bool) -> CategoryClassification | None:
+        col = self._ref_column(is_canonical)
+        m = self._s.scalars(
+            select(CategoryClassificationModel).where(
+                col == uuid.UUID(ref_id), CategoryClassificationModel.status == "active"
+            )
+        ).first()
+        return _classification_to_entity(m) if m else None
+
+    def save_active(self, classification: CategoryClassification) -> None:
+        is_canonical = classification.canonical_product_id is not None
+        ref_id = classification.canonical_product_id or classification.store_product_id
+        assert ref_id is not None  # invariante XOR garantizada por el CHECK de la tabla
+        col = self._ref_column(is_canonical)
+        # 1) supersede la activa previa del mismo producto (antes del insert → no choca el índice parcial)
+        self._s.execute(
+            update(CategoryClassificationModel)
+            .where(col == uuid.UUID(ref_id), CategoryClassificationModel.status == "active")
+            .values(status="superseded")
+        )
+        # 2) inserta la nueva activa (misma transacción / UoW)
+        self._s.add(
+            CategoryClassificationModel(
+                id=uuid.UUID(classification.id),
+                store_product_id=(
+                    uuid.UUID(classification.store_product_id)
+                    if classification.store_product_id
+                    else None
+                ),
+                canonical_product_id=(
+                    uuid.UUID(classification.canonical_product_id)
+                    if classification.canonical_product_id
+                    else None
+                ),
+                taxonomy_node_id=uuid.UUID(classification.taxonomy_node_id),
+                confidence=Decimal(str(classification.confidence)),
+                method=classification.method,
+                status="active",
+            )
+        )
+        self._s.flush()
+
+    def list_unclassified(
+        self, market_id: str, *, is_canonical: bool, limit: int
+    ) -> list[ClassifiableProduct]:
+        cc = CategoryClassificationModel
+        if is_canonical:
+            stmt = (
+                select(
+                    CanonicalProductModel.id,
+                    CanonicalProductModel.name,
+                    BrandModel.name.label("brand"),
+                    CanonicalProductModel.display_size,
+                )
+                .outerjoin(BrandModel, BrandModel.id == CanonicalProductModel.brand_id)
+                .outerjoin(
+                    cc,
+                    and_(cc.canonical_product_id == CanonicalProductModel.id, cc.status == "active"),
+                )
+                .where(CanonicalProductModel.market_id == market_id, cc.id.is_(None))
+                .limit(limit)
+            )
+        else:
+            # store_product no tiene market_id → se deriva por el provider
+            stmt = (
+                select(
+                    StoreProductModel.id,
+                    StoreProductModel.name,
+                    StoreProductModel.brand,
+                    StoreProductModel.size_text,
+                )
+                .join(ProviderModel, ProviderModel.id == StoreProductModel.provider_id)
+                .outerjoin(
+                    cc,
+                    and_(cc.store_product_id == StoreProductModel.id, cc.status == "active"),
+                )
+                .where(ProviderModel.market_id == market_id, cc.id.is_(None))
+                .limit(limit)
+            )
+        rows = self._s.execute(stmt).all()
+        return [
+            ClassifiableProduct(
+                ref_id=str(r[0]),
+                is_canonical=is_canonical,
+                name=r[1] or "",
+                brand=r[2] or "",
+                size_text=r[3] or "",
+            )
+            for r in rows
+        ]

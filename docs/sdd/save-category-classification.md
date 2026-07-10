@@ -421,10 +421,11 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 3.1 `domain/classification.py`: `ClassifiableProduct`, `CategoryCandidate`, `ClassificationResult`, `CategoryClassification` (frozen slots, PUROS). 4 tests de construcción. lint-imports: domain sigue puro.
 - [x] 3.2 `infrastructure/classification/lexicon.py`: `build_lexicon_index(leaves)` + `lexicon_match(name, index)`. Alta precisión: tokens ≥3 sin stopwords, token ambiguo (>1 hoja) DESCARTADO, match solo si pega UNA hoja. Reusa `slugify` (normaliza acento/caja). 6 tests unit (keyword distintivo, single-word, sin-keyword→None, acento, ambiguo→None, stopwords). RED (ModuleNotFound) → GREEN 10/10.
 
-### Batch 4 — Puertos + repo de clasificación [R8 storage] (depende de 1, 3)
-- [ ] 4.1 Protocols en `domain/ports/repositories.py`: `CategoryClassificationRepository`, `CategoryCandidateRepository`, `CategoryIndexRepository`, `CategoryJudgePort`.
-- [ ] 4.2 `SqlCategoryClassificationRepository`: `active_for`, `save_active` (supersede la anterior + insert, misma tx), `list_unclassified` (anti-join active).
-- [ ] 4.3 Tests integración: `save_active` 2× sobre el mismo producto → 1 sola `active`, la vieja `superseded`; `list_unclassified` excluye los que tienen `active`.
+### Batch 4 — Puertos + repo de clasificación [R8 storage] ✅ DONE (depende de 1, 3)
+- [x] 4.1 Protocol `CategoryClassificationRepository` en `domain/ports/repositories.py` (`active_for`, `save_active`, `list_unclassified`). Los otros Protocols (Candidate/Index/Judge) se definen en sus batches (5/6) cuando tienen consumidor + test — evita puertos huérfanos sin RED.
+- [x] 4.2 `SqlCategoryClassificationRepository` (`repositories.py`): `active_for`, `save_active` (UPDATE superseded → INSERT active, misma tx), `list_unclassified` (store vía JOIN provider por market; canonical vía market_id directo; anti-join `active`). Helper `_classification_to_entity`.
+- [x] 4.3 Tests integración (3): round-trip; supersede (1 active + 1 superseded, `active_for` = la nueva); `list_unclassified` excluye clasificados. RED (ImportError) → GREEN.
+- **Hallazgo**: `store_product` NO tiene `market_id` (el de línea 290 era `PriceAlertModel`) → el backfill filtra por market vía `JOIN provider`.
 
 ### Batch 5 — Candidatos trgm/vector + embeddings de categoría [R4, R5] (depende de 1, 2)
 - [ ] 5.1 `infrastructure/classification/category_embedding_text.py`: `build_category_embedding_text(node, parent)` (receta ÚNICA). Test: index-side lo usa; garantía de receta compartida.

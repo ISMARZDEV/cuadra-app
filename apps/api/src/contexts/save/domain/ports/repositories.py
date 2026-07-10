@@ -12,6 +12,7 @@ from typing import Protocol
 from src.shared.money import Money
 
 from ..alerts import Alert, AlertNotification, AlertSubscription
+from ..classification import CategoryClassification, ClassifiableProduct
 from ..comparison import StoreQuote
 from ..drops import PriceChange
 from ..entities import (
@@ -128,6 +129,25 @@ class TaxonomyRepository(Protocol):
 
     def list_products_under(self, node_id: str) -> list[CanonicalProduct]:
         """Productos canónicos cuyo nodo es `node_id` o un descendiente."""
+        ...
+
+
+class CategoryClassificationRepository(Protocol):
+    """Registro de decisión de clasificación de categoría (A2). Una sola fila `active` por producto."""
+
+    def active_for(self, ref_id: str, *, is_canonical: bool) -> CategoryClassification | None:
+        """La clasificación `active` actual del producto (o None si no está clasificado)."""
+        ...
+
+    def save_active(self, classification: CategoryClassification) -> None:
+        """Marca `superseded` la `active` previa del mismo producto e inserta la nueva `active`
+        (MISMA transacción — invariante: a lo sumo una activa por producto)."""
+        ...
+
+    def list_unclassified(
+        self, market_id: str, *, is_canonical: bool, limit: int
+    ) -> list[ClassifiableProduct]:
+        """Productos del mercado SIN clasificación `active` (gate del backfill)."""
         ...
 
 
