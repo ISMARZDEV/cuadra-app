@@ -412,10 +412,10 @@ Cada task es RED→GREEN. `[R#]` = requisito que cubre. Las dependencias entre b
 - [x] 1.5 Test integración `test_category_classification_model.py` (5 tests): RED genuino (ImportError) → GREEN. Round-trip `upgrade→downgrade→upgrade` verificado; CHECK XOR y único-parcial verificados (rechazan ambos-null y 2ª active; permiten superseded+active); embedding round-trips. lint-imports 2/2 KEPT.
 - **Gotcha**: autogenerate arrastró drops espurios (checkpoints LangGraph, spike_transaction, índices HNSW/trgm de canonical creados por SQL crudo) → limpiados a mano en la migración.
 
-### Batch 2 — Seed de taxonomía real [R2] (depende de 1.4)
-- [ ] 2.1 `seeds/save_taxonomy_seed.py`: parsea `Categorias_y_Subcategorias.md` → 15 `level=0` + subcats `level=1`, `market_id="DO"`, `uuid5`-por-path idempotente.
-- [ ] 2.2 Decisión de coexistencia con la taxonomía demo (misma `market_id="DO"`): consolidar/limpiar o namespace. Documentar y ejecutar.
-- [ ] 2.3 Tests: correr 2× no duplica; 15 raíces; `Despensa & Abarrotes` con sus subcats; `ListCategories.execute("DO")` las devuelve.
+### Batch 2 — Seed de taxonomía real [R2] ✅ DONE (depende de 1.4)
+- [x] 2.1 `seeds/save_taxonomy_seed.py`: `parse_taxonomy(md)` (puro) + `load_taxonomy_entries()` (lee el MD real) + `seed_taxonomy(session, market, entries?)` + `main()` CLI. Reusa `_taxonomy_leaf` (mismo `_NS`/`uuid5`).
+- [x] 2.2 **Coexistencia RESUELTA**: reusar `_NS` + esquema `uuid5(taxonomy:{market}/...)` → el seed real es idempotente y COMPATIBLE con la demo (mismos ids para los mismos nodos; las hojas profundas de la demo quedan como hijos extra). **Cero limpieza.** Verificado: tras correr el seed, DO tiene exactamente **15 raíces** (el "Despensa & Abarrotes" de la demo se fusionó, no duplicó).
+- [x] 2.3 Tests (7): unit del parser (4, incl. MD real → 15 cats) + integración (3: idempotencia 2×, 15 raíces + subcats, `ListCategories`). RED (ModuleNotFound) → GREEN 7/7. Seed real ejercitado: **DO = 15 tope + 120 subcategorías**.
 
 ### Batch 3 — Domain puro [R3 parcial] (sin dependencia de DB — paralelizable con 1-2)
 - [ ] 3.1 `domain/classification.py`: `CategoryCandidate`, `ClassificationResult`, `CategoryClassification`, `ClassifiableProduct` (dataclasses frozen, PUROS). Test de construcción/invariantes.
