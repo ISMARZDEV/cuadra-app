@@ -300,10 +300,10 @@ export function ReviewQueueListScreen() {
       <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-card">
       <Table>
         <TableHeader>
-          {/* Header como BARRA azul-lavanda del Figma (nodo 483:12422): bg #ecf4f9 + borde #c4d0db,
-              esquinas redondeadas, labels semibold #464646. Los carets grises son el afford. de orden
-              (visual, fiel al Figma); solo "Fecha del match" está wireado al único eje sortable real. */}
-          <TableRow className="border-none hover:bg-transparent [&>th]:h-11 [&>th]:bg-[#ecf4f9] [&>th]:text-[11px] [&>th]:font-semibold [&>th]:text-[#464646] [&>th]:first:rounded-l-[10px] [&>th]:last:rounded-r-[10px] dark:[&>th]:bg-secondary dark:[&>th]:text-muted-foreground">
+          {/* Header con división normal: divisor inferior (border-b por defecto del TableRow), sin
+              barra ni esquinas redondeadas. Labels semibold muted, un punto más grandes (text-sm). Los
+              carets grises son el afford. de orden; las columnas ordenables van wireadas a `order_by`. */}
+          <TableRow className="hover:bg-transparent [&>th]:h-11 [&>th]:text-sm [&>th]:font-semibold [&>th]:text-muted-foreground">
             <TableHead>
               <SelectCheckbox
                 data-testid="select-all"

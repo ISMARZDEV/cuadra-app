@@ -1,5 +1,5 @@
 import type { AdminReviewQueueRowDto } from "@cuadra/api-client";
-import { ImageOff, MoreHorizontal } from "lucide-react";
+import { Eye, ImageOff, MoreHorizontal, Pencil, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { navigate } from "vike/client/router";
 
@@ -183,17 +183,37 @@ export function ReviewRow({ row, href, locale, selected = false, onToggleSelect,
           >
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
+          {/* Íconos Lucide coloreados por acción (Figma 484:7494): Ver=ojo verde, Editar=lápiz
+              naranja, Compartir=share azul, Eliminar=papelera roja. En hover cada ítem replica el
+              patrón del variant `destructive`: texto + ícono en el color de la acción y fondo /10 del
+              mismo color. El override usa `**` (todos los descendientes) — NO `[&_svg]` — porque los
+              íconos Lucide dibujan con `stroke="currentColor"`: el color real lo decide el `color` del
+              `<path>` interior, y el base tiñe ese path de gris vía `**:text-accent-foreground`. Misma
+              firma de variante que el base → tailwind-merge conserva la nuestra (va después). */}
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => void navigate(href)}>
+            <DropdownMenuItem
+              onClick={() => void navigate(href)}
+              className="focus:bg-emerald-500/10 focus:text-emerald-600 not-data-[variant=destructive]:focus:**:text-emerald-600 dark:focus:text-emerald-400 dark:not-data-[variant=destructive]:focus:**:text-emerald-400"
+            >
+              <Eye className="text-emerald-600 dark:text-emerald-400" />
               {t("admin.reviewQueue.actions.view")}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={notifyComingSoon}>
+            <DropdownMenuItem
+              onClick={notifyComingSoon}
+              className="focus:bg-orange-500/10 focus:text-orange-600 not-data-[variant=destructive]:focus:**:text-orange-500 dark:focus:text-orange-400 dark:not-data-[variant=destructive]:focus:**:text-orange-400"
+            >
+              <Pencil className="text-orange-500" />
               {t("admin.reviewQueue.actions.edit")}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={notifyComingSoon}>
+            <DropdownMenuItem
+              onClick={notifyComingSoon}
+              className="focus:bg-blue-500/10 focus:text-blue-600 not-data-[variant=destructive]:focus:**:text-blue-600 dark:focus:text-blue-400 dark:not-data-[variant=destructive]:focus:**:text-blue-400"
+            >
+              <Share2 className="text-blue-600 dark:text-blue-400" />
               {t("admin.reviewQueue.actions.share")}
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={() => onDelete(row.match_id)}>
+              <Trash2 />
               {t("admin.reviewQueue.actions.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
