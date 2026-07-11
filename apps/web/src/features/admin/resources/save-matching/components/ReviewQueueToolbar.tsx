@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-base/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import type { FilterSearchSelectOption } from "@/features/admin/components/filters";
+import type { FilterSearchSelectOption } from "@/features/admin/components/filters/FilterSearchSelect";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import type { Locale } from "@/i18n/config";
 import { cn } from "@/lib/utils";

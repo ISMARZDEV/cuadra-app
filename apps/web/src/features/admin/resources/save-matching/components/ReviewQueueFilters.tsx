@@ -8,13 +8,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FilterField } from "@/features/admin/components/filters/FilterField";
+import { FilterModal } from "@/features/admin/components/filters/FilterModal";
+import { FilterRangeSlider } from "@/features/admin/components/filters/FilterRangeSlider";
 import {
-  FilterField,
-  FilterModal,
-  FilterRangeSlider,
   FilterSearchSelect,
   type FilterSearchSelectOption,
-} from "@/features/admin/components/filters";
+} from "@/features/admin/components/filters/FilterSearchSelect";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import type { Locale } from "@/i18n/config";
 
