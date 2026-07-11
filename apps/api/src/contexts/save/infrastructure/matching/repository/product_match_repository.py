@@ -255,19 +255,36 @@ class SqlProductMatchRepository:
             .outerjoin(top, top.id == leaf.parent_id)
             .where(*conditions)
         )
-        if order_by == "created_at":
-            stmt = stmt.order_by(ProductMatchModel.created_at.asc())
+        # Orden: `order_by` = clave de columna; prefijo "-" = descendente (estilo Django). Una clave
+        # desconocida cae al default uncertainty-first. Tiebreaker estable por `id` para que la
+        # paginación sea determinística cuando la columna ordenada tiene empates (ej. mismo método,
+        # misma tienda). `cast(..., Float)` evita el mismatch numeric/double precision de Postgres al
+        # restar contra los umbrales (floats de Python).
+        descending = order_by.startswith("-")
+        sort_key = order_by[1:] if descending else order_by
+        confidence_expr = cast(ProductMatchModel.confidence, Float)
+        sortable = {
+            "created_at": ProductMatchModel.created_at,
+            "confidence": confidence_expr,
+            "name": StoreProductModel.name,
+            "brand": StoreProductModel.brand,
+            "provider": ProviderModel.name,
+            "method": ProductMatchModel.method,
+            "category": category_top_name,
+            "size": StoreProductModel.size_text,
+        }
+        if sort_key in sortable:
+            col = sortable[sort_key]
+            primary = col.desc() if descending else col.asc()
         else:
             # Uncertainty-first (default): distancia al umbral de decisión más cercano
-            # (HIGH=0.85 o MID=0.55, `banding.py`) — los casos más difíciles de decidir van
-            # primero. `cast(..., Float)` evita el mismatch numeric/double precision de Postgres
-            # al restar contra los umbrales (floats de Python).
-            confidence = cast(ProductMatchModel.confidence, Float)
+            # (HIGH=0.85 o MID=0.55, `banding.py`) — los casos más difíciles de decidir van primero.
             uncertainty = func.least(
-                func.abs(confidence - MATCH_HIGH_THRESHOLD),
-                func.abs(confidence - MATCH_MID_THRESHOLD),
+                func.abs(confidence_expr - MATCH_HIGH_THRESHOLD),
+                func.abs(confidence_expr - MATCH_MID_THRESHOLD),
             )
-            stmt = stmt.order_by(uncertainty.asc())
+            primary = uncertainty.desc() if descending else uncertainty.asc()
+        stmt = stmt.order_by(primary, ProductMatchModel.id.asc())
 
         rows = self._s.execute(stmt.limit(limit).offset(offset)).all()
         result = [
