@@ -96,6 +96,17 @@ decides) → clean canonical catalog. Providers + health give visibility over th
 10. **`product_match` is the single source of truth for a link** (cuadra-save-matching): `ResolveReview`
     writes `store_product.canonical_product_id` + the match status in ONE transaction. Reject REQUIRES
     a `reason_code`. Never bypass the use-case.
+11. **Coloring a Lucide icon per-item inside a `DropdownMenuItem` needs `**`, not `[&_svg]`.** Lucide
+    icons stroke with `currentColor`, so the paint color is the **`<path>`'s** `color`, not the
+    `<svg>`'s. The base `DropdownMenuItem` greys ALL descendants on focus via
+    `not-data-[variant=destructive]:focus:**:text-accent-foreground` — which hits the `<path>`. An
+    override with `focus:[&_svg]:text-x` only recolors the `<svg>` wrapper → the path stays grey
+    (only the `destructive` variant escapes, because it's excluded from that rule — that's why
+    "Eliminar" worked but Ver/Editar/Compartir didn't). Fix: same variant signature as the base,
+    `not-data-[variant=destructive]:focus:**:text-<color>` (tailwind-merge keeps yours, it comes
+    later). Also: **Tailwind v4 important is a SUFFIX** (`text-x!`), not the v3 prefix (`!text-x`) —
+    the prefix silently no-ops. Verify icon color via `getComputedStyle(path).stroke`, never by eye on
+    a small PNG (see cuadra-ui-verify). Ref: `ReviewRow.tsx` actions menu.
 
 ## Endpoint map (all under `/v1/admin/save/*`, gated)
 
