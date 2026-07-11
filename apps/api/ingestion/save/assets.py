@@ -8,6 +8,8 @@ materialización real es manual (`dagster dev`). La sesión se abre/commitea por
 """
 from __future__ import annotations
 
+import os
+
 import dagster as dg
 
 from src.contexts.save.application.alerts import RunAlertMatching
@@ -26,10 +28,19 @@ from .composition import (
     build_matcher,
 )
 from .runner import refresh_source
-from .sources import SAVE_MARKET, build_sources
+from .sources import BASKET_QUERIES, SAVE_MARKET, build_sources
 
 SOURCE_KEYS: tuple[str, ...] = ("sirena", "nacional", "jumbo")
 _DROPS_WINDOW_DAYS = 7
+
+
+def _refresh_queries() -> tuple[str, ...]:
+    """Perilla de PRUEBA: `SAVE_REFRESH_QUERY_LIMIT=N` usa solo las primeras N queries de la canasta
+    (para runs cortos en dev). Sin la env var (default) → canasta completa (comportamiento normal)."""
+    limit = os.getenv("SAVE_REFRESH_QUERY_LIMIT")
+    if limit and limit.isdigit() and int(limit) > 0:
+        return BASKET_QUERIES[: int(limit)]
+    return BASKET_QUERIES
 
 
 @dg.asset(
@@ -59,15 +70,24 @@ def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
         description=f"Refresh de precios vivos (change-only) — {source_key}",
     )
     def _asset(context) -> dg.MaterializeResult:
-        adapters = build_sources()[source_key]
+        queries = _refresh_queries()
+        context.log.info(
+            f"{source_key}: arrancando refresh sobre {len(queries)} queries de la canasta "
+            f"(cascada/clasificación según flags)"
+        )
+        adapters = build_sources(queries=queries)[source_key]
         with SessionLocal() as session:
             result = refresh_source(
                 SqlStoreProductRepository(session), adapters,
                 matcher=build_matcher(session), classifier=build_classifier(session),
+                on_progress=lambda i, n, r: context.log.info(
+                    f"[{source_key}] query {i}/{n} · acumulado: "
+                    f"seen={r.seen} matched={r.matched} unmatched={r.unmatched}"
+                ),
             )
             session.commit()
         context.log.info(
-            f"{source_key}: seen={result.seen} refreshed={result.refreshed} "
+            f"{source_key}: LISTO seen={result.seen} refreshed={result.refreshed} "
             f"unmatched={result.unmatched} matched={result.matched}"
         )
         return dg.MaterializeResult(
