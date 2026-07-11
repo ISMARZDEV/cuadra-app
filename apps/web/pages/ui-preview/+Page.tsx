@@ -52,7 +52,7 @@ function mock(
 const PARAMS: ReviewQueueParams = { market: "DO", order_by: "uncertainty", limit: 50, offset: 0 };
 
 function Workspace({ locale, bare }: { locale: "es"; bare?: boolean }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set(["m2"]));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(["m2"]));
   return (
     <>
     {bare ? null : <AdminTopBar name="Ismael Porfirio Martínez Encarnación" locale={locale} />}
@@ -61,7 +61,7 @@ function Workspace({ locale, bare }: { locale: "es"; bare?: boolean }) {
       <div className="flex items-center gap-2">
         <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">Cola de revisión</h1>
         <span className="text-base font-semibold text-brand-forest dark:text-brand-lime">(118)</span>
-        <button className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-brand-forest px-4 text-sm font-semibold text-white shadow-sm">
+        <button type="button" className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-brand-forest px-4 text-sm font-semibold text-white shadow-sm">
           Sincronizar
         </button>
       </div>

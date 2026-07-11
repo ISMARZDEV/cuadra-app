@@ -155,8 +155,12 @@ export function ReviewQueueListScreen() {
 
     const localFailed: { match_id: string; error: string }[] = [];
     const approvable: { matchId: string; canonicalProductId: string }[] = [];
-    for (const matchId of ids) {
-      const topCandidateId = await fetchTopCandidateId(matchId);
+    // Los `fetchTopCandidateId` son independientes entre filas → se resuelven en paralelo.
+    // `Promise.all` preserva el orden del input, así que la partición approvable/failed queda estable.
+    const resolved = await Promise.all(
+      ids.map(async (matchId) => ({ matchId, topCandidateId: await fetchTopCandidateId(matchId) })),
+    );
+    for (const { matchId, topCandidateId } of resolved) {
       if (topCandidateId) {
         approvable.push({ matchId, canonicalProductId: topCandidateId });
       } else {
@@ -313,57 +317,43 @@ export function ReviewQueueListScreen() {
             <TableHead>{t("admin.reviewQueue.column.image")}</TableHead>
             {/* Columnas ORDENABLES (Figma: caret por columna). Cada `col` matchea la clave del
                 backend (`product_match_repository.sortable`); un click cicla none→asc→desc. */}
-            <TableHead>
-              <SortableColumnHeader
-                label={t("admin.reviewQueue.column.product")}
-                state={sortStateFor("name")}
-                onToggle={() => toggleSort("name")}
-              />
-            </TableHead>
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.product")}
+              state={sortStateFor("name")}
+              onToggle={() => toggleSort("name")}
+            />
             <TableHead>{t("admin.reviewQueue.column.size")}</TableHead>
-            <TableHead>
-              <SortableColumnHeader
-                label={t("admin.reviewQueue.column.weightType")}
-                state={sortStateFor("size")}
-                onToggle={() => toggleSort("size")}
-              />
-            </TableHead>
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.weightType")}
+              state={sortStateFor("size")}
+              onToggle={() => toggleSort("size")}
+            />
             <TableHead>{t("admin.reviewQueue.column.description")}</TableHead>
-            <TableHead>
-              <SortableColumnHeader
-                label={t("admin.reviewQueue.column.category")}
-                state={sortStateFor("category")}
-                onToggle={() => toggleSort("category")}
-              />
-            </TableHead>
-            <TableHead>
-              <SortableColumnHeader
-                label={t("admin.reviewQueue.column.brand")}
-                state={sortStateFor("brand")}
-                onToggle={() => toggleSort("brand")}
-              />
-            </TableHead>
-            <TableHead>
-              <SortableColumnHeader
-                label={t("admin.reviewQueue.column.store")}
-                state={sortStateFor("provider")}
-                onToggle={() => toggleSort("provider")}
-              />
-            </TableHead>
-            <TableHead>
-              <SortableColumnHeader
-                label={t("admin.reviewQueue.column.method")}
-                state={sortStateFor("method")}
-                onToggle={() => toggleSort("method")}
-              />
-            </TableHead>
-            <TableHead>
-              <SortableColumnHeader
-                label={t("admin.reviewQueue.column.matchDate")}
-                state={sortStateFor("created_at")}
-                onToggle={() => toggleSort("created_at")}
-              />
-            </TableHead>
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.category")}
+              state={sortStateFor("category")}
+              onToggle={() => toggleSort("category")}
+            />
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.brand")}
+              state={sortStateFor("brand")}
+              onToggle={() => toggleSort("brand")}
+            />
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.store")}
+              state={sortStateFor("provider")}
+              onToggle={() => toggleSort("provider")}
+            />
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.method")}
+              state={sortStateFor("method")}
+              onToggle={() => toggleSort("method")}
+            />
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.matchDate")}
+              state={sortStateFor("created_at")}
+              onToggle={() => toggleSort("created_at")}
+            />
             <TableHead>{t("admin.reviewQueue.column.actions")}</TableHead>
           </TableRow>
         </TableHeader>
@@ -479,16 +469,19 @@ function SortableColumnHeader({
   state: SortState;
   onToggle: () => void;
 }) {
+  // `aria-sort` es válido en el `<th>` (rol columnheader), NO en el botón — de ahí que el
+  // TableHead viva DENTRO del header ordenable en vez de envolverlo desde el call site.
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-sort={ARIA_SORT[state]}
-      className="flex w-full items-center justify-between gap-3 font-semibold"
-    >
-      {label}
-      <SortTriangle state={state} />
-    </button>
+    <TableHead aria-sort={ARIA_SORT[state]}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 font-semibold"
+      >
+        {label}
+        <SortTriangle state={state} />
+      </button>
+    </TableHead>
   );
 }
 

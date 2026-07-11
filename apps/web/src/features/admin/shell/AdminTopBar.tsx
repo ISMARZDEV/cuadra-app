@@ -4,19 +4,13 @@ import { Avatar, AvatarFallback } from "@/components/ui-base/avatar";
 import type { Locale } from "@/i18n/config";
 import type { MessageKey } from "@/i18n/messages";
 
+import { initialsFromName } from "./initials";
 import { useAdminI18n } from "./useAdminI18n";
 
 export interface AdminTopBarProps {
   name: string;
   email?: string | null;
   locale: Locale;
-}
-
-export function initialsFromName(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "";
-  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
-  return (words[0]![0] + words[1]![0]).toUpperCase();
 }
 
 export function AdminTopBar({ name, locale }: AdminTopBarProps) {

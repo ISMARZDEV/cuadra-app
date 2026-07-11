@@ -8,6 +8,11 @@ interface MiniLineChartProps {
   className?: string;
 }
 
+// Serializa una polilínea a un atributo `d` de SVG (pura, sin estado → vive en module scope para
+// no reconstruirse en cada render ni romper la memoización de hijos).
+const toPath = (pts: { x: number; y: number }[]) =>
+  pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+
 // Sparkline de línea+área del card "Tiempo en Cola" (Figma 549:10288). SVG puro con
 // `vector-effect=non-scaling-stroke` para que el trazo de 2px NO se deforme al estirar el viewBox.
 // La línea va verde hasta el punto destacado y gris después (la "cola" del Figma); el punto lleva un
@@ -25,9 +30,6 @@ export function MiniLineChart({ data, highlight, height = 56, className }: MiniL
     const y = height - padY - ((d.value - min) / span) * (height - padY * 2);
     return { x, y };
   });
-
-  const toPath = (pts: { x: number; y: number }[]) =>
-    pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
 
   const hi = highlight && points[highlight.index] ? points[highlight.index]! : null;
   const headPoints = hi ? points.slice(0, highlight!.index + 1) : points;

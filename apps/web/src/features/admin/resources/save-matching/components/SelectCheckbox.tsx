@@ -1,13 +1,14 @@
 import type { ComponentProps } from "react";
 
 // Check EXACTO del Figma (nodo 484:7315, fileKey MJlNTbiNLuUl4ythDuAPDX): NO es el `Check` recto de
-// lucide sino un trazo curvo con caps redondeados. `viewBox`, `d`, grosor y color (#237961 teal)
-// copiados literales del asset para fidelidad 1:1. El color es una marca → constante en ambos temas.
+// lucide sino un trazo curvo con caps redondeados. `viewBox`, `d` (coords redondeadas a 2 decimales,
+// corrimiento sub-pixel imperceptible), grosor y color (#237961 teal) del asset. El color es una
+// marca → constante en ambos temas.
 function FigmaCheck({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 15.9058 15.9058" fill="none" className={className} aria-hidden="true">
       <path
-        d="M4.64048 8.72211C4.64048 8.72211 6.13165 9.58604 6.87724 10.8524C6.87724 10.8524 9.114 7.12442 12.0963 5.46757"
+        d="M4.64 8.72C4.64 8.72 6.13 9.59 6.88 10.85C6.88 10.85 9.11 7.12 12.1 5.47"
         stroke="#237961"
         strokeWidth="1.65686"
         strokeLinecap="round"
