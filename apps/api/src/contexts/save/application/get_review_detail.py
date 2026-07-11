@@ -37,5 +37,8 @@ class GetReviewDetail:
             store_product_brand=raw_attrs.brand if raw_attrs else None,
             store_product_size_text=raw_attrs.size_text if raw_attrs else None,
             store_product_image_url=raw_attrs.image_url if raw_attrs else None,
+            store_product_sku=raw_attrs.sku if raw_attrs else None,
+            store_product_ean=raw_attrs.ean if raw_attrs else None,
+            provider_name=raw_attrs.provider_name if raw_attrs else None,
             candidates=candidates,
         )

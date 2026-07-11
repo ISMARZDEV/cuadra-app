@@ -509,15 +509,26 @@ class SqlStoreProductRepository:
 
     def get_raw_attrs(self, store_product_id: str) -> StoreProductRawAttrs | None:
         sid = _parse_uuid(store_product_id)
-        sp = self._s.get(StoreProductModel, sid) if sid else None
-        if sp is None:
+        if sid is None:
             return None
+        # JOIN a provider para la "Tienda origen" del detalle; `external_id` = SKU de la tienda.
+        row = self._s.execute(
+            select(StoreProductModel, ProviderModel.name)
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .where(StoreProductModel.id == sid)
+        ).first()
+        if row is None:
+            return None
+        sp, provider_name = row
         return StoreProductRawAttrs(
             store_product_id=str(sp.id),
             name=sp.name,
             brand=sp.brand,
             size_text=sp.size_text,
             image_url=sp.image_url,
+            sku=sp.external_id,
+            ean=sp.ean,
+            provider_name=provider_name,
         )
 
     def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:

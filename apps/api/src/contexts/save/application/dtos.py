@@ -339,11 +339,18 @@ class AdminReviewCandidateDto(BaseModel):
     name: str | None = None
     brand: str | None = None
     score: float
+    image_url: str | None = None
+    size_text: str | None = None
 
     @classmethod
     def from_view(cls, c: ReviewCandidateView) -> "AdminReviewCandidateDto":
         return cls(
-            canonical_product_id=c.canonical_product_id, name=c.name, brand=c.brand, score=c.score
+            canonical_product_id=c.canonical_product_id,
+            name=c.name,
+            brand=c.brand,
+            score=c.score,
+            image_url=c.image_url,
+            size_text=c.size_text,
         )
 
 
@@ -413,6 +420,9 @@ class AdminReviewDetailDto(BaseModel):
     store_product_brand: str | None = None
     store_product_size_text: str | None = None
     store_product_image_url: str | None = None
+    store_product_sku: str | None = None
+    store_product_ean: str | None = None
+    provider_name: str | None = None
     candidates: list[AdminReviewCandidateDto] = []
 
     @classmethod
@@ -426,6 +436,9 @@ class AdminReviewDetailDto(BaseModel):
             store_product_brand=d.store_product_brand,
             store_product_size_text=d.store_product_size_text,
             store_product_image_url=d.store_product_image_url,
+            store_product_sku=d.store_product_sku,
+            store_product_ean=d.store_product_ean,
+            provider_name=d.provider_name,
             candidates=[AdminReviewCandidateDto.from_view(c) for c in d.candidates],
         )
 
