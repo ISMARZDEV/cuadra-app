@@ -30,7 +30,10 @@ export function onBeforeRoute(pageContext: PageContext) {
       locale: DEFAULT_LOCALE,
       country: DEFAULT_COUNTRY,
       needsLocaleRedirect: true,
-      urlLogical: pageContext.urlPathname,
+      // Preserva el query string también acá (rama sin prefijo locale/país, ej. `/admin/*`): sin
+      // esto Vike deriva `urlParsed.search` de un `urlLogical` sin `?…` → los filtros/orden/
+      // paginación del admin NUNCA llegan a `data()` (bug de la cola de revisión).
+      urlLogical: pageContext.urlPathname + (pageContext.urlParsed.searchOriginal ?? ""),
     },
   };
 }
