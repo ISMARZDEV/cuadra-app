@@ -9,7 +9,7 @@
 :root {
   --radius: 0.75rem;
 
-  --background: #f2f7f1;
+  --background: #ffffff;
   --foreground: #111827;
   --card: #ffffff;
   --card-foreground: #111827;
@@ -33,8 +33,16 @@
   --brand: #16a34a;
   --lime: #7eb427;
 
+  /* Verdes de marca EXACTOS del Figma del admin (nodos 483:12416/12419) — constantes en ambos
+     temas (una marca es una marca). El contraste sobre fondo oscuro se resuelve con `dark:` inline
+     donde se usan como TEXTO. */
+  --brand-forest: #015442;
+  --brand-lime: #bbec6c;
+  /* Verde lima medio (barras/línea de los KPI charts) — distinto del brand-lime (más amarillo). */
+  --brand-green: #93d454;
+
   /* Sidebar del admin/OFV — tokens exactos del Figma (nodo 483:13776). */
-  --sidebar: #f5faed;
+  --sidebar: #ffffff;
   --sidebar-foreground: #1c614e;
   --sidebar-primary: #16a34a;
   --sidebar-primary-foreground: #ffffff;
@@ -49,35 +57,38 @@
 }
 
 .dark {
-  --background: #0b1410;
+  /* Superficies oscuras por elevación (paleta del usuario): fondo #000406 → muted #001110 →
+     card #0A1418 → bordes/acentos #002523. */
+  --background: #000406;
   --foreground: #f7faf7;
-  --card: #12201a;
+  --card: #0a1418;
   --card-foreground: #f7faf7;
-  --popover: #12201a;
+  --popover: #0a1418;
   --popover-foreground: #f7faf7;
   --primary: #16a34a;
   --primary-foreground: #ffffff;
-  --secondary: #16261e;
+  --secondary: #002523;
   --secondary-foreground: #f7faf7;
-  --muted: #16261e;
+  --muted: #001110;
   --muted-foreground: #9ca3af;
-  --accent: #16261e;
+  --accent: #002523;
   --accent-foreground: #f7faf7;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #1e3a2a;
-  --input: #1e3a2a;
+  --border: #002523;
+  --input: #002523;
   --ring: #16a34a;
 
-  /* Sidebar del admin/OFV — variante oscura (el Figma es claro; derivado coherente con el tema dark). */
-  --sidebar: #101d16;
+  /* Sidebar del admin/OFV — variante oscura (paleta del usuario: bg #000406, coherente con las
+     superficies del tema dark). */
+  --sidebar: #000406;
   --sidebar-foreground: #d7e8dc;
   --sidebar-primary: #16a34a;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #26421d;
   --sidebar-accent-foreground: #cdf19a;
   --sidebar-accent-border: #3f5f22;
-  --sidebar-border: #1e3a2a;
+  --sidebar-border: #002523;
   --sidebar-ring: #7eb427;
   --sidebar-section-label: #93d555;
   --sidebar-group-item: #b8d8c4;
@@ -107,6 +118,9 @@
   --color-ring: var(--ring);
   --color-brand: var(--brand);
   --color-lime: var(--lime);
+  --color-brand-forest: var(--brand-forest);
+  --color-brand-lime: var(--brand-lime);
+  --color-brand-green: var(--brand-green);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);

@@ -53,12 +53,18 @@ export function AdminLayout({ capabilities, locale, name, email, children }: Adm
     <div className="admin-shell flex min-h-screen">
       <EcosystemRail />
       <SidebarProvider
-        className="bg-background text-foreground"
+        className="min-w-0 bg-white text-foreground"
         style={{ fontFamily: ADMIN_FONT_FAMILY }}
       >
         <AdminSidebar capabilities={capabilities} locale={locale} />
-        <SidebarInset>
-          <AdminTopBar name={name} email={email} locale={locale} />
+        {/* `min-w-0`: sin esto, el flex item toma `min-width:auto` y crece hasta el ancho intrínseco
+            de la tabla (13 columnas `whitespace-nowrap`) → toda la página scrollea horizontal y el
+            contenido se mete BAJO el sidebar. Con `min-w-0` el inset se contiene al viewport y el
+            scroll-x queda confinado al contenedor `overflow-x-auto` de la tabla (regla WIG). */}
+        <SidebarInset className="min-w-0">
+          <div className="ps-4 md:ps-6">
+            <AdminTopBar name={name} email={email} locale={locale} />
+          </div>
           {children}
         </SidebarInset>
         <Toaster richColors position="bottom-right" />

@@ -26,3 +26,18 @@ export function confidenceColor(confidence: number | null): string {
   }
   return "bg-emerald-700 text-white";
 }
+
+/**
+ * Variante PILL para la columna "Confianza" de la tabla (Figma 483:12419): mismo triage por banda
+ * que `confidenceColor` pero con fondo CLARO + texto oscuro (85%/94% verde, 55% ámbar, 26% rojo),
+ * tal como el Figma. Reusa los mismos umbrales (fuente única).
+ */
+export function confidencePillClass(confidence: number | null): string {
+  if (confidence === null || confidence < CONFIDENCE_MID_THRESHOLD) {
+    return "bg-[#ffc4c4] text-[#8d0000] dark:bg-[#ffc4c4]/20 dark:text-[#ffc4c4]";
+  }
+  if (confidence < CONFIDENCE_HIGH_THRESHOLD) {
+    return "bg-[#f8f48f] text-[#8d7300] dark:bg-[#f8f48f]/20 dark:text-[#f8f48f]";
+  }
+  return "bg-[#b4ff8f] text-[#1c8d00] dark:bg-[#b4ff8f]/20 dark:text-[#b4ff8f]";
+}

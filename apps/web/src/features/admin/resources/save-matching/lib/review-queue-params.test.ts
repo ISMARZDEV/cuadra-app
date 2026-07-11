@@ -28,7 +28,7 @@ describe("review-queue-params", () => {
 
     expect(params.order_by).toBe("uncertainty");
     expect(params.market).toBe("DO");
-    expect(params.limit).toBe(50);
+    expect(params.limit).toBe(10);
     expect(params.offset).toBe(0);
 
     const qs = serializeReviewQueueParams(params);

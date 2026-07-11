@@ -39,8 +39,10 @@ describe("ProvidersScreen", () => {
       providers: [provider({ id: "p1", name: "Sirena" }), provider({ id: "p2", name: "Jumbo" })],
     };
     render(<ProvidersScreen />);
-    expect(screen.getByText("Sirena")).toBeInTheDocument();
-    expect(screen.getByText("Jumbo")).toBeInTheDocument();
+    // Sirena/Jumbo tienen logo bundleado por nombre (`provider-logos`) → se renderizan como <img>
+    // con `alt`=nombre (no texto), tras el fallback de `ProviderBadge`.
+    expect(screen.getByRole("img", { name: "Sirena" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Jumbo" })).toBeInTheDocument();
   });
 
   it("shows the empty state when there are no providers yet", () => {
@@ -49,10 +51,11 @@ describe("ProvidersScreen", () => {
     expect(screen.getByText("Sin proveedores todavía.")).toBeInTheDocument();
   });
 
-  it("renders the logo image for a provider that already has one, text badge for one that doesn't", () => {
+  it("renders the logo image for a provider that has one (backend or bundled), text badge for an unknown chain", () => {
     mockData = {
       providers: [
-        provider({ id: "p1", name: "Sirena", logo_url: null }),
+        // "Colmado Local" NO está en `provider-logos` y no trae logo_url → badge de texto.
+        provider({ id: "p1", name: "Colmado Local", logo_url: null }),
         provider({ id: "p2", name: "Jumbo", logo_url: "https://cdn.example.com/jumbo.png" }),
       ],
     };
@@ -61,26 +64,28 @@ describe("ProvidersScreen", () => {
       "src",
       "https://cdn.example.com/jumbo.png",
     );
-    expect(screen.queryByRole("img", { name: "Sirena" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Colmado Local" })).not.toBeInTheDocument();
+    expect(screen.getByText("Colmado Local")).toBeInTheDocument();
   });
 
   it("creates a new provider from the form, refetches the list locally (no reload) and shows the new row", async () => {
     mockData = { providers: [] };
-    createProvider.mockResolvedValue({ data: { id: "p9", name: "Nacional" } });
-    listProvidersEntries.mockResolvedValue([provider({ id: "p9", name: "Nacional" })]);
+    // "Colmado Nuevo" no tiene logo bundleado → la fila nueva se ve como texto (verificable).
+    createProvider.mockResolvedValue({ data: { id: "p9", name: "Colmado Nuevo" } });
+    listProvidersEntries.mockResolvedValue([provider({ id: "p9", name: "Colmado Nuevo" })]);
     render(<ProvidersScreen />);
 
-    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Nacional" } });
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Colmado Nuevo" } });
     fireEvent.change(screen.getByLabelText("Mercado"), { target: { value: "DO" } });
     fireEvent.click(screen.getByRole("button", { name: "Crear proveedor" }));
 
     await waitFor(() =>
       expect(createProvider).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Nacional", marketId: "DO" }),
+        expect.objectContaining({ name: "Colmado Nuevo", marketId: "DO" }),
       ),
     );
     await waitFor(() => expect(listProvidersEntries).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText("Nacional")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Colmado Nuevo")).toBeInTheDocument());
   });
 
   it("shows an error and does not crash when create fails", async () => {

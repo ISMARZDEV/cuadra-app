@@ -101,7 +101,13 @@ def list_review_queue(
     method: str | None = Query(None),
     confidence_min: float | None = Query(None, ge=0, le=1),
     confidence_max: float | None = Query(None, ge=0, le=1),
-    order_by: str = Query("uncertainty", description="uncertainty|created_at"),
+    order_by: str = Query(
+        "uncertainty",
+        description=(
+            "Clave de orden; prefijo '-' = descendente (ej. '-created_at'). Claves: "
+            "uncertainty|created_at|confidence|name|brand|provider|method|category|size"
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     use_case: ListReviewQueue = Depends(get_list_review_queue),

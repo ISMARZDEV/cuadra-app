@@ -1,6 +1,6 @@
 import type { AdminReviewQueueRowDto, BulkResolveResultDto } from "@cuadra/api-client";
-import { ArrowUpDown, Info } from "lucide-react";
-import { useState } from "react";
+import { Info, RefreshCw } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { usePageContext } from "vike-react/usePageContext";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
+import { providerLogoByName } from "@/features/save/lib/provider-logos";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE } from "@/i18n/config";
@@ -23,7 +24,9 @@ import { bulkResolveReviewMatches, fetchReviewQueue, fetchTopCandidateId } from 
 import { ADMIN_DECIDED_BY } from "../lib/decided-by";
 import { serializeReviewQueueParams } from "../lib/review-queue-params";
 import type { ReviewQueueData, ReviewQueueParams } from "../types";
+import { ReviewQueueKpis } from "./kpi/ReviewQueueKpis";
 import { ReasonCodeSelect } from "./ReasonCodeSelect";
+import { SelectCheckbox } from "./SelectCheckbox";
 import { ReviewQueueToolbar, type ReviewQueueView } from "./ReviewQueueToolbar";
 import { ReviewRow } from "./ReviewRow";
 
@@ -41,7 +44,13 @@ const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 // client-side — el único filtro client-side es el de `search` (por nombre), documentado en
 // `ReviewQueueToolbar`.
 export function ReviewQueueListScreen() {
-  const { rows: initialRows, total, params, locale = DEFAULT_LOCALE } = useData<ReviewQueueData>();
+  const {
+    rows: initialRows,
+    total,
+    params,
+    providers = [],
+    locale = DEFAULT_LOCALE,
+  } = useData<ReviewQueueData>();
   const pageContext = usePageContext();
   const { t } = useAdminI18n(locale);
 
@@ -66,6 +75,20 @@ export function ReviewQueueListScreen() {
     const next: ReviewQueueParams = { ...params, ...patch };
     const qs = serializeReviewQueueParams(next).toString();
     void navigate(qs ? `${pageContext.urlPathname}?${qs}` : pageContext.urlPathname);
+  };
+
+  // Estado de orden de una columna a partir del `order_by` vigente: `col` = asc, `-col` = desc,
+  // cualquier otra cosa = sin orden por esta columna. Alimenta el triángulo del header (Figma).
+  const sortStateFor = (col: string): SortState =>
+    params.order_by === col ? "asc" : params.order_by === `-${col}` ? "desc" : "none";
+
+  // Click en un header ordenable: cicla none → asc (`col`) → desc (`-col`) → default (`uncertainty`).
+  // Resetea el offset (una página nueva de orden siempre arranca en la 1). El backend ordena en SQL
+  // (paginación correcta contra `total`), esta pantalla nunca reordena client-side.
+  const toggleSort = (col: string) => {
+    const state = sortStateFor(col);
+    const nextOrderBy = state === "none" ? col : state === "asc" ? `-${col}` : "uncertainty";
+    navigateWith({ order_by: nextOrderBy, offset: 0 });
   };
 
   // Filtro CLIENT-SIDE por nombre de producto sobre las filas YA cargadas (el backend no tiene un
@@ -132,8 +155,12 @@ export function ReviewQueueListScreen() {
 
     const localFailed: { match_id: string; error: string }[] = [];
     const approvable: { matchId: string; canonicalProductId: string }[] = [];
-    for (const matchId of ids) {
-      const topCandidateId = await fetchTopCandidateId(matchId);
+    // Los `fetchTopCandidateId` son independientes entre filas → se resuelven en paralelo.
+    // `Promise.all` preserva el orden del input, así que la partición approvable/failed queda estable.
+    const resolved = await Promise.all(
+      ids.map(async (matchId) => ({ matchId, topCandidateId: await fetchTopCandidateId(matchId) })),
+    );
+    for (const { matchId, topCandidateId } of resolved) {
       if (topCandidateId) {
         approvable.push({ matchId, canonicalProductId: topCandidateId });
       } else {
@@ -186,20 +213,46 @@ export function ReviewQueueListScreen() {
   };
 
   return (
-    <div>
-      <div className="mb-1 flex items-center gap-2">
-        <h1 className="text-xl font-bold">{t("admin.reviewQueue.title")}</h1>
+    // Todo el workspace vive dentro de UNA card contenedora (Figma): mismo gris que el `AdminTopBar`
+    // (`bg-muted/60` claro / `bg-secondary` oscuro) + radio grande con corner-smoothing tipo Figma.
+    // `[corner-shape:squircle]` es progressive-enhancement: donde el navegador lo soporta suaviza la
+    // superelipse; donde no, cae limpio al `rounded-[32px]`. La card llena el alto (`flex-1`).
+    <div className="flex flex-1 flex-col p-4 md:p-6">
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+      <div className="flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">
+          {t("admin.reviewQueue.title")}
+        </h1>
         <Info
           className="size-4 text-muted-foreground"
           aria-label={t("admin.reviewQueue.info")}
           role="img"
         />
-        <span className="text-sm font-semibold text-primary">({total})</span>
+        <span className="text-base font-semibold text-brand-forest dark:text-brand-lime">({total})</span>
+        <button
+          type="button"
+          className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-brand-forest px-4 text-sm font-semibold text-white shadow-sm hover:bg-brand-forest/90"
+        >
+          <RefreshCw className="size-4" aria-hidden="true" />
+          {t("admin.reviewQueue.sync")}
+        </button>
       </div>
+
+      <ReviewQueueKpis locale={locale} />
 
       <ReviewQueueToolbar
         params={params}
         onParamsChange={(patch) => navigateWith({ ...patch, offset: 0 })}
+        providers={providers.map((p) => {
+          const logo = p.logo_url ?? providerLogoByName(p.name);
+          return {
+            value: p.id,
+            label: p.name,
+            icon: logo ? (
+              <img src={logo} alt="" className="max-h-5 max-w-8 object-contain" />
+            ) : undefined,
+          };
+        })}
         search={search}
         onSearchChange={setSearch}
         view={view}
@@ -244,12 +297,15 @@ export function ReviewQueueListScreen() {
         </div>
       ) : null}
 
+      <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-card">
       <Table>
         <TableHeader>
-          <TableRow>
+          {/* Header con división normal: divisor inferior (border-b por defecto del TableRow), sin
+              barra ni esquinas redondeadas. Labels semibold muted, un punto más grandes (text-sm). Los
+              carets grises son el afford. de orden; las columnas ordenables van wireadas a `order_by`. */}
+          <TableRow className="hover:bg-transparent [&>th]:h-11 [&>th]:text-sm [&>th]:font-semibold [&>th]:text-muted-foreground">
             <TableHead>
-              <input
-                type="checkbox"
+              <SelectCheckbox
                 data-testid="select-all"
                 checked={visibleRows.length > 0 && selected.size === visibleRows.length}
                 onChange={toggleSelectAll}
@@ -257,33 +313,47 @@ export function ReviewQueueListScreen() {
                 disabled={visibleRows.length === 0}
               />
             </TableHead>
-            <TableHead>{t("admin.reviewQueue.column.info")}</TableHead>
-            <TableHead>{t("admin.reviewQueue.column.product")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.confidence")}</TableHead>
+            <TableHead>{t("admin.reviewQueue.column.image")}</TableHead>
+            {/* Columnas ORDENABLES (Figma: caret por columna). Cada `col` matchea la clave del
+                backend (`product_match_repository.sortable`); un click cicla none→asc→desc. */}
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.product")}
+              state={sortStateFor("name")}
+              onToggle={() => toggleSort("name")}
+            />
             <TableHead>{t("admin.reviewQueue.column.size")}</TableHead>
-            <TableHead>{t("admin.reviewQueue.column.weightType")}</TableHead>
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.weightType")}
+              state={sortStateFor("size")}
+              onToggle={() => toggleSort("size")}
+            />
             <TableHead>{t("admin.reviewQueue.column.description")}</TableHead>
-            <TableHead>{t("admin.reviewQueue.column.category")}</TableHead>
-            <TableHead>{t("admin.reviewQueue.column.brand")}</TableHead>
-            <TableHead>{t("admin.reviewQueue.column.store")}</TableHead>
-            <TableHead>{t("admin.reviewQueue.column.method")}</TableHead>
-            <TableHead>
-              {/* Única columna sortable hoy: `order_by` solo admite "uncertainty" | "created_at"
-                  (ver `types.ts`) y "Fecha del match" es la única del Figma que mapea a ese eje. */}
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 font-medium"
-                onClick={() =>
-                  navigateWith({
-                    order_by: params.order_by === "created_at" ? "uncertainty" : "created_at",
-                    offset: 0,
-                  })
-                }
-                aria-sort={params.order_by === "created_at" ? "ascending" : "none"}
-              >
-                {t("admin.reviewQueue.column.matchDate")}
-                <ArrowUpDown className="size-3" aria-hidden="true" />
-              </button>
-            </TableHead>
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.category")}
+              state={sortStateFor("category")}
+              onToggle={() => toggleSort("category")}
+            />
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.brand")}
+              state={sortStateFor("brand")}
+              onToggle={() => toggleSort("brand")}
+            />
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.store")}
+              state={sortStateFor("provider")}
+              onToggle={() => toggleSort("provider")}
+            />
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.method")}
+              state={sortStateFor("method")}
+              onToggle={() => toggleSort("method")}
+            />
+            <SortableColumnHeader
+              label={t("admin.reviewQueue.column.matchDate")}
+              state={sortStateFor("created_at")}
+              onToggle={() => toggleSort("created_at")}
+            />
             <TableHead>{t("admin.reviewQueue.column.actions")}</TableHead>
           </TableRow>
         </TableHeader>
@@ -303,10 +373,10 @@ export function ReviewQueueListScreen() {
       </Table>
 
       {visibleRows.length === 0 ? (
-        <p className="mt-6 text-sm text-muted-foreground">{t("admin.reviewQueue.empty")}</p>
+        <p className="px-4 py-6 text-sm text-muted-foreground">{t("admin.reviewQueue.empty")}</p>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
           <span>{t("admin.reviewQueue.pagination.showing")}</span>
           <Select
@@ -360,7 +430,58 @@ export function ReviewQueueListScreen() {
           </PaginationContent>
         </Pagination>
       </div>
+      </div>
+      </div>
     </div>
+  );
+}
+
+type SortState = "asc" | "desc" | "none";
+
+// Indicador de orden del Figma (nodo 483:12422): triángulo RELLENO con 3 estados —
+// `none` = gris ▲ (sin orden, default) · `asc` = verde ▲ (ascendente activo) · `desc` = verde ▼
+// (descendente activo). SVG puro (no lucide) para que sea un triángulo SÓLIDO, no un chevron.
+function SortTriangle({ state }: { state: SortState }) {
+  const color = state === "none" ? "text-muted-foreground/40" : "text-primary";
+  const path = state === "desc" ? "M0 0h10L5 6z" : "M5 0l5 6H0z"; // ▼ vs ▲
+  return (
+    <svg viewBox="0 0 10 6" className={`h-[6px] w-[10px] shrink-0 ${color}`} aria-hidden="true">
+      <path d={path} fill="currentColor" />
+    </svg>
+  );
+}
+
+const ARIA_SORT: Record<SortState, "none" | "ascending" | "descending"> = {
+  none: "none",
+  asc: "ascending",
+  desc: "descending",
+};
+
+// Header de columna ORDENABLE: botón con el label + el triángulo del estado vigente. Un click
+// cicla none → asc → desc → none (ver `toggleSort` en el screen). El backend soporta cada columna
+// en ambas direcciones vía `order_by` con prefijo "-" (product_match_repository).
+function SortableColumnHeader({
+  label,
+  state,
+  onToggle,
+}: {
+  label: ReactNode;
+  state: SortState;
+  onToggle: () => void;
+}) {
+  // `aria-sort` es válido en el `<th>` (rol columnheader), NO en el botón — de ahí que el
+  // TableHead viva DENTRO del header ordenable en vez de envolverlo desde el call site.
+  return (
+    <TableHead aria-sort={ARIA_SORT[state]}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 font-semibold"
+      >
+        {label}
+        <SortTriangle state={state} />
+      </button>
+    </TableHead>
   );
 }
 

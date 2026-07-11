@@ -31,3 +31,18 @@ export function formatMatchDate(iso: string, locale: Locale): string {
 
   return `${weekday} ${day}, ${month} ${year}`;
 }
+
+// Segunda línea de la columna "Fecha del match" (Figma 483:12419, ej. "10:00 P.M."). Misma fuente
+// UTC determinística que `formatMatchDate`. Devuelve "" si la fecha es inválida (la fila solo pinta
+// la línea de fecha).
+export function formatMatchTime(iso: string, locale: Locale): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat(locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  }).format(date);
+}

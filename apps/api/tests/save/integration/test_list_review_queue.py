@@ -196,3 +196,58 @@ def test_row_carries_provider_logo_store_product_image_and_null_category(db_sess
     assert row.store_product_image_url == "https://cdn.provider.com/arroz.png"
     assert row.category_slug is None
     assert row.category_name is None
+
+
+def _seed_named_match(  # type: ignore[no-untyped-def]
+    db_session, provider_id: str, name: str, *, confidence: float = 0.5, brand: str | None = None
+) -> str:
+    from src.contexts.save.infrastructure.models import StoreProductModel
+
+    sp = StoreProductModel(
+        provider_id=uuid.UUID(provider_id),
+        external_id=f"sku-{uuid.uuid4().hex[:8]}",
+        current_price_minor=42400,
+        currency="DOP",
+        name=name,
+        brand=brand,
+    )
+    db_session.add(sp)
+    db_session.flush()
+    return SqlProductMatchRepository(db_session).record_match(
+        store_product_id=str(sp.id), canonical_product_id=None,
+        confidence=confidence, method="human", status="pending_review",
+    )
+
+
+def test_order_by_column_ascending_and_descending(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Sort funcional por columna en AMBAS direcciones (Figma header): `order_by="name"` = A→Z,
+    prefijo `-` = Z→A. El orden NO depende de la incertidumbre (confianzas mezcladas a propósito)."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, _cid = _seed_provider_and_canonical(db_session, market_id=market)
+    m_cebolla = _seed_named_match(db_session, pid, "Cebolla", confidence=0.9)
+    m_arroz = _seed_named_match(db_session, pid, "Arroz", confidence=0.1)
+    m_banana = _seed_named_match(db_session, pid, "Banana", confidence=0.5)
+
+    use_case = ListReviewQueue(SqlProductMatchRepository(db_session))
+
+    rows_asc, total = use_case.execute(market, order_by="name", limit=50, offset=0)
+    assert total == 3
+    assert [r.match_id for r in rows_asc] == [m_arroz, m_banana, m_cebolla]
+
+    rows_desc, _ = use_case.execute(market, order_by="-name", limit=50, offset=0)
+    assert [r.match_id for r in rows_desc] == [m_cebolla, m_banana, m_arroz]
+
+
+def test_order_by_created_at_respects_descending_prefix(db_session) -> None:  # type: ignore[no-untyped-def]
+    """`-created_at` = LIFO (más nuevo primero); `created_at` sigue siendo FIFO (compat)."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, _cid = _seed_provider_and_canonical(db_session, market_id=market)
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    _sp1, m_first = _seed_pending_match(db_session, pid, confidence=0.5)
+    _set_created_at(db_session, m_first, base)
+    _sp2, m_last = _seed_pending_match(db_session, pid, confidence=0.5)
+    _set_created_at(db_session, m_last, base + timedelta(hours=1))
+
+    use_case = ListReviewQueue(SqlProductMatchRepository(db_session))
+    rows_desc, _ = use_case.execute(market, order_by="-created_at", limit=50, offset=0)
+    assert [r.match_id for r in rows_desc] == [m_last, m_first]

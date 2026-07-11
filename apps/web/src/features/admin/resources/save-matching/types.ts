@@ -1,4 +1,4 @@
-import type { AdminReviewQueueRowDto } from "@cuadra/api-client";
+import type { AdminReviewQueueRowDto, ProviderRefDto } from "@cuadra/api-client";
 
 import type { Locale } from "@/i18n/config";
 
@@ -13,6 +13,22 @@ export type ReviewMethod = (typeof REVIEW_METHOD)[number];
 
 export const REVIEW_ORDER_BY = ["uncertainty", "created_at"] as const;
 export type ReviewOrderBy = (typeof REVIEW_ORDER_BY)[number];
+
+// Columnas por las que la tabla puede ordenar (deben MATCHEAR las claves del backend
+// `ProductMatchRepository.list_review_queue` → `sortable`). El wire de `order_by` es la clave sola
+// (ascendente) o con prefijo "-" (descendente), estilo Django. `uncertainty` = default.
+export const REVIEW_SORT_COLUMN = [
+  "uncertainty",
+  "created_at",
+  "confidence",
+  "name",
+  "brand",
+  "provider",
+  "method",
+  "category",
+  "size",
+] as const;
+export type ReviewSortColumn = (typeof REVIEW_SORT_COLUMN)[number];
 
 /** Estado de filtros/orden/paginación de la cola de revisión — vive en la URL (shareable link,
  * batch 2.14/2.15). `market` no tiene selector en esta UI todavía (single-market DO, F2·B1) pero
@@ -38,4 +54,7 @@ export interface ReviewQueueData {
    * para `CategoryBadge`/`MethodBadge`/`formatMatchDate`/`useAdminI18n`. Opcional para no romper
    * los mocks de test existentes que aún no lo setean (cae a `DEFAULT_LOCALE`). */
   locale?: Locale;
+  /** Proveedores del mercado para el combobox del modal de filtros. Cargados por SSR (`+data.ts`,
+   * vía el público `listProviders`). Opcional: los mocks de test no lo setean. */
+  providers?: ProviderRefDto[];
 }

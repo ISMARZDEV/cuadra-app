@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { AdminTopBar, initialsFromName } from "./AdminTopBar";
+import { AdminTopBar } from "./AdminTopBar";
+import { initialsFromName } from "./initials";
 
 describe("AdminTopBar", () => {
   it("renderiza el nombre del usuario actual", () => {

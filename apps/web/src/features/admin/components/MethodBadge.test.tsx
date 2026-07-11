@@ -4,12 +4,12 @@ import { describe, expect, it } from "vitest";
 import { MethodBadge } from "./MethodBadge";
 
 describe("MethodBadge", () => {
-  it("renderiza la etiqueta localizada del método", () => {
+  it("renderiza el nombre técnico corto del método (Figma tabla: LLM/Human/…, NO localizado)", () => {
     render(<MethodBadge method="llm" />);
-    expect(screen.getByText("IA")).toBeInTheDocument();
+    expect(screen.getByText("LLM")).toBeInTheDocument();
 
     render(<MethodBadge method="human" />);
-    expect(screen.getByText("Humano")).toBeInTheDocument();
+    expect(screen.getByText("Human")).toBeInTheDocument();
   });
 
   it("cada método tiene un color pastel DISTINTO (aproximación, refinable en Batch 6)", () => {

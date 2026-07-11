@@ -1,49 +1,38 @@
-import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
-import { translate, type MessageKey } from "@/i18n/messages";
+import type { Locale } from "@/i18n/config";
+
+import {
+  isMatchMethod,
+  METHOD_SHORT_LABEL,
+  methodVisual,
+  NEUTRAL_METHOD_BADGE,
+} from "../resources/save-matching/lib/method-palette";
 
 export interface MethodBadgeProps {
   /** `AdminReviewQueueRowDto.method`: "ean" | "trgm" | "vector" | "hybrid" | "llm" | "human" (string
    * crudo — el backend no expone un enum estricto en el DTO, así que aceptamos cualquier string y
    * caemos a un estilo neutro con el valor tal cual si no lo reconocemos). */
   method: string;
+  /** Aceptado por compat de API (los callers threadan el locale del admin), pero la etiqueta del
+   * método NO se localiza — es el nombre técnico corto de la cascada (ver abajo). */
   locale?: Locale;
   className?: string;
 }
 
-// Color pastel por método de la cascada de matching (columna "Método" del Figma 483:12411).
-// APROXIMACIÓN de este batch — el Figma exacto (nodo pendiente) se ajusta en Batch 6; la intención
-// hoy es una vibra consistente: EAN/trgm en verdes/teal (determinístico, alta confianza), vector en
-// cyan, hybrid en violeta, llm en ámbar (el juez), human en rosa (fue a la cola de revisión).
-const METHOD_STYLES: Record<string, string> = {
-  ean: "bg-emerald-100 text-emerald-800",
-  trgm: "bg-teal-100 text-teal-800",
-  vector: "bg-cyan-100 text-cyan-800",
-  hybrid: "bg-violet-100 text-violet-800",
-  llm: "bg-amber-100 text-amber-800",
-  human: "bg-rose-100 text-rose-800",
-};
-
-const NEUTRAL_STYLE = "bg-slate-100 text-slate-700";
-
-const METHOD_LABEL_KEYS: Record<string, MessageKey> = {
-  ean: "admin.method.ean",
-  trgm: "admin.method.trgm",
-  vector: "admin.method.vector",
-  hybrid: "admin.method.hybrid",
-  llm: "admin.method.llm",
-  human: "admin.method.human",
-};
-
-export function MethodBadge({ method, locale = DEFAULT_LOCALE, className }: MethodBadgeProps) {
-  const style = METHOD_STYLES[method] ?? NEUTRAL_STYLE;
-  const labelKey = METHOD_LABEL_KEYS[method];
-  const label = labelKey ? translate(locale, labelKey) : method;
+// El pill por método (columna "Método" del Figma 483:12411). El color y la etiqueta vienen de la
+// fuente ÚNICA `method-palette.ts` (misma que usa el chart "Métodos de Match" de los KPI cards).
+// Un método crudo desconocido cae a estilo neutro mostrando el valor tal cual.
+export function MethodBadge({ method, className }: MethodBadgeProps) {
+  const visual = methodVisual(method);
+  const style = visual?.badge ?? NEUTRAL_METHOD_BADGE;
+  // Etiqueta = nombre técnico corto de la etapa (LLM/Human/Hybrid/Vector/EAN/Trgm), IDÉNTICO al del
+  // chart "Métodos de Match" (Figma tabla) — NO se localiza (antes usaba el i18n, que mostraba "IA").
+  const label = isMatchMethod(method) ? METHOD_SHORT_LABEL[method] : method;
 
   return (
     <span
       className={
         className ??
-        `inline-flex w-fit shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${style}`
+        `inline-flex w-fit shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold whitespace-nowrap ${style}`
       }
     >
       {label}
