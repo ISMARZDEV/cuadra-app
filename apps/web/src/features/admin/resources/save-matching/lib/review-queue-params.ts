@@ -4,11 +4,11 @@
 //
 // Espeja el patrón de `apps/web/src/features/save/enums.ts` (parseSort/parseViewMode): nunca
 // confiar en el string crudo de la URL — normalizar a un valor válido con default.
-import { REVIEW_ORDER_BY, type ReviewQueueParams } from "../types";
+import { REVIEW_SORT_COLUMN, type ReviewQueueParams } from "../types";
 
 const DEFAULT_MARKET = "DO"; // single-market F2·B1 (multi-país = F3), pero viaja end-to-end
 const DEFAULT_ORDER_BY = "uncertainty"; // default del backend (uncertainty-first), NO fijarlo aquí
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 10; // página de 10 por default (Figma: "Mostrar [10 ▾] por página")
 const DEFAULT_OFFSET = 0;
 
 type Search = Record<string, string | undefined>;
@@ -21,10 +21,17 @@ function parseConfidence(v: string | undefined): number | undefined {
 
 /** URL (`?provider_id=&method=&confidence_min=&confidence_max=&order_by=&limit=&offset=&market=`)
  * → estado de filtros tipado con defaults. Inversa de `serializeReviewQueueParams`. */
+// `order_by` válido = una columna de `REVIEW_SORT_COLUMN`, opcionalmente con prefijo "-"
+// (descendente). Nunca confiar en el string crudo de la URL: si la columna no se reconoce, cae al
+// default (`uncertainty`). Espeja el `sortable` del backend (product_match_repository).
+function normalizeOrderBy(raw: string | undefined): string {
+  if (!raw) return DEFAULT_ORDER_BY;
+  const column = raw.startsWith("-") ? raw.slice(1) : raw;
+  return (REVIEW_SORT_COLUMN as readonly string[]).includes(column) ? raw : DEFAULT_ORDER_BY;
+}
+
 export function parseReviewQueueParams(search: Search): ReviewQueueParams {
-  const orderBy = (REVIEW_ORDER_BY as readonly string[]).includes(search.order_by ?? "")
-    ? (search.order_by as string)
-    : DEFAULT_ORDER_BY;
+  const orderBy = normalizeOrderBy(search.order_by);
 
   return {
     market: search.market || DEFAULT_MARKET,

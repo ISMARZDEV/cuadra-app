@@ -1,4 +1,4 @@
-import { listReviewQueue } from "@cuadra/api-client";
+import { listProviders, listReviewQueue } from "@cuadra/api-client";
 import { render } from "vike/abort";
 import type { PageContextServer } from "vike/types";
 
@@ -48,5 +48,15 @@ export async function data(
     throw render(500, "No se pudo cargar la cola de revisión.");
   }
 
-  return { rows: res.data.rows, total: res.data.total, params, ...shell };
+  // Proveedores del mercado para el combobox del modal de filtros — público (`listProviders`, sin
+  // token, misma fuente que `ProvidersScreen`). No es crítico: si falla, el filtro cae a "Todos".
+  const providersRes = await listProviders({ client: apiClient, query: { market: params.market } });
+
+  return {
+    rows: res.data.rows,
+    total: res.data.total,
+    params,
+    providers: providersRes.data ?? [],
+    ...shell,
+  };
 }

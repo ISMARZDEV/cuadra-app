@@ -32,7 +32,9 @@ function renderToolbar(overrides: Partial<Parameters<typeof ReviewQueueToolbar>[
 describe("ReviewQueueToolbar", () => {
   it("el input de búsqueda dispara onSearchChange con el valor tipeado", () => {
     const props = renderToolbar();
-    fireEvent.change(screen.getByPlaceholderText("Buscar..."), { target: { value: "coca" } });
+    fireEvent.change(screen.getByPlaceholderText("Buscar producto..."), {
+      target: { value: "coca" },
+    });
     expect(props.onSearchChange).toHaveBeenCalledWith("coca");
   });
 
@@ -69,20 +71,17 @@ describe("ReviewQueueToolbar", () => {
     expect(props.onBulkReject).toHaveBeenCalledTimes(1);
   });
 
-  it("el botón de filtros abre el panel y cambiar el proveedor dispara onParamsChange", () => {
+  it("el botón de filtros abre el modal y 'Aplicar filtros' propaga los params", () => {
     const props = renderToolbar();
     fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
 
-    const providerInput = screen.getByLabelText("Proveedor (id)");
-    fireEvent.change(providerInput, { target: { value: "prov-1" } });
-    fireEvent.blur(providerInput);
+    // El modal abrió: el label de Proveedor y el botón de aplicar están presentes.
+    expect(screen.getByText("Proveedor")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtros" }));
 
-    expect(props.onParamsChange).toHaveBeenCalledWith({ provider_id: "prov-1" });
-  });
-
-  it("el botón de exportar existe pero está deshabilitado (stub)", () => {
-    renderToolbar();
-    expect(screen.getByRole("button", { name: "Exportar (próximamente)" })).toBeDisabled();
+    expect(props.onParamsChange).toHaveBeenCalledWith(
+      expect.objectContaining({ order_by: "uncertainty" }),
+    );
   });
 
   it("el dropdown 'Mostrar todos' renderiza sus opciones (stub)", () => {

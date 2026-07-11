@@ -77,7 +77,9 @@ describe("ReviewQueueListScreen — restyle Batch 6", () => {
     render(<ReviewQueueListScreen />);
     expect(screen.getAllByTestId("review-row-name")).toHaveLength(2);
 
-    fireEvent.change(screen.getByPlaceholderText("Buscar..."), { target: { value: "aceite" } });
+    fireEvent.change(screen.getByPlaceholderText("Buscar producto..."), {
+      target: { value: "aceite" },
+    });
 
     const names = screen.getAllByTestId("review-row-name").map((el) => el.textContent);
     expect(names).toEqual(["Aceite Mazorca"]);
@@ -107,7 +109,61 @@ describe("ReviewQueueListScreen — restyle Batch 6", () => {
     render(<ReviewQueueListScreen />);
     fireEvent.click(screen.getByRole("button", { name: "3" }));
 
-    expect(navigateMock).toHaveBeenCalledWith("/admin/review-queue?limit=10&offset=20");
+    // `limit=10` es el default → se omite de la URL (link limpio); solo viaja el offset.
+    expect(navigateMock).toHaveBeenCalledWith("/admin/review-queue?offset=20");
+  });
+
+  it("clicking a sortable column header cycles none → asc → desc → default (order_by con prefijo '-')", () => {
+    const base = { market: "DO" as const, limit: 10, offset: 0 };
+    mockData = { rows: [row({ match_id: "m1" })], total: 3, params: { ...base, order_by: "uncertainty" } };
+    const { rerender } = render(<ReviewQueueListScreen />);
+
+    // none → asc: manda la columna sola (`name`)
+    fireEvent.click(screen.getByRole("button", { name: "Producto" }));
+    expect(navigateMock).toHaveBeenCalledWith("/admin/review-queue?order_by=name");
+
+    // asc → desc: prefijo "-"
+    navigateMock.mockClear();
+    mockData = { ...mockData, params: { ...base, order_by: "name" } };
+    rerender(<ReviewQueueListScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Producto" }));
+    expect(navigateMock).toHaveBeenCalledWith("/admin/review-queue?order_by=-name");
+
+    // desc → default: vuelve a `uncertainty` → se omite de la URL (link limpio)
+    navigateMock.mockClear();
+    mockData = { ...mockData, params: { ...base, order_by: "-name" } };
+    rerender(<ReviewQueueListScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Producto" }));
+    expect(navigateMock).toHaveBeenCalledWith("/admin/review-queue");
+  });
+
+  it("re-renders the table with the NEW rows after navigation delivers fresh SSR data (paginación real)", () => {
+    // Reproduce el ciclo vivo que el usuario reportó roto: cambiar "por página"/página hace
+    // `navigate()`, Vike reejecuta `data()` y `useData()` entrega filas NUEVAS. La tabla DEBE
+    // reflejarlas. Antes del fix de `useAdminList` (que congelaba `useState(initial)`), esto
+    // renderizaba las filas de la primera página para siempre.
+    mockData = {
+      rows: [row({ match_id: "p1a", store_product_name: "Producto Pagina 1" })],
+      total: 30,
+      params: { market: "DO", order_by: "uncertainty", limit: 10, offset: 0 },
+    };
+    const { rerender } = render(<ReviewQueueListScreen />);
+    expect(screen.getByText("Producto Pagina 1")).toBeInTheDocument();
+
+    // Simula el resultado de `navigate(?limit=20)`: `useData()` ahora devuelve otras filas.
+    mockData = {
+      rows: [
+        row({ match_id: "p2a", store_product_name: "Producto Pagina 2 A" }),
+        row({ match_id: "p2b", store_product_name: "Producto Pagina 2 B" }),
+      ],
+      total: 30,
+      params: { market: "DO", order_by: "uncertainty", limit: 20, offset: 0 },
+    };
+    rerender(<ReviewQueueListScreen />);
+
+    expect(screen.queryByText("Producto Pagina 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Producto Pagina 2 A")).toBeInTheDocument();
+    expect(screen.getByText("Producto Pagina 2 B")).toBeInTheDocument();
   });
 
   it("'Eliminar' on a row's Acciones menu selects only that row and opens the reject panel", async () => {

@@ -1,4 +1,4 @@
-import { ChevronDown, Filter, LayoutGrid, List, Search, Share2, SquareCheckBig, Star } from "lucide-react";
+import { ChevronDown, LayoutGrid, List, Search } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui-base/button";
@@ -9,23 +9,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-base/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { FilterSearchSelectOption } from "@/features/admin/components/filters";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import type { Locale } from "@/i18n/config";
+import { cn } from "@/lib/utils";
 
-import { REVIEW_METHOD, REVIEW_ORDER_BY, type ReviewQueueParams } from "../types";
-
-// Sentinel de radix-ui Select: no acepta `value=""` en un SelectItem (mismo patrón que
-// `ReviewQueueListScreen` hoy) — "todos" viaja como este string y se traduce a `undefined` al
-// llamar `onParamsChange`.
-const ALL = "__all__";
+import type { ReviewQueueParams } from "../types";
+import { ReviewQueueFilters } from "./ReviewQueueFilters";
+import { FunnelIcon, ListChecksIcon, ListStarIcon } from "./toolbar-icons";
 
 export type ReviewQueueView = "list" | "grid";
 
@@ -35,6 +26,8 @@ export interface ReviewQueueToolbarProps {
    * si eso navega por URL (`navigateWith`) u otra cosa. */
   params: ReviewQueueParams;
   onParamsChange: (patch: Partial<ReviewQueueParams>) => void;
+  /** Lista opcional de proveedores para el combobox del modal de filtros. */
+  providers?: FilterSearchSelectOption[];
   /** Texto de búsqueda (⌘F). NO hay parámetro de texto en el backend todavía — el caller (Batch 6)
    * hace el filtro CLIENT-SIDE sobre `rows` ya cargadas (por nombre de producto). Este componente
    * solo surfacea el valor, no filtra nada. */
@@ -53,13 +46,22 @@ export interface ReviewQueueToolbarProps {
   locale: Locale;
 }
 
-// Toolbar de la Cola de revisión (Figma 483:12411, Batch 5): cluster izquierdo = búsqueda + filtros
-// + view-toggle; cluster derecho = exportar (stub) + "Mostrar todos" (stub) + "Acciones" (bulk
-// approve/reject real). Presentacional — el estado vive en el screen (Batch 6 lo integra); acá solo
-// wireamos vía props/callbacks para poder testear en aislamiento.
+// Chip redondo del view-toggle (grid/list) dentro de un pill BLANCO. Seleccionado = círculo lima
+// (brand-lime) con ícono oscuro; sin seleccionar = círculo gris SÓLIDO con ícono oscuro. El ícono
+// usa el token Dark (#1e2129) del Figma en ambos estados. Fiel a la referencia (Select-Type-View).
+const VIEW_CHIP_BASE =
+  "flex size-[26px] items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed";
+const VIEW_CHIP_ON = "bg-brand-lime text-[#1e2129]";
+const VIEW_CHIP_OFF = "bg-[#d9d9d9] text-[#1e2129] dark:bg-white/20 dark:text-white/85";
+
+// Toolbar de la Cola de revisión (Figma 551:16671): cluster izquierdo = búsqueda (pill gris + hint
+// ⌘F verde bosque) + filtros (círculo lima) + view-toggle (pastilla gris con chips grid/list);
+// cluster derecho = "Mostrar todos" (lima, stub) + "Acciones" (verde bosque, bulk approve/reject
+// real). Presentacional — el estado vive en el screen; acá solo wireamos vía props/callbacks.
 export function ReviewQueueToolbar({
   params,
   onParamsChange,
+  providers,
   search,
   onSearchChange,
   view,
@@ -75,187 +77,81 @@ export function ReviewQueueToolbar({
 
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Búsqueda: pill redondeado, ícono lupa, hint ⌘F. Client-side-only (ver doc del prop
-            `search` arriba) — Batch 6 filtra `rows` por nombre con este valor. */}
-        <div className="relative flex h-9 w-64 items-center rounded-full border border-primary/30 bg-primary/10 pr-2 pl-3">
-          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="flex flex-wrap items-center gap-2.5">
+        {/* Búsqueda: pill gris neutro, ícono lupa, hint ⌘F en pastilla verde bosque. Client-side-only
+            (ver doc del prop `search`) — Batch 6 filtra `rows` por nombre con este valor. */}
+        <div className="relative flex h-9 w-[272px] items-center gap-2 rounded-full border border-[#8daeae]/40 bg-[#b0b0b0]/15 pr-1.5 pl-3 dark:border-white/10 dark:bg-white/5">
+          <Search className="size-4 shrink-0 text-[#4f585d]/70 dark:text-white/50" aria-hidden="true" />
           <Input
             type="search"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("admin.toolbar.search.placeholder")}
-            className="h-full border-none bg-transparent px-2 shadow-none focus-visible:ring-0"
+            className="h-full flex-1 border-none bg-transparent px-0 text-sm shadow-none placeholder:text-[#4f585d]/60 focus-visible:ring-0 dark:placeholder:text-white/40"
           />
           <span
-            className="pointer-events-none shrink-0 rounded-md bg-background px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
+            className="pointer-events-none shrink-0 rounded-l-[5px] rounded-r-full bg-brand-forest px-2 py-1 text-[11px] font-medium text-[#f4f3f3]"
             aria-hidden="true"
           >
             ⌘F
           </span>
         </div>
 
-        {/* Filtros: botón redondo (funnel) que abre el panel con los controles YA existentes
-            (provider/method/confidence/order_by) — movidos acá desde `ReviewQueueListScreen`. */}
-        <div className="relative">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="rounded-full border-primary/40 text-primary"
-            aria-label={t("admin.toolbar.filters")}
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((v) => !v)}
-          >
-            <Filter className="size-4" />
-          </Button>
-
-          {filtersOpen ? (
-            <div
-              className="absolute top-full left-0 z-20 mt-2 flex w-80 flex-wrap items-end gap-3 rounded-md border border-border bg-popover p-3 shadow-md"
-              data-testid="review-queue-filters-panel"
-            >
-              <div>
-                <label htmlFor="toolbar-provider-filter" className="mb-1 block text-xs text-muted-foreground">
-                  {t("admin.toolbar.filter.provider")}
-                </label>
-                <Input
-                  id="toolbar-provider-filter"
-                  defaultValue={params.provider_id ?? ""}
-                  className="w-40"
-                  onBlur={(e) =>
-                    onParamsChange({ provider_id: e.target.value.trim() || undefined })
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-muted-foreground">
-                  {t("admin.toolbar.filter.method")}
-                </label>
-                <Select
-                  value={params.method ?? ALL}
-                  onValueChange={(v) => onParamsChange({ method: v === ALL ? undefined : v })}
-                >
-                  <SelectTrigger size="sm" className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL}>{t("admin.toolbar.filter.method.all")}</SelectItem>
-                    {REVIEW_METHOD.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label htmlFor="toolbar-confidence-min" className="mb-1 block text-xs text-muted-foreground">
-                  {t("admin.toolbar.filter.confidenceMin")}
-                </label>
-                <Input
-                  id="toolbar-confidence-min"
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  defaultValue={params.confidence_min ?? ""}
-                  className="w-24"
-                  onBlur={(e) =>
-                    onParamsChange({
-                      confidence_min: e.target.value ? Number(e.target.value) : undefined,
-                    })
-                  }
-                />
-              </div>
-
-              <div>
-                <label htmlFor="toolbar-confidence-max" className="mb-1 block text-xs text-muted-foreground">
-                  {t("admin.toolbar.filter.confidenceMax")}
-                </label>
-                <Input
-                  id="toolbar-confidence-max"
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  defaultValue={params.confidence_max ?? ""}
-                  className="w-24"
-                  onBlur={(e) =>
-                    onParamsChange({
-                      confidence_max: e.target.value ? Number(e.target.value) : undefined,
-                    })
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-muted-foreground">
-                  {t("admin.toolbar.filter.orderBy")}
-                </label>
-                <Select
-                  value={params.order_by}
-                  onValueChange={(v) => onParamsChange({ order_by: v })}
-                >
-                  <SelectTrigger size="sm" className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REVIEW_ORDER_BY.map((o) => (
-                      <SelectItem key={o} value={o}>
-                        {o === "uncertainty"
-                          ? t("admin.toolbar.filter.orderBy.uncertainty")
-                          : t("admin.toolbar.filter.orderBy.createdAt")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {/* View-toggle: list = real (tabla); grid = stub deshabilitado (follow-up). */}
-        <ToggleGroup
-          type="single"
-          value={view}
-          onValueChange={(v) => {
-            if (v === "list" || v === "grid") onViewChange(v);
-          }}
-          variant="outline"
-          size="sm"
-        >
-          <ToggleGroupItem value="grid" disabled aria-label={t("admin.toolbar.view.grid")}>
-            <LayoutGrid className="size-4" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="list" aria-label={t("admin.toolbar.view.list")}>
-            <List className="size-4" />
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Exportar: STUB — sin endpoint todavía, deshabilitado a propósito (follow-up). */}
+        {/* Filtros: círculo lima con embudo verde bosque (duotono) que abre el MODAL de filtros
+            reutilizable (provider/method/confidence/order_by) con apply diferido. */}
         <Button
           type="button"
-          variant="outline"
           size="icon"
-          className="rounded-full border-primary/40 text-primary"
-          aria-label={t("admin.toolbar.export")}
-          disabled
+          className="size-9 rounded-full border-transparent bg-brand-lime text-brand-forest shadow-none hover:bg-brand-lime/90"
+          aria-label={t("admin.toolbar.filters")}
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen(true)}
         >
-          <Share2 className="size-4" />
+          <FunnelIcon className="size-[18px]" />
         </Button>
+        <ReviewQueueFilters
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          params={params}
+          onApply={onParamsChange}
+          providers={providers}
+          locale={locale}
+        />
 
-        {/* "Mostrar todos": STUB — no hay flag de backend limpio para esto todavía; dropdown
-            presentacional con opciones localizadas, sin efecto (documentado, follow-up). */}
+        {/* View-toggle: pastilla gris con dos chips redondos. list = real (chip lima); grid = stub
+            deshabilitado (chip gris). Semántica radiogroup/radio para accesibilidad + tests. */}
+        <div role="radiogroup" className="flex items-center gap-1.5 rounded-full bg-white p-1 dark:bg-white/10">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={view === "grid"}
+            aria-label={t("admin.toolbar.view.grid")}
+            disabled
+            className={cn(VIEW_CHIP_BASE, view === "grid" ? VIEW_CHIP_ON : VIEW_CHIP_OFF)}
+          >
+            <LayoutGrid className="size-4" />
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={view === "list"}
+            aria-label={t("admin.toolbar.view.list")}
+            onClick={() => onViewChange("list")}
+            className={cn(VIEW_CHIP_BASE, view === "list" ? VIEW_CHIP_ON : VIEW_CHIP_OFF)}
+          >
+            <List className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        {/* "Mostrar todos": STUB — dropdown presentacional, sin efecto (follow-up). Pill lima con
+            ícono lista+estrella (duotono) y texto verde bosque. */}
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 text-sm font-medium text-primary">
-            <Star className="size-4" />
+          <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest">
+            <ListStarIcon className="size-[18px]" />
             {t("admin.toolbar.showAll")}
-            <ChevronDown className="size-4" />
+            <ChevronDown className="size-3.5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem>{t("admin.toolbar.showAll.optionAll")}</DropdownMenuItem>
@@ -263,16 +159,16 @@ export function ReviewQueueToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* "Acciones": bulk approve/reject reales (misma lógica que el screen hoy) — deshabilitado
-            sin selección. */}
+        {/* "Acciones": bulk approve/reject reales — deshabilitado sin selección. Pill verde bosque
+            con ícono list-checks (duotono) y texto lima. */}
         <DropdownMenu>
           <DropdownMenuTrigger
             disabled={selectedCount === 0 || bulkBusy}
-            className="flex h-9 items-center gap-1.5 rounded-full bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            className="flex h-9 items-center gap-1.5 rounded-full bg-brand-forest px-4 text-sm font-semibold text-brand-lime disabled:opacity-50"
           >
-            <SquareCheckBig className="size-4" />
+            <ListChecksIcon className="size-[18px]" />
             {t("admin.toolbar.actions")}
-            <ChevronDown className="size-4" />
+            <ChevronDown className="size-3.5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem onClick={onBulkApprove}>

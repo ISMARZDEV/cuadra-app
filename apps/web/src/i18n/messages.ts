@@ -170,13 +170,20 @@ type MessageKey =
   | "admin.toolbar.search.placeholder"
   | "admin.toolbar.filters"
   | "admin.toolbar.filter.provider"
+  | "admin.toolbar.filter.provider.placeholder"
+  | "admin.toolbar.filter.provider.all"
   | "admin.toolbar.filter.method"
   | "admin.toolbar.filter.method.all"
   | "admin.toolbar.filter.confidenceMin"
   | "admin.toolbar.filter.confidenceMax"
+  | "admin.toolbar.filter.confidence"
+  | "admin.toolbar.filter.confidence.min"
+  | "admin.toolbar.filter.confidence.max"
   | "admin.toolbar.filter.orderBy"
   | "admin.toolbar.filter.orderBy.uncertainty"
   | "admin.toolbar.filter.orderBy.createdAt"
+  | "admin.toolbar.filters.clear"
+  | "admin.toolbar.filters.apply"
   | "admin.toolbar.view.list"
   | "admin.toolbar.view.grid"
   | "admin.toolbar.export"
@@ -216,7 +223,25 @@ type MessageKey =
   | "admin.reviewQueue.pagination.perPage"
   | "admin.reviewQueue.pagination.of"
   | "admin.reviewQueue.bulkResult.summary"
-  | "admin.reviewQueue.bulkResult.failedSuffix";
+  | "admin.reviewQueue.bulkResult.failedSuffix"
+  | "admin.reviewQueue.sync"
+  | "admin.reviewQueue.column.confidence"
+  | "admin.reviewQueue.column.image"
+  | "admin.reviewQueue.kpi.demo"
+  | "admin.reviewQueue.kpi.menu"
+  | "admin.reviewQueue.kpi.pending.title"
+  | "admin.reviewQueue.kpi.pending.subtitle"
+  | "admin.reviewQueue.kpi.pending.unit"
+  | "admin.reviewQueue.kpi.autoLink.title"
+  | "admin.reviewQueue.kpi.autoLink.subtitle"
+  | "admin.reviewQueue.kpi.autoLink.linked"
+  | "admin.reviewQueue.kpi.autoLink.pending"
+  | "admin.reviewQueue.kpi.methods.title"
+  | "admin.reviewQueue.kpi.methods.subtitle"
+  | "admin.reviewQueue.kpi.methods.channels"
+  | "admin.reviewQueue.kpi.queueTime.title"
+  | "admin.reviewQueue.kpi.queueTime.subtitle"
+  | "admin.reviewQueue.kpi.queueTime.unit";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -373,9 +398,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Humano",
     "admin.topbar.notifications": "Notificaciones",
     "admin.topbar.settings": "Configuración",
-    "admin.toolbar.search.placeholder": "Buscar...",
+    "admin.toolbar.search.placeholder": "Buscar producto...",
     "admin.toolbar.filters": "Filtros",
-    "admin.toolbar.filter.provider": "Proveedor (id)",
+    "admin.toolbar.filter.provider": "Proveedor",
+    "admin.toolbar.filter.provider.placeholder": "Buscar proveedor...",
+    "admin.toolbar.filter.provider.all": "Todos los proveedores",
     "admin.toolbar.filter.method": "Método",
     "admin.toolbar.filter.method.all": "Todos",
     "admin.toolbar.filter.confidenceMin": "Confianza mín.",
@@ -383,6 +410,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.filter.orderBy": "Orden",
     "admin.toolbar.filter.orderBy.uncertainty": "Incertidumbre (default)",
     "admin.toolbar.filter.orderBy.createdAt": "Más antiguo primero",
+    "admin.toolbar.filter.confidence": "Confianza (%)",
+    "admin.toolbar.filter.confidence.min": "Mínimo",
+    "admin.toolbar.filter.confidence.max": "Máximo",
+    "admin.toolbar.filters.clear": "Limpiar filtros",
+    "admin.toolbar.filters.apply": "Aplicar filtros",
     "admin.toolbar.view.list": "Vista de lista",
     "admin.toolbar.view.grid": "Vista de cuadrícula (próximamente)",
     "admin.toolbar.export": "Exportar (próximamente)",
@@ -392,7 +424,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions": "Acciones",
     "admin.toolbar.actions.approve": "Aprobar seleccionados",
     "admin.toolbar.actions.reject": "Rechazar seleccionados",
-    "admin.reviewQueue.title": "Cola de revisión (Save)",
+    "admin.reviewQueue.title": "Cola de revisión",
     "admin.reviewQueue.info": "Información",
     "admin.reviewQueue.selectAll": "Seleccionar todos",
     "admin.reviewQueue.selectedSuffix": "seleccionado(s)",
@@ -403,7 +435,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.column.info": "Inf. Producto",
     "admin.reviewQueue.column.product": "Producto",
     "admin.reviewQueue.column.size": "Tamaño",
-    "admin.reviewQueue.column.weightType": "Tipo Peso",
+    "admin.reviewQueue.column.weightType": "Peso",
     "admin.reviewQueue.column.description": "Descripción",
     "admin.reviewQueue.column.category": "Categoría",
     "admin.reviewQueue.column.brand": "Marca",
@@ -422,6 +454,24 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.pagination.of": "de",
     "admin.reviewQueue.bulkResult.summary": "aprobado(s)/rechazado(s)",
     "admin.reviewQueue.bulkResult.failedSuffix": "fallaron",
+    "admin.reviewQueue.sync": "Sincronizar",
+    "admin.reviewQueue.column.confidence": "Confianza",
+    "admin.reviewQueue.column.image": "Imagen",
+    "admin.reviewQueue.kpi.demo": "Datos de demostración — métricas reales próximamente",
+    "admin.reviewQueue.kpi.menu": "Opciones del indicador",
+    "admin.reviewQueue.kpi.pending.title": "Cola Pendiente",
+    "admin.reviewQueue.kpi.pending.subtitle": "Comparado con la semana pasada",
+    "admin.reviewQueue.kpi.pending.unit": "productos",
+    "admin.reviewQueue.kpi.autoLink.title": "Auto-link Rate",
+    "admin.reviewQueue.kpi.autoLink.subtitle": "Productos enlazados sin humano",
+    "admin.reviewQueue.kpi.autoLink.linked": "Auto-enlazados",
+    "admin.reviewQueue.kpi.autoLink.pending": "Pendientes",
+    "admin.reviewQueue.kpi.methods.title": "Métodos de Match",
+    "admin.reviewQueue.kpi.methods.subtitle": "Última semana",
+    "admin.reviewQueue.kpi.methods.channels": "Canales activos",
+    "admin.reviewQueue.kpi.queueTime.title": "Tiempo en Cola",
+    "admin.reviewQueue.kpi.queueTime.subtitle": "Mediana de resolución",
+    "admin.reviewQueue.kpi.queueTime.unit": "días",
   },
   en: {
     "nav.save": "Save",
@@ -576,9 +626,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Human",
     "admin.topbar.notifications": "Notifications",
     "admin.topbar.settings": "Settings",
-    "admin.toolbar.search.placeholder": "Search...",
+    "admin.toolbar.search.placeholder": "Search product...",
     "admin.toolbar.filters": "Filters",
-    "admin.toolbar.filter.provider": "Provider (id)",
+    "admin.toolbar.filter.provider": "Provider",
+    "admin.toolbar.filter.provider.placeholder": "Search provider...",
+    "admin.toolbar.filter.provider.all": "All providers",
     "admin.toolbar.filter.method": "Method",
     "admin.toolbar.filter.method.all": "All",
     "admin.toolbar.filter.confidenceMin": "Min. confidence",
@@ -586,6 +638,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.filter.orderBy": "Order",
     "admin.toolbar.filter.orderBy.uncertainty": "Uncertainty (default)",
     "admin.toolbar.filter.orderBy.createdAt": "Oldest first",
+    "admin.toolbar.filter.confidence": "Confidence (%)",
+    "admin.toolbar.filter.confidence.min": "Minimum",
+    "admin.toolbar.filter.confidence.max": "Maximum",
+    "admin.toolbar.filters.clear": "Clear filters",
+    "admin.toolbar.filters.apply": "Apply filters",
     "admin.toolbar.view.list": "List view",
     "admin.toolbar.view.grid": "Grid view (coming soon)",
     "admin.toolbar.export": "Export (coming soon)",
@@ -595,7 +652,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions": "Actions",
     "admin.toolbar.actions.approve": "Approve selected",
     "admin.toolbar.actions.reject": "Reject selected",
-    "admin.reviewQueue.title": "Review queue (Save)",
+    "admin.reviewQueue.title": "Review queue",
     "admin.reviewQueue.info": "Information",
     "admin.reviewQueue.selectAll": "Select all",
     "admin.reviewQueue.selectedSuffix": "selected",
@@ -606,7 +663,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.column.info": "Product info",
     "admin.reviewQueue.column.product": "Product",
     "admin.reviewQueue.column.size": "Size",
-    "admin.reviewQueue.column.weightType": "Weight type",
+    "admin.reviewQueue.column.weightType": "Unit",
     "admin.reviewQueue.column.description": "Description",
     "admin.reviewQueue.column.category": "Category",
     "admin.reviewQueue.column.brand": "Brand",
@@ -625,6 +682,24 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.pagination.of": "of",
     "admin.reviewQueue.bulkResult.summary": "approved/rejected",
     "admin.reviewQueue.bulkResult.failedSuffix": "failed",
+    "admin.reviewQueue.sync": "Sync",
+    "admin.reviewQueue.column.confidence": "Confidence",
+    "admin.reviewQueue.column.image": "Image",
+    "admin.reviewQueue.kpi.demo": "Demo data — real metrics coming soon",
+    "admin.reviewQueue.kpi.menu": "Indicator options",
+    "admin.reviewQueue.kpi.pending.title": "Pending Queue",
+    "admin.reviewQueue.kpi.pending.subtitle": "Compared to last week",
+    "admin.reviewQueue.kpi.pending.unit": "products",
+    "admin.reviewQueue.kpi.autoLink.title": "Auto-link Rate",
+    "admin.reviewQueue.kpi.autoLink.subtitle": "Products linked without a human",
+    "admin.reviewQueue.kpi.autoLink.linked": "Auto-linked",
+    "admin.reviewQueue.kpi.autoLink.pending": "Pending",
+    "admin.reviewQueue.kpi.methods.title": "Match Methods",
+    "admin.reviewQueue.kpi.methods.subtitle": "Last week",
+    "admin.reviewQueue.kpi.methods.channels": "Active channels",
+    "admin.reviewQueue.kpi.queueTime.title": "Time in Queue",
+    "admin.reviewQueue.kpi.queueTime.subtitle": "Median resolution",
+    "admin.reviewQueue.kpi.queueTime.unit": "days",
   },
   pt: {
     "nav.save": "Save",
@@ -779,9 +854,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Humano",
     "admin.topbar.notifications": "Notificações",
     "admin.topbar.settings": "Configurações",
-    "admin.toolbar.search.placeholder": "Buscar...",
+    "admin.toolbar.search.placeholder": "Buscar produto...",
     "admin.toolbar.filters": "Filtros",
-    "admin.toolbar.filter.provider": "Fornecedor (id)",
+    "admin.toolbar.filter.provider": "Fornecedor",
+    "admin.toolbar.filter.provider.placeholder": "Buscar fornecedor...",
+    "admin.toolbar.filter.provider.all": "Todos os fornecedores",
     "admin.toolbar.filter.method": "Método",
     "admin.toolbar.filter.method.all": "Todos",
     "admin.toolbar.filter.confidenceMin": "Confiança mín.",
@@ -789,6 +866,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.filter.orderBy": "Ordem",
     "admin.toolbar.filter.orderBy.uncertainty": "Incerteza (padrão)",
     "admin.toolbar.filter.orderBy.createdAt": "Mais antigo primeiro",
+    "admin.toolbar.filter.confidence": "Confiança (%)",
+    "admin.toolbar.filter.confidence.min": "Mínimo",
+    "admin.toolbar.filter.confidence.max": "Máximo",
+    "admin.toolbar.filters.clear": "Limpar filtros",
+    "admin.toolbar.filters.apply": "Aplicar filtros",
     "admin.toolbar.view.list": "Visualização em lista",
     "admin.toolbar.view.grid": "Visualização em grade (em breve)",
     "admin.toolbar.export": "Exportar (em breve)",
@@ -798,7 +880,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions": "Ações",
     "admin.toolbar.actions.approve": "Aprovar selecionados",
     "admin.toolbar.actions.reject": "Rejeitar selecionados",
-    "admin.reviewQueue.title": "Fila de revisão (Save)",
+    "admin.reviewQueue.title": "Fila de revisão",
     "admin.reviewQueue.info": "Informação",
     "admin.reviewQueue.selectAll": "Selecionar todos",
     "admin.reviewQueue.selectedSuffix": "selecionado(s)",
@@ -809,7 +891,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.column.info": "Info. Produto",
     "admin.reviewQueue.column.product": "Produto",
     "admin.reviewQueue.column.size": "Tamanho",
-    "admin.reviewQueue.column.weightType": "Tipo Peso",
+    "admin.reviewQueue.column.weightType": "Peso",
     "admin.reviewQueue.column.description": "Descrição",
     "admin.reviewQueue.column.category": "Categoria",
     "admin.reviewQueue.column.brand": "Marca",
@@ -828,6 +910,24 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.pagination.of": "de",
     "admin.reviewQueue.bulkResult.summary": "aprovado(s)/rejeitado(s)",
     "admin.reviewQueue.bulkResult.failedSuffix": "falharam",
+    "admin.reviewQueue.sync": "Sincronizar",
+    "admin.reviewQueue.column.confidence": "Confiança",
+    "admin.reviewQueue.column.image": "Imagem",
+    "admin.reviewQueue.kpi.demo": "Dados de demonstração — métricas reais em breve",
+    "admin.reviewQueue.kpi.menu": "Opções do indicador",
+    "admin.reviewQueue.kpi.pending.title": "Fila Pendente",
+    "admin.reviewQueue.kpi.pending.subtitle": "Comparado com a semana passada",
+    "admin.reviewQueue.kpi.pending.unit": "produtos",
+    "admin.reviewQueue.kpi.autoLink.title": "Auto-link Rate",
+    "admin.reviewQueue.kpi.autoLink.subtitle": "Produtos vinculados sem humano",
+    "admin.reviewQueue.kpi.autoLink.linked": "Auto-vinculados",
+    "admin.reviewQueue.kpi.autoLink.pending": "Pendentes",
+    "admin.reviewQueue.kpi.methods.title": "Métodos de Match",
+    "admin.reviewQueue.kpi.methods.subtitle": "Última semana",
+    "admin.reviewQueue.kpi.methods.channels": "Canais ativos",
+    "admin.reviewQueue.kpi.queueTime.title": "Tempo na Fila",
+    "admin.reviewQueue.kpi.queueTime.subtitle": "Mediana de resolução",
+    "admin.reviewQueue.kpi.queueTime.unit": "dias",
   },
 };
 

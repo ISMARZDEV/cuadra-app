@@ -69,10 +69,15 @@ describe("ReviewQueueListScreen", () => {
 
     render(<ReviewQueueListScreen />);
 
+    // Pill de la columna "Confianza" (Figma 483:12422): bg por banda con los hex EXACTOS del Figma
+    // (verde #b4ff8f / ámbar #f8f48f / rojo #ffc4c4) + el % explícito.
     const badges = screen.getAllByTestId("confidence-badge");
-    expect(badges[0].className).toContain("bg-emerald-700");
-    expect(badges[1].className).toContain("bg-amber-500");
-    expect(badges[2].className).toContain("bg-rose-100");
+    expect(badges[0].className).toContain("bg-[#b4ff8f]");
+    expect(badges[0]).toHaveTextContent("90%");
+    expect(badges[1].className).toContain("bg-[#f8f48f]");
+    expect(badges[1]).toHaveTextContent("60%");
+    expect(badges[2].className).toContain("bg-[#ffc4c4]");
+    expect(badges[2]).toHaveTextContent("20%");
   });
 
   it("links each row to its detail page", () => {

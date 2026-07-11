@@ -78,14 +78,14 @@ describe("ReviewRow (Batch 6 restyle)", () => {
     expect(screen.getByText("Sin categoría")).toBeInTheDocument();
   });
 
-  it("renders the ProviderLogo (text fallback when no logo url)", () => {
+  it("renders the ProviderLogo — bundled chain logo by name when there's no logo url (Jumbo → jumbo.png)", () => {
     renderRow({ provider_name: "Jumbo", provider_logo_url: null });
-    expect(screen.getByText("Jumbo")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Jumbo" })).toBeInTheDocument();
   });
 
-  it("renders the MethodBadge with the localized label", () => {
+  it("renders the MethodBadge with the short technical label (LLM, not localized)", () => {
     renderRow({ method: "llm" });
-    expect(screen.getByText("IA")).toBeInTheDocument();
+    expect(screen.getByText("LLM")).toBeInTheDocument();
   });
 
   it("renders a graceful 'no image' tile when store_product_image_url is null", () => {

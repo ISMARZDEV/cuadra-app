@@ -16,3 +16,14 @@ if (typeof window !== "undefined" && !window.matchMedia) {
     dispatchEvent: () => false,
   }) as MediaQueryList;
 }
+
+// jsdom tampoco implementa `ResizeObserver` — lo necesita el `Slider` de radix (vía
+// `@radix-ui/react-use-size`) que usa `FilterRangeSlider` dentro del modal de filtros. Sin este
+// stub, cualquier test que abra el modal revienta con "ResizeObserver is not defined".
+if (typeof globalThis !== "undefined" && !("ResizeObserver" in globalThis)) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
