@@ -11,24 +11,28 @@ describe("useKeyboardReview", () => {
     document.body.innerHTML = "";
   });
 
-  it("fires onApprove on 'a'", () => {
+  it("fires onApprove on Option+A (Alt+A), not on plain 'a'", () => {
     const onApprove = vi.fn();
     renderHook(() =>
       useKeyboardReview({ onApprove, onReject: vi.fn(), onNext: vi.fn() }),
     );
 
-    fireEvent.keyDown(document, { key: "a" });
+    // plain 'a' NO dispara (acción consecuente requiere el modificador)
+    fireEvent.keyDown(document, { key: "a", code: "KeyA" });
+    expect(onApprove).not.toHaveBeenCalled();
 
+    // Option+A sí — en macOS `key` es "å" pero `code` es "KeyA"
+    fireEvent.keyDown(document, { key: "å", code: "KeyA", altKey: true });
     expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
-  it("fires onReject on 'r'", () => {
+  it("fires onReject on Option+R (Alt+R)", () => {
     const onReject = vi.fn();
     renderHook(() =>
       useKeyboardReview({ onApprove: vi.fn(), onReject, onNext: vi.fn() }),
     );
 
-    fireEvent.keyDown(document, { key: "r" });
+    fireEvent.keyDown(document, { key: "®", code: "KeyR", altKey: true });
 
     expect(onReject).toHaveBeenCalledTimes(1);
   });
@@ -55,6 +59,18 @@ describe("useKeyboardReview", () => {
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
+  it("fires onPrev on 'p' and ArrowLeft", () => {
+    const onPrev = vi.fn();
+    renderHook(() =>
+      useKeyboardReview({ onApprove: vi.fn(), onReject: vi.fn(), onNext: vi.fn(), onPrev }),
+    );
+
+    fireEvent.keyDown(document, { key: "p" });
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+
+    expect(onPrev).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores hotkeys while the event target is a text input (e.g. the reject reason note)", () => {
     const onApprove = vi.fn();
     const textarea = document.createElement("textarea");
@@ -64,7 +80,7 @@ describe("useKeyboardReview", () => {
       useKeyboardReview({ onApprove, onReject: vi.fn(), onNext: vi.fn() }),
     );
 
-    fireEvent.keyDown(textarea, { key: "a" });
+    fireEvent.keyDown(textarea, { key: "å", code: "KeyA", altKey: true });
 
     expect(onApprove).not.toHaveBeenCalled();
   });
@@ -75,7 +91,7 @@ describe("useKeyboardReview", () => {
       useKeyboardReview({ onApprove, onReject: vi.fn(), onNext: vi.fn(), disabled: true }),
     );
 
-    fireEvent.keyDown(document, { key: "a" });
+    fireEvent.keyDown(document, { key: "å", code: "KeyA", altKey: true });
 
     expect(onApprove).not.toHaveBeenCalled();
   });
@@ -87,7 +103,7 @@ describe("useKeyboardReview", () => {
     );
 
     unmount();
-    fireEvent.keyDown(document, { key: "a" });
+    fireEvent.keyDown(document, { key: "å", code: "KeyA", altKey: true });
 
     expect(onApprove).not.toHaveBeenCalled();
   });

@@ -41,3 +41,18 @@ export function confidencePillClass(confidence: number | null): string {
   }
   return "bg-[#b4ff8f] text-[#1c8d00] dark:bg-[#b4ff8f]/20 dark:text-[#b4ff8f]";
 }
+
+/**
+ * Clase Tailwind de STROKE (SVG) para el arco del `ConfidenceDonut` — mismo triage por banda que
+ * `confidenceColor`/`confidencePillClass` pero como color de trazo, no `bg+text`. Reusa los mismos
+ * umbrales (fuente única). Verde = casi seguro, ámbar = territorio del juez, rosa = necesita ojo.
+ */
+export function confidenceStrokeClass(confidence: number | null): string {
+  if (confidence === null || confidence < CONFIDENCE_MID_THRESHOLD) {
+    return "stroke-rose-400";
+  }
+  if (confidence < CONFIDENCE_HIGH_THRESHOLD) {
+    return "stroke-amber-500";
+  }
+  return "stroke-emerald-500";
+}

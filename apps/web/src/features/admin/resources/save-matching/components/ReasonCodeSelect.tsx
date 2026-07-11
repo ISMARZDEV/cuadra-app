@@ -1,11 +1,6 @@
 import { useState } from "react";
 
-const REASON_CODES = [
-  { value: "different_size", label: "Tamaño distinto" },
-  { value: "different_brand", label: "Marca distinta" },
-  { value: "different_product", label: "Producto distinto" },
-  { value: "other", label: "Otro" },
-];
+import { REASON_CODES } from "../lib/reason-codes";
 
 interface ReasonCodeSelectProps {
   onReject: (payload: { reasonCode: string; reasonNote: string }) => void;
