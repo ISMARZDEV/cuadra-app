@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime
 
 from ..domain.entities import SourcePlatform, StoreRegistry
-from ..domain.ports import StoreProductRepository, StoreRegistryRepository
+from ..domain.ports import ProviderRepository, StoreProductRepository, StoreRegistryRepository
 from ..domain.source_health import SourceHealthRow, derive_source_health
 
 
@@ -132,10 +132,14 @@ class ListSourcesHealth:
     de esquema ni tasa de error — no existe esa señal en el pipeline hoy."""
 
     def __init__(
-        self, source_repo: StoreRegistryRepository, store_product_repo: StoreProductRepository
+        self,
+        source_repo: StoreRegistryRepository,
+        store_product_repo: StoreProductRepository,
+        provider_repo: ProviderRepository,
     ) -> None:
         self._sources = source_repo
         self._store_products = store_product_repo
+        self._providers = provider_repo
 
     def execute(self, market_id: str) -> list[SourceHealthRow]:
         now = datetime.now(UTC)
@@ -144,5 +148,13 @@ class ListSourcesHealth:
             paused = source.enabled is False or source.paused_at is not None
             max_last_seen_at = self._store_products.max_last_seen_at(source.provider_id)
             health = derive_source_health(paused=paused, max_last_seen_at=max_last_seen_at, now=now)
-            rows.append(SourceHealthRow(source=source, health=health))
+            provider = self._providers.get_by_id(source.provider_id)  # nombre + logo para la UI
+            rows.append(
+                SourceHealthRow(
+                    source=source,
+                    health=health,
+                    provider_name=provider.name if provider else "",
+                    logo_url=provider.logo_url if provider else None,
+                )
+            )
         return rows

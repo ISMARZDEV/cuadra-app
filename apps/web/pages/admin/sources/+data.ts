@@ -1,4 +1,4 @@
-import { listSourcesHealth } from "@cuadra/api-client";
+import { listProviders, listSourcesHealth } from "@cuadra/api-client";
 import { render } from "vike/abort";
 import type { PageContextServer } from "vike/types";
 
@@ -27,5 +27,9 @@ export async function data(
     throw render(500, "No se pudo cargar la lista de fuentes.");
   }
 
-  return { sources: res.data, ...shell };
+  // Proveedores del mercado para el select-search del modal (público, `listProviders`, sin auth) —
+  // el admin elige un proveedor disponible por país en vez de pegar un uuid.
+  const providersRes = await listProviders({ client: apiClient, query: { market: "DO" } });
+
+  return { sources: res.data, providers: providersRes.data ?? [], ...shell };
 }

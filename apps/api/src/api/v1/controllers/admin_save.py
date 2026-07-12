@@ -82,6 +82,7 @@ from src.contexts.save.domain.entities import (
 )
 from src.contexts.save.domain.source_health import SourceHealth, SourceHealthRow
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
+from src.contexts.save.infrastructure.catalog_sources.source_auth import mask_auth
 
 router = APIRouter(
     prefix="/admin/save",
@@ -446,22 +447,34 @@ class SourceHealthDto(BaseModel):
 
     id: str
     provider_id: str
+    provider_name: str  # nombre del súper (para las cards/lista)
+    logo_url: str | None = None  # logo del proveedor (cards/lista)
     platform: SourcePlatform
     base_url: str
     enabled: bool
     paused_at: datetime | None = None
     health: SourceHealth
+    # §15 (FASE 3): config completa para el prefill del modal de edición. `auth` viaja ENMASCARADO
+    # (§15.5) — el secreto NUNCA sale en claro; para cambiarlo, el admin reescribe el campo.
+    endpoints: dict | None = None
+    headers: dict | None = None
+    auth: dict | None = None
 
     @classmethod
     def from_row(cls, row: SourceHealthRow) -> SourceHealthDto:
         return cls(
             id=row.source.id,
             provider_id=row.source.provider_id,
+            provider_name=row.provider_name,
+            logo_url=row.logo_url,
             platform=row.source.platform,
             base_url=row.source.base_url,
             enabled=row.source.enabled,
             paused_at=row.source.paused_at,
             health=row.health,
+            endpoints=row.source.endpoints,
+            headers=row.source.headers,
+            auth=mask_auth(row.source.auth),
         )
 
 

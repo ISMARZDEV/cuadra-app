@@ -44,7 +44,10 @@ def derive_source_health(
 
 @dataclass(frozen=True, slots=True)
 class SourceHealthRow:
-    """Read model: una fuente (`store_registry`) + su salud efectiva (Batch 3E)."""
+    """Read model: una fuente (`store_registry`) + su salud efectiva (Batch 3E) + los datos del
+    proveedor (nombre + logo) para la UI (cards/lista)."""
 
     source: StoreRegistry
     health: SourceHealth
+    provider_name: str = ""
+    logo_url: str | None = None

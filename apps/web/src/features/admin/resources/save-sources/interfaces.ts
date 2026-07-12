@@ -1,8 +1,9 @@
-import type { SourceHealthDto } from "@cuadra/api-client";
+import type { ProviderRefDto, SourceHealthDto } from "@cuadra/api-client";
 
 /** Datos SSR de `pages/admin/sources/+data.ts`: fuentes + salud efectiva (manual-pause +
- * frescura, ver `listSourcesHealth`/3.18-3.19). A diferencia de `save-providers` (público, sin
- * endpoint admin de listado), este SÍ es un endpoint admin gateado — la llamada SSR va con token. */
+ * frescura, ver `listSourcesHealth`/3.18-3.19) + los proveedores del mercado (para el select-search
+ * del modal). `listSourcesHealth` es admin-gateado (va con token); `listProviders` es público. */
 export interface SourcesData {
   sources: SourceHealthDto[];
+  providers: ProviderRefDto[];
 }
