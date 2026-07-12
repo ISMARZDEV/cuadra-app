@@ -12,6 +12,11 @@ Modos (elegí UNO):
                     store_product + su cascada (price, product_match→review_candidate,
                     category_classification). Deja canónicos/colecciones/referencia intactos.
                     Es el modo de todos los días para re-probar UNA fuente.
+  --ingestion       Borra la huella de ingesta de TODAS las tiendas (store_product + su cascada:
+                    price, product_match→review_candidate, category_classification) pero CONSERVA
+                    los canónicos, colecciones, brands, registries, canasta y taxonomía. Es el
+                    "empezar de cero de la INGESTA" sin tocar el catálogo — para re-probar Loop A/B
+                    contra el mismo set de canónicos. (Distinto de --reset, que SÍ borra canónicos.)
   --orphans         (modificador) además borra canónicos que quedaron sin store_products
                     y NO están en ninguna colección curada (+ sus refs: matches, candidatos,
                     clasificaciones, alertas). Útil tras limpiar un proveedor.
@@ -182,6 +187,47 @@ def _clean_orphans(s, *, execute: bool) -> None:
     print(f"✓ {n} canónicos huérfanos borrados.")
 
 
+def _reset_ingestion(s, *, execute: bool) -> None:
+    """Borra la huella de ingesta de TODAS las tiendas, CONSERVANDO los canónicos y el catálogo.
+
+    Orden FK-seguro idéntico a `_clean_provider` pero global: product_match primero (cascadea
+    review_candidate), luego store_product (cascadea price + category_classification de store).
+    Canónicos, colecciones, brands, provider, store_registry, basket_query y taxonomy quedan INTACTOS.
+    """
+    counts = s.execute(
+        text(
+            """
+            SELECT
+              (SELECT count(*) FROM save.store_product)          AS store_products,
+              (SELECT count(*) FROM save.price)                  AS prices,
+              (SELECT count(*) FROM save.product_match)          AS matches,
+              (SELECT count(*) FROM save.review_candidate)       AS candidates,
+              (SELECT count(*) FROM save.category_classification
+                 WHERE store_product_id IS NOT NULL)             AS store_classifications,
+              (SELECT count(*) FROM save.canonical_product)      AS canonicals
+            """
+        )
+    ).one()
+
+    print("\nRESET de INGESTA (conserva canónicos y catálogo). Se borrarían:")
+    print(f"  store_product           {counts.store_products}")
+    print(f"  price                   {counts.prices}")
+    print(f"  product_match           {counts.matches}")
+    print(f"  review_candidate        {counts.candidates}")
+    print(f"  category_classification {counts.store_classifications}  (solo de store, no de canónico)")
+    print(f"  CONSERVA canonical_product: {counts.canonicals}  (+ colecciones, registries, canasta, taxonomía)")
+
+    if not execute:
+        print("\n(dry-run — nada borrado. Agregá --yes para ejecutar.)")
+        return
+
+    # product_match NO cascadea desde store_product → va primero (cascadea review_candidate).
+    s.execute(text("DELETE FROM save.product_match"))
+    # store_product cascadea price + category_classification(store).
+    s.execute(text("DELETE FROM save.store_product"))
+    print("\n✓ Huella de ingesta borrada (todas las tiendas). Canónicos intactos — listo para re-ingerir.")
+
+
 def _reset_baseline(s, *, execute: bool) -> None:
     wipe = [t for t in _ALL_TABLES if t not in _KEEP_TABLES]
     print("\nRESET a baseline limpio.")
@@ -275,6 +321,7 @@ def main() -> None:
     provider = _arg("--provider")
     nuke = "--all" in sys.argv
     reset = "--reset" in sys.argv
+    ingestion = "--ingestion" in sys.argv
     menu = "--menu" in sys.argv or "--interactive" in sys.argv
 
     from src.shared.db.base import SessionLocal
@@ -285,10 +332,10 @@ def main() -> None:
             _interactive(s)
         return
 
-    if sum(bool(x) for x in (nuke, reset, provider)) > 1:
-        print("✖ Elegí UN modo: --provider, --reset O --all.")
+    if sum(bool(x) for x in (nuke, reset, ingestion, provider)) > 1:
+        print("✖ Elegí UN modo: --provider, --ingestion, --reset O --all.")
         sys.exit(1)
-    if not nuke and not reset and not provider and not orphans:
+    if not nuke and not reset and not ingestion and not provider and not orphans:
         print(__doc__)
         sys.exit(1)
 
@@ -297,6 +344,8 @@ def main() -> None:
             _nuke_all(s, execute=execute)
         elif reset:
             _reset_baseline(s, execute=execute)
+        elif ingestion:
+            _reset_ingestion(s, execute=execute)
         elif provider:
             _clean_provider(s, provider, execute=execute, orphans=orphans)
         elif orphans:

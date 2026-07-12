@@ -264,12 +264,42 @@ size_gate→category_gate→juez); enlaza `store_product` + precio o va a revisi
 **F3.2 — Cobertura pendiente (híbrido).** Vista materializada `(canónico×tienda)` sin `store_product`
 + selección por frescura (`last_seen_at`) para el refresh. Change-only (ya lo tenemos).
 
-**F3.3 — Resiliencia (patrones SRD a portar; nuestros adapters `httpx` no los tienen):**
-- **Round-robin por tienda** (`scrape-many.ts:11-77`) — repartir carga, no martillar un host.
-- **Backoff exponencial + jitter** en 429/503 (`http-client.ts:497-524`).
-- **Abortar iteración si un backend cae** (Nacional `backend_503`, §3.1).
-- **Result tipado con flags `retryable`/`hide`** (`result.ts:9-69`) — persistencia sin inspeccionar
-  el error crudo. Formalizar en el puerto de ingesta.
+**F3.3 — Resiliencia (patrones SRD a portar; nuestros adapters `httpx` no los tienen): ✅ COMPLETO (2026-07-12)**
+- ✅ **Backoff exponencial + jitter** en 429/503 (`http-client.ts:497-524`) → `catalog_sources/http_retry.py`.
+- ✅ **Round-robin por tienda** (`scrape-many.ts:11-77`) → `domain/coverage.py::round_robin_by_store`
+  (PURO): reparte la carga intercalando una ronda por tienda (`A,A,B`→`A,B,A`).
+- ✅ **Result tipado con flags `retryable`/`hide`** (`result.ts:9-69`) → value object PURO
+  `domain/fetch_outcome.py::FetchOutcome` + clasificador infra `catalog_sources/fetch_classifier.py`
+  (ÚNICA capa que conoce httpx). El use-case decide solo por flags, nunca por el error crudo.
+- ✅ **Abortar iteración si un backend cae** (Nacional `backend_503`, §3.1) → `CoverCanonicals` marca
+  la tienda caída (503/timeout retryable) y salta sus pares restantes; `CoverageResult.stores_aborted`.
+  Wireado en prod (`composition.py` inyecta `classify_httpx_error`). 15 tests unit RED→GREEN.
+
+### Activación en vivo (2026-07-12) — hallazgos + fix de cobertura dirigida ✅
+
+Se activó Loop B en vivo contra Nacional (Magento). La corrida destapó 3 cosas que los tests con
+fakes no veían, y se corrigieron (Strict TDD):
+- **Gate browse-only**: `REST_CATALOG` (Bravo) ignora la consulta dirigida (browse-full). Loop B ahora
+  SALTA plataformas browse-only (`supports_directed_query`); son territorio de Loop A.
+- **Fix size-dup**: `build_directed_query` ya no duplica el tamaño si el `name` ya lo contiene.
+- **🎯 Fix cobertura dirigida (el grande)**: Loop B ingestaba los ~65 resultados y matcheaba cada uno
+  contra CUALQUIER canónico → cubría el objetivo por casualidad (**1/23**). Ahora
+  `candidate_selection.select_best_candidate` elige el ÚNICO mejor candidato PARA el canónico objetivo
+  (EAN-exacto → o mayor trigram del nombre) y solo ESE pasa a la cascada. Resultado re-validado en
+  vivo (ingesta limpiada de cero, canónicos conservados): **21/50 cubiertos**, 21 `auto_linked` hybrid
+  conf ~0.93 **SIN LLM** (juez OpenAI caído), grey-band → revisión (seguro). Confirma que el
+  alto-confianza determinista auto-enlaza sin depender del LLM.
+- Herramienta nueva: `seeds/save_clean.py --ingestion` (borra la huella de ingesta de TODAS las
+  tiendas, CONSERVA canónicos/registries/canasta/taxonomía) — el "reset de ingesta" para re-probar.
+
+### Pendientes tras la activación
+
+1. **Juez OpenAI sin cuota (dev)**: grey-band no auto-enlaza hasta restaurar cuota o cambiar proveedor
+   (tema billing). El circuit-breaker degrada con gracia (no crashea).
+2. **F3.2 frescura (refresh minuto-a-minuto)** — la MITAD de F3.2 que quedó sin hacer: hoy
+   `list_uncovered` solo trae lo NO cubierto (LEFT JOIN runtime); falta la **selección por frescura**
+   (`last_seen_at`, patrón SRD 18h visibles / 3d ocultos) para RE-refrescar lo ya cubierto, + la
+   vista materializada indexada para escala. Va DESPUÉS de confirmar la cobertura inicial en vivo.
 
 **F3.4 — Corridas (Dagster) para mantener precios frescos** (equivalente al *Prices Batch* de SRD,
 staleness-driven): asset `coverage_*` con **schedule** (frecuente, ej. diario/cada N h) deps de
