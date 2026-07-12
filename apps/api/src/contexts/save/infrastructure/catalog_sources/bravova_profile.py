@@ -90,4 +90,11 @@ BRAVOVA_PROFILE = CatalogProfile(
     page_size=30,
     # Bravo Va RECHAZA el request sin `showOrder` ({"errors":[{"code":"required","field":"showOrder"}]})
     extra_params=(("showOrder", "importerankingArticulo asc"),),
+    # §15.4 — detalle por artículo (camino A de frescura): GET /public/articulo/get?idArticulo=<id>
+    # (requiere X-Auth-Token, que vive en store_registry.auth). El id es `idArticulo` (interno), que se
+    # guardó como source_ref.id_articulo; el `/get` devuelve el artículo bajo "data" (misma forma de item).
+    detail_path="/public/articulo/get",
+    detail_param="idArticulo",
+    detail_ref_key="id_articulo",
+    detail_item_path=("data",),
 )

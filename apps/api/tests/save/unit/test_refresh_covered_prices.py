@@ -1,11 +1,9 @@
-"""Unit — `RefreshCoveredPrices` (F3.2a / frescura: refrescar lo ya cubierto): orquestación PURA.
+"""Unit — `RefreshCoveredPrices` (F3.2a + §15.4 fallback A→C): orquestación PURA con stubs.
 
-Recorre los `store_product` cubiertos y VIEJOS (`list_stale_covered`, TTL 18h/3d), y por cada uno hace
-un re-fetch DIRECTO por su `external_id`/`url` conocido (camino A) → lo enruta al MISMO pipeline de
-refresh (`record_observation`, change-only: precio igual → solo bumpea last_seen_at; distinto → fila de
-histórico). Si el re-fetch no lo encuentra (A falla) → `is_available=false` (fase 1, sin B todavía).
-Salta plataformas browse-only (no soportan fetch-by-id) y aborta una tienda caída (reusa F3.3). No red,
-no DB.
+Camino A: re-fetch DIRECTO por id/url (o source_ref) → change-only. Si A no es usable (sin
+localizador → DetailUnavailable; token vencido/ausente → AUTH_FAILED; plataforma sin detail →
+build_detail_source None) → NO marca unavailable: DIFIERE el provider y lo refresca por BROWSE (C, una
+vez por provider). Reusa F3.3 (round-robin + abort-on-down). No red, no DB.
 """
 from __future__ import annotations
 
@@ -13,6 +11,15 @@ from src.contexts.save.application.refresh_covered_prices import RefreshCoveredP
 from src.contexts.save.application.refresh_prices import RefreshResult
 from src.contexts.save.domain.coverage import StaleCovered
 from src.contexts.save.domain.entities import SourcePlatform
+from src.contexts.save.domain.fetch_outcome import DetailUnavailable, FetchErrorKind, FetchOutcome
+
+
+class _BackendDown(Exception):
+    pass
+
+
+class _AuthError(Exception):
+    pass
 
 
 class _StaleRepo:
@@ -29,22 +36,14 @@ class _StaleRepo:
 
 
 class _DetailSource:
-    """Fake `ProductDetailSource`: devuelve un entry (marcador) o None (no encontrado)."""
-
-    def __init__(self, entry: object | None) -> None:
+    def __init__(self, *, entry: object = object(), raises: Exception | None = None) -> None:
         self._entry = entry
+        self._raises = raises
 
-    def fetch_by_external_id(self, external_id: str, url: str | None):  # type: ignore[no-untyped-def]
+    def fetch_by_external_id(self, external_id, url, source_ref=None):  # type: ignore[no-untyped-def]
+        if self._raises is not None:
+            raise self._raises
         return self._entry
-
-
-class _FailingDetailSource:
-    def fetch_by_external_id(self, external_id: str, url: str | None):  # type: ignore[no-untyped-def]
-        raise _BackendDown()
-
-
-class _BackendDown(Exception):
-    pass
 
 
 class _Refresh:
@@ -52,85 +51,125 @@ class _Refresh:
         self.calls: list[object] = []
 
     def execute(self, source: object, captured_at: object = None) -> RefreshResult:
-        self.calls.append(list(source.fetch()))  # type: ignore[attr-defined]
+        self.calls.append(source)
         return RefreshResult(seen=1, refreshed=1, unmatched=0, matched=0)
 
 
 def _stale(sp_id: str, provider: str, platform=SourcePlatform.VTEX) -> StaleCovered:  # type: ignore[no-untyped-def]
     return StaleCovered(
         store_product_id=sp_id, provider_id=provider, external_id=f"ext-{sp_id}",
-        url=f"https://x.do/{sp_id}", platform=platform,
+        url=None, platform=platform, source_ref=None,
     )
 
 
-def _build(items, *, detail_for=None, classify=None):  # type: ignore[no-untyped-def]
+def _classify(exc: Exception) -> FetchOutcome:
+    if isinstance(exc, _BackendDown):
+        return FetchOutcome(kind=FetchErrorKind.BACKEND_DOWN, retryable=True, hide=False)
+    if isinstance(exc, _AuthError):
+        return FetchOutcome(kind=FetchErrorKind.AUTH_FAILED, retryable=False, hide=False)
+    return FetchOutcome(kind=FetchErrorKind.FATAL, retryable=False, hide=False)
+
+
+def _build(items, *, detail_for=None, browse_for=None):  # type: ignore[no-untyped-def]
     repo = _StaleRepo(items)
     refresh = _Refresh()
-    order: list[str] = []
+    browsed: list[str] = []
 
-    def build_detail_source(item: StaleCovered):  # type: ignore[no-untyped-def]
-        order.append(item.provider_id)
-        return (detail_for or (lambda it: _DetailSource(object())))(item)
+    def build_detail_source(item):  # type: ignore[no-untyped-def]
+        return (detail_for or (lambda it: _DetailSource()))(item)
+
+    def build_browse_source(pid):  # type: ignore[no-untyped-def]
+        browsed.append(pid)
+        return (browse_for or (lambda p: object()))(pid)
 
     uc = RefreshCoveredPrices(
         store_repo=repo,
         refresh=refresh,  # type: ignore[arg-type]
         build_detail_source=build_detail_source,
-        **({"classify_error": classify} if classify else {}),
+        build_browse_source=build_browse_source,
+        classify_error=_classify,
     )
-    return uc, repo, refresh, order
+    return uc, repo, refresh, browsed
 
 
-def test_refreshes_a_stale_covered_product_via_direct_fetch() -> None:
-    uc, repo, refresh, _ = _build([_stale("s1", "p1")])
-
-    result = uc.execute("DO")
-
-    assert len(refresh.calls) == 1          # camino A → record_observation (change-only)
-    assert repo.unavailable == []           # se encontró → sigue disponible
-    assert result.checked == 1
-    assert result.refreshed == 1
-
-
-def test_marks_unavailable_when_direct_fetch_finds_nothing() -> None:
-    # A no lo encuentra (fase 1, sin B) → is_available=false, NO se borra.
-    uc, repo, refresh, _ = _build([_stale("s1", "p1")], detail_for=lambda it: _DetailSource(None))
+def test_refreshes_via_detail_path_a() -> None:
+    uc, repo, refresh, browsed = _build([_stale("s1", "p1")])
 
     result = uc.execute("DO")
 
-    assert refresh.calls == []
-    assert repo.unavailable == ["s1"]
+    assert len(refresh.calls) == 1 and repo.unavailable == [] and browsed == []
+    assert result.refreshed == 1 and result.checked == 1
+
+
+def test_marks_unavailable_when_detail_finds_nothing() -> None:
+    uc, repo, refresh, browsed = _build(
+        [_stale("s1", "p1")], detail_for=lambda it: _DetailSource(entry=None)
+    )
+
+    result = uc.execute("DO")
+
+    assert repo.unavailable == ["s1"] and refresh.calls == [] and browsed == []
     assert result.unavailable == 1
 
 
-def test_skips_browse_only_platforms() -> None:
-    # REST_CATALOG no soporta fetch-by-id → lo refresca el browse de Loop A, no F3.2a.
-    uc, repo, refresh, order = _build([_stale("s1", "p1", platform=SourcePlatform.REST_CATALOG)])
+def test_defers_to_browse_on_detail_unavailable() -> None:
+    # Sin localizador → DetailUnavailable → NO unavailable: se refresca por browse (C).
+    uc, repo, refresh, browsed = _build(
+        [_stale("s1", "p1", platform=SourcePlatform.REST_CATALOG)],
+        detail_for=lambda it: _DetailSource(raises=DetailUnavailable("sin id")),
+    )
 
     result = uc.execute("DO")
 
-    assert order == []                      # ni se construyó el detail source
-    assert refresh.calls == [] and repo.unavailable == []
-    assert result.checked == 0
+    assert repo.unavailable == []          # NO se oculta por falta de camino A
+    assert browsed == ["p1"]               # se refrescó por browse
+    assert result.browsed_providers == 1
+    assert len(refresh.calls) == 1         # el browse pasó por el refresh
+
+
+def test_defers_to_browse_on_auth_failed() -> None:
+    # Token vencido/ausente (403 → AUTH_FAILED) → fallback browse, no unavailable.
+    uc, repo, _refresh, browsed = _build(
+        [_stale("s1", "p1", platform=SourcePlatform.REST_CATALOG)],
+        detail_for=lambda it: _DetailSource(raises=_AuthError()),
+    )
+
+    result = uc.execute("DO")
+
+    assert repo.unavailable == [] and browsed == ["p1"] and result.browsed_providers == 1
+
+
+def test_defers_when_no_detail_source() -> None:
+    # Plataforma sin detail (build_detail_source None) → browse.
+    uc, _repo, _refresh, browsed = _build(
+        [_stale("s1", "p1", platform=SourcePlatform.AGGREGATOR)], detail_for=lambda it: None
+    )
+
+    result = uc.execute("DO")
+
+    assert browsed == ["p1"] and result.browsed_providers == 1
+
+
+def test_deferred_provider_browsed_once_not_per_item() -> None:
+    # 2 items del mismo provider diferido → UN solo browse (no uno por item).
+    uc, _repo, _refresh, browsed = _build(
+        [_stale("s1", "p1"), _stale("s2", "p1")], detail_for=lambda it: None
+    )
+
+    uc.execute("DO")
+
+    assert browsed == ["p1"]
 
 
 def test_round_robin_and_abort_on_downed_store() -> None:
-    from src.contexts.save.domain.fetch_outcome import FetchErrorKind, FetchOutcome
-
     items = [_stale("a1", "A"), _stale("a2", "A"), _stale("b1", "B"), _stale("b2", "B")]
 
-    def detail_for(item: StaleCovered):  # type: ignore[no-untyped-def]
-        return _FailingDetailSource() if item.provider_id == "A" else _DetailSource(object())
+    def detail_for(item):  # type: ignore[no-untyped-def]
+        return _DetailSource(raises=_BackendDown()) if item.provider_id == "A" else _DetailSource()
 
-    def classify(exc: Exception) -> FetchOutcome:
-        if isinstance(exc, _BackendDown):
-            return FetchOutcome(kind=FetchErrorKind.BACKEND_DOWN, retryable=True, hide=False)
-        return FetchOutcome(kind=FetchErrorKind.FATAL, retryable=False, hide=False)
-
-    uc, _repo, refresh, order = _build(items, detail_for=detail_for, classify=classify)
+    uc, _repo, refresh, browsed = _build(items, detail_for=detail_for)
 
     result = uc.execute("DO")
 
-    # RR = A(cae→abort),B(ok),A(saltado),B(ok) → solo B llega al refresh
-    assert len(refresh.calls) == 2
-    assert result.stores_aborted == 1
+    # A cae (retryable) → abort; B ok. Ni A se difiere (abort ≠ defer).
+    assert len(refresh.calls) == 2 and result.stores_aborted == 1 and browsed == []

@@ -55,3 +55,15 @@ def test_unknown_error_is_fatal_and_not_retryable() -> None:
 
     assert outcome.kind is FetchErrorKind.FATAL
     assert outcome.retryable is False
+
+
+def test_403_is_auth_failed_not_retryable() -> None:
+    # Token de fuente ausente/vencido → NO es backend caído ni fatal: se cae al fallback (browse).
+    outcome = classify_httpx_error(_status_error(403))
+
+    assert outcome.kind is FetchErrorKind.AUTH_FAILED
+    assert outcome.retryable is False
+
+
+def test_401_is_auth_failed() -> None:
+    assert classify_httpx_error(_status_error(401)).kind is FetchErrorKind.AUTH_FAILED

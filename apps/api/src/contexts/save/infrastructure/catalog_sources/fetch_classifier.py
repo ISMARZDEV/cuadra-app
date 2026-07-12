@@ -24,6 +24,8 @@ def classify_httpx_error(exc: Exception) -> FetchOutcome:
         status = exc.response.status_code
         if status in _BACKEND_DOWN_STATUS:
             return FetchOutcome(kind=FetchErrorKind.BACKEND_DOWN, retryable=True, hide=False)
+        if status in (401, 403):  # credencial de fuente ausente/vencida → fallback a browse (§15.4)
+            return FetchOutcome(kind=FetchErrorKind.AUTH_FAILED, retryable=False, hide=False)
         if status == 404:
             return FetchOutcome(kind=FetchErrorKind.NOT_FOUND, retryable=False, hide=True)
     return FetchOutcome(kind=FetchErrorKind.FATAL, retryable=False, hide=False)

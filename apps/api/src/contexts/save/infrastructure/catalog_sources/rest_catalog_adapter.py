@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from urllib.parse import quote, urlencode
 
+from ...domain.fetch_outcome import DetailUnavailable
 from ...domain.ports import RawCatalogEntry
 from .http_retry import request_with_retry
 
@@ -37,6 +38,12 @@ class CatalogProfile:
     # params fijos extra que algunos súper EXIGEN en cada request (p.ej. Bravo Va → `showOrder`);
     # se URL-encodean. Pares (no dict) para mantener el profile inmutable/hashable.
     extra_params: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    # §15.4 — DETALLE por artículo (camino A de frescura): endpoint de UN producto por su localizador.
+    # Bravo: GET `/public/articulo/get?idArticulo=<id>` → `{"data": <artículo>}`. Vacío = sin detalle.
+    detail_path: str | None = None          # p.ej. "/public/articulo/get"
+    detail_param: str = ""                  # query param del id de detalle, p.ej. "idArticulo"
+    detail_ref_key: str = ""                # llave en `source_ref`, p.ej. "id_articulo"
+    detail_item_path: tuple[str, ...] = ()  # ruta al artículo único en el envelope, p.ej. ("data",)
 
 
 def _dig(payload: object, path: tuple[str, ...]) -> object:
@@ -106,3 +113,48 @@ class RestCatalogAdapter:
                 offset += self._page_size
                 if not items or offset >= total:
                     break
+
+
+class RestCatalogDetailAdapter:
+    """`ProductDetailSource` para APIs REST con endpoint de UN artículo (§15.4, camino A de frescura).
+
+    Bravo: `GET {base}/public/articulo/get?idArticulo=<source_ref.id_articulo>` con la auth del
+    registry (el `http_get` que inyecta la factory ya la aplica). El `external_id` (idexterno) NO sirve
+    para el `/get` → se usa `source_ref[detail_ref_key]`. Sin ese localizador o sin `detail_path` en el
+    profile → `DetailUnavailable` (el use-case cae al fallback por browse, NO marca `is_available=false`).
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        provider_id: str,
+        market_id: str,
+        profile: CatalogProfile,
+        http_get: Callable[[str], dict] | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._provider_id = provider_id
+        self._market_id = market_id
+        self._profile = profile
+        self._http_get = http_get or RestCatalogAdapter._default_get
+
+    def fetch_by_external_id(
+        self, external_id: str, url: str | None = None, source_ref: dict | None = None
+    ) -> RawCatalogEntry | None:
+        p = self._profile
+        if not p.detail_path or not p.detail_ref_key:
+            raise DetailUnavailable(f"profile sin endpoint de detalle: {p.resource_path!r}")
+        locator = (source_ref or {}).get(p.detail_ref_key)
+        if not locator:
+            raise DetailUnavailable(f"sin {p.detail_ref_key!r} en source_ref → no hay camino A")
+        detail_url = (
+            f"{self._base_url}{p.detail_path}?{urlencode({p.detail_param: str(locator)}, quote_via=quote)}"
+        )
+        payload = self._http_get(detail_url) or {}
+        item = _dig(payload, p.detail_item_path)
+        if not isinstance(item, dict) or not item:
+            return None  # el artículo ya no está → is_available=false
+        try:
+            return p.map_item(item, self._provider_id, self._market_id)
+        except ValueError:
+            return None
