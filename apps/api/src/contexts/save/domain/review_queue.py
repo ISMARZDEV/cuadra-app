@@ -46,6 +46,12 @@ class StoreProductRawAttrs:
     sku: str | None = None
     ean: str | None = None
     provider_name: str | None = None
+    # Etapa A (crear canónico desde el detalle): el market (por el provider) para el payload de
+    # creación, y la categoría SUGERIDA = la clasificación activa del store_product (Etapa B),
+    # default del selector de categoría. None si aún no está clasificado.
+    market_id: str | None = None
+    suggested_taxonomy_node_id: str | None = None
+    suggested_category_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,4 +87,8 @@ class ReviewDetail:
     store_product_sku: str | None = None
     store_product_ean: str | None = None
     provider_name: str | None = None
+    # Etapa A: market + categoría sugerida (clasificación activa del store_product, Etapa B).
+    market_id: str | None = None
+    suggested_taxonomy_node_id: str | None = None
+    suggested_category_name: str | None = None
     candidates: list[ReviewCandidateView] = field(default_factory=list)

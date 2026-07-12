@@ -49,3 +49,31 @@ def test_detail_dto_exposes_sku_ean_and_provider() -> None:
     assert dto.store_product_sku == "sku-abc123"
     assert dto.store_product_ean == "7460100000123"
     assert dto.provider_name == "Sirena"
+
+
+def test_detail_dto_exposes_market_and_suggested_category() -> None:
+    # Etapa A: el detalle lleva el market (para crear el canónico) + la categoría SUGERIDA
+    # (la clasificación activa del store_product, Etapa B) = default del selector de categoría.
+    detail = ReviewDetail(
+        match_id="m1",
+        store_product_id="sp1",
+        confidence=0.5,
+        method="human",
+        store_product_name="Arroz La Garza Premium 20 Lbs",
+        store_product_brand="LA GARZA",
+        store_product_size_text="20 Lbs",
+        store_product_image_url=None,
+        store_product_sku="sku-1",
+        store_product_ean="7460083780023",
+        provider_name="Sirena",
+        market_id="DO",
+        suggested_taxonomy_node_id="leaf-arroz",
+        suggested_category_name="Arroz, Granos & Legumbres",
+        candidates=[],
+    )
+
+    dto = AdminReviewDetailDto.from_detail(detail)
+
+    assert dto.market_id == "DO"
+    assert dto.suggested_taxonomy_node_id == "leaf-arroz"
+    assert dto.suggested_category_name == "Arroz, Granos & Legumbres"

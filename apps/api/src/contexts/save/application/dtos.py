@@ -423,6 +423,10 @@ class AdminReviewDetailDto(BaseModel):
     store_product_sku: str | None = None
     store_product_ean: str | None = None
     provider_name: str | None = None
+    # Etapa A: market (payload de creación de canónico) + categoría sugerida (clasificación activa).
+    market_id: str | None = None
+    suggested_taxonomy_node_id: str | None = None
+    suggested_category_name: str | None = None
     candidates: list[AdminReviewCandidateDto] = []
 
     @classmethod
@@ -439,6 +443,9 @@ class AdminReviewDetailDto(BaseModel):
             store_product_sku=d.store_product_sku,
             store_product_ean=d.store_product_ean,
             provider_name=d.provider_name,
+            market_id=d.market_id,
+            suggested_taxonomy_node_id=d.suggested_taxonomy_node_id,
+            suggested_category_name=d.suggested_category_name,
             candidates=[AdminReviewCandidateDto.from_view(c) for c in d.candidates],
         )
 

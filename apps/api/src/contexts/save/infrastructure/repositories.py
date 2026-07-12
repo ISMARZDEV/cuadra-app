@@ -515,15 +515,28 @@ class SqlStoreProductRepository:
         sid = _parse_uuid(store_product_id)
         if sid is None:
             return None
-        # JOIN a provider para la "Tienda origen" del detalle; `external_id` = SKU de la tienda.
+        # JOIN a provider para la "Tienda origen" + market_id (Etapa A); `external_id` = SKU de la
+        # tienda. LEFT JOIN a la clasificación ACTIVA (Etapa B) + su hoja → categoría sugerida.
+        cc = CategoryClassificationModel
+        tn = TaxonomyNodeModel
         row = self._s.execute(
-            select(StoreProductModel, ProviderModel.name)
+            select(
+                StoreProductModel,
+                ProviderModel.name,
+                ProviderModel.market_id,
+                cc.taxonomy_node_id,
+                tn.name,
+            )
             .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .outerjoin(
+                cc, and_(cc.store_product_id == StoreProductModel.id, cc.status == "active")
+            )
+            .outerjoin(tn, tn.id == cc.taxonomy_node_id)
             .where(StoreProductModel.id == sid)
         ).first()
         if row is None:
             return None
-        sp, provider_name = row
+        sp, provider_name, market_id, suggested_leaf_id, suggested_leaf_name = row
         return StoreProductRawAttrs(
             store_product_id=str(sp.id),
             name=sp.name,
@@ -533,6 +546,9 @@ class SqlStoreProductRepository:
             sku=sp.external_id,
             ean=sp.ean,
             provider_name=provider_name,
+            market_id=market_id,
+            suggested_taxonomy_node_id=str(suggested_leaf_id) if suggested_leaf_id else None,
+            suggested_category_name=suggested_leaf_name,
         )
 
     def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
