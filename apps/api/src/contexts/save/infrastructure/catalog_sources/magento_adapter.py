@@ -12,12 +12,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 
-import httpx
-
 from src.shared.money import Currency, Money
 
 from ...domain.entities import PriceType
 from ...domain.ports import RawCatalogEntry
+from .http_retry import request_with_retry
 from .size_from_name import extract_size
 
 _PAGE_SIZE = 50
@@ -100,7 +99,7 @@ class MagentoAdapter:
 
     @staticmethod
     def _default_post(url: str, payload: dict, headers: dict[str, str]) -> dict:
-        resp = httpx.post(url, json=payload, headers=headers, timeout=30.0)
+        resp = request_with_retry("POST", url, json=payload, headers=headers, timeout=30.0)
         resp.raise_for_status()
         return resp.json()
 

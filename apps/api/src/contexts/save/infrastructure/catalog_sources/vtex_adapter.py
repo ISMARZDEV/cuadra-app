@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from urllib.parse import quote
 
-import httpx
+from .http_retry import request_with_retry
 
 from src.shared.money import Currency, Money, primary_currency_for_market
 
@@ -83,7 +83,7 @@ class VtexAdapter:
 
     @staticmethod
     def _default_get(url: str) -> list[dict]:
-        resp = httpx.get(url, timeout=30.0, headers={"User-Agent": "Cuadra/Save"})
+        resp = request_with_retry("GET", url, timeout=30.0, headers={"User-Agent": "Cuadra/Save"})
         resp.raise_for_status()
         return resp.json()
 
