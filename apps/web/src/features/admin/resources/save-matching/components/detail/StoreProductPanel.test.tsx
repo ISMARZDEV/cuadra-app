@@ -11,6 +11,7 @@ const props = {
   sku: "sku-abc123",
   ean: "7460100000123",
   providerName: "Sirena",
+  url: "https://sirena.do/arroz-goya-canilla-10lb/p",
   confidence: 0.85,
   method: "llm",
   candidateCount: 5,
@@ -43,5 +44,19 @@ describe("StoreProductPanel", () => {
   it("SKU/EAN ausentes → placeholder '—'", () => {
     render(<StoreProductPanel {...props} sku={null} ean={null} />);
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("muestra el botón 'Ver en la tienda' enlazando al url del producto (nueva pestaña)", () => {
+    // F0 (link a la tienda): el detalle abre la página del producto en la tienda origen.
+    render(<StoreProductPanel {...props} />);
+    const link = screen.getByRole("link", { name: /ver en la tienda/i });
+    expect(link).toHaveAttribute("href", "https://sirena.do/arroz-goya-canilla-10lb/p");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+  });
+
+  it("sin url → no muestra el botón 'Ver en la tienda'", () => {
+    render(<StoreProductPanel {...props} url={null} />);
+    expect(screen.queryByRole("link", { name: /ver en la tienda/i })).not.toBeInTheDocument();
   });
 });
