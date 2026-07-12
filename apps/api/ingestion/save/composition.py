@@ -27,6 +27,7 @@ from src.contexts.save.infrastructure.matching.repository import SqlProductMatch
 from src.contexts.save.application.cover_canonicals import CoverCanonicals
 from src.contexts.save.application.refresh_prices import RefreshCatalogPrices
 from src.contexts.save.infrastructure.catalog_sources.factory import CatalogSourceFactory
+from src.contexts.save.infrastructure.catalog_sources.fetch_classifier import classify_httpx_error
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlCategoryCandidateRepository,
@@ -88,6 +89,7 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
         provider_repo=SqlProviderRepository(session),
         refresh=refresh,
         build_adapter=build_directed_adapter,
+        classify_error=classify_httpx_error,  # F3.3: 503/timeout → abortar la tienda (no martillarla)
     )
 
 
