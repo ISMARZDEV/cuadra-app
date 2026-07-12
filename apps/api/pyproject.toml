@@ -35,6 +35,9 @@ ingestion = [
     "dagster>=1.9",
     "dagster-webserver>=1.9",
     "sentence-transformers>=3.0",  # BGE-M3 in-process (EmbeddingProvider local, sin endpoint HTTP)
+    # TLS: usa el trust store del OS (no solo certifi) — algunas APIs de súper (Bravo) mandan una
+    # cadena con un intermedio que certifi no trae pero el sistema sí. Sigue verificando (seguro).
+    "truststore>=0.9",
 ]
 
 [tool.ruff]
