@@ -11,19 +11,24 @@ from ingestion.save.assets import (
     alert_matching,
     coverage,
     embed_canonicals,
+    freshness,
     price_drops,
     source_assets,
 )
 
-# El refresh diario materializa TODO menos `coverage` (Loop B) — que tiene su propio ritmo (equivalente
-# al Prices Batch de SRD, separado del descubrimiento/refresh amplio de Loop A).
+# El refresh diario materializa TODO menos `coverage` (Loop B) y `freshness` (F3.2a) — cada uno tiene
+# su propio ritmo (equivalentes al Prices Batch de SRD, separados del refresh amplio de Loop A).
 save_catalog_job = dg.define_asset_job(
     "save_catalog_refresh",
-    selection=dg.AssetSelection.all() - dg.AssetSelection.assets("coverage"),
+    selection=dg.AssetSelection.all() - dg.AssetSelection.assets("coverage", "freshness"),
 )
 save_coverage_job = dg.define_asset_job(
     "save_coverage",
     selection=dg.AssetSelection.assets("embed_canonicals", "coverage"),
+)
+save_freshness_job = dg.define_asset_job(
+    "save_freshness",
+    selection=dg.AssetSelection.assets("freshness"),  # F3.2a: NO depende de embed_canonicals
 )
 
 save_daily_refresh = dg.ScheduleDefinition(
@@ -36,9 +41,14 @@ save_coverage_daily = dg.ScheduleDefinition(
     job=save_coverage_job,
     cron_schedule="0 4 * * *",  # 04:00 diario — Loop B llena la matriz de cobertura (F3.1)
 )
+save_freshness_frequent = dg.ScheduleDefinition(
+    name="save_freshness_frequent",
+    job=save_freshness_job,
+    cron_schedule="0 */2 * * *",  # cada 2h — refresca precios de lo cubierto+viejo (F3.2a, SRD §3.1)
+)
 
 defs = dg.Definitions(
-    assets=[embed_canonicals, *source_assets, coverage, price_drops, alert_matching],
-    jobs=[save_catalog_job, save_coverage_job],
-    schedules=[save_daily_refresh, save_coverage_daily],
+    assets=[embed_canonicals, *source_assets, coverage, freshness, price_drops, alert_matching],
+    jobs=[save_catalog_job, save_coverage_job, save_freshness_job],
+    schedules=[save_daily_refresh, save_coverage_daily, save_freshness_frequent],
 )

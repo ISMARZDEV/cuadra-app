@@ -25,6 +25,7 @@ from src.contexts.save.infrastructure.matching.embeddings import (
 )
 from src.contexts.save.infrastructure.matching.repository import SqlProductMatchRepository
 from src.contexts.save.application.cover_canonicals import CoverCanonicals
+from src.contexts.save.application.refresh_covered_prices import RefreshCoveredPrices
 from src.contexts.save.application.refresh_prices import RefreshCatalogPrices
 from src.contexts.save.infrastructure.catalog_sources.factory import CatalogSourceFactory
 from src.contexts.save.infrastructure.catalog_sources.fetch_classifier import classify_httpx_error
@@ -90,6 +91,33 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
         refresh=refresh,
         build_adapter=build_directed_adapter,
         classify_error=classify_httpx_error,  # F3.3: 503/timeout → abortar la tienda (no martillarla)
+    )
+
+
+def build_refresh_covered_prices(session: Session) -> RefreshCoveredPrices:
+    """Compone F3.2a (frescura, camino A): re-fetch DIRECTO por id/url de lo cubierto+viejo →
+    record_observation (change-only). SIN matcher (el store_product ya existe → no se re-descubre).
+    Reusa F3.3 (abort-on-down vía classify_httpx_error). Cachea los registries del mercado (1 query)."""
+    from ingestion.save.sources import SAVE_MARKET  # local: evita import circular (patrón del módulo)
+
+    store_repo = SqlStoreProductRepository(session)
+    refresh = RefreshCatalogPrices(store_repo, matcher=None, classifier=None)
+    registries = {
+        r.provider_id: r
+        for r in SqlStoreRegistryRepository(session).list_by_market(SAVE_MARKET)
+    }
+
+    def build_detail_source(item):  # type: ignore[no-untyped-def]
+        reg = registries[item.provider_id]
+        return CatalogSourceFactory.build(
+            reg.platform, reg.base_url, endpoints=reg.endpoints, headers=reg.headers, auth=reg.auth
+        ).for_detail(item.provider_id, SAVE_MARKET)
+
+    return RefreshCoveredPrices(
+        store_repo=store_repo,
+        refresh=refresh,
+        build_detail_source=build_detail_source,
+        classify_error=classify_httpx_error,
     )
 
 

@@ -1,4 +1,4 @@
-from .catalog_source import CatalogSource, RawCatalogEntry
+from .catalog_source import CatalogSource, ProductDetailSource, RawCatalogEntry
 from .push import PushSender
 from .repositories import (
     AlertRepository,
@@ -17,6 +17,7 @@ __all__ = [
     "CanonicalProductRepository",
     "CollectionRepository",
     "CatalogSource",
+    "ProductDetailSource",
     "ProviderRepository",
     "PushSender",
     "RawCatalogEntry",

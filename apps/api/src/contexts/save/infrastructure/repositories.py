@@ -7,10 +7,10 @@ siempre refresca `last_seen_at`. El brand se resuelve get-or-create por (market,
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from src.shared.money import Currency, Money
@@ -23,7 +23,7 @@ from ..domain.classification import (
 )
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
-from ..domain.coverage import CoveragePair
+from ..domain.coverage import CoveragePair, StaleCovered
 from ..domain.entities import (
     BasketQuery,
     CanonicalProduct,
@@ -31,6 +31,7 @@ from ..domain.entities import (
     PriceType,
     Provider,
     ProviderType,
+    SourcePlatform,
     StoreProduct,
     StoreRegistry,
 )
@@ -561,6 +562,45 @@ class SqlStoreProductRepository:
             )
             .limit(1)
         ).scalar_one_or_none()
+
+    def list_stale_covered(
+        self,
+        market_id: str,
+        now: datetime | None = None,
+        *,
+        visible_ttl_hours: int = 18,
+        hidden_ttl_hours: int = 72,
+        limit: int = 500,
+    ) -> list[StaleCovered]:
+        ref = now or datetime.now(timezone.utc)
+        visible_cut = ref - timedelta(hours=visible_ttl_hours)
+        hidden_cut = ref - timedelta(hours=hidden_ttl_hours)
+        sp = StoreProductModel
+        pr = ProviderModel
+        rows = self._s.execute(
+            select(sp.id, sp.provider_id, sp.external_id, sp.url, pr.platform)
+            .join(pr, pr.id == sp.provider_id)
+            .where(
+                pr.market_id == market_id,
+                sp.canonical_product_id.is_not(None),  # solo lo YA cubierto
+                or_(
+                    and_(sp.is_available.is_(True), sp.last_seen_at < visible_cut),
+                    and_(sp.is_available.is_(False), sp.last_seen_at < hidden_cut),
+                ),
+            )
+            .order_by(sp.last_seen_at.asc())  # el más viejo primero
+            .limit(limit)
+        ).all()
+        return [
+            StaleCovered(
+                store_product_id=str(spid),
+                provider_id=str(pid),
+                external_id=ext,
+                url=url,
+                platform=SourcePlatform(platform),
+            )
+            for spid, pid, ext, url, platform in rows
+        ]
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]:
         models = self._s.scalars(

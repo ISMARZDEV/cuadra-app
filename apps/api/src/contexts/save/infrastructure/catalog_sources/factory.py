@@ -17,11 +17,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ...domain.entities import SourcePlatform
-from ...domain.ports import CatalogSource
+from ...domain.ports import CatalogSource, ProductDetailSource
 from .bravova_profile import BRAVOVA_PROFILE
-from .magento_adapter import HttpPost, MagentoAdapter
+from .magento_adapter import HttpPost, MagentoAdapter, MagentoProductDetailAdapter
 from .rest_catalog_adapter import CatalogProfile, RestCatalogAdapter
-from .vtex_adapter import VtexAdapter
+from .vtex_adapter import VtexAdapter, VtexProductDetailAdapter
 
 _SUPPORTED_PLATFORMS = (
     SourcePlatform.VTEX,
@@ -72,6 +72,26 @@ class SourceBuilder:
         if self.platform is SourcePlatform.REST_CATALOG:
             return self._build_rest_catalog(provider_id, market_id, http_get)
         raise ValueError(f"Plataforma sin adapter de ingesta: {self.platform!r}")
+
+    def for_detail(
+        self,
+        provider_id: str,
+        market_id: str,
+        *,
+        http_get: Callable[[str], list[dict]] | None = None,
+        http_post: HttpPost | None = None,
+    ) -> ProductDetailSource:
+        """`ProductDetailSource` de PRODUCCIÓN para F3.2a (camino A): re-fetch de UN producto por id.
+        Solo plataformas con detalle por id (VTEX productId / Magento SKU). Las browse-only NO lo
+        soportan (se refrescan por el browse de Loop A) — el use-case las salta antes de llegar aquí."""
+        if self.platform is SourcePlatform.VTEX:
+            return VtexProductDetailAdapter(self.base_url, provider_id, market_id, http_get=http_get)
+        if self.platform is SourcePlatform.MAGENTO:
+            return MagentoProductDetailAdapter(
+                self.base_url, provider_id, market_id,
+                store_code=self.store_code, http_post=http_post,
+            )
+        raise ValueError(f"Plataforma sin ProductDetailSource (browse-only): {self.platform!r}")
 
     def _build_rest_catalog(
         self,

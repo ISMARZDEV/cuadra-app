@@ -19,7 +19,7 @@ from ..classification import (
     ClassifiableProduct,
 )
 from ..comparison import StoreQuote
-from ..coverage import CoveragePair
+from ..coverage import CoveragePair, StaleCovered
 from ..drops import PriceChange
 from ..entities import (
     BasketQuery,
@@ -279,6 +279,20 @@ class StoreProductRepository(Protocol):
     def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
         """F3.1 (Loop B): un EAN conocido del canónico (de cualquier `store_product` que lo tenga) —
         para la consulta dirigida EAN-first cuando la tienda destino soporta búsqueda por barcode."""
+        ...
+
+    def list_stale_covered(
+        self,
+        market_id: str,
+        now: datetime | None = None,
+        *,
+        visible_ttl_hours: int = 18,
+        hidden_ttl_hours: int = 72,
+        limit: int = 500,
+    ) -> list[StaleCovered]:
+        """F3.2a (frescura): `store_product` YA cubiertos (con canónico) y VIEJOS que hay que re-visitar.
+        Staleness (patrón SRD §3.1): disponibles con `last_seen_at < now-18h` **O** ocultos con
+        `< now-3d`. Orden `last_seen_at` asc (más viejo primero), tope `limit` por corrida (batching)."""
         ...
 
     def max_last_seen_at(self, provider_id: str) -> datetime | None:
