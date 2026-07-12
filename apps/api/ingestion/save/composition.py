@@ -24,12 +24,17 @@ from src.contexts.save.infrastructure.matching.embeddings import (
     SentenceTransformersEmbeddingProvider,
 )
 from src.contexts.save.infrastructure.matching.repository import SqlProductMatchRepository
+from src.contexts.save.application.cover_canonicals import CoverCanonicals
+from src.contexts.save.application.refresh_prices import RefreshCatalogPrices
+from src.contexts.save.infrastructure.catalog_sources.factory import CatalogSourceFactory
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlCategoryCandidateRepository,
     SqlCategoryClassificationRepository,
     SqlCategoryIndexRepository,
+    SqlProviderRepository,
     SqlStoreProductRepository,
+    SqlStoreRegistryRepository,
     SqlTaxonomyRepository,
 )
 
@@ -52,6 +57,38 @@ def _build_category_index(
     lexicon = build_lexicon_index(leaves)
     leaf_to_parent = {child.id: root.id for root in tree for child in root.children}
     return lexicon, leaf_to_parent
+
+
+def build_directed_adapter(source, provider, query):  # type: ignore[no-untyped-def]
+    """Puerto `BuildAdapter` de PRODUCCIÓN para Loop B: construye el adapter real de la plataforma y
+    lo apunta a la consulta dirigida (`for_query`). HTTP crudo (httpx) como el refresh normal — las
+    fuentes son tiendas YA registradas (`store_registry`), no config admin ad-hoc (ese caso usa el
+    SSRF-guard de `TestSource`)."""
+    return CatalogSourceFactory.build(
+        source.platform,
+        source.base_url,
+        endpoints=source.endpoints,
+        headers=source.headers,
+        auth=source.auth,
+    ).for_query(provider.id, provider.market_id, query.text)
+
+
+def build_cover_canonicals(session: Session) -> CoverCanonicals:
+    """Compone Loop B (cobertura dirigida, F3.1): itera los (canónico×tienda) sin cubrir y delega en
+    el MISMO pipeline de refresh (record + cascada) con adapters dirigidos. Comparte la `session`
+    (misma UoW que el matcher, por el invariante FK+product_match)."""
+    store_repo = SqlStoreProductRepository(session)
+    refresh = RefreshCatalogPrices(
+        store_repo, matcher=build_matcher(session), classifier=build_classifier(session)
+    )
+    return CoverCanonicals(
+        store_repo=store_repo,
+        canonical_repo=SqlCanonicalProductRepository(session),
+        source_repo=SqlStoreRegistryRepository(session),
+        provider_repo=SqlProviderRepository(session),
+        refresh=refresh,
+        build_adapter=build_directed_adapter,
+    )
 
 
 def build_matcher(session: Session) -> MatchStoreProduct | None:
