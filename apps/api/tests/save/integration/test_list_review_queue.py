@@ -185,6 +185,7 @@ def test_row_carries_provider_logo_store_product_image_and_null_category(db_sess
 
     sp_row = db_session.get(StoreProductModel, uuid.UUID(sp_id))
     sp_row.image_url = "https://cdn.provider.com/arroz.png"
+    sp_row.url = "https://sirena.do/arroz-10lb/p"  # F0: link a la tienda en la fila
     db_session.flush()
 
     use_case = ListReviewQueue(SqlProductMatchRepository(db_session))
@@ -194,6 +195,7 @@ def test_row_carries_provider_logo_store_product_image_and_null_category(db_sess
     row = rows[0]
     assert row.provider_logo_url == "https://cdn.cuadra.app/logos/sirena.png"
     assert row.store_product_image_url == "https://cdn.provider.com/arroz.png"
+    assert row.store_product_url == "https://sirena.do/arroz-10lb/p"
     assert row.category_slug is None
     assert row.category_name is None
 

@@ -302,6 +302,7 @@ class SqlProductMatchRepository:
                 created_at=m.created_at,
                 provider_logo_url=plogo,
                 store_product_image_url=sp.image_url,
+                store_product_url=sp.url,
                 # Categoría TOPE (save-category-classification): slug derivado en read-time
                 # (sin columna). Sin clasificación `active` → None → badge "N/A".
                 category_slug=slugify(cat_name) if cat_name else None,

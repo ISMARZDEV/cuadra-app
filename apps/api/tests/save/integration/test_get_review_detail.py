@@ -36,6 +36,7 @@ def test_returns_raw_attrs_and_candidates(db_session) -> None:  # type: ignore[n
     sp_row.size_text = "10 LB"
     sp_row.image_url = "https://example.com/arroz.png"
     sp_row.ean = "7460100000123"
+    sp_row.url = "https://sirena.do/arroz-selecto-10lb/p"
     db_session.flush()
     sku = sp_row.external_id  # SKU en la tienda (idempotencia)
     match_repo = SqlProductMatchRepository(db_session)
@@ -71,6 +72,7 @@ def test_returns_raw_attrs_and_candidates(db_session) -> None:  # type: ignore[n
     # Nuevos atributos del store_product (rediseño full-stack): SKU, EAN y tienda origen.
     assert detail.store_product_sku == sku
     assert detail.store_product_ean == "7460100000123"
+    assert detail.store_product_url == "https://sirena.do/arroz-selecto-10lb/p"
     assert detail.provider_name == "Sirena"
     assert len(detail.candidates) == 2
     assert detail.candidates[0].canonical_product_id == cid_1  # mejor score primero

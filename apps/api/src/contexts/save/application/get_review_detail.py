@@ -39,6 +39,7 @@ class GetReviewDetail:
             store_product_image_url=raw_attrs.image_url if raw_attrs else None,
             store_product_sku=raw_attrs.sku if raw_attrs else None,
             store_product_ean=raw_attrs.ean if raw_attrs else None,
+            store_product_url=raw_attrs.url if raw_attrs else None,
             provider_name=raw_attrs.provider_name if raw_attrs else None,
             market_id=raw_attrs.market_id if raw_attrs else None,
             suggested_taxonomy_node_id=(
