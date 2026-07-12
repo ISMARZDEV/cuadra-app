@@ -241,7 +241,64 @@ type MessageKey =
   | "admin.reviewQueue.kpi.methods.channels"
   | "admin.reviewQueue.kpi.queueTime.title"
   | "admin.reviewQueue.kpi.queueTime.subtitle"
-  | "admin.reviewQueue.kpi.queueTime.unit";
+  | "admin.reviewQueue.kpi.queueTime.unit"
+  | "admin.basket.title"
+  | "admin.basket.info"
+  | "admin.basket.search.aria"
+  | "admin.basket.search.placeholder"
+  | "admin.basket.bulk.actions"
+  | "admin.basket.bulk.delete"
+  | "admin.basket.bulk.confirmMsg"
+  | "admin.basket.bulk.confirm"
+  | "admin.basket.add"
+  | "admin.basket.cancel"
+  | "admin.basket.selectAll"
+  | "admin.basket.col.query"
+  | "admin.basket.col.category"
+  | "admin.basket.col.status"
+  | "admin.basket.col.actions"
+  | "admin.basket.empty"
+  | "admin.basket.emptySearch"
+  | "admin.basket.pagination.show"
+  | "admin.basket.pagination.perPage"
+  | "admin.basket.pagination.of"
+  | "admin.basket.row.select"
+  | "admin.basket.row.moveUp"
+  | "admin.basket.row.moveDown"
+  | "admin.basket.row.drag"
+  | "admin.basket.row.active"
+  | "admin.basket.row.inactive"
+  | "admin.basket.row.confirmQ"
+  | "admin.basket.row.confirm"
+  | "admin.basket.row.confirmDeleteAria"
+  | "admin.basket.row.actionsAria"
+  | "admin.basket.row.edit"
+  | "admin.basket.row.deactivate"
+  | "admin.basket.row.activate"
+  | "admin.basket.row.delete"
+  | "admin.basket.row.errToggle"
+  | "admin.basket.row.errDelete"
+  | "admin.basket.modal.titleAdd"
+  | "admin.basket.modal.titleEdit"
+  | "admin.basket.modal.clear"
+  | "admin.basket.modal.applyAdd"
+  | "admin.basket.modal.applyEdit"
+  | "admin.basket.modal.saving"
+  | "admin.basket.modal.errRequired"
+  | "admin.basket.modal.errSave"
+  | "admin.basket.modal.errPreview"
+  | "admin.basket.modal.fieldQuery"
+  | "admin.basket.modal.fieldCategory"
+  | "admin.basket.modal.phQuery"
+  | "admin.basket.modal.phCategory"
+  | "admin.basket.modal.previewBtn"
+  | "admin.basket.modal.previewLoading"
+  | "admin.basket.modal.previewNone"
+  | "admin.basket.modal.previewError"
+  | "admin.basket.modal.resultSing"
+  | "admin.basket.modal.resultPlur"
+  | "admin.basket.modal.noResults"
+  | "admin.basket.modal.viewAria";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -472,6 +529,63 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.kpi.queueTime.title": "Tiempo en Cola",
     "admin.reviewQueue.kpi.queueTime.subtitle": "Mediana de resolución",
     "admin.reviewQueue.kpi.queueTime.unit": "días",
+    "admin.basket.title": "Canasta curada",
+    "admin.basket.info": "Términos que la ingesta usa para armar la canasta (mercado {market}).",
+    "admin.basket.search.aria": "Buscar en la canasta",
+    "admin.basket.search.placeholder": "Buscar query o categoría…",
+    "admin.basket.bulk.actions": "Acciones",
+    "admin.basket.bulk.delete": "Eliminar",
+    "admin.basket.bulk.confirmMsg": "¿Eliminar {n} queries de la canasta?",
+    "admin.basket.bulk.confirm": "Confirmar eliminar",
+    "admin.basket.add": "Agregar query",
+    "admin.basket.cancel": "Cancelar",
+    "admin.basket.selectAll": "Seleccionar todas",
+    "admin.basket.col.query": "Query",
+    "admin.basket.col.category": "Categoría",
+    "admin.basket.col.status": "Estado",
+    "admin.basket.col.actions": "Acciones",
+    "admin.basket.empty": "Sin queries todavía.",
+    "admin.basket.emptySearch": "Sin resultados para esa búsqueda.",
+    "admin.basket.pagination.show": "Mostrar",
+    "admin.basket.pagination.perPage": "por página",
+    "admin.basket.pagination.of": "de",
+    "admin.basket.row.select": "Seleccionar",
+    "admin.basket.row.moveUp": "Subir",
+    "admin.basket.row.moveDown": "Bajar",
+    "admin.basket.row.drag": "Arrastrar",
+    "admin.basket.row.active": "Activa",
+    "admin.basket.row.inactive": "Inactiva",
+    "admin.basket.row.confirmQ": "¿Eliminar?",
+    "admin.basket.row.confirm": "Confirmar",
+    "admin.basket.row.confirmDeleteAria": "Confirmar eliminar",
+    "admin.basket.row.actionsAria": "Acciones",
+    "admin.basket.row.edit": "Editar",
+    "admin.basket.row.deactivate": "Desactivar",
+    "admin.basket.row.activate": "Activar",
+    "admin.basket.row.delete": "Eliminar",
+    "admin.basket.row.errToggle": "No se pudo cambiar el estado.",
+    "admin.basket.row.errDelete": "No se pudo eliminar la query.",
+    "admin.basket.modal.titleAdd": "Agregar query",
+    "admin.basket.modal.titleEdit": "Editar query",
+    "admin.basket.modal.clear": "Limpiar",
+    "admin.basket.modal.applyAdd": "Crear query",
+    "admin.basket.modal.applyEdit": "Guardar cambios",
+    "admin.basket.modal.saving": "Guardando…",
+    "admin.basket.modal.errRequired": "La query es obligatoria.",
+    "admin.basket.modal.errSave": "No se pudo guardar los cambios.",
+    "admin.basket.modal.errPreview": "Escribí una query para previsualizar.",
+    "admin.basket.modal.fieldQuery": "Query",
+    "admin.basket.modal.fieldCategory": "Categoría",
+    "admin.basket.modal.phQuery": "ej. arroz la garza",
+    "admin.basket.modal.phCategory": "ej. Granos y legumbres",
+    "admin.basket.modal.previewBtn": "Previsualizar en tiendas",
+    "admin.basket.modal.previewLoading": "Buscando…",
+    "admin.basket.modal.previewNone": "Ninguna tienda devolvió resultados para ese término.",
+    "admin.basket.modal.previewError": "error",
+    "admin.basket.modal.resultSing": "resultado",
+    "admin.basket.modal.resultPlur": "resultados",
+    "admin.basket.modal.noResults": "Sin resultados.",
+    "admin.basket.modal.viewAria": "Ver",
   },
   en: {
     "nav.save": "Save",
@@ -700,6 +814,63 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.kpi.queueTime.title": "Time in Queue",
     "admin.reviewQueue.kpi.queueTime.subtitle": "Median resolution",
     "admin.reviewQueue.kpi.queueTime.unit": "days",
+    "admin.basket.title": "Curated basket",
+    "admin.basket.info": "Search terms the ingestion uses to build the basket (market {market}).",
+    "admin.basket.search.aria": "Search the basket",
+    "admin.basket.search.placeholder": "Search query or category…",
+    "admin.basket.bulk.actions": "Actions",
+    "admin.basket.bulk.delete": "Delete",
+    "admin.basket.bulk.confirmMsg": "Delete {n} queries from the basket?",
+    "admin.basket.bulk.confirm": "Confirm delete",
+    "admin.basket.add": "Add query",
+    "admin.basket.cancel": "Cancel",
+    "admin.basket.selectAll": "Select all",
+    "admin.basket.col.query": "Query",
+    "admin.basket.col.category": "Category",
+    "admin.basket.col.status": "Status",
+    "admin.basket.col.actions": "Actions",
+    "admin.basket.empty": "No queries yet.",
+    "admin.basket.emptySearch": "No results for that search.",
+    "admin.basket.pagination.show": "Show",
+    "admin.basket.pagination.perPage": "per page",
+    "admin.basket.pagination.of": "of",
+    "admin.basket.row.select": "Select",
+    "admin.basket.row.moveUp": "Move up",
+    "admin.basket.row.moveDown": "Move down",
+    "admin.basket.row.drag": "Drag",
+    "admin.basket.row.active": "Active",
+    "admin.basket.row.inactive": "Inactive",
+    "admin.basket.row.confirmQ": "Delete?",
+    "admin.basket.row.confirm": "Confirm",
+    "admin.basket.row.confirmDeleteAria": "Confirm delete",
+    "admin.basket.row.actionsAria": "Actions",
+    "admin.basket.row.edit": "Edit",
+    "admin.basket.row.deactivate": "Deactivate",
+    "admin.basket.row.activate": "Activate",
+    "admin.basket.row.delete": "Delete",
+    "admin.basket.row.errToggle": "Could not change the status.",
+    "admin.basket.row.errDelete": "Could not delete the query.",
+    "admin.basket.modal.titleAdd": "Add query",
+    "admin.basket.modal.titleEdit": "Edit query",
+    "admin.basket.modal.clear": "Clear",
+    "admin.basket.modal.applyAdd": "Create query",
+    "admin.basket.modal.applyEdit": "Save changes",
+    "admin.basket.modal.saving": "Saving…",
+    "admin.basket.modal.errRequired": "The query is required.",
+    "admin.basket.modal.errSave": "Could not save the changes.",
+    "admin.basket.modal.errPreview": "Type a query to preview.",
+    "admin.basket.modal.fieldQuery": "Query",
+    "admin.basket.modal.fieldCategory": "Category",
+    "admin.basket.modal.phQuery": "e.g. arroz la garza",
+    "admin.basket.modal.phCategory": "e.g. Grains & legumes",
+    "admin.basket.modal.previewBtn": "Preview across stores",
+    "admin.basket.modal.previewLoading": "Searching…",
+    "admin.basket.modal.previewNone": "No store returned results for that term.",
+    "admin.basket.modal.previewError": "error",
+    "admin.basket.modal.resultSing": "result",
+    "admin.basket.modal.resultPlur": "results",
+    "admin.basket.modal.noResults": "No results.",
+    "admin.basket.modal.viewAria": "View",
   },
   pt: {
     "nav.save": "Save",
@@ -928,6 +1099,63 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.kpi.queueTime.title": "Tempo na Fila",
     "admin.reviewQueue.kpi.queueTime.subtitle": "Mediana de resolução",
     "admin.reviewQueue.kpi.queueTime.unit": "dias",
+    "admin.basket.title": "Cesta curada",
+    "admin.basket.info": "Termos de busca que a ingestão usa para montar a cesta (mercado {market}).",
+    "admin.basket.search.aria": "Buscar na cesta",
+    "admin.basket.search.placeholder": "Buscar query ou categoria…",
+    "admin.basket.bulk.actions": "Ações",
+    "admin.basket.bulk.delete": "Excluir",
+    "admin.basket.bulk.confirmMsg": "Excluir {n} queries da cesta?",
+    "admin.basket.bulk.confirm": "Confirmar exclusão",
+    "admin.basket.add": "Adicionar query",
+    "admin.basket.cancel": "Cancelar",
+    "admin.basket.selectAll": "Selecionar todas",
+    "admin.basket.col.query": "Query",
+    "admin.basket.col.category": "Categoria",
+    "admin.basket.col.status": "Status",
+    "admin.basket.col.actions": "Ações",
+    "admin.basket.empty": "Nenhuma query ainda.",
+    "admin.basket.emptySearch": "Sem resultados para essa busca.",
+    "admin.basket.pagination.show": "Mostrar",
+    "admin.basket.pagination.perPage": "por página",
+    "admin.basket.pagination.of": "de",
+    "admin.basket.row.select": "Selecionar",
+    "admin.basket.row.moveUp": "Subir",
+    "admin.basket.row.moveDown": "Descer",
+    "admin.basket.row.drag": "Arrastar",
+    "admin.basket.row.active": "Ativa",
+    "admin.basket.row.inactive": "Inativa",
+    "admin.basket.row.confirmQ": "Excluir?",
+    "admin.basket.row.confirm": "Confirmar",
+    "admin.basket.row.confirmDeleteAria": "Confirmar exclusão",
+    "admin.basket.row.actionsAria": "Ações",
+    "admin.basket.row.edit": "Editar",
+    "admin.basket.row.deactivate": "Desativar",
+    "admin.basket.row.activate": "Ativar",
+    "admin.basket.row.delete": "Excluir",
+    "admin.basket.row.errToggle": "Não foi possível alterar o status.",
+    "admin.basket.row.errDelete": "Não foi possível excluir a query.",
+    "admin.basket.modal.titleAdd": "Adicionar query",
+    "admin.basket.modal.titleEdit": "Editar query",
+    "admin.basket.modal.clear": "Limpar",
+    "admin.basket.modal.applyAdd": "Criar query",
+    "admin.basket.modal.applyEdit": "Salvar alterações",
+    "admin.basket.modal.saving": "Salvando…",
+    "admin.basket.modal.errRequired": "A query é obrigatória.",
+    "admin.basket.modal.errSave": "Não foi possível salvar as alterações.",
+    "admin.basket.modal.errPreview": "Digite uma query para pré-visualizar.",
+    "admin.basket.modal.fieldQuery": "Query",
+    "admin.basket.modal.fieldCategory": "Categoria",
+    "admin.basket.modal.phQuery": "ex. arroz la garza",
+    "admin.basket.modal.phCategory": "ex. Grãos e legumes",
+    "admin.basket.modal.previewBtn": "Pré-visualizar nas lojas",
+    "admin.basket.modal.previewLoading": "Buscando…",
+    "admin.basket.modal.previewNone": "Nenhuma loja retornou resultados para esse termo.",
+    "admin.basket.modal.previewError": "erro",
+    "admin.basket.modal.resultSing": "resultado",
+    "admin.basket.modal.resultPlur": "resultados",
+    "admin.basket.modal.noResults": "Sem resultados.",
+    "admin.basket.modal.viewAria": "Ver",
   },
 };
 

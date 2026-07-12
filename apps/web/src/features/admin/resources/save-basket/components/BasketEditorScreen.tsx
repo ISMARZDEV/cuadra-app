@@ -14,7 +14,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { ChevronDown, Info, ListChecks, Plus, Search, Trash2 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useData } from "vike-react/useData";
 
 import {
@@ -36,6 +36,9 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
+import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
+import { format } from "@/i18n/messages";
 
 import {
   createBasketQueryEntry,
@@ -59,7 +62,10 @@ type ModalState = { mode: "add" } | { mode: "edit"; entry: BasketQueryDto } | nu
 // llega entera vía `listBasketQueries`, no hay paginación de backend). Sin TanStack Query —
 // `useAdminList` refresca tras cada mutación.
 export function BasketEditorScreen() {
-  const { entries: initialEntries } = useData<BasketQueriesData>();
+  const { entries: initialEntries, locale = DEFAULT_LOCALE } = useData<
+    BasketQueriesData & { locale?: Locale }
+  >();
+  const { t } = useAdminI18n(locale);
   const { items: entries, refresh } = useAdminList(initialEntries, () =>
     listBasketQueryEntries(DEFAULT_BASKET_MARKET),
   );
@@ -75,18 +81,27 @@ export function BasketEditorScreen() {
   const [busyBulk, setBusyBulk] = useState(false);
 
   const needle = search.trim().toLowerCase();
-  const filtered = needle
-    ? entries.filter((e) =>
-        `${e.query_text} ${e.category_label ?? ""}`.toLowerCase().includes(needle),
-      )
-    : entries;
+  // Listas derivadas memoizadas: el filtro/orden recorre las 213 queries; sin `useMemo` se recomputan
+  // en CADA render (toggles, selección, modal…). Se recalculan solo cuando cambian sus insumos.
+  const filtered = useMemo(
+    () =>
+      needle
+        ? entries.filter((e) =>
+            `${e.query_text} ${e.category_label ?? ""}`.toLowerCase().includes(needle),
+          )
+        : entries,
+    [entries, needle],
+  );
 
-  const sorted = sortCol && sortDir !== "none" ? [...filtered].sort(comparatorFor(sortCol, sortDir)) : filtered;
+  const sorted = useMemo(
+    () => (sortCol && sortDir !== "none" ? [...filtered].sort(comparatorFor(sortCol, sortDir)) : filtered),
+    [filtered, sortCol, sortDir],
+  );
 
   const total = sorted.length;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = sorted.slice(offset, offset + limit);
+  const pageRows = useMemo(() => sorted.slice(offset, offset + limit), [sorted, offset, limit]);
   const from = total > 0 ? offset + 1 : 0;
   const to = Math.min(offset + limit, total);
   const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
@@ -108,7 +123,7 @@ export function BasketEditorScreen() {
     }
   };
 
-  const pageIds = pageRows.map((r) => r.id);
+  const pageIds = useMemo(() => pageRows.map((r) => r.id), [pageRows]);
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
   const toggleSelect = (id: string) =>
     setSelected((prev) => {
@@ -166,10 +181,10 @@ export function BasketEditorScreen() {
       <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">Canasta curada</h1>
+          <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">{t("admin.basket.title")}</h1>
           <Info
             className="size-4 text-muted-foreground"
-            aria-label={`Términos que la ingesta usa para armar la canasta (mercado ${DEFAULT_BASKET_MARKET}).`}
+            aria-label={format(locale, "admin.basket.info", { market: DEFAULT_BASKET_MARKET })}
             role="img"
           />
           <span className="text-base font-semibold text-brand-forest dark:text-brand-lime">({entries.length})</span>
@@ -183,8 +198,8 @@ export function BasketEditorScreen() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              aria-label="Buscar en la canasta"
-              placeholder="Buscar query o categoría…"
+              aria-label={t("admin.basket.search.aria")}
+              placeholder={t("admin.basket.search.placeholder")}
               className="h-full flex-1 border-none bg-transparent px-0 text-sm shadow-none placeholder:text-[#4f585d]/60 focus-visible:ring-0 dark:placeholder:text-white/40"
             />
           </div>
@@ -196,13 +211,13 @@ export function BasketEditorScreen() {
                 className="flex h-9 items-center gap-1.5 rounded-full bg-brand-forest px-4 text-sm font-semibold text-brand-lime disabled:opacity-50"
               >
                 <ListChecks className="size-[18px]" />
-                Acciones
+                {t("admin.basket.bulk.actions")}
                 <ChevronDown className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 <DropdownMenuItem variant="destructive" onClick={() => setConfirmingBulk(true)}>
                   <Trash2 />
-                  Eliminar ({selected.size})
+                  {t("admin.basket.bulk.delete")} ({selected.size})
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -213,24 +228,26 @@ export function BasketEditorScreen() {
               className="inline-flex h-9 items-center gap-2 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest shadow-sm hover:bg-brand-lime/90"
             >
               <Plus className="size-4" aria-hidden="true" />
-              Agregar query
+              {t("admin.basket.add")}
             </button>
           </div>
         </div>
 
         {confirmingBulk ? (
           <div className="flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
-            <span className="text-destructive">¿Eliminar {selected.size} queries de la canasta?</span>
+            <span className="text-destructive">
+              {format(locale, "admin.basket.bulk.confirmMsg", { n: String(selected.size) })}
+            </span>
             <button
               type="button"
               disabled={busyBulk}
               onClick={() => void onBulkDelete()}
               className="rounded-full bg-destructive px-3 py-1.5 font-semibold text-white disabled:opacity-50"
             >
-              Confirmar eliminar ({selected.size})
+              {t("admin.basket.bulk.confirm")} ({selected.size})
             </button>
             <button type="button" onClick={() => setConfirmingBulk(false)} className="text-muted-foreground">
-              Cancelar
+              {t("admin.basket.cancel")}
             </button>
           </div>
         ) : null}
@@ -244,17 +261,17 @@ export function BasketEditorScreen() {
                 <TableHead className="w-10">
                   <SelectCheckbox
                     data-testid="select-all"
-                    aria-label="Seleccionar todas"
+                    aria-label={t("admin.basket.selectAll")}
                     checked={allPageSelected}
                     disabled={pageIds.length === 0}
                     onChange={toggleSelectAll}
                   />
                 </TableHead>
                 <TableHead className="w-20">#</TableHead>
-                <SortableHeader label="Query" state={sortStateFor("query")} onToggle={() => toggleSort("query")} />
-                <SortableHeader label="Categoría" state={sortStateFor("category")} onToggle={() => toggleSort("category")} />
-                <SortableHeader label="Estado" state={sortStateFor("status")} onToggle={() => toggleSort("status")} />
-                <TableHead>Acciones</TableHead>
+                <SortableHeader label={t("admin.basket.col.query")} state={sortStateFor("query")} onToggle={() => toggleSort("query")} />
+                <SortableHeader label={t("admin.basket.col.category")} state={sortStateFor("category")} onToggle={() => toggleSort("category")} />
+                <SortableHeader label={t("admin.basket.col.status")} state={sortStateFor("status")} onToggle={() => toggleSort("status")} />
+                <TableHead>{t("admin.basket.col.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -274,6 +291,7 @@ export function BasketEditorScreen() {
                       onEdit={() => setModal({ mode: "edit", entry: row })}
                       refresh={refresh}
                       dragDisabled={dragDisabled}
+                      locale={locale}
                     />
                   );
                 })}
@@ -283,15 +301,15 @@ export function BasketEditorScreen() {
           </DndContext>
 
           {entries.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted-foreground">Sin queries todavía.</p>
+            <p className="px-4 py-6 text-sm text-muted-foreground">{t("admin.basket.empty")}</p>
           ) : total === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted-foreground">Sin resultados para esa búsqueda.</p>
+            <p className="px-4 py-6 text-sm text-muted-foreground">{t("admin.basket.emptySearch")}</p>
           ) : null}
 
           {/* Footer: page-size + rango + paginación */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
-              <span>Mostrar</span>
+              <span>{t("admin.basket.pagination.show")}</span>
               <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
                 <SelectTrigger size="sm" className="w-16">
                   <SelectValue />
@@ -304,11 +322,11 @@ export function BasketEditorScreen() {
                   ))}
                 </SelectContent>
               </Select>
-              <span>por página</span>
+              <span>{t("admin.basket.pagination.perPage")}</span>
             </div>
 
             <span>
-              {from}–{to} de {total}
+              {from}–{to} {t("admin.basket.pagination.of")} {total}
             </span>
 
             <Pagination className="mx-0 w-auto justify-end">
@@ -345,6 +363,7 @@ export function BasketEditorScreen() {
           state={modal}
           onClose={() => setModal(null)}
           refresh={refresh}
+          locale={locale}
         />
       ) : null}
     </div>

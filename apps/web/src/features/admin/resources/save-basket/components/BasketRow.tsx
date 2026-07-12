@@ -12,6 +12,8 @@ import {
 } from "@/components/ui-base/dropdown-menu";
 import { TableCell, TableRow } from "@/components/ui-base/table";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
+import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
+import type { Locale } from "@/i18n/config";
 
 import { removeBasketQueryEntry, updateBasketQueryEntry } from "../api";
 import { UNCATEGORIZED_LABEL } from "../types";
@@ -31,6 +33,7 @@ export function BasketRow({
   onEdit,
   refresh,
   dragDisabled,
+  locale,
 }: {
   entry: BasketQueryDto;
   selected: boolean;
@@ -42,7 +45,9 @@ export function BasketRow({
   onEdit: () => void;
   refresh: () => Promise<void>;
   dragDisabled: boolean;
+  locale: Locale;
 }) {
+  const { t } = useAdminI18n(locale);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.id,
     disabled: dragDisabled,
@@ -62,8 +67,8 @@ export function BasketRow({
   };
 
   const onToggleActive = () =>
-    run(() => updateBasketQueryEntry(entry.id, { active: !entry.active }), "No se pudo cambiar el estado.");
-  const onDelete = () => run(() => removeBasketQueryEntry(entry.id), "No se pudo eliminar la query.");
+    run(() => updateBasketQueryEntry(entry.id, { active: !entry.active }), t("admin.basket.row.errToggle"));
+  const onDelete = () => run(() => removeBasketQueryEntry(entry.id), t("admin.basket.row.errDelete"));
 
   return (
     <>
@@ -77,7 +82,7 @@ export function BasketRow({
           <SelectCheckbox
             checked={selected}
             onChange={onToggleSelect}
-            aria-label={`Seleccionar ${entry.query_text}`}
+            aria-label={`${t("admin.basket.row.select")} ${entry.query_text}`}
           />
         </TableCell>
 
@@ -87,7 +92,7 @@ export function BasketRow({
                 activa. Los botones ↑/↓ quedan como fallback accesible por teclado. */}
             <button
               type="button"
-              aria-label={`Arrastrar ${entry.query_text}`}
+              aria-label={`${t("admin.basket.row.drag")} ${entry.query_text}`}
               disabled={dragDisabled}
               className="cursor-grab text-muted-foreground/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
               {...attributes}
@@ -101,7 +106,7 @@ export function BasketRow({
                 type="button"
                 disabled={isFirst || busy}
                 onClick={() => void onMoveUp()}
-                aria-label={`Subir ${entry.query_text}`}
+                aria-label={`${t("admin.basket.row.moveUp")} ${entry.query_text}`}
                 className="text-muted-foreground hover:text-foreground disabled:opacity-30"
               >
                 <ChevronUp className="size-4" />
@@ -110,7 +115,7 @@ export function BasketRow({
                 type="button"
                 disabled={isLast || busy}
                 onClick={() => void onMoveDown()}
-                aria-label={`Bajar ${entry.query_text}`}
+                aria-label={`${t("admin.basket.row.moveDown")} ${entry.query_text}`}
                 className="text-muted-foreground hover:text-foreground disabled:opacity-30"
               >
                 <ChevronDown className="size-4" />
@@ -130,11 +135,11 @@ export function BasketRow({
         <TableCell>
           {entry.active ? (
             <span className="inline-flex w-fit items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-              Activa
+              {t("admin.basket.row.active")}
             </span>
           ) : (
             <span className="inline-flex w-fit items-center rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-              Inactiva
+              {t("admin.basket.row.inactive")}
             </span>
           )}
         </TableCell>
@@ -142,24 +147,24 @@ export function BasketRow({
         <TableCell>
           {confirmingDelete ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-destructive">¿Eliminar?</span>
+              <span className="text-xs text-destructive">{t("admin.basket.row.confirmQ")}</span>
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => void onDelete()}
-                aria-label={`Confirmar eliminar ${entry.query_text}`}
+                aria-label={`${t("admin.basket.row.confirmDeleteAria")} ${entry.query_text}`}
                 className="rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
               >
-                Confirmar
+                {t("admin.basket.row.confirm")}
               </button>
               <button type="button" onClick={() => setConfirmingDelete(false)} className="text-xs text-muted-foreground">
-                Cancelar
+                {t("admin.basket.cancel")}
               </button>
             </div>
           ) : (
             <DropdownMenu>
               <DropdownMenuTrigger
-                aria-label={`Acciones ${entry.query_text}`}
+                aria-label={`${t("admin.basket.row.actionsAria")} ${entry.query_text}`}
                 className="flex size-8 items-center justify-center rounded-full border border-[#b7e36f] bg-[#daff9f] text-[#015442] hover:bg-[#cdf58a] dark:border-brand-lime/30 dark:bg-brand-lime/20 dark:text-brand-lime"
               >
                 <MoreHorizontal className="size-4" />
@@ -170,18 +175,18 @@ export function BasketRow({
                   className="focus:bg-orange-500/10 focus:text-orange-600 not-data-[variant=destructive]:focus:**:text-orange-500 dark:focus:text-orange-400 dark:not-data-[variant=destructive]:focus:**:text-orange-400"
                 >
                   <Pencil className="text-orange-500" />
-                  Editar
+                  {t("admin.basket.row.edit")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => void onToggleActive()}
                   className="focus:bg-blue-500/10 focus:text-blue-600 not-data-[variant=destructive]:focus:**:text-blue-600 dark:focus:text-blue-400 dark:not-data-[variant=destructive]:focus:**:text-blue-400"
                 >
                   <Power className="text-blue-600 dark:text-blue-400" />
-                  {entry.active ? "Desactivar" : "Activar"}
+                  {entry.active ? t("admin.basket.row.deactivate") : t("admin.basket.row.activate")}
                 </DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={() => setConfirmingDelete(true)}>
                   <Trash2 />
-                  Eliminar
+                  {t("admin.basket.row.delete")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
