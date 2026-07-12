@@ -384,7 +384,11 @@ def get_preview_basket_query(session: Session = Depends(get_session)) -> Preview
 
 
 def get_list_sources_health(session: Session = Depends(get_session)) -> ListSourcesHealth:
-    return ListSourcesHealth(SqlStoreRegistryRepository(session), SqlStoreProductRepository(session))
+    return ListSourcesHealth(
+        SqlStoreRegistryRepository(session),
+        SqlStoreProductRepository(session),
+        SqlProviderRepository(session),
+    )
 
 
 def get_list_basket_queries(session: Session = Depends(get_session)) -> ListBasketQueries:

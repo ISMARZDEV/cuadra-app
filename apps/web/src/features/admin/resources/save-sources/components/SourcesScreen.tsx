@@ -1,310 +1,380 @@
-import type { SourceHealthDto, SourcePlatform } from "@cuadra/api-client";
-import type { FormEvent } from "react";
-import { useState } from "react";
+import type { SourceHealthDto } from "@cuadra/api-client";
+import { ChevronDown, LayoutGrid, List, ListChecks, Play, Plus, Power, Search } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useData } from "vike-react/useData";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { useAdminList } from "@/features/admin/shell/use-admin-list";
-import { formatMoney } from "@/features/save/lib/format";
+import { cn } from "@/lib/utils";
 
-import type { ProbeResult } from "../api";
 import {
-  createSourceConfig,
-  listSourcesHealthEntries,
-  pauseSourceConfig,
-  probeSource,
-  resumeSourceConfig,
-} from "../api";
-import type { SourcesData } from "../interfaces";
-import { SOURCE_PLATFORM_OPTIONS } from "../types";
-import { HealthBadge } from "./HealthBadge";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui-base/dropdown-menu";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
+import { useAdminList } from "@/features/admin/shell/use-admin-list";
 
-// Consola de Fuentes (3.11-3.12, 3.19-web): alta + pausa/reanudación + "Probar" (dry-run) +
-// headers/endpoints/auth avanzados (gap F3: caso real Jumbo, `headers = {"Store": "jumbo"}` →
-// `CatalogSourceFactory` lo mapea a `store_code`). Tras mutar, `useAdminList` refresca la lista
-// client-side (gap F3: reemplaza `window.location.reload()`, mismo patrón que ProvidersScreen).
+import { listSourcesHealthEntries, pauseSourceConfig, resumeSourceConfig } from "../api";
+import type { SourcesData } from "../interfaces";
+import { SourceCard } from "./SourceCard";
+import { SourceModal, type SourceModalState } from "./SourceModal";
+import { SourceRow } from "./SourceRow";
+
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+type SortState = "asc" | "desc" | "none";
+type ViewMode = "list" | "grid";
+
+const VIEW_CHIP_BASE =
+  "flex size-[26px] items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed";
+const VIEW_CHIP_ON = "bg-brand-lime text-[#1e2129]";
+const VIEW_CHIP_OFF = "bg-[#d9d9d9] text-[#1e2129] dark:bg-white/20 dark:text-white/85";
+
+// Consola de Fuentes (rediseño fiel a la Canasta curada): contenedor `rounded-[32px]`, buscador-pill,
+// botón Acciones (pausar/reanudar en bloque) + Agregar proveedor (modal alta/edición con auth tipado),
+// tabla con headers ordenables + paginación. Sin TanStack Query — `useAdminList` refresca tras mutar.
 export function SourcesScreen() {
-  const { sources: initialSources } = useData<SourcesData>();
+  const { sources: initialSources, providers } = useData<SourcesData>();
   const { items: sources, refresh } = useAdminList(initialSources, () => listSourcesHealthEntries());
 
-  return (
-    <div className="p-6">
-      <h1 className="mb-1 text-xl font-bold">Fuentes (Save)</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Configuración de scraping por proveedor. "Probar" es una vista previa — no guarda nada.
-      </p>
+  const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [modal, setModal] = useState<SourceModalState | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<SortState>("none");
+  const [limit, setLimit] = useState(10);
+  const [offset, setOffset] = useState(0);
+  const [busyBulk, setBusyBulk] = useState(false);
 
-      <CreateSourceForm refresh={refresh} />
-
-      <h2 className="mb-3 mt-8 text-lg font-semibold">Existentes</h2>
-      {sources.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Sin fuentes todavía.</p>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {sources.map((s) => (
-            <SourceRow key={s.id} source={s} refresh={refresh} />
-          ))}
-        </ul>
-      )}
-    </div>
+  const needle = search.trim().toLowerCase();
+  const filtered = useMemo(
+    () => (needle ? sources.filter((s) => `${s.platform} ${s.base_url}`.toLowerCase().includes(needle)) : sources),
+    [sources, needle],
   );
-}
+  const sorted = useMemo(
+    () => (sortCol && sortDir !== "none" ? [...filtered].sort(comparatorFor(sortCol, sortDir)) : filtered),
+    [filtered, sortCol, sortDir],
+  );
 
-// Parsea un textarea JSON opcional: vacío → `undefined` (campo omitido, nunca `{}`); inválido →
-// error legible que bloquea el submit (SAGRADO: nunca mandar un body con JSON malformado).
-function parseJsonField(
-  raw: string,
-  fieldLabel: string,
-): { ok: true; value: Record<string, unknown> | undefined } | { ok: false; error: string } {
-  const trimmed = raw.trim();
-  if (!trimmed) return { ok: true, value: undefined };
-  try {
-    return { ok: true, value: JSON.parse(trimmed) as Record<string, unknown> };
-  } catch {
-    return { ok: false, error: `JSON inválido en ${fieldLabel}` };
-  }
-}
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
+  const pageRows = useMemo(() => sorted.slice(offset, offset + limit), [sorted, offset, limit]);
+  const from = total > 0 ? offset + 1 : 0;
+  const to = Math.min(offset + limit, total);
+  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit) ? PAGE_SIZE_OPTIONS : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
 
-function CreateSourceForm({ refresh }: { refresh: () => Promise<void> }) {
-  const [providerId, setProviderId] = useState("");
-  const [platform, setPlatform] = useState<SourcePlatform>("vtex");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [headersRaw, setHeadersRaw] = useState("");
-  const [endpointsRaw, setEndpointsRaw] = useState("");
-  const [authRaw, setAuthRaw] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setOffset(0);
+  }, [needle, sortCol, sortDir, limit]);
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    const headers = parseJsonField(headersRaw, "headers");
-    if (!headers.ok) {
-      setError(headers.error);
-      return;
+  const sortStateFor = (col: string): SortState => (sortCol === col ? sortDir : "none");
+  const toggleSort = (col: string) => {
+    if (sortCol !== col) {
+      setSortCol(col);
+      setSortDir("asc");
+    } else {
+      setSortDir((d) => (d === "asc" ? "desc" : d === "desc" ? "none" : "asc"));
     }
-    const endpoints = parseJsonField(endpointsRaw, "endpoints");
-    if (!endpoints.ok) {
-      setError(endpoints.error);
-      return;
-    }
-    const auth = parseJsonField(authRaw, "auth");
-    if (!auth.ok) {
-      setError(auth.error);
-      return;
-    }
+  };
 
-    setBusy(true);
-    const res = await createSourceConfig({
-      providerId,
-      platform,
-      baseUrl,
-      headers: headers.value,
-      endpoints: endpoints.value,
-      auth: auth.value,
+  const pageIds = useMemo(() => pageRows.map((r) => r.id), [pageRows]);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
     });
-    setBusy(false);
-    if (res.error) {
-      setError("No se pudo crear la fuente.");
-      return;
-    }
+  const toggleSelectAll = () =>
+    setSelected((prev) => {
+      if (allPageSelected) {
+        const next = new Set(prev);
+        pageIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...pageIds]);
+    });
+
+  const onBulk = async (action: "pause" | "resume") => {
+    setBusyBulk(true);
+    await Promise.all(
+      Array.from(selected).map((id) => (action === "pause" ? pauseSourceConfig(id) : resumeSourceConfig(id))),
+    );
+    setBusyBulk(false);
+    setSelected(new Set());
     await refresh();
   };
 
-  return (
-    <form
-      onSubmit={(e) => void onSubmit(e)}
-      className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:max-w-md"
-    >
-      <h2 className="text-sm font-semibold">Nueva fuente</h2>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+  const emptyStateEl =
+    sources.length === 0 ? (
+      <p className="px-4 py-6 text-sm text-muted-foreground">Sin fuentes todavía.</p>
+    ) : total === 0 ? (
+      <p className="px-4 py-6 text-sm text-muted-foreground">Sin resultados para esa búsqueda.</p>
+    ) : null;
 
-      <label className="flex flex-col gap-1 text-sm">
-        Proveedor (id)
-        <Input value={providerId} onChange={(e) => setProviderId(e.target.value)} required />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        Plataforma
-        <Select value={platform} onValueChange={(v) => setPlatform(v as SourcePlatform)}>
-          <SelectTrigger>
+  const footerEl = (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2">
+        <span>Mostrar</span>
+        <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+          <SelectTrigger size="sm" className="w-16">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SOURCE_PLATFORM_OPTIONS.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
+            {pageSizeOptions.map((n) => (
+              <SelectItem key={n} value={String(n)}>
+                {n}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        Base URL
-        <Input
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="https://…"
-          required
-        />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        Headers (JSON, opcional)
-        <Textarea
-          value={headersRaw}
-          onChange={(e) => setHeadersRaw(e.target.value)}
-          placeholder={'{"Store": "jumbo"}'}
-        />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        Endpoints (JSON, opcional)
-        <Textarea value={endpointsRaw} onChange={(e) => setEndpointsRaw(e.target.value)} />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        Auth (JSON, opcional)
-        <Textarea value={authRaw} onChange={(e) => setAuthRaw(e.target.value)} />
-      </label>
-
-      <Button type="submit" disabled={busy}>
-        Crear fuente
-      </Button>
-    </form>
-  );
-}
-
-function SourceRow({
-  source,
-  refresh,
-}: {
-  source: SourceHealthDto;
-  refresh: () => Promise<void>;
-}) {
-  const [busyToggle, setBusyToggle] = useState(false);
-  const [toggleError, setToggleError] = useState<string | null>(null);
-  const [probing, setProbing] = useState(false);
-
-  const isPaused = source.health === "paused";
-
-  const onTogglePause = async () => {
-    setBusyToggle(true);
-    setToggleError(null);
-    const res = isPaused
-      ? await resumeSourceConfig(source.id)
-      : await pauseSourceConfig(source.id);
-    setBusyToggle(false);
-    if (res.error) {
-      setToggleError(
-        isPaused ? "No se pudo reanudar la fuente." : "No se pudo pausar la fuente.",
-      );
-      return;
-    }
-    await refresh();
-  };
-
-  return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border p-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <HealthBadge health={source.health} />
-        <span className="font-medium">{source.platform}</span>
-        <span className="text-sm text-muted-foreground">{source.base_url}</span>
-
-        {toggleError ? <p className="w-full text-sm text-destructive">{toggleError}</p> : null}
-
-        <Button size="sm" variant="outline" disabled={busyToggle} onClick={() => void onTogglePause()}>
-          {isPaused ? `Reanudar ${source.platform}` : `Pausar ${source.platform}`}
-        </Button>
-
-        <Button size="sm" variant="secondary" onClick={() => setProbing((p) => !p)}>
-          {probing ? "Cerrar prueba" : "Probar"}
-        </Button>
+        <span>por página</span>
       </div>
 
-      {probing ? <ProbePanel sourceId={source.id} /> : null}
-    </li>
+      <span>
+        {from}–{to} de {total}
+      </span>
+
+      <Pagination className="mx-0 w-auto justify-end">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              onClick={() => setOffset(Math.max(0, offset - limit))}
+              aria-disabled={currentPage <= 1}
+              className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
+            />
+          </PaginationItem>
+          {pageWindow(currentPage, totalPages).map((p) => (
+            <PaginationItem key={p}>
+              <PaginationLink isActive={p === currentPage} onClick={() => setOffset((p - 1) * limit)}>
+                {p}
+              </PaginationLink>
+            </PaginationItem>
+          ))}
+          <PaginationItem>
+            <PaginationNext
+              onClick={() => setOffset(offset + limit)}
+              aria-disabled={currentPage >= totalPages}
+              className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    </div>
   );
-}
-
-function ProbePanel({ sourceId }: { sourceId: string }) {
-  const [query, setQuery] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<ProbeResult | null>(null);
-
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setResult(null);
-    const res = await probeSource(sourceId, query);
-    setBusy(false);
-    setResult(res);
-  };
 
   return (
-    <div className="rounded-md border border-dashed border-border p-3">
-      <p className="mb-2 text-xs font-medium text-muted-foreground">
-        Vista previa — esta prueba NO guarda nada.
-      </p>
-      <form onSubmit={(e) => void onSubmit(e)} className="flex gap-2">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Query de búsqueda…"
-          aria-label={`Query de prueba para ${sourceId}`}
-        />
-        <Button type="submit" size="sm" disabled={busy}>
-          Ejecutar
-        </Button>
-      </form>
+    <div className="flex flex-1 flex-col p-4 md:p-6">
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+        {/* Header */}
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">Fuentes (Save)</h1>
+          <span className="text-base font-semibold text-brand-forest dark:text-brand-lime">({sources.length})</span>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Configuración de extracción por proveedor. La auth (Bearer / API key) vive cifrada en la fuente y
+          se muestra enmascarada. "Probar" es una vista previa — no guarda nada.
+        </p>
 
-      {result ? <ProbeResultView result={result} /> : null}
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-9 w-[272px] items-center gap-2 rounded-full border border-[#8daeae]/40 bg-[#b0b0b0]/15 pr-1.5 pl-3 dark:border-white/10 dark:bg-white/5">
+              <Search className="size-4 shrink-0 text-[#4f585d]/70 dark:text-white/50" aria-hidden="true" />
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Buscar fuentes"
+                placeholder="Buscar por plataforma o URL…"
+                className="h-full flex-1 border-none bg-transparent px-0 text-sm shadow-none placeholder:text-[#4f585d]/60 focus-visible:ring-0 dark:placeholder:text-white/40"
+              />
+            </div>
+
+            {/* Toggle grid/lista — igual al de Cola de revisión */}
+            <div role="radiogroup" className="flex items-center gap-1.5 rounded-full bg-white p-1 dark:bg-white/10">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={viewMode === "grid"}
+                aria-label="Ver en cards"
+                onClick={() => setViewMode("grid")}
+                className={cn(VIEW_CHIP_BASE, viewMode === "grid" ? VIEW_CHIP_ON : VIEW_CHIP_OFF)}
+              >
+                <LayoutGrid className="size-4" />
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={viewMode === "list"}
+                aria-label="Ver en lista"
+                onClick={() => setViewMode("list")}
+                className={cn(VIEW_CHIP_BASE, viewMode === "list" ? VIEW_CHIP_ON : VIEW_CHIP_OFF)}
+              >
+                <List className="size-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={selected.size === 0 || busyBulk}
+                className="flex h-9 items-center gap-1.5 rounded-full bg-brand-forest px-4 text-sm font-semibold text-brand-lime disabled:opacity-50"
+              >
+                <ListChecks className="size-[18px]" />
+                Acciones
+                <ChevronDown className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => void onBulk("pause")}>
+                  <Power />
+                  Pausar seleccionadas ({selected.size})
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void onBulk("resume")}>
+                  <Play />
+                  Reanudar seleccionadas ({selected.size})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <button
+              type="button"
+              onClick={() => setModal({ mode: "add" })}
+              className="inline-flex h-9 items-center gap-2 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest shadow-sm hover:bg-brand-lime/90"
+            >
+              <Plus className="size-4" aria-hidden="true" />
+              Agregar proveedor
+            </button>
+          </div>
+        </div>
+
+        {/* Vista GRID (cards) o LISTA (tabla) según el toggle */}
+        {viewMode === "grid" ? (
+          <div className="space-y-4">
+            {pageRows.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {pageRows.map((row) => (
+                  <SourceCard
+                    key={row.id}
+                    source={row}
+                    selected={selected.has(row.id)}
+                    onToggleSelect={() => toggleSelect(row.id)}
+                    onEdit={() => setModal({ mode: "edit", source: row })}
+                    refresh={refresh}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {emptyStateEl}
+            <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-card">
+              {footerEl}
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent [&>th]:h-11 [&>th]:text-sm [&>th]:font-semibold [&>th]:text-muted-foreground">
+                  <TableHead className="w-10">
+                    <SelectCheckbox
+                      data-testid="select-all"
+                      aria-label="Seleccionar todo"
+                      checked={allPageSelected}
+                      disabled={pageIds.length === 0}
+                      onChange={toggleSelectAll}
+                    />
+                  </TableHead>
+                  <SortableHeader label="Salud" state={sortStateFor("health")} onToggle={() => toggleSort("health")} />
+                  <TableHead className="w-16">Logo</TableHead>
+                  <SortableHeader label="Plataforma" state={sortStateFor("platform")} onToggle={() => toggleSort("platform")} />
+                  <SortableHeader label="Base URL" state={sortStateFor("url")} onToggle={() => toggleSort("url")} />
+                  <TableHead>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pageRows.map((row) => (
+                  <SourceRow
+                    key={row.id}
+                    source={row}
+                    selected={selected.has(row.id)}
+                    onToggleSelect={() => toggleSelect(row.id)}
+                    onEdit={() => setModal({ mode: "edit", source: row })}
+                    refresh={refresh}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+            {emptyStateEl}
+            {footerEl}
+          </div>
+        )}
+      </div>
+
+      {modal ? (
+        <SourceModal state={modal} providers={providers} onClose={() => setModal(null)} refresh={refresh} />
+      ) : null}
     </div>
   );
 }
 
-function ProbeResultView({ result }: { result: ProbeResult }) {
-  if (!result.ok) {
-    return (
-      <p role="alert" className="mt-3 text-sm text-destructive">
-        {result.kind === "config"
-          ? `Configuración inválida: ${result.message}`
-          : `La tienda no respondió: ${result.message}`}
-      </p>
-    );
-  }
+function comparatorFor(col: string, dir: SortState) {
+  const sign = dir === "desc" ? -1 : 1;
+  return (a: SourceHealthDto, b: SourceHealthDto): number => {
+    let cmp = 0;
+    if (col === "platform") cmp = a.platform.localeCompare(b.platform);
+    else if (col === "url") cmp = a.base_url.localeCompare(b.base_url);
+    else if (col === "health") cmp = a.health.localeCompare(b.health);
+    return cmp * sign;
+  };
+}
 
-  if (result.samples.length === 0) {
-    return <p className="mt-3 text-sm text-muted-foreground">Sin resultados para esa query.</p>;
-  }
-
+function SortTriangle({ state }: { state: SortState }) {
+  const color = state === "none" ? "text-muted-foreground/40" : "text-primary";
+  const path = state === "desc" ? "M0 0h10L5 6z" : "M5 0l5 6H0z";
   return (
-    <table className="mt-3 w-full text-sm">
-      <thead>
-        <tr className="text-left text-xs text-muted-foreground">
-          <th>ID externo</th>
-          <th>Nombre</th>
-          <th>Marca</th>
-          <th>Precio</th>
-          <th>EAN</th>
-        </tr>
-      </thead>
-      <tbody>
-        {result.samples.map((s) => (
-          <tr key={s.external_id}>
-            <td>{s.external_id}</td>
-            <td>{s.name}</td>
-            <td>{s.brand}</td>
-            <td>{formatMoney(s.price_minor, s.currency)}</td>
-            <td>{s.ean ?? "—"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <svg viewBox="0 0 10 6" className={`h-[6px] w-[10px] shrink-0 ${color}`} aria-hidden="true">
+      <path d={path} fill="currentColor" />
+    </svg>
   );
+}
+
+const ARIA_SORT: Record<SortState, "none" | "ascending" | "descending"> = {
+  none: "none",
+  asc: "ascending",
+  desc: "descending",
+};
+
+function SortableHeader({ label, state, onToggle }: { label: ReactNode; state: SortState; onToggle: () => void }) {
+  return (
+    <TableHead aria-sort={ARIA_SORT[state]}>
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 font-semibold">
+        {label}
+        <SortTriangle state={state} />
+      </button>
+    </TableHead>
+  );
+}
+
+function pageWindow(current: number, total: number, max = 5): number[] {
+  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
+  let start = Math.max(1, current - Math.floor(max / 2));
+  let end = start + max - 1;
+  if (end > total) {
+    end = total;
+    start = end - max + 1;
+  }
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }

@@ -56,7 +56,7 @@ def test_paused_source_is_paused_regardless_of_freshness(db_session) -> None:  #
     PauseSource(registry_repo).execute(source.id)
     _observe(db_session, provider_id, datetime.now(UTC))
 
-    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("DO")
+    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session), SqlProviderRepository(db_session)).execute("DO")
 
     assert _row_for(rows, source.id).health is SourceHealth.PAUSED
 
@@ -69,7 +69,7 @@ def test_stale_source_when_last_observation_is_old(db_session) -> None:  # type:
     )
     _observe(db_session, provider_id, datetime.now(UTC) - timedelta(hours=48))
 
-    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("DO")
+    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session), SqlProviderRepository(db_session)).execute("DO")
 
     assert _row_for(rows, source.id).health is SourceHealth.STALE
 
@@ -82,7 +82,7 @@ def test_ok_source_when_recently_observed(db_session) -> None:  # type: ignore[n
     )
     _observe(db_session, provider_id, datetime.now(UTC) - timedelta(hours=1))
 
-    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("DO")
+    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session), SqlProviderRepository(db_session)).execute("DO")
 
     assert _row_for(rows, source.id).health is SourceHealth.OK
 
@@ -94,7 +94,7 @@ def test_never_ingested_source_is_stale_without_crashing(db_session) -> None:  #
         provider_id=provider_id, platform=SourcePlatform.VTEX, base_url="https://plazalama.com.do",
     )
 
-    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("DO")
+    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session), SqlProviderRepository(db_session)).execute("DO")
 
     assert _row_for(rows, source.id).health is SourceHealth.STALE
 
@@ -106,6 +106,6 @@ def test_only_lists_sources_of_the_requested_market(db_session) -> None:  # type
         provider_id=do_provider, platform=SourcePlatform.VTEX, base_url="https://jumbo.do",
     )
 
-    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session)).execute("US")
+    rows = ListSourcesHealth(registry_repo, SqlStoreProductRepository(db_session), SqlProviderRepository(db_session)).execute("US")
 
     assert rows == []

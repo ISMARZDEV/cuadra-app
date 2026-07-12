@@ -9,8 +9,23 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from src.contexts.save.application.store_registry import ListSourcesHealth
-from src.contexts.save.domain.entities import SourcePlatform, StoreRegistry
+from src.contexts.save.domain.entities import (
+    Provider,
+    ProviderType,
+    SourcePlatform,
+    StoreRegistry,
+)
 from src.contexts.save.domain.source_health import SourceHealth
+
+
+class FakeProviderRepo:
+    """Devuelve un Provider con nombre + logo por provider_id (para las cards/lista)."""
+
+    def get_by_id(self, provider_id: str) -> Provider:
+        return Provider(
+            provider_id, f"Súper {provider_id}", ProviderType.SUPERMARKET,
+            SourcePlatform.VTEX, "DO", logo_url=f"https://logo/{provider_id}.png",
+        )
 
 
 class FakeStoreRegistryRepo:
@@ -42,7 +57,7 @@ def _source(
 def test_paused_source_is_paused_regardless_of_freshness() -> None:
     now = datetime(2026, 7, 6, tzinfo=UTC)
     source = _source("p1", enabled=False, paused_at=now, health_status="paused")
-    use_case = ListSourcesHealth(FakeStoreRegistryRepo([source]), FakeStoreProductRepo({"p1": now}))
+    use_case = ListSourcesHealth(FakeStoreRegistryRepo([source]), FakeStoreProductRepo({"p1": now}), FakeProviderRepo())
 
     rows = use_case.execute("DO")
 
@@ -53,7 +68,7 @@ def test_stale_source_when_last_seen_older_than_threshold() -> None:
     source = _source("p1")
     stale_seen = datetime.now(UTC) - timedelta(hours=48)
     use_case = ListSourcesHealth(
-        FakeStoreRegistryRepo([source]), FakeStoreProductRepo({"p1": stale_seen})
+        FakeStoreRegistryRepo([source]), FakeStoreProductRepo({"p1": stale_seen}), FakeProviderRepo()
     )
 
     rows = use_case.execute("DO")
@@ -65,7 +80,7 @@ def test_ok_source_when_recently_seen() -> None:
     source = _source("p1")
     fresh_seen = datetime.now(UTC) - timedelta(hours=1)
     use_case = ListSourcesHealth(
-        FakeStoreRegistryRepo([source]), FakeStoreProductRepo({"p1": fresh_seen})
+        FakeStoreRegistryRepo([source]), FakeStoreProductRepo({"p1": fresh_seen}), FakeProviderRepo()
     )
 
     rows = use_case.execute("DO")
@@ -75,7 +90,7 @@ def test_ok_source_when_recently_seen() -> None:
 
 def test_never_ingested_source_is_stale() -> None:
     source = _source("p1")
-    use_case = ListSourcesHealth(FakeStoreRegistryRepo([source]), FakeStoreProductRepo({}))
+    use_case = ListSourcesHealth(FakeStoreRegistryRepo([source]), FakeStoreProductRepo({}), FakeProviderRepo())
 
     rows = use_case.execute("DO")
 
