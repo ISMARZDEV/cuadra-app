@@ -85,6 +85,7 @@ export function CandidateCard({ candidate, store, rank, onApprove, disabled }: C
           label="Tamaño"
           storeValue={store.sizeText}
           candidateValue={candidate.size_text ?? null}
+          kind="size"
           showValues
         />
       </div>

@@ -1,4 +1,4 @@
-import { diffField } from "../../lib/field-diff";
+import { diffField, diffSize, formatSize } from "../../lib/field-diff";
 import type { FieldDiffRowProps } from "./interfaces";
 
 // Estilo del badge por resultado del diff — color + TEXTO ("Coincide"/"Diferente"), nunca color solo
@@ -17,9 +17,13 @@ const BADGE = {
 // Una fila de comparación campo-a-campo dentro de una `CandidateCard` (rediseño del detalle). El
 // subtexto "store ≠ candidato" solo aparece cuando difiere Y `showValues` (los nombres largos lo
 // omiten, como en el diseño). Reusa `diffField` (casefold+trim) — misma lógica que la tabla vieja.
-export function FieldDiffRow({ label, storeValue, candidateValue, showValues }: FieldDiffRowProps) {
-  const diff = diffField(storeValue, candidateValue);
+export function FieldDiffRow({ label, storeValue, candidateValue, showValues, kind = "text" }: FieldDiffRowProps) {
+  const isSize = kind === "size";
+  const diff = isSize ? diffSize(storeValue, candidateValue) : diffField(storeValue, candidateValue);
   const badge = BADGE[diff];
+  // El campo Tamaño muestra la forma canónica (2 letras) — "20 Lbs" y "20 LB" ya no se ven distintos.
+  const showStore = isSize ? formatSize(storeValue) : (storeValue ?? "—");
+  const showCandidate = isSize ? formatSize(candidateValue) : (candidateValue ?? "—");
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -33,7 +37,7 @@ export function FieldDiffRow({ label, storeValue, candidateValue, showValues }: 
       </div>
       {showValues && diff === "differ" ? (
         <p className="text-xs text-muted-foreground">
-          {storeValue ?? "—"} ≠ {candidateValue ?? "—"}
+          {showStore} ≠ {showCandidate}
         </p>
       ) : null}
     </div>

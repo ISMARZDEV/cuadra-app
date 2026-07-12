@@ -112,4 +112,7 @@ export interface FieldDiffRowProps {
   candidateValue: string | null;
   /** Muestra el subtexto "store ≠ candidato" cuando difiere. Off para valores largos (ej. Nombre). */
   showValues?: boolean;
+  /** "size" compara por cantidad+unidad canónica (2 letras) y muestra la forma normalizada; "text"
+   * (default) compara/​muestra el texto crudo (casefold+trim). */
+  kind?: "text" | "size";
 }
