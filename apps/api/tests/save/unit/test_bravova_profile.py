@@ -62,7 +62,15 @@ def test_map_bravova_item_full_fields() -> None:
         ean=None,  # associatedEan vacío
         url=None,
         image_url=None,  # patrón de CDN por capturar (follow-up)
+        source_ref={"id_articulo": "29866"},  # §15.3: idArticulo interno para el /get de frescura
     )
+
+
+def test_map_sets_source_ref_from_id_articulo() -> None:
+    # El external_id es idexterno (13290); el localizador de detalle (para /get) es idArticulo (29866).
+    entry = map_bravova_item(BRAVOVA_ITEM, provider_id="p-bravo", market_id="DO")
+    assert entry.external_id == "13290"
+    assert entry.source_ref == {"id_articulo": "29866"}
 
 
 def test_map_derives_currency_from_market_multicountry() -> None:

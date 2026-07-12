@@ -117,6 +117,7 @@ class RefreshCatalogPrices:
                 size_text=entry.size_text,
                 image_url=entry.image_url,
                 source_category=" > ".join(entry.category_path) or None,
+                source_ref=entry.source_ref,
             )
             self._classify(store_product_id, entry)  # clasifica (idempotente) el conocido si falta
             refreshed += 1

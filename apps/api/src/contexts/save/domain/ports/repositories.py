@@ -254,6 +254,7 @@ class StoreProductRepository(Protocol):
         size_text: str | None = None,
         image_url: str | None = None,
         source_category: str | None = None,
+        source_ref: dict | None = None,
     ) -> str:
         """Change-only (SCD-4): inserta `price` solo si cambió; si no, actualiza last_seen_at.
 
