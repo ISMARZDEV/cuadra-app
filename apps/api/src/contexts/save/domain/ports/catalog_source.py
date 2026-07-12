@@ -31,6 +31,10 @@ class RawCatalogEntry:
     ean: str | None = None
     url: str | None = None
     image_url: str | None = None
+    # §15.3: localizador(es) extra para el re-fetch por-producto (camino A) cuando `external_id` no
+    # alcanza. Bravo → {"id_articulo": "29866"} (el `/get` usa idArticulo, no idexterno). Casi
+    # siempre None (external_id = productId/SKU ya es el localizador).
+    source_ref: dict[str, str] | None = None
 
 
 class CatalogSource(Protocol):

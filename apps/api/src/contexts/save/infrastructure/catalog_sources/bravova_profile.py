@@ -55,6 +55,11 @@ def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalog
     price = Money.from_major(str(_price_major(item)), currency)
     name = item.get("nombreArticulo", "")
 
+    # §15.3: el `/get` de Bravo usa `idArticulo` (interno), NO el `idexternoArticulo` que es el
+    # external_id → se guarda como localizador de detalle para el re-fetch de frescura (camino A).
+    id_articulo = item.get("idArticulo")
+    source_ref = {"id_articulo": str(id_articulo)} if id_articulo is not None else None
+
     return RawCatalogEntry(
         provider_id=provider_id,
         market_id=market_id,
@@ -69,6 +74,7 @@ def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalog
         ean=_first_ean(item),
         url=None,
         image_url=None,
+        source_ref=source_ref,
     )
 
 

@@ -273,6 +273,10 @@ class StoreProductModel(Base):
     # Etapa B (save-category-classification): categoría CRUDA de la fuente (path del adapter, ej.
     # "Despensa > Arroz y Granos"). Segunda señal — la cascada la cruza con el nombre para clasificar.
     source_category: Mapped[str | None] = mapped_column(Text)
+    # §15.3: localizador(es) extra para el re-fetch por-producto (camino A) cuando `external_id` no
+    # alcanza — p.ej. Bravo {"id_articulo": "29866"} (el /get usa idArticulo, no idexterno). NULL salvo
+    # las fuentes que lo necesitan.
+    source_ref: Mapped[dict | None] = mapped_column(JSONB)
 
 
 class PriceAlertModel(Base):

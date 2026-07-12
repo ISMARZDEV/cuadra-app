@@ -462,6 +462,7 @@ class SqlStoreProductRepository:
         size_text: str | None = None,
         image_url: str | None = None,
         source_category: str | None = None,
+        source_ref: dict | None = None,
     ) -> str:
         # Unidades canónicas desde la FUENTE: el tamaño se guarda ya normalizado ("20 Lbs" → "20 Lb").
         size_text = normalize_size_text(size_text)
@@ -483,6 +484,7 @@ class SqlStoreProductRepository:
                 size_text=size_text,
                 image_url=image_url,
                 source_category=source_category,
+                source_ref=source_ref,
                 last_seen_at=captured_at,
                 is_available=True,
             )
@@ -504,6 +506,8 @@ class SqlStoreProductRepository:
                 sp.image_url = image_url
             if source_category is not None:
                 sp.source_category = source_category
+            if source_ref is not None:  # §15.3: se refresca el localizador de detalle cuando llega
+                sp.source_ref = source_ref
             if sp.current_price_minor != price.amount_minor or sp.currency != price.currency.code:
                 sp.current_price_minor = price.amount_minor
                 sp.currency = price.currency.code
