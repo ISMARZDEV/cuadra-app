@@ -259,6 +259,8 @@ class StoreProductModel(Base):
     url: Mapped[str | None] = mapped_column(Text)
     ean: Mapped[str | None] = mapped_column(Text)                    # señal fuerte del matching
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # change-only
+    # F3.0 (Loop B): disponibilidad por tienda. False = Loop B lo buscó y ya no lo vende (no se borra).
+    is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

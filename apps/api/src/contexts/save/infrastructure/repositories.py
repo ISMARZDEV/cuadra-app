@@ -481,12 +481,14 @@ class SqlStoreProductRepository:
                 image_url=image_url,
                 source_category=source_category,
                 last_seen_at=captured_at,
+                is_available=True,
             )
             self._s.add(sp)
             self._s.flush()
             changed = True
         else:
             sp.last_seen_at = captured_at
+            sp.is_available = True  # F3.0: re-observado = vuelve a estar disponible
             # F2·B1 (1.9-1.10): refresca los atributos crudos cuando llegan (nunca los borra con
             # None — una observación posterior sin estos campos no debe pisar los ya conocidos).
             if name is not None:
@@ -517,6 +519,14 @@ class SqlStoreProductRepository:
             )
         self._s.flush()
         return str(sp.id)
+
+    def set_availability(self, store_product_id: str, available: bool) -> None:
+        sid = _parse_uuid(store_product_id)
+        m = self._s.get(StoreProductModel, sid) if sid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" es regla del use case
+            return
+        m.is_available = available
+        self._s.flush()
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]:
         models = self._s.scalars(
@@ -643,7 +653,10 @@ class SqlStoreProductRepository:
         rows = self._s.execute(
             select(StoreProductModel, ProviderModel.name)
             .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
-            .where(StoreProductModel.canonical_product_id == uuid.UUID(canonical_product_id))
+            .where(
+                StoreProductModel.canonical_product_id == uuid.UUID(canonical_product_id),
+                StoreProductModel.is_available.is_(True),  # F3.0: no comparar/linkear lo agotado
+            )
         ).all()
         return [
             StoreQuote(

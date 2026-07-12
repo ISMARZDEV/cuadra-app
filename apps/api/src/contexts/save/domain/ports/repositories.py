@@ -264,6 +264,12 @@ class StoreProductRepository(Protocol):
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]: ...
 
+    def set_availability(self, store_product_id: str, available: bool) -> None:
+        """F3.0 (Loop B): marca un store_product disponible/no-disponible SIN borrarlo. Loop B lo pone
+        en `False` cuando busca el canónico en la tienda y ya no lo vende (la comparativa/`Comprar en
+        X` lo excluye); vuelve a `True` en la próxima observación exitosa (`record_observation`)."""
+        ...
+
     def max_last_seen_at(self, provider_id: str) -> datetime | None:
         """Señal de frescura para el badge de salud (F2·B1/B3, Batch 3E): MAX `last_seen_at` de
         todos los `store_product` del Provider. `None` si nunca se ingirió nada de esta fuente."""
