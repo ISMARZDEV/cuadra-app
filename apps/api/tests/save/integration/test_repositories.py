@@ -136,9 +136,9 @@ def test_record_observation_persists_raw_attributes(db_session) -> None:  # type
 
     row = db_session.get(StoreProductModel, uuid.UUID(sp_id))
     assert row is not None
-    assert row.name == "Arroz La Garza 10 Lbs"
+    assert row.name == "Arroz La Garza 10 Lbs"  # name/brand/image se guardan CRUDOS
     assert row.brand == "LA GARZA"
-    assert row.size_text == "10 Lbs"
+    assert row.size_text == "10 Lb"  # size_text se NORMALIZA a unidad canónica (2 letras)
     assert row.image_url == "https://cdn.example.com/arroz.jpg"
 
 
@@ -160,7 +160,7 @@ def test_record_observation_refreshes_raw_attributes_without_erasing_on_none(db_
     assert row is not None
     assert row.name == "Nombre viejo"
     assert row.brand == "Marca vieja"
-    assert row.size_text == "1kg"
+    assert row.size_text == "1 Kg"  # normalizado desde "1kg"
     assert row.image_url == "https://old.example.com/a.jpg"
 
 
