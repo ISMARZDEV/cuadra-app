@@ -1,10 +1,11 @@
 import {
   createBasketQuery as createBasketQueryRequest,
   listBasketQueries as listBasketQueriesRequest,
+  previewBasketQuery as previewBasketQueryRequest,
   removeBasketQuery as removeBasketQueryRequest,
   updateBasketQuery as updateBasketQueryRequest,
 } from "@cuadra/api-client";
-import type { BasketQueryDto } from "@cuadra/api-client";
+import type { BasketPreviewGroupDto, BasketQueryDto } from "@cuadra/api-client";
 
 import { authHeaders } from "@/features/save/hooks/use-auth";
 import { apiClient } from "@/lib/api";
@@ -85,6 +86,21 @@ export async function updateBasketQueryEntry(
       active: patch.active,
     },
   });
+}
+
+// Preview dry-run (F2, canasta consultable): qué devolvería un término en cada tienda del mercado,
+// SIN persistir (backend SSRF-guarded). Nunca colapsa a null — devuelve [] si el request falla, para
+// que la UI muestre "sin resultados" en vez de romperse.
+export async function previewBasketQueryTerm(
+  queryText: string,
+  market: string = "DO",
+): Promise<BasketPreviewGroupDto[]> {
+  const res = await previewBasketQueryRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: { query_text: queryText, market_id: market },
+  });
+  return res.data ?? [];
 }
 
 export async function removeBasketQueryEntry(id: string) {
