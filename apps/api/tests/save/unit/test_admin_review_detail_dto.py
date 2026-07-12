@@ -5,11 +5,18 @@ campos nuevos del rediseño (SKU/EAN/tienda origen del store_product; imagen/tam
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from src.contexts.save.application.dtos import (
     AdminReviewCandidateDto,
     AdminReviewDetailDto,
+    AdminReviewQueueRowDto,
 )
-from src.contexts.save.domain.review_queue import ReviewCandidateView, ReviewDetail
+from src.contexts.save.domain.review_queue import (
+    ReviewCandidateView,
+    ReviewDetail,
+    ReviewQueueRow,
+)
 
 
 def test_candidate_dto_exposes_image_and_size() -> None:
@@ -49,6 +56,52 @@ def test_detail_dto_exposes_sku_ean_and_provider() -> None:
     assert dto.store_product_sku == "sku-abc123"
     assert dto.store_product_ean == "7460100000123"
     assert dto.provider_name == "Sirena"
+
+
+def test_row_dto_exposes_store_product_url() -> None:
+    # F0 (link a la tienda): la fila de la cola lleva el URL para el link "↗" de la tabla.
+    row = ReviewQueueRow(
+        match_id="m1",
+        store_product_id="sp1",
+        confidence=0.72,
+        method="llm",
+        provider_id="p1",
+        provider_name="Sirena",
+        store_product_name="Arroz Goya 10 Lb",
+        store_product_brand="GOYA",
+        store_product_size_text="10 Lb",
+        candidate_count=2,
+        created_at=datetime(2026, 7, 12, tzinfo=timezone.utc),
+        store_product_url="https://sirena.do/arroz-goya-10lb/p",
+    )
+
+    dto = AdminReviewQueueRowDto.from_row(row)
+
+    assert dto.store_product_url == "https://sirena.do/arroz-goya-10lb/p"
+
+
+def test_detail_dto_exposes_store_product_url() -> None:
+    # F0 (link a la tienda): el detalle lleva el URL del producto en la tienda origen para el
+    # botón "↗ Ver en la tienda" del StoreProductPanel.
+    detail = ReviewDetail(
+        match_id="m1",
+        store_product_id="sp1",
+        confidence=0.85,
+        method="llm",
+        store_product_name="Arroz Goya Canilla Extra Largo 10 Lb",
+        store_product_brand="GOYA",
+        store_product_size_text="10 Lb",
+        store_product_image_url="https://example.com/goya.png",
+        store_product_sku="sku-abc123",
+        store_product_ean="7460100000123",
+        store_product_url="https://sirena.do/arroz-goya-canilla-10lb/p",
+        provider_name="Sirena",
+        candidates=[],
+    )
+
+    dto = AdminReviewDetailDto.from_detail(detail)
+
+    assert dto.store_product_url == "https://sirena.do/arroz-goya-canilla-10lb/p"
 
 
 def test_detail_dto_exposes_market_and_suggested_category() -> None:

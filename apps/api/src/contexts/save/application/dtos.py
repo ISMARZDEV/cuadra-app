@@ -368,6 +368,7 @@ class AdminReviewQueueRowDto(BaseModel):
     store_product_brand: str | None = None
     store_product_size_text: str | None = None
     store_product_image_url: str | None = None
+    store_product_url: str | None = None  # F0: página del producto en la tienda origen
     # admin-workspace (Batch 1): NULL hasta que exista `save-category-classification` (cambio de
     # backend separado que asignará categoría vía los mecanismos del matching: trgm/vector/LLM).
     category: CategoryRefDto | None = None
@@ -388,6 +389,7 @@ class AdminReviewQueueRowDto(BaseModel):
             store_product_brand=r.store_product_brand,
             store_product_size_text=r.store_product_size_text,
             store_product_image_url=r.store_product_image_url,
+            store_product_url=r.store_product_url,
             category=(
                 CategoryRefDto(slug=r.category_slug, name=r.category_name)
                 if r.category_slug and r.category_name
@@ -422,6 +424,7 @@ class AdminReviewDetailDto(BaseModel):
     store_product_image_url: str | None = None
     store_product_sku: str | None = None
     store_product_ean: str | None = None
+    store_product_url: str | None = None  # F0: página del producto en la tienda origen
     provider_name: str | None = None
     # Etapa A: market (payload de creación de canónico) + categoría sugerida (clasificación activa).
     market_id: str | None = None
@@ -442,6 +445,7 @@ class AdminReviewDetailDto(BaseModel):
             store_product_image_url=d.store_product_image_url,
             store_product_sku=d.store_product_sku,
             store_product_ean=d.store_product_ean,
+            store_product_url=d.store_product_url,
             provider_name=d.provider_name,
             market_id=d.market_id,
             suggested_taxonomy_node_id=d.suggested_taxonomy_node_id,

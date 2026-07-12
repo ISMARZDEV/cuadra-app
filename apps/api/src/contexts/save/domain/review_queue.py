@@ -26,6 +26,7 @@ class ReviewQueueRow:
     created_at: datetime
     provider_logo_url: str | None = None
     store_product_image_url: str | None = None
+    store_product_url: str | None = None  # F0: página del producto en la tienda origen
     # admin-workspace (Batch 1): SIEMPRE None hasta que exista `save-category-classification`
     # (cambio de backend separado que asignará categoría vía los mecanismos del matching).
     category_slug: str | None = None
@@ -45,6 +46,7 @@ class StoreProductRawAttrs:
     image_url: str | None
     sku: str | None = None
     ean: str | None = None
+    url: str | None = None  # F0: página del producto en la tienda ("Ver en la tienda")
     provider_name: str | None = None
     # Etapa A (crear canónico desde el detalle): el market (por el provider) para el payload de
     # creación, y la categoría SUGERIDA = la clasificación activa del store_product (Etapa B),
@@ -86,6 +88,7 @@ class ReviewDetail:
     store_product_image_url: str | None
     store_product_sku: str | None = None
     store_product_ean: str | None = None
+    store_product_url: str | None = None  # F0: página del producto en la tienda origen
     provider_name: str | None = None
     # Etapa A: market + categoría sugerida (clasificación activa del store_product, Etapa B).
     market_id: str | None = None

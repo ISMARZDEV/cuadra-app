@@ -549,6 +549,7 @@ class SqlStoreProductRepository:
             image_url=sp.image_url,
             sku=sp.external_id,
             ean=sp.ean,
+            url=sp.url,
             provider_name=provider_name,
             market_id=market_id,
             suggested_taxonomy_node_id=str(suggested_leaf_id) if suggested_leaf_id else None,
