@@ -20,7 +20,8 @@ Modos (elegí UNO):
                     lo obligatorio para que Save funcione: provider, store_registry, basket_query,
                     taxonomy_node. Empezás de cero SIN traer de vuelta fixtures demo (a diferencia de
                     --all + re-seed). Este es el "empezar de cero de verdad" para validar ingesta.
-  --all             NUKE total: TRUNCATE de las 16 tablas de `save`. Después re-sembrá con
+  --all             NUKE total: TRUNCATE de las tablas de `save` SALVO la canasta curada
+                    (`basket_query`, dato gestionado, se preserva). Después re-sembrá con
                     `uv run python -m seeds`.
 
 Uso:
@@ -59,6 +60,11 @@ _ALL_TABLES = [
 # Lo OBLIGATORIO para que Save funcione (estructura pura, sin depender de datos generados).
 # `--reset` conserva ESTAS y wipea el resto.
 _KEEP_TABLES = {"provider", "store_registry", "basket_query", "taxonomy_node"}
+
+# La CANASTA CURADA (`basket_query`) es DATO GESTIONADO (F1): la mantiene un admin desde la consola y
+# la puebla la migración de backfill (no un re-seed). NINGÚN reset la borra — ni `--reset` ni el NUKE
+# `--all` —, para no dejar la ingesta sin canasta tras un reset.
+_CURATED_TABLES = {"basket_query"}
 
 
 def _arg(flag: str) -> str | None:
@@ -247,15 +253,18 @@ def _interactive(s) -> None:
 
 
 def _nuke_all(s, *, execute: bool) -> None:
-    print("\nNUKE total del schema `save` — se vaciarían las 16 tablas:")
-    for t in _ALL_TABLES:
+    # La canasta curada se PRESERVA incluso en el nuke (dato gestionado, no fixture demo).
+    wipe = [t for t in _ALL_TABLES if t not in _CURATED_TABLES]
+    print("\nNUKE total del schema `save` — se vaciarían todas las tablas SALVO la canasta curada:")
+    print(f"  CONSERVA (canasta curada): {', '.join(sorted(_CURATED_TABLES))}")
+    for t in wipe:
         n = s.execute(text(f"SELECT count(*) FROM save.{t}")).scalar_one()
         print(f"  {t:<24} {n}")
     if not execute:
         print("\n(dry-run — nada borrado. Agregá --yes para ejecutar.)")
         return
-    s.execute(text(f"TRUNCATE {', '.join(f'save.{t}' for t in _ALL_TABLES)} RESTART IDENTITY CASCADE"))
-    print("\n✓ Schema `save` vaciado. Re-sembrá con:  uv run python -m seeds")
+    s.execute(text(f"TRUNCATE {', '.join(f'save.{t}' for t in wipe)} RESTART IDENTITY CASCADE"))
+    print("\n✓ Schema `save` vaciado (canasta curada conservada). Re-sembrá con:  uv run python -m seeds")
 
 
 def main() -> None:
