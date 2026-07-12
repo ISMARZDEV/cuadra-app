@@ -108,7 +108,9 @@ def main() -> None:
                         f"({parent_name.get(p_name,'?')})"
                     )
 
-    pct = lambda n: f"{(100*n/total):.0f}%" if total else "—"
+    def pct(n: int) -> str:
+        return f"{(100*n/total):.0f}%" if total else "—"
+
     print(f"\n{'='*64}\n  MEDICIÓN — señal de categoría de ORIGEN (Sirena, {total} productos)\n{'='*64}")
     print(f"\n  con category_path de la fuente:  {with_path}/{total} ({pct(with_path)})")
     print("\n  1) ¿Qué tan lejos llega la señal de origen? (lexicon)")
