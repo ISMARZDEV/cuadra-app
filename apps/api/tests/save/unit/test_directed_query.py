@@ -6,7 +6,8 @@ PURO — sin red ni DB.
 """
 from __future__ import annotations
 
-from src.contexts.save.domain.directed_query import build_directed_query
+from src.contexts.save.domain.directed_query import build_directed_query, supports_ean
+from src.contexts.save.domain.entities import SourcePlatform
 
 
 def test_prefers_ean_when_store_supports_it() -> None:
@@ -45,3 +46,9 @@ def test_falls_back_to_name_when_no_ean_at_all() -> None:
 def test_omits_missing_size() -> None:
     q = build_directed_query(name="Leche Rica", display_size=None, ean=None, store_supports_ean=False)
     assert q.text == "Leche Rica"
+
+
+def test_supports_ean_only_vtex() -> None:
+    assert supports_ean(SourcePlatform.VTEX) is True
+    assert supports_ean(SourcePlatform.MAGENTO) is False
+    assert supports_ean(SourcePlatform.REST_CATALOG) is False

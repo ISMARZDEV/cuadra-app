@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .entities import SourcePlatform
+
 
 @dataclass(frozen=True, slots=True)
 class DirectedQuery:
@@ -30,3 +32,9 @@ def build_directed_query(
         return DirectedQuery(text=ean, by_ean=True)
     parts = [p.strip() for p in (name, display_size) if p and p.strip()]
     return DirectedQuery(text=" ".join(parts), by_ean=False)
+
+
+def supports_ean(platform: SourcePlatform) -> bool:
+    """¿La búsqueda de la plataforma matchea por EAN? VTEX (Sirena) indexa el barcode; Magento busca
+    por término/SKU. Heurística por plataforma, afinable con datos reales (teardown SRD §2.1/§2.2)."""
+    return platform is SourcePlatform.VTEX
