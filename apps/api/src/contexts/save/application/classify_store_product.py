@@ -26,7 +26,11 @@ from ..domain.ports.repositories import (
     CategoryJudgePort,
     EmbeddingProvider,
 )
-from ..infrastructure.classification.lexicon import LexiconIndex, lexicon_match
+from ..infrastructure.classification.lexicon import (
+    LexiconIndex,
+    lexicon_match,
+    lexicon_match_path,
+)
 from ..infrastructure.matching.cascade.banding import (
     JUDGE_MATCH_MIN_CONFIDENCE,
     determine_band,
@@ -127,17 +131,9 @@ class ClassifyStoreProduct:
         return _CONFLICT  # dos señales fuertes en conflicto → humano
 
     def _match_source_path(self, source_category: str) -> tuple[str, float] | None:
-        """La categoría de origen es un PATH jerárquico ("A > B > C"). Matchear el string ENTERO por
-        lexicon mezcla tokens de varios niveles y crea ambigüedad falsa (una hoja por segmento →
-        None). Se matchea segmento por segmento del MÁS específico (hondo) al general, y se toma el
-        primer hit inequívoco — así el nivel más fino que resuelva limpio gana."""
-        if not source_category:
-            return None
-        for segment in reversed(source_category.split(" > ")):
-            hit = lexicon_match(segment, self._lexicon)
-            if hit is not None:
-                return hit
-        return None
+        """Categoría de origen (path jerárquico) → hoja, segmento a segmento (hondo→general).
+        Delega en `lexicon_match_path` (compartido con el matcher, Etapa C)."""
+        return lexicon_match_path(source_category, self._lexicon)
 
     def _classify_by_name(
         self, product: ClassifiableProduct, market_id: str

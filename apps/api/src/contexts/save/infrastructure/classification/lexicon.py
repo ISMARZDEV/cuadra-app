@@ -45,3 +45,17 @@ def lexicon_match(name: str, index: LexiconIndex) -> tuple[str, float] | None:
     if len(hits) == 1:
         return next(iter(hits)), LEXICON_CONFIDENCE
     return None
+
+
+def lexicon_match_path(source_category: str, index: LexiconIndex) -> tuple[str, float] | None:
+    """Categoría de ORIGEN (path jerárquico "A > B > C") → hoja. Matchear el string entero mezcla
+    tokens de varios niveles y crea ambigüedad falsa; se matchea segmento a segmento, del más
+    específico (hondo) al general, tomando el primer hit inequívoco. Compartido por el clasificador
+    (`ClassifyStoreProduct`) y el matcher (category gate/boost, Etapa C)."""
+    if not source_category:
+        return None
+    for segment in reversed(source_category.split(" > ")):
+        hit = lexicon_match(segment, index)
+        if hit is not None:
+            return hit
+    return None

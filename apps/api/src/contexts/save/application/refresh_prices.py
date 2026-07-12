@@ -96,6 +96,7 @@ class RefreshCatalogPrices:
                         brand=entry.brand,
                         size=entry.size_text,
                         ean=entry.ean,
+                        source_category=" > ".join(entry.category_path),  # Etapa C: señal de categoría
                     )
                 )
                 self._classify(store_product_id, entry)  # clasifica el nuevo store_product

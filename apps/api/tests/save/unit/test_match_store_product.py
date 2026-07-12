@@ -180,6 +180,19 @@ def _canonical(
     )
 
 
+def _canonical_cat(cid: str, leaf: str) -> CanonicalProduct:
+    """Canónico con una hoja de taxonomía específica (para los tests de category gate/boost)."""
+    return CanonicalProduct(
+        id=cid,
+        name="Arroz La Garza 5lb",
+        brand="La Garza",
+        quantity=Quantity(Decimal("2.267"), UnitMeasure.MASS),
+        taxonomy_node_id=leaf,
+        market_id=MARKET,
+        display_size="5 LB",
+    )
+
+
 def _incoming(
     *,
     store_product_id: str = "sp-1",
@@ -187,6 +200,7 @@ def _incoming(
     brand: str = "La Garza",
     size: str = "5 LB",
     ean: str | None = None,
+    source_category: str = "",
 ) -> IncomingStoreProduct:
     return IncomingStoreProduct(
         store_product_id=store_product_id,
@@ -195,6 +209,7 @@ def _incoming(
         brand=brand,
         size=size,
         ean=ean,
+        source_category=source_category,
     )
 
 
@@ -205,6 +220,8 @@ def _make_use_case(
     canonical_repo: FakeCanonicalProductRepository | None = None,
     embedder: FakeEmbeddingProvider | None = None,
     judge: FakeJudge | None = None,
+    category_lexicon: dict[str, str] | None = None,
+    leaf_to_parent: dict[str, str] | None = None,
 ) -> tuple[MatchStoreProduct, dict]:
     match_repo = match_repo or FakeCascadeMatchRepository()
     store_repo = store_repo or FakeStoreProductLinkRepository()
@@ -217,6 +234,8 @@ def _make_use_case(
         canonical_repo=canonical_repo,
         embedding_provider=embedder,
         judge=judge,
+        category_lexicon=category_lexicon,
+        leaf_to_parent=leaf_to_parent,
     )
     collaborators = {
         "match_repo": match_repo,
@@ -313,6 +332,52 @@ def test_ean_collision_routes_to_review_and_skips_later_stages() -> None:
     assert match_repo.vector_calls == []
     assert c["embedder"].calls == []
     assert c["judge"].calls == []
+
+
+# ---------------------------------------------------------------- category gate/boost (Etapa C) --
+
+
+def test_category_conflict_routes_to_review_even_at_auto_band() -> None:
+    # Score altísimo (banda auto) PERO el store es de otra categoría-padre que el canónico → la
+    # señal dura de categoría bloquea el auto-link y manda a revisión (como el size_gate).
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.90)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical_cat("canon-1", "leaf-arroz")})
+    use_case, c = _make_use_case(
+        match_repo=match_repo,
+        canonical_repo=canonical_repo,
+        category_lexicon={"limpieza": "leaf-limpieza", "arroz": "leaf-arroz"},
+        leaf_to_parent={"leaf-limpieza": "parent-hogar", "leaf-arroz": "parent-despensa"},
+    )
+
+    result = use_case.execute(_incoming(source_category="Limpieza"))
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []  # NO auto-linkeado pese al score alto
+
+
+def test_same_category_boost_lifts_grey_to_auto_link() -> None:
+    # Score en banda gris (0.82) que SOLO alcanza auto_link con el boost de misma-hoja (+0.05).
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.82)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.80)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical_cat("canon-1", "leaf-arroz")})
+    use_case, c = _make_use_case(
+        match_repo=match_repo,
+        canonical_repo=canonical_repo,
+        category_lexicon={"arroz": "leaf-arroz"},
+        leaf_to_parent={"leaf-arroz": "parent-despensa"},
+    )
+
+    # brand/size que NO matchean (sin boost de marca/tamaño ni size_conflict) → aísla el category boost.
+    result = use_case.execute(
+        _incoming(source_category="Despensa > Arroz", brand="Otra", size="")
+    )
+
+    assert result.status == "auto_linked"
 
 
 # ---------------------------------------------------------------- fusion + banding ----------

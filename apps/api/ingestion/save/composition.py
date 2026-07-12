@@ -42,19 +42,42 @@ def build_embedding_provider() -> EmbeddingProvider:
     return BgeM3EmbeddingProvider(url) if url else SentenceTransformersEmbeddingProvider()
 
 
+def _build_category_index(
+    session: Session, market_id: str
+) -> tuple[dict[str, str], dict[str, str]]:
+    """(lexicon token→hoja, mapa hoja→padre) para la señal de categoría del matcher (Etapa C).
+    Derivado de la taxonomía sembrada (padres=nivel 0, hojas=nivel 1)."""
+    tree = SqlTaxonomyRepository(session).list_tree(market_id)
+    leaves = [(child.id, child.name) for root in tree for child in root.children]
+    lexicon = build_lexicon_index(leaves)
+    leaf_to_parent = {child.id: root.id for root in tree for child in root.children}
+    return lexicon, leaf_to_parent
+
+
 def build_matcher(session: Session) -> MatchStoreProduct | None:
     """Devuelve un matcher REAL solo cuando `SAVE_MATCHING_CASCADE_ENABLED` está activo — la
     cascada se despliega DARK hasta bootstrapear la canasta curada. Comparte la `session` (misma
     UoW/transacción que el refresh, para el invariante FK+product_match). None = legacy F1
-    (desconocidos descartados)."""
+    (desconocidos descartados).
+
+    Etapa C: cuando `SAVE_CLASSIFICATION_ENABLED` también está activo, inyecta la señal de categoría
+    (lexicon + mapa hoja→padre) — boost por misma hoja + gate por padre distinto. Sin ella el
+    matcher se comporta idéntico a antes."""
     if not settings.save_matching_cascade_enabled:
         return None
+    from ingestion.save.sources import SAVE_MARKET
+
+    category_lexicon = leaf_to_parent = None
+    if settings.save_classification_enabled:
+        category_lexicon, leaf_to_parent = _build_category_index(session, SAVE_MARKET)
     return MatchStoreProduct(
         match_repo=SqlProductMatchRepository(session),
         store_repo=SqlStoreProductRepository(session),
         canonical_repo=SqlCanonicalProductRepository(session),
         embedding_provider=build_embedding_provider(),
         judge=LlmJudge(),
+        category_lexicon=category_lexicon,
+        leaf_to_parent=leaf_to_parent,
     )
 
 
