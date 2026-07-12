@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
 
-import { resolveReviewMatch } from "../api";
+import { createCanonicalAndLinkMatch, resolveReviewMatch } from "../api";
 import { useKeyboardReview } from "../hooks/useKeyboardReview";
 import { ADMIN_DECIDED_BY } from "../lib/decided-by";
 import { CandidatesSection } from "./detail/CandidatesSection";
+import { CreateCanonicalPanel, type CreateCanonicalPayload } from "./detail/CreateCanonicalPanel";
 import { DetailHeader } from "./detail/DetailHeader";
 import { RejectPanel } from "./detail/RejectPanel";
 import { StoreProductPanel } from "./detail/StoreProductPanel";
@@ -98,6 +99,27 @@ export function ReviewDetailScreen() {
     goNext();
   };
 
+  const handleCreateCanonical = async (payload: CreateCanonicalPayload) => {
+    setBusy(true);
+    setError(null);
+    const res = await createCanonicalAndLinkMatch({
+      matchId: detail.match_id,
+      decidedBy: ADMIN_DECIDED_BY,
+      name: payload.name,
+      brand: payload.brand,
+      quantityAmount: payload.quantityAmount,
+      quantityMeasure: payload.quantityMeasure,
+      taxonomyNodeId: payload.taxonomyNodeId,
+      marketId: detail.market_id ?? "DO",
+    });
+    setBusy(false);
+    if (res.error) {
+      setError("No se pudo crear el canónico.");
+      return;
+    }
+    goNext();
+  };
+
   // Acciones de atajos — compartidas por teclado y botones (misma acción, sea tecla o click).
   const approveTop = () => {
     if (topCandidate) void handleApprove(topCandidate.canonical_product_id);
@@ -162,6 +184,15 @@ export function ReviewDetailScreen() {
         />
       </div>
 
+      <CreateCanonicalPanel
+        defaultName={store.name}
+        defaultBrand={store.brand}
+        defaultSizeText={store.sizeText}
+        suggestedCategoryId={detail.suggested_taxonomy_node_id ?? null}
+        suggestedCategoryName={detail.suggested_category_name ?? null}
+        onCreate={handleCreateCanonical}
+        disabled={busy}
+      />
       <RejectPanel onReject={handleReject} disabled={busy} />
       <AuditFooter />
     </div>
