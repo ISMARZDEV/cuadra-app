@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src.shared.llm import get_chat_model
 
+from ..llm_circuit_breaker import LlmCircuitBreaker
 from ...domain.classification import CategoryVerdict, ClassifiableProduct
 
 logger = logging.getLogger(__name__)
@@ -65,10 +66,19 @@ _UNCERTAIN = CategoryVerdict(decision="uncertain", confidence=0.0, cited_fields=
 class CategoryJudge:
     """Adapter around the LLM judge for the grey-band classification step."""
 
-    def __init__(self, model: StructuredChatModel | None = None) -> None:
-        self._model = model or get_chat_model("smart").with_structured_output(
+    def __init__(
+        self,
+        model: StructuredChatModel | None = None,
+        *,
+        circuit_breaker: LlmCircuitBreaker | None = None,
+    ) -> None:
+        # max_retries=0: fallo instantáneo si el LLM está caído (sin backoff), para que el breaker
+        # corte rápido (mismo patrón que LlmJudge).
+        self._model = model or get_chat_model("smart", max_retries=0).with_structured_output(
             _Verdict, include_raw=True
         )
+        # Corta el retry-storm si el LLM está caído/sin cuota (mismo patrón que LlmJudge).
+        self._breaker = circuit_breaker or LlmCircuitBreaker()
 
     def judge(self, product: ClassifiableProduct, candidate_name: str) -> CategoryVerdict:
         prompt = _PROMPT.format(
@@ -78,9 +88,14 @@ class CategoryJudge:
             candidate=candidate_name,
         )
 
+        if self._breaker.is_open:
+            return _UNCERTAIN
+
         try:
             result = self._model.invoke(prompt)
+            self._breaker.record_success()
         except Exception:
+            self._breaker.record_failure()
             logger.warning("category_judge: client call failed, degrading to uncertain", exc_info=True)
             return _UNCERTAIN
 

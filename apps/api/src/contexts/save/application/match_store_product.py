@@ -33,7 +33,9 @@ from ..domain.ports import (
     StoreProductRepository,
 )
 from ..domain.ports.repositories import EmbeddingProvider, ProductMatchRepository
+from ..infrastructure.classification.lexicon import LexiconIndex, lexicon_match_path
 from ..infrastructure.matching.cascade.banding import JUDGE_MATCH_MIN_CONFIDENCE, determine_band
+from ..infrastructure.matching.cascade.category_gate import categories_conflict, category_boost
 from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
 from ..infrastructure.matching.cascade.scoring import apply_boosts
@@ -53,6 +55,9 @@ class IncomingStoreProduct:
     brand: str
     size: str
     ean: str | None = None
+    # Etapa C: categoría CRUDA de la fuente (path del adapter) — segunda señal para el category
+    # gate/boost. "" si la fuente no la trae → sin señal de categoría (no-op).
+    source_category: str = ""
 
     def __post_init__(self) -> None:
         if not self.store_product_id.strip():
@@ -90,12 +95,26 @@ class MatchStoreProduct:
         canonical_repo: CanonicalProductRepository,
         embedding_provider: EmbeddingProvider,
         judge: GreyBandJudge,
+        category_lexicon: LexiconIndex | None = None,
+        leaf_to_parent: dict[str, str] | None = None,
     ) -> None:
         self._match_repo = match_repo
         self._store_repo = store_repo
         self._canonical_repo = canonical_repo
         self._embedder = embedding_provider
         self._judge = judge
+        # Etapa C (opcional, ship-safe): índice léxico hoja + mapa hoja→padre para la señal de
+        # categoría. None/{} = sin señal → la cascada se comporta como antes (cero regresión).
+        self._category_lexicon = category_lexicon
+        self._leaf_to_parent = leaf_to_parent or {}
+
+    def _resolve_store_leaf(self, source_category: str) -> str | None:
+        """Hoja de categoría del store desde su categoría de ORIGEN (lexicon por segmento, mismo
+        motor que la clasificación). None si no hay lexicon inyectado o no resuelve."""
+        if self._category_lexicon is None or not source_category:
+            return None
+        hit = lexicon_match_path(source_category, self._category_lexicon)
+        return hit[0] if hit else None
 
     def execute(self, product: IncomingStoreProduct) -> ProductMatch:
         # --- Etapa 1: EAN exacto ---
@@ -138,6 +157,16 @@ class MatchStoreProduct:
         final_score = apply_boosts(
             raw_score, brand_exact_match=brand_match, size_exact_match=size_match
         )
+        # Category signal (Etapa C): +boost si misma HOJA; gate por PADRE distinto. Reusa la señal
+        # de ORIGEN del store (lexicon, mismo motor que la clasificación) vs la hoja del canónico.
+        # Ship-safe: sin lexicon inyectado o categorías desconocidas → boost 0 / gate False (no-op).
+        store_leaf = self._resolve_store_leaf(product.source_category)
+        canonical_leaf = canonical.taxonomy_node_id if canonical else None
+        final_score = min(1.0, final_score + category_boost(store_leaf, canonical_leaf))
+        category_conflict = categories_conflict(
+            self._leaf_to_parent.get(store_leaf) if store_leaf else None,
+            self._leaf_to_parent.get(canonical_leaf) if canonical_leaf else None,
+        )
         band = determine_band(final_score)
         stage_method = "hybrid" if (in_trgm and in_vector) else ("trgm" if in_trgm else "vector")
 
@@ -147,7 +176,7 @@ class MatchStoreProduct:
         size_conflict = sizes_conflict(product.size, canonical.quantity if canonical else None)
 
         if band == "auto_link":
-            if size_conflict:
+            if size_conflict or category_conflict:
                 return self._to_review(
                     product, method=stage_method, confidence=final_score,
                     candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
@@ -176,6 +205,7 @@ class MatchStoreProduct:
                 verdict.decision == "match"
                 and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE
                 and not size_conflict
+                and not category_conflict
             ):
                 return self._auto_link(
                     product, winner_id, confidence=verdict.confidence, method="llm",

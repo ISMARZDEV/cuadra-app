@@ -18,6 +18,10 @@ class ClassifiableProduct:
     name: str
     brand: str = ""
     size_text: str = ""
+    # Etapa B: categoría CRUDA de la fuente (path del adapter, ej. "Despensa > Arroz y Granos").
+    # Segunda señal, independiente del nombre, que la cascada cruza para clasificar (ver
+    # ClassifyStoreProduct). "" = la fuente no la trae → se clasifica solo por nombre.
+    source_category: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -37,7 +37,7 @@ from ..domain.listing import OfferingRow
 from ..domain.review_queue import StoreProductRawAttrs
 from ..domain.slug import product_slug
 from ..domain.taxonomy import CategoryNode, slugify
-from ..domain.value_objects import Quantity, UnitMeasure
+from ..domain.value_objects import Quantity, UnitMeasure, normalize_size_text
 from .mappers import (
     basket_query_to_entity,
     canonical_to_entity,
@@ -295,8 +295,10 @@ class SqlCanonicalProductRepository:
         return brand.id
 
     def add(self, product: CanonicalProduct) -> None:
+        # Unidades canónicas también en el canónico: el display_size se guarda normalizado ("10 Lb").
+        display_size = normalize_size_text(product.display_size)
         slug = product.slug or self._unique_slug(
-            product_slug(product.name, product.brand, product.display_size), product.market_id
+            product_slug(product.name, product.brand, display_size), product.market_id
         )
         self._s.add(
             CanonicalProductModel(
@@ -305,7 +307,7 @@ class SqlCanonicalProductRepository:
                 name=product.name,
                 brand_id=self._get_or_create_brand_id(product.brand, product.market_id),
                 quality=product.quality,
-                display_size=product.display_size,
+                display_size=display_size,
                 image_url=product.image_url,
                 size_amount=product.quantity.amount,
                 size_measure=product.quantity.measure.value,
@@ -445,7 +447,10 @@ class SqlStoreProductRepository:
         brand: str | None = None,
         size_text: str | None = None,
         image_url: str | None = None,
+        source_category: str | None = None,
     ) -> str:
+        # Unidades canónicas desde la FUENTE: el tamaño se guarda ya normalizado ("20 Lbs" → "20 Lb").
+        size_text = normalize_size_text(size_text)
         sp = self._find(provider_id, external_id)
         changed = False
         if sp is None:
@@ -463,6 +468,7 @@ class SqlStoreProductRepository:
                 brand=brand,
                 size_text=size_text,
                 image_url=image_url,
+                source_category=source_category,
                 last_seen_at=captured_at,
             )
             self._s.add(sp)
@@ -480,6 +486,8 @@ class SqlStoreProductRepository:
                 sp.size_text = size_text
             if image_url is not None:
                 sp.image_url = image_url
+            if source_category is not None:
+                sp.source_category = source_category
             if sp.current_price_minor != price.amount_minor or sp.currency != price.currency.code:
                 sp.current_price_minor = price.amount_minor
                 sp.currency = price.currency.code
@@ -509,15 +517,42 @@ class SqlStoreProductRepository:
 
     def get_raw_attrs(self, store_product_id: str) -> StoreProductRawAttrs | None:
         sid = _parse_uuid(store_product_id)
-        sp = self._s.get(StoreProductModel, sid) if sid else None
-        if sp is None:
+        if sid is None:
             return None
+        # JOIN a provider para la "Tienda origen" + market_id (Etapa A); `external_id` = SKU de la
+        # tienda. LEFT JOIN a la clasificación ACTIVA (Etapa B) + su hoja → categoría sugerida.
+        cc = CategoryClassificationModel
+        tn = TaxonomyNodeModel
+        row = self._s.execute(
+            select(
+                StoreProductModel,
+                ProviderModel.name,
+                ProviderModel.market_id,
+                cc.taxonomy_node_id,
+                tn.name,
+            )
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .outerjoin(
+                cc, and_(cc.store_product_id == StoreProductModel.id, cc.status == "active")
+            )
+            .outerjoin(tn, tn.id == cc.taxonomy_node_id)
+            .where(StoreProductModel.id == sid)
+        ).first()
+        if row is None:
+            return None
+        sp, provider_name, market_id, suggested_leaf_id, suggested_leaf_name = row
         return StoreProductRawAttrs(
             store_product_id=str(sp.id),
             name=sp.name,
             brand=sp.brand,
             size_text=sp.size_text,
             image_url=sp.image_url,
+            sku=sp.external_id,
+            ean=sp.ean,
+            provider_name=provider_name,
+            market_id=market_id,
+            suggested_taxonomy_node_id=str(suggested_leaf_id) if suggested_leaf_id else None,
+            suggested_category_name=suggested_leaf_name,
         )
 
     def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
@@ -1014,6 +1049,7 @@ class SqlCategoryClassificationRepository:
                     StoreProductModel.name,
                     StoreProductModel.brand,
                     StoreProductModel.size_text,
+                    StoreProductModel.source_category,  # Etapa B: 2ª señal (r[4])
                 )
                 .join(ProviderModel, ProviderModel.id == StoreProductModel.provider_id)
                 .outerjoin(
@@ -1033,6 +1069,9 @@ class SqlCategoryClassificationRepository:
                 name=r[1] or "",
                 brand=r[2] or "",
                 size_text=r[3] or "",
+                # canonical no tiene categoría de origen (es atributo de tienda) → ""; el conditional
+                # corta antes de tocar r[4], que solo existe en el SELECT de store_product.
+                source_category=("" if is_canonical else (r[4] or "")),
             )
             for r in rows
         ]

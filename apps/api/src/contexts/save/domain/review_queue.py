@@ -35,23 +35,37 @@ class ReviewQueueRow:
 @dataclass(frozen=True, slots=True)
 class StoreProductRawAttrs:
     """Atributos crudos de un `store_product` (F2·B1, tarea 1.9-1.10) para el detalle de
-    revisión — tal cual persistidos por `record_observation`, sin normalizar."""
+    revisión — tal cual persistidos por `record_observation`, sin normalizar. `sku`/`ean` y la
+    tienda origen (`provider_name`) se agregan para el rediseño del detalle (full-stack)."""
 
     store_product_id: str
     name: str | None
     brand: str | None
     size_text: str | None
     image_url: str | None
+    sku: str | None = None
+    ean: str | None = None
+    provider_name: str | None = None
+    # Etapa A (crear canónico desde el detalle): el market (por el provider) para el payload de
+    # creación, y la categoría SUGERIDA = la clasificación activa del store_product (Etapa B),
+    # default del selector de categoría. None si aún no está clasificado.
+    market_id: str | None = None
+    suggested_taxonomy_node_id: str | None = None
+    suggested_category_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ReviewCandidateView:
-    """Un candidato ofrecido al revisor (`review_candidate`), para el diff en el detalle."""
+    """Un candidato ofrecido al revisor (`review_candidate`), para el diff en el detalle.
+    `image_url`/`size_text` se resuelven del `canonical_product` en read-time (join en
+    `list_candidates`) para las cards del rediseño — el snapshot solo guarda name/brand/score."""
 
     canonical_product_id: str
     name: str | None
     brand: str | None
     score: float
+    image_url: str | None = None
+    size_text: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,4 +84,11 @@ class ReviewDetail:
     store_product_brand: str | None
     store_product_size_text: str | None
     store_product_image_url: str | None
+    store_product_sku: str | None = None
+    store_product_ean: str | None = None
+    provider_name: str | None = None
+    # Etapa A: market + categoría sugerida (clasificación activa del store_product, Etapa B).
+    market_id: str | None = None
+    suggested_taxonomy_node_id: str | None = None
+    suggested_category_name: str | None = None
     candidates: list[ReviewCandidateView] = field(default_factory=list)

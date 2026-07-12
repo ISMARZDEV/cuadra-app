@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { confidenceColor } from "./confidence-color";
+import { confidenceColor, confidenceStrokeClass } from "./confidence-color";
 
 describe("confidenceColor", () => {
   it("banda HIGH (>= 0.85) → estilo más oscuro/seguro", () => {
@@ -23,5 +23,22 @@ describe("confidenceColor", () => {
 
   it("null/undefined (candidatos vacíos) → misma banda que baja confianza", () => {
     expect(confidenceColor(null)).toBe("bg-rose-100 text-rose-900");
+  });
+});
+
+describe("confidenceStrokeClass", () => {
+  it("banda HIGH (>= 0.85) → stroke verde (para el arco del ConfidenceDonut)", () => {
+    expect(confidenceStrokeClass(0.85)).toBe("stroke-emerald-500");
+    expect(confidenceStrokeClass(1)).toBe("stroke-emerald-500");
+  });
+
+  it("banda GREY [0.55, 0.85) → stroke ámbar", () => {
+    expect(confidenceStrokeClass(0.55)).toBe("stroke-amber-500");
+    expect(confidenceStrokeClass(0.849)).toBe("stroke-amber-500");
+  });
+
+  it("banda HUMAN (< 0.55) o null → stroke rosa", () => {
+    expect(confidenceStrokeClass(0.3)).toBe("stroke-rose-400");
+    expect(confidenceStrokeClass(null)).toBe("stroke-rose-400");
   });
 });

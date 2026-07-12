@@ -315,8 +315,19 @@ class SqlProductMatchRepository:
         mid = _parse_uuid(match_id)
         if mid is None:
             return []
-        rows = self._s.scalars(
-            select(ReviewCandidateModel)
+        # JOIN al canonical_product para la imagen y el tamaño (`display_size`) de cada card del
+        # rediseño — el snapshot `review_candidate` solo guarda name/brand/score CRUDO. Se lee el
+        # canonical VIGENTE (imagen puede haber cambiado desde el snapshot; es lo que queremos ver).
+        rows = self._s.execute(
+            select(
+                ReviewCandidateModel,
+                CanonicalProductModel.image_url,
+                CanonicalProductModel.display_size,
+            )
+            .join(
+                CanonicalProductModel,
+                CanonicalProductModel.id == ReviewCandidateModel.canonical_product_id,
+            )
             .where(ReviewCandidateModel.product_match_id == mid)
             .order_by(ReviewCandidateModel.score.desc())
         ).all()
@@ -326,8 +337,10 @@ class SqlProductMatchRepository:
                 name=r.name,
                 brand=r.brand,
                 score=float(r.score),
+                image_url=image_url,
+                size_text=display_size,
             )
-            for r in rows
+            for r, image_url, display_size in rows
         ]
 
     def get_by_id(self, match_id: str) -> ProductMatch | None:

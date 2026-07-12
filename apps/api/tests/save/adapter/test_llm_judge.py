@@ -377,3 +377,20 @@ def test_default_model_is_not_constructed_when_injected() -> None:
     judge.judge(store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT)
 
     assert model.call_count == 1
+
+
+def test_circuit_breaker_stops_calling_after_repeated_failures() -> None:
+    # LLM caído (429): tras `threshold` fallos seguidos el breaker abre y el juez NO llama más el
+    # modelo por el resto del batch (corta el retry-storm), degradando directo a 'uncertain'.
+    from src.contexts.save.infrastructure.llm_circuit_breaker import LlmCircuitBreaker
+
+    model = _FakeModel(raises=RuntimeError("429 insufficient_quota"))
+    judge = LlmJudge(model=model, circuit_breaker=LlmCircuitBreaker(threshold=2))
+    sp, cp = {"name": "arroz"}, {"name": "arroz canonico"}
+
+    assert judge.judge(store_product=sp, canonical_product=cp).decision == "uncertain"  # fallo 1
+    assert judge.judge(store_product=sp, canonical_product=cp).decision == "uncertain"  # fallo 2 → abre
+    assert model.call_count == 2
+    # 3ra vez: breaker ABIERTO → degrada SIN tocar el modelo
+    assert judge.judge(store_product=sp, canonical_product=cp).decision == "uncertain"
+    assert model.call_count == 2  # NO subió
