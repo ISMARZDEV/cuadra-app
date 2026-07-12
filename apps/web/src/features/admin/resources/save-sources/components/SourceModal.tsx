@@ -56,7 +56,9 @@ export function SourceModal({
   const [authType, setAuthType] = useState<SourceAuthType>((auth?.type as SourceAuthType) ?? "none");
   const [token, setToken] = useState(auth?.token ?? "");
   const [keyIn, setKeyIn] = useState<"header" | "query">((auth?.in as "header" | "query") ?? "header");
-  const [keyName, setKeyName] = useState(auth?.name ?? "");
+  // Pre-llena el NOMBRE del header con el más común (X-Auth-Token) → el admin solo pega el token en
+  // "Token / valor". Evita la confusión de poner el secreto en el campo del nombre.
+  const [keyName, setKeyName] = useState(auth?.name ?? "X-Auth-Token");
   const [keyValue, setKeyValue] = useState(auth?.value ?? "");
   const [user, setUser] = useState(auth?.username ?? "");
   const [pass, setPass] = useState(auth?.password ?? "");
@@ -224,12 +226,12 @@ export function SourceModal({
               </SelectContent>
             </Select>
           </FilterField>
-          <FilterField label="Nombre" htmlFor="source-key-name">
+          <FilterField label="Nombre del header" htmlFor="source-key-name">
             <Input id="source-key-name" value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="X-Auth-Token" className="h-11! rounded-xl" />
           </FilterField>
           <div className="sm:col-span-2">
-            <FilterField label="Valor" htmlFor="source-key-value">
-              <Input id="source-key-value" value={keyValue} onChange={(e) => setKeyValue(e.target.value)} placeholder="el token/clave" className="h-11! rounded-xl" />
+            <FilterField label="Token / valor (el secreto)" htmlFor="source-key-value">
+              <Input id="source-key-value" value={keyValue} onChange={(e) => setKeyValue(e.target.value)} placeholder="pega aquí el token de la API" className="h-11! rounded-xl" />
             </FilterField>
           </div>
         </div>
