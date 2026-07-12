@@ -15,9 +15,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from urllib.parse import quote, urlencode
 
-import httpx
-
 from ...domain.ports import RawCatalogEntry
+from .http_retry import request_with_retry
 
 MapItem = Callable[[dict, str, str], RawCatalogEntry]  # (item, provider_id, market_id)
 
@@ -75,7 +74,7 @@ class RestCatalogAdapter:
 
     @staticmethod
     def _default_get(url: str) -> dict:
-        resp = httpx.get(url, timeout=30.0, headers={"User-Agent": "Cuadra/Save"})
+        resp = request_with_retry("GET", url, timeout=30.0, headers={"User-Agent": "Cuadra/Save"})
         resp.raise_for_status()
         return resp.json()
 
