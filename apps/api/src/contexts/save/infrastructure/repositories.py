@@ -549,6 +549,19 @@ class SqlStoreProductRepository:
         ).all()
         return [CoveragePair(str(cid), str(pid)) for cid, pid in rows]
 
+    def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
+        cid = _parse_uuid(canonical_product_id)
+        if cid is None:
+            return None
+        return self._s.execute(
+            select(StoreProductModel.ean)
+            .where(
+                StoreProductModel.canonical_product_id == cid,
+                StoreProductModel.ean.is_not(None),
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]:
         models = self._s.scalars(
             select(StoreProductModel).where(

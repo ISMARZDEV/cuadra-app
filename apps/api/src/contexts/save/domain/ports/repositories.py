@@ -276,6 +276,11 @@ class StoreProductRepository(Protocol):
         que falta cubrir. Runtime (LEFT JOIN); F3.2 lo materializa para escalar."""
         ...
 
+    def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
+        """F3.1 (Loop B): un EAN conocido del canónico (de cualquier `store_product` que lo tenga) —
+        para la consulta dirigida EAN-first cuando la tienda destino soporta búsqueda por barcode."""
+        ...
+
     def max_last_seen_at(self, provider_id: str) -> datetime | None:
         """Señal de frescura para el badge de salud (F2·B1/B3, Batch 3E): MAX `last_seen_at` de
         todos los `store_product` del Provider. `None` si nunca se ingirió nada de esta fuente."""
