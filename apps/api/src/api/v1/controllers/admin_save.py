@@ -30,6 +30,7 @@ from src.api.composition_root import (
     get_remove_basket_query,
     get_resolve_review,
     get_resume_source,
+    get_preview_basket_query,
     get_review_detail,
     get_set_provider_logo,
     get_test_source,
@@ -66,6 +67,7 @@ from src.contexts.save.application.store_registry import (
     ResumeSource,
     UpdateSource,
 )
+from src.contexts.save.application.preview_basket_query import PreviewBasketQuery
 from src.contexts.save.application.test_source import (
     TestSource,
     TestSourceConfigError,
@@ -514,6 +516,52 @@ def test_source(
             image_url=entry.image_url,
         )
         for entry in sample
+    ]
+
+
+class PreviewBasketQueryRequest(BaseModel):
+    """Preview de un término contra la(s) tienda(s) del mercado, ANTES de agregarlo a la canasta."""
+
+    query_text: str
+    market_id: str = "DO"
+    provider_id: str | None = None  # None = todas las fuentes del mercado
+
+
+class BasketPreviewGroupDto(BaseModel):
+    """Lo que UNA tienda devolvería para el término. `error` None = ok; texto = esa fuente falló."""
+
+    provider_id: str
+    provider_name: str
+    entries: list[SampleEntryDto] = []
+    error: str | None = None
+
+
+@ingestion_router.post("/basket-queries/preview")
+def preview_basket_query(
+    body: PreviewBasketQueryRequest,
+    use_case: PreviewBasketQuery = Depends(get_preview_basket_query),
+) -> list[BasketPreviewGroupDto]:
+    groups = use_case.execute(body.query_text, body.market_id, body.provider_id)
+    return [
+        BasketPreviewGroupDto(
+            provider_id=g.provider_id,
+            provider_name=g.provider_name,
+            entries=[
+                SampleEntryDto(
+                    external_id=e.external_id,
+                    name=e.name,
+                    brand=e.brand,
+                    price_minor=e.price.amount_minor,
+                    currency=str(e.price.currency),
+                    ean=e.ean,
+                    url=e.url,
+                    image_url=e.image_url,
+                )
+                for e in g.entries
+            ],
+            error=g.error,
+        )
+        for g in groups
     ]
 
 

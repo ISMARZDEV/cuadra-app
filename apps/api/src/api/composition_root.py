@@ -61,6 +61,7 @@ from src.contexts.save.application.store_registry import (
     ResumeSource,
     UpdateSource,
 )
+from src.contexts.save.application.preview_basket_query import PreviewBasketQuery
 from src.contexts.save.application.test_source import TestSource
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
 from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
@@ -374,6 +375,12 @@ def get_resume_source(session: Session = Depends(get_session)) -> ResumeSource:
 
 def get_test_source(session: Session = Depends(get_session)) -> TestSource:
     return TestSource(SqlStoreRegistryRepository(session), SqlProviderRepository(session))
+
+
+def get_preview_basket_query(session: Session = Depends(get_session)) -> PreviewBasketQuery:
+    return PreviewBasketQuery(
+        SqlStoreRegistryRepository(session), SqlProviderRepository(session)
+    )
 
 
 def get_list_sources_health(session: Session = Depends(get_session)) -> ListSourcesHealth:
