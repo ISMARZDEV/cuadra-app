@@ -268,6 +268,9 @@ class StoreProductModel(Base):
     brand: Mapped[str | None] = mapped_column(Text)
     size_text: Mapped[str | None] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(Text)
+    # Etapa B (save-category-classification): categoría CRUDA de la fuente (path del adapter, ej.
+    # "Despensa > Arroz y Granos"). Segunda señal — la cascada la cruza con el nombre para clasificar.
+    source_category: Mapped[str | None] = mapped_column(Text)
 
 
 class PriceAlertModel(Base):

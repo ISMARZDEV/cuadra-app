@@ -55,6 +55,9 @@ class RefreshCatalogPrices:
                 name=entry.name or "",
                 brand=entry.brand or "",
                 size_text=entry.size_text or "",
+                # Etapa B: categoría de origen del adapter (VTEX/Magento/Bravo la pueblan) como
+                # segunda señal cruzada con el nombre. "" si la fuente no la trae.
+                source_category=" > ".join(entry.category_path),
             ),
             entry.market_id,
         )
@@ -83,6 +86,7 @@ class RefreshCatalogPrices:
                     brand=entry.brand,
                     size_text=entry.size_text,
                     image_url=entry.image_url,
+                    source_category=" > ".join(entry.category_path) or None,
                 )
                 self._matcher.execute(
                     IncomingStoreProduct(
@@ -111,6 +115,7 @@ class RefreshCatalogPrices:
                 brand=entry.brand,
                 size_text=entry.size_text,
                 image_url=entry.image_url,
+                source_category=" > ".join(entry.category_path) or None,
             )
             self._classify(store_product_id, entry)  # clasifica (idempotente) el conocido si falta
             refreshed += 1

@@ -147,6 +147,67 @@ def test_no_candidates_does_not_persist() -> None:
     assert cls.saved == []
 
 
+def _product(source_category: str = "", name: str = "Arroz Blanco Sirena") -> ClassifiableProduct:
+    return ClassifiableProduct(
+        ref_id="sp-1", is_canonical=False, name=name, brand="Sirena",
+        size_text="5 Lb", source_category=source_category,
+    )
+
+
+# --- Etapa B: categoría de ORIGEN (category_path) como segunda señal, cruzada con el nombre -------
+
+
+def test_source_and_name_agree_boosts_confidence() -> None:
+    # source "Despensa Arroz" y name "Arroz Blanco" pegan la MISMA hoja por lexicon → auto reforzado.
+    cls = _FakeClassifications()
+    uc = _make(cls, _FakeCandidates(), _FakeEmbedder(), _FakeJudge(), lexicon={"arroz": "n-arroz"})
+
+    result = uc.execute(_product(source_category="Despensa Arroz"), "DO")
+
+    assert result.taxonomy_node_id == "n-arroz"
+    assert result.method == "source_name"
+    assert result.confidence >= 0.95
+    assert cls.saved and cls.saved[0].taxonomy_node_id == "n-arroz"
+
+
+def test_source_and_name_conflict_leaves_unclassified() -> None:
+    # source dice "n-lacteos" y el nombre dice "n-arroz" → señales fuertes en CONFLICTO → NO auto.
+    cls = _FakeClassifications()
+    uc = _make(
+        cls, _FakeCandidates(), _FakeEmbedder(), _FakeJudge(),
+        lexicon={"arroz": "n-arroz", "leche": "n-lacteos"},
+    )
+
+    result = uc.execute(_product(source_category="Lacteos Leche", name="Arroz Blanco"), "DO")
+
+    assert result.taxonomy_node_id is None
+    assert result.method == "conflict"
+    assert cls.saved == []  # ante conflicto no inventa: lo resuelve el humano
+
+
+def test_source_only_when_name_unresolved() -> None:
+    # el nombre no resuelve (sin lexicon ni candidatos) pero la fuente sí → la fuente es autoridad.
+    cls = _FakeClassifications()
+    uc = _make(cls, _FakeCandidates(), _FakeEmbedder(), _FakeJudge(), lexicon={"arroz": "n-arroz"})
+
+    result = uc.execute(_product(source_category="Granos Arroz", name="Zzz Qqq"), "DO")
+
+    assert result.taxonomy_node_id == "n-arroz"
+    assert result.method == "source"
+    assert cls.saved and cls.saved[0].method == "source"
+
+
+def test_no_source_category_falls_back_to_name() -> None:
+    # sin categoría de origen → comportamiento actual (solo por nombre).
+    cls = _FakeClassifications()
+    uc = _make(cls, _FakeCandidates(), _FakeEmbedder(), _FakeJudge(), lexicon={"arroz": "n-arroz"})
+
+    result = uc.execute(_product(source_category=""), "DO")
+
+    assert result.taxonomy_node_id == "n-arroz"
+    assert result.method == "lexicon"
+
+
 def test_already_classified_is_idempotent() -> None:
     # producto con clasificación active previa → NO re-corre la cascada (R11), devuelve la existente
     from src.contexts.save.domain.classification import CategoryClassification

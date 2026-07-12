@@ -445,6 +445,7 @@ class SqlStoreProductRepository:
         brand: str | None = None,
         size_text: str | None = None,
         image_url: str | None = None,
+        source_category: str | None = None,
     ) -> str:
         sp = self._find(provider_id, external_id)
         changed = False
@@ -463,6 +464,7 @@ class SqlStoreProductRepository:
                 brand=brand,
                 size_text=size_text,
                 image_url=image_url,
+                source_category=source_category,
                 last_seen_at=captured_at,
             )
             self._s.add(sp)
@@ -480,6 +482,8 @@ class SqlStoreProductRepository:
                 sp.size_text = size_text
             if image_url is not None:
                 sp.image_url = image_url
+            if source_category is not None:
+                sp.source_category = source_category
             if sp.current_price_minor != price.amount_minor or sp.currency != price.currency.code:
                 sp.current_price_minor = price.amount_minor
                 sp.currency = price.currency.code
@@ -1025,6 +1029,7 @@ class SqlCategoryClassificationRepository:
                     StoreProductModel.name,
                     StoreProductModel.brand,
                     StoreProductModel.size_text,
+                    StoreProductModel.source_category,  # Etapa B: 2ª señal (r[4])
                 )
                 .join(ProviderModel, ProviderModel.id == StoreProductModel.provider_id)
                 .outerjoin(
@@ -1044,6 +1049,9 @@ class SqlCategoryClassificationRepository:
                 name=r[1] or "",
                 brand=r[2] or "",
                 size_text=r[3] or "",
+                # canonical no tiene categoría de origen (es atributo de tienda) → ""; el conditional
+                # corta antes de tocar r[4], que solo existe en el SELECT de store_product.
+                source_category=("" if is_canonical else (r[4] or "")),
             )
             for r in rows
         ]
