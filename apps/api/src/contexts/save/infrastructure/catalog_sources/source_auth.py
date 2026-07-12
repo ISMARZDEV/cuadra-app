@@ -10,7 +10,11 @@ PURO: solo transforma config → headers/query. Sin red. Lo consumen los adapter
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from urllib.parse import urlencode
+
+from .http_retry import request_with_retry
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +58,51 @@ def build_request_auth(
     else:
         raise ValueError(f"tipo de auth de fuente no soportado: {kind!r}")
     return RequestAuth(result, query)
+
+
+def apply_query(url: str, query: dict[str, str]) -> str:
+    """Agrega los params de query (p.ej. `api_key`) a la URL, respetando un `?` existente."""
+    if not query:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}{urlencode(query)}"
+
+
+def authed_http_get(
+    request_auth: RequestAuth,
+    *,
+    transport: Callable[..., object] | None = None,
+    timeout: float = 30.0,
+) -> Callable[[str], object]:
+    """`http_get` de un adapter, con la auth del registry aplicada (headers + query). `transport`
+    inyectable = testeable sin red; None → `request_with_retry` (backoff/reintentos de F3.3)."""
+
+    def _get(url: str) -> object:
+        t = transport or request_with_retry
+        resp = t("GET", apply_query(url, request_auth.query), headers=request_auth.headers, timeout=timeout)
+        resp.raise_for_status()  # type: ignore[attr-defined]
+        return resp.json()  # type: ignore[attr-defined]
+
+    return _get
+
+
+def authed_http_post(
+    request_auth: RequestAuth,
+    *,
+    transport: Callable[..., object] | None = None,
+    timeout: float = 30.0,
+) -> Callable[[str, dict, dict[str, str]], object]:
+    """`http_post` de un adapter (Magento): mezcla los headers de auth SOBRE los per-call del adapter
+    (Content-Type/Store se conservan; User-Agent/token del registry ganan)."""
+
+    def _post(url: str, payload: dict, headers: dict[str, str]) -> object:
+        t = transport or request_with_retry
+        merged = {**headers, **request_auth.headers}
+        resp = t("POST", apply_query(url, request_auth.query), json=payload, headers=merged, timeout=timeout)
+        resp.raise_for_status()  # type: ignore[attr-defined]
+        return resp.json()  # type: ignore[attr-defined]
+
+    return _post
 
 
 def _mask(secret: str) -> str:

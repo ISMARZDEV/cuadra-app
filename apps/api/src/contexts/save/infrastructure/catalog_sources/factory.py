@@ -21,7 +21,10 @@ from ...domain.ports import CatalogSource, ProductDetailSource
 from .bravova_profile import BRAVOVA_PROFILE
 from .magento_adapter import HttpPost, MagentoAdapter, MagentoProductDetailAdapter
 from .rest_catalog_adapter import CatalogProfile, RestCatalogAdapter
+from .source_auth import authed_http_get, authed_http_post, build_request_auth
 from .vtex_adapter import VtexAdapter, VtexProductDetailAdapter
+
+_DEFAULT_HEADERS = {"User-Agent": "Cuadra/Save"}
 
 _SUPPORTED_PLATFORMS = (
     SourcePlatform.VTEX,
@@ -44,6 +47,23 @@ class SourceBuilder:
     base_url: str
     store_code: str | None = None
     endpoints: dict | None = None  # REST_CATALOG lee de aquí: profile, sections, store_id
+    headers: dict | None = None    # §15: headers estáticos del registry (Host, User-Agent propio)
+    auth: dict | None = None       # §15: credencial tipada (bearer/api_key/basic) — se aplica a la request
+
+    def _request_auth(self):  # type: ignore[no-untyped-def]
+        # "Store" es config (→ store_code), NO un header HTTP a mandar → se excluye.
+        http_headers = {k: v for k, v in (self.headers or {}).items() if k != "Store"}
+        return build_request_auth(http_headers, self.auth, defaults=_DEFAULT_HEADERS)
+
+    def _has_credential(self) -> bool:
+        ra = self._request_auth()
+        return ra.headers != _DEFAULT_HEADERS or bool(ra.query)
+
+    def _authed_get(self):  # type: ignore[no-untyped-def]
+        return authed_http_get(self._request_auth()) if self._has_credential() else None
+
+    def _authed_post(self) -> HttpPost | None:
+        return authed_http_post(self._request_auth()) if self._has_credential() else None
 
     def for_query(
         self,
@@ -59,7 +79,9 @@ class SourceBuilder:
         vez del `httpx.get`/`post` crudo por defecto. `None` (default) preserva el comportamiento
         previo de cada adapter — cambio retrocompatible, sin impacto en callers existentes."""
         if self.platform is SourcePlatform.VTEX:
-            return VtexAdapter(self.base_url, provider_id, market_id, query, http_get=http_get)
+            return VtexAdapter(
+                self.base_url, provider_id, market_id, query, http_get=http_get or self._authed_get()
+            )
         if self.platform is SourcePlatform.MAGENTO:
             return MagentoAdapter(
                 self.base_url,
@@ -67,10 +89,10 @@ class SourceBuilder:
                 market_id,
                 query,
                 store_code=self.store_code,
-                http_post=http_post,
+                http_post=http_post or self._authed_post(),
             )
         if self.platform is SourcePlatform.REST_CATALOG:
-            return self._build_rest_catalog(provider_id, market_id, http_get)
+            return self._build_rest_catalog(provider_id, market_id, http_get or self._authed_get())
         raise ValueError(f"Plataforma sin adapter de ingesta: {self.platform!r}")
 
     def for_detail(
@@ -85,11 +107,13 @@ class SourceBuilder:
         Solo plataformas con detalle por id (VTEX productId / Magento SKU). Las browse-only NO lo
         soportan (se refrescan por el browse de Loop A) — el use-case las salta antes de llegar aquí."""
         if self.platform is SourcePlatform.VTEX:
-            return VtexProductDetailAdapter(self.base_url, provider_id, market_id, http_get=http_get)
+            return VtexProductDetailAdapter(
+                self.base_url, provider_id, market_id, http_get=http_get or self._authed_get()
+            )
         if self.platform is SourcePlatform.MAGENTO:
             return MagentoProductDetailAdapter(
                 self.base_url, provider_id, market_id,
-                store_code=self.store_code, http_post=http_post,
+                store_code=self.store_code, http_post=http_post or self._authed_post(),
             )
         raise ValueError(f"Plataforma sin ProductDetailSource (browse-only): {self.platform!r}")
 
@@ -137,5 +161,6 @@ class CatalogSourceFactory:
             raise ValueError(f"Plataforma sin adapter de ingesta: {platform!r}")
         store_code = (headers or {}).get("Store")
         return SourceBuilder(
-            platform=platform, base_url=base_url, store_code=store_code, endpoints=endpoints
+            platform=platform, base_url=base_url, store_code=store_code, endpoints=endpoints,
+            headers=headers, auth=auth,
         )
