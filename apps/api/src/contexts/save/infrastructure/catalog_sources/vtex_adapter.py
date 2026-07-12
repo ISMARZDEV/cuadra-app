@@ -107,3 +107,33 @@ class VtexAdapter:
             if len(page) < _PAGE_SIZE:
                 break
             frm += _PAGE_SIZE
+
+
+class VtexProductDetailAdapter:
+    """`ProductDetailSource` VTEX (F3.2a, camino A): re-fetch de UN producto por `productId`
+    (`fq=productId:`) — 1 request = 1 producto. None si la tienda ya no lo tiene."""
+
+    def __init__(
+        self,
+        base_url: str,
+        provider_id: str,
+        market_id: str,
+        http_get: Callable[[str], list[dict]] | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._provider_id = provider_id
+        self._market_id = market_id
+        self._http_get = http_get or VtexAdapter._default_get
+
+    def fetch_by_external_id(self, external_id: str, url: str | None = None) -> RawCatalogEntry | None:
+        detail_url = (
+            f"{self._base_url}/api/catalog_system/pub/products/search"
+            f"?fq=productId:{quote(external_id)}"
+        )
+        page = self._http_get(detail_url)
+        if not page:
+            return None  # ya no está → is_available=false (o fallback B en F3.2b)
+        try:
+            return map_vtex_product(page[0], self._provider_id, self._market_id)
+        except ValueError:
+            return None

@@ -1,0 +1,50 @@
+"""Integration — selección por frescura de F3.2a (`list_stale_covered`). Requiere DB.
+
+Devuelve los `store_product` YA cubiertos (con canónico) y VIEJOS: disponibles con `last_seen_at`
+> 18h, u ocultos > 3d (patrón SRD §3.1). Los frescos, los ocultos recientes y los NO cubiertos NO
+aparecen. Orden: el más viejo primero. `now` explícito → determinista.
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timedelta, timezone
+
+from src.contexts.save.infrastructure.models import StoreProductModel
+from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
+
+from .test_product_match_repository import _seed_provider_and_canonical, _seed_store_product
+
+
+def _set_seen(db_session, sp_id, *, available, last_seen):  # type: ignore[no-untyped-def]
+    m = db_session.get(StoreProductModel, uuid.UUID(sp_id))
+    m.is_available = available
+    m.last_seen_at = last_seen
+    db_session.flush()
+
+
+def test_list_stale_covered_selects_by_freshness(db_session) -> None:  # type: ignore[no-untyped-def]
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)  # Sirena/VTEX
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
+
+    fresh = _seed_store_product(db_session, pid, cid)
+    stale_visible = _seed_store_product(db_session, pid, cid)
+    hidden_recent = _seed_store_product(db_session, pid, cid)
+    hidden_stale = _seed_store_product(db_session, pid, cid)
+    uncovered = _seed_store_product(db_session, pid, None)  # sin canónico → NO cubierto
+
+    _set_seen(db_session, fresh, available=True, last_seen=now - timedelta(hours=2))
+    _set_seen(db_session, stale_visible, available=True, last_seen=now - timedelta(hours=20))
+    _set_seen(db_session, hidden_recent, available=False, last_seen=now - timedelta(days=2))
+    _set_seen(db_session, hidden_stale, available=False, last_seen=now - timedelta(days=4))
+    _set_seen(db_session, uncovered, available=True, last_seen=now - timedelta(hours=30))
+
+    stale = SqlStoreProductRepository(db_session).list_stale_covered(market, now)
+    ids = [s.store_product_id for s in stale]
+
+    assert stale_visible in ids and hidden_stale in ids   # viejos → se refrescan
+    assert fresh not in ids                               # fresco → se salta
+    assert hidden_recent not in ids                       # oculto reciente (<3d) → se salta
+    assert uncovered not in ids                           # sin canónico → no es "cubierto"
+    assert ids.index(hidden_stale) < ids.index(stale_visible)  # más viejo primero (4d antes que 20h)
+    assert all(s.platform.value == "vtex" for s in stale)      # trae la plataforma (para el gate/adapter)

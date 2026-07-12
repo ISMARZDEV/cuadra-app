@@ -37,3 +37,13 @@ class CatalogSource(Protocol):
     """Fuente de catálogo: un adaptador por plataforma. Reusable país por país."""
 
     def fetch(self) -> Iterable[RawCatalogEntry]: ...
+
+
+class ProductDetailSource(Protocol):
+    """Re-fetch DIRECTO de UN producto YA conocido por su `external_id`/`url` (F3.2a, camino A del
+    refresh de frescura). A diferencia de `CatalogSource.fetch()` (busca/navega), pide ese producto
+    puntual — 1 request = 1 producto. Devuelve None si la tienda ya no lo tiene (→ is_available=false
+    o, en F3.2b, fallback a la búsqueda dirigida). Lo implementan las plataformas con detalle por id
+    (VTEX productId / Magento SKU); las browse-only no."""
+
+    def fetch_by_external_id(self, external_id: str, url: str | None) -> RawCatalogEntry | None: ...

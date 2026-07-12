@@ -138,3 +138,55 @@ class MagentoAdapter:
                 except ValueError:
                     continue  # producto sin precio → se salta, no rompe la corrida
             current_page += 1
+
+
+_DETAIL_QUERY = """
+query CuadraSaveDetail($sku: String!) {
+  products(filter: { sku: { eq: $sku } }) {
+    items {
+      name
+      sku
+      url_key
+      price_range { minimum_price { final_price { value currency } } }
+      small_image { url }
+      categories { name level }
+    }
+  }
+}
+"""
+
+
+class MagentoProductDetailAdapter:
+    """`ProductDetailSource` Magento (F3.2a, camino A): re-fetch de UN producto por `sku`
+    (`filter: {sku: {eq}}`) — 1 request = 1 producto. None si la tienda ya no lo tiene."""
+
+    def __init__(
+        self,
+        base_url: str,
+        provider_id: str,
+        market_id: str,
+        store_code: str | None = None,
+        http_post: HttpPost | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._provider_id = provider_id
+        self._market_id = market_id
+        self._store_code = store_code
+        self._http_post = http_post or MagentoAdapter._default_post
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"User-Agent": "Cuadra/Save", "Content-Type": "application/json"}
+        if self._store_code:
+            headers["Store"] = self._store_code
+        return headers
+
+    def fetch_by_external_id(self, external_id: str, url: str | None = None) -> RawCatalogEntry | None:
+        payload = {"query": _DETAIL_QUERY, "variables": {"sku": external_id}}
+        response = self._http_post(f"{self._base_url}/graphql", payload, self._headers())
+        items = ((response.get("data") or {}).get("products") or {}).get("items") or []
+        if not items:
+            return None  # ya no está → is_available=false (o fallback B en F3.2b)
+        try:
+            return map_magento_product(items[0], self._provider_id, self._market_id, self._base_url)
+        except ValueError:
+            return None

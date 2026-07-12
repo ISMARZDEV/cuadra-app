@@ -29,6 +29,7 @@ from .composition import (
     build_classifier,
     build_cover_canonicals,
     build_matcher,
+    build_refresh_covered_prices,
 )
 from .runner import refresh_source
 from .sources import SAVE_MARKET, build_sources
@@ -143,6 +144,32 @@ def coverage(context) -> dg.MaterializeResult:
             "pairs_attempted": result.pairs_attempted,
             "seen": result.seen,
             "matched": result.matched,
+            "stores_aborted": result.stores_aborted,
+        }
+    )
+
+
+@dg.asset(
+    name="freshness",
+    group_name="save_catalog",
+    description="F3.2a (frescura): re-fetch DIRECTO por id/url de lo cubierto+VIEJO (staleness 18h/3d) "
+    "→ record_observation change-only. NO re-descubre (el enlace ya se conoce) → sin dep de "
+    "embed_canonicals. Su schedule es FRECUENTE (equivalente al Prices Batch de SRD §3.1).",
+)
+def freshness(context) -> dg.MaterializeResult:
+    with SessionLocal() as session:
+        result = build_refresh_covered_prices(session).execute(SAVE_MARKET)
+        session.commit()
+    context.log.info(
+        f"freshness: checked={result.checked} refreshed={result.refreshed} "
+        f"unavailable={result.unavailable} stores_aborted={result.stores_aborted}"
+    )
+    return dg.MaterializeResult(
+        metadata={
+            "checked": result.checked,
+            "refreshed": result.refreshed,
+            "unavailable": result.unavailable,
+            "stores_aborted": result.stores_aborted,
         }
     )
 
