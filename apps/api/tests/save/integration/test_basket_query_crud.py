@@ -17,6 +17,7 @@ from src.contexts.save.application.basket_query import (
     RemoveBasketQuery,
     UpdateBasketQuery,
 )
+from src.contexts.save.domain.entities import BasketQuery
 from src.contexts.save.infrastructure.repositories import SqlBasketQueryRepository
 
 
@@ -99,3 +100,20 @@ def test_remove_basket_query_raises_when_not_found(db_session) -> None:  # type:
     repo = SqlBasketQueryRepository(db_session)
     with pytest.raises(ValueError, match="no encontrada"):
         RemoveBasketQuery(repo).execute(str(uuid.uuid4()))
+
+
+def test_list_active_returns_only_active_ordered_by_position(db_session) -> None:  # type: ignore[no-untyped-def]
+    # F1 (conectar la canasta a la ingesta): la ingesta lee SOLO las queries `active=true`, en orden
+    # de `position`. Las desactivadas (soft-disable) quedan en la tabla pero no se ingieren.
+    repo = SqlBasketQueryRepository(db_session)
+    market = f"T{uuid.uuid4().hex[:6]}"  # market único: la tabla ya tiene 213 filas "DO" (backfill)
+    repo.add(BasketQuery(id=str(uuid.uuid4()), market_id=market, query_text="segunda", position=2))
+    repo.add(BasketQuery(id=str(uuid.uuid4()), market_id=market, query_text="primera", position=1))
+    repo.add(
+        BasketQuery(id=str(uuid.uuid4()), market_id=market, query_text="inactiva", position=3, active=False)
+    )
+
+    active = repo.list_active(market)
+
+    assert [q.query_text for q in active] == ["primera", "segunda"]
+    assert all(q.active for q in active)

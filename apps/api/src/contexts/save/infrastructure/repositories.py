@@ -217,6 +217,17 @@ class SqlBasketQueryRepository:
         ).all()
         return [basket_query_to_entity(m) for m in models]
 
+    def list_active(self, market_id: str) -> list[BasketQuery]:
+        models = self._s.scalars(
+            select(BasketQueryModel)
+            .where(
+                BasketQueryModel.market_id == market_id,
+                BasketQueryModel.active.is_(True),
+            )
+            .order_by(BasketQueryModel.position)
+        ).all()
+        return [basket_query_to_entity(m) for m in models]
+
     def update(self, query: BasketQuery) -> None:
         qid = _parse_uuid(query.id)
         m = self._s.get(BasketQueryModel, qid) if qid else None

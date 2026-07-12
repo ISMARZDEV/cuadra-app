@@ -91,6 +91,11 @@ class BasketQueryRepository(Protocol):
         """Queries del mercado, en orden de `position` (canasta curada)."""
         ...
 
+    def list_active(self, market_id: str) -> list[BasketQuery]:
+        """Solo las queries `active=true` del mercado, en orden de `position` — lo que la INGESTA
+        consume (F1, Gap #1). Las desactivadas (soft-disable) siguen en la tabla pero no se ingieren."""
+        ...
+
     def update(self, query: BasketQuery) -> None:
         """Persiste los campos mutables de un BasketQuery ya existente.
 
