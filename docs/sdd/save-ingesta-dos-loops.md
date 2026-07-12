@@ -312,3 +312,159 @@ referencia+barcode). NO reinventar: Dagster, SSRF-guard, change-only history ya 
 **(Opcional/enriquece) `regular_price`** (descuento, SRD `schema.ts:75`, teardown §6.6) — `Price` no
 separa regular vs oferta; fuera del núcleo de F3.
 
+---
+
+## 14. F3.2 — Frescura: refrescar lo ya cubierto (SDD, decidido 2026-07-12)
+
+> **Objetivo.** Loop B (cobertura) hoy solo llena lo que FALTA (`list_uncovered`). Una vez cubierto, un
+> producto nunca se re-visita → su precio ENVEJECE. F3.2 mantiene frescos los precios de lo cubierto,
+> dentro de un SLA (`last_seen_at`), sin re-scrapear todo cada vez. Confianza = producto (regla SAGRADA).
+
+### 14.1 El flujo por producto viejo (A → B → disponibilidad)
+
+Cada `store_product` se identifica por `(provider_id, external_id)` + su `url`. Para un producto viejo:
+
+```
+1. A (primario)  → re-fetch DIRECTO por external_id/url conocido → precio → record_observation (change-only)
+2. A falla (404/movido/id muerto)
+   └ B (recovery) → búsqueda DIRIGIDA por EAN/nombre → select_best_candidate (para el canónico YA enlazado)
+        · match por EAN exacto        → AUTO: repara store_product.external_id+url + record_observation
+        · match por nombre/semántica  → COLA DE REVISIÓN (propone la reparación; humano confirma)
+        · sin candidato               → is_available=false (desapareció, NO se borra)
+```
+
+**Decisiones (confirmadas con el usuario):**
+- **B auto-aplica SOLO con EAN exacto**; por nombre/semántica → revisión (anti falso-refresh: un mal
+  re-enlace = precio equivocado en un producto = daña confianza).
+- **Entrega POR FASES:** F3.2a (A + frescura + schedule) primero; F3.2b (B recovery + gate) después.
+
+**Ventaja Cuadra:** el **EAN + nombre del canónico ES la llave de recuperación** — SRD necesita
+`product_shop_recovery_keys` por tienda (no tiene EAN); nosotros re-encontramos por semántica → menos
+esquema, más moat. La reparación reusa `select_best_candidate` (ya construido en la cobertura dirigida).
+
+### 14.2 F3.2a — Refresh directo por frescura (A) · FASE 1
+
+**Componentes:**
+1. **Selección por frescura** — `StoreProductRepository.list_stale_covered(market_id, now, *, visible_ttl=18h, hidden_ttl=3d, limit)`:
+   `is_available=true AND last_seen_at < now-18h` **OR** `is_available=false AND last_seen_at < now-3d`,
+   orden `last_seen_at` asc (más viejo primero). Devuelve lo mínimo para re-fetch: `(store_product_id,
+   provider_id, external_id, url, platform)`. Índice `(is_available, last_seen_at)` para escala.
+2. **Re-fetch por id/url (A)** — capacidad NUEVA del puerto de fuente: `ProductDetailSource.fetch_by_external_id(external_id, url) -> RawCatalogEntry | None`. La implementan VTEX (productId) y Magento
+   (SKU). **Browse-only (REST_CATALOG/aggregator/spa) NO la soportan** → se refrescan por su browse
+   completo (Loop A) vía el mismo change-only; F3.2a los salta (gate `supports_directed_query`, ya existe).
+3. **Actualización** — `record_observation` (YA existe, change-only): precio igual → solo bumpea
+   `last_seen_at`; precio distinto → `current_price` + fila `price` (histórico). Detecta bajadas → alertas.
+4. **Use-case** `RefreshCoveredPrices` — orquesta list_stale → fetch_by_external_id (A) → record_observation.
+   **Reusa F3.3**: round-robin por tienda + abort-on-down + result tipado. En FASE 1, `A` devuelve None
+   (no encontrado) → `is_available=false` directo (sin B todavía).
+5. **Schedule (Dagster)** — asset nuevo `freshness` con schedule FRECUENTE (ej. cada 1–2 h). NO depende
+   de `embed_canonicals` (el enlace ya se conoce, no hay matching) → separado de `coverage`/`discovery`.
+   El TTL (18h/3d) + la frecuencia definen el SLA real ("minuto a minuto" = aspiración; real = schedule).
+
+**Datos:** sin tablas nuevas (usa `last_seen_at` + `is_available`). Solo un índice para la staleness query.
+
+### 14.3 F3.2b — Recovery fallback (B) · FASE 2
+
+Cuando A devuelve None, en vez de rendirse:
+1. **B busca** — `build_directed_query` (EAN-first, ya existe) → adapter dirigido → candidatos.
+2. **Selección** — `select_best_candidate` (ya existe) para el canónico YA enlazado del store_product.
+3. **Gate (decidido):**
+   - **EAN exacto** entre candidato y el EAN conocido del canónico → **AUTO-REPARA**:
+     `StoreProductRepository.repair_locator(store_product_id, new_external_id, new_url)` + record_observation.
+     Así **A vuelve a funcionar** la próxima corrida.
+   - **Solo nombre/semántica** → **propuesta a cola de revisión** (humano confirma antes de reparar).
+   - **Sin candidato** → `is_available=false`.
+4. **Cola de reparación** — a decidir en el diseño de F3.2b: reusar `product_match pending_review` con un
+   `method`/tipo nuevo, o una tabla ligera de propuestas (equivalente acotado a SRD
+   `product_shop_recovery_reviews`). NUNCA auto-aplica lo no-EAN.
+
+**Datos F3.2b:** el mecanismo de propuesta de reparación (reuso vs tabla nueva) — se cierra en su design.
+
+### 14.4 Tareas (Strict TDD, RED→GREEN)
+
+**FASE 1 — F3.2a (frescura + A):**
+- [ ] `list_stale_covered` en el puerto + SQL (TTL visible/oculto, orden por antigüedad, límite) + índice.
+- [ ] Puerto `ProductDetailSource.fetch_by_external_id` + impl VTEX + impl Magento (fetch de UN producto).
+- [ ] Factory: construir el `ProductDetailSource` por plataforma (gate browse-only).
+- [ ] Use-case `RefreshCoveredPrices` (round-robin + abort-on-down reusados; A→record_observation; A None→is_available=false).
+- [ ] Wiring de producción (composition) + asset Dagster `freshness` + schedule frecuente.
+- [ ] Tests: staleness query (integración), fetch_by_external_id por plataforma, use-case (unit con stubs), change-only ya cubierto.
+
+**FASE 2 — F3.2b (recovery B + gate):**
+- [ ] En `RefreshCoveredPrices`: A None → invocar B (build_directed_query + select_best_candidate).
+- [ ] `repair_locator` en el puerto + impl (actualiza external_id + url).
+- [ ] Gate: EAN-exacto → auto-repair; nombre → propuesta a revisión; sin candidato → is_available=false.
+- [ ] Mecanismo de cola de reparación (diseño: reuso product_match vs tabla nueva).
+- [ ] Tests: A-falla→B-EAN→repara; A-falla→B-nombre→revisión; A-falla→sin-candidato→unavailable.
+
+### 14.5 Reuso (lo que NO se reinventa) y riesgos
+
+- **Reusa:** `record_observation` (change-only), F3.3 (round-robin/abort/result tipado), `select_best_candidate`,
+  `build_directed_query`, `supports_directed_query` (gate), `is_available` (F3.0), SSRF-guard, Dagster.
+- **Riesgos:** (1) falso-refresh en B → mitigado por auto-solo-EAN. (2) fetch-by-id por plataforma:
+  cada una tiene su endpoint de detalle (VTEX productId / Magento SKU) — verificar en vivo. (3) escala de
+  la staleness query → índice `(is_available, last_seen_at)`; vista materializada solo si hace falta. (4)
+  no martillar tiendas → el round-robin + TTL reparten; tope de batch por corrida.
+
+---
+
+## 15. Fuentes autenticadas (SDD, decidido 2026-07-12)
+
+> **Objetivo.** Integrar fuentes que exigen credenciales (Bravo `/get` con `X-Auth-Token`; a futuro súper
+> de US/CO con Bearer). La credencial vive en la BD (`store_registry`), editable en la UI del admin,
+> aplicada por TODOS los adapters. Cero hardcode, cero redeploy para rotar un token — como SRD
+> (`getBravoHeaders()`) pero con los valores en config, no en el código.
+
+### 15.1 Investigación — métodos de auth más usados (2025-2026)
+Populares para APIs REST/JSON: **Bearer/JWT** (el más común hoy), **API key** (header o query),
+**Basic**, **OAuth2** (Bearer con refresh). HMAC/OpenID = nicho. Diseño: cubrir los **estáticos
+populares** ahora (bearer/api_key/basic/none); OAuth2-refresh como extensión no-bloqueante.
+
+### 15.2 Modelo de auth (typed) — DECISIÓN
+`store_registry.auth` (JSONB) con `type` GUIADO (patrón Postman/Insomnia/Airbyte), NO headers crudos
+(los crudos empujan la semántica + base64 + validación al que configura y la UI no puede renderizar
+campos ni enmascarar el secreto):
+```
+{ "type": "none" }
+{ "type": "bearer",  "token": "<secret>" }                          -> Authorization: Bearer <secret>
+{ "type": "api_key", "in": "header", "name": "X-Auth-Token", "value": "<secret>" }
+{ "type": "api_key", "in": "query",  "name": "api_key", "value": "<secret>" }
+{ "type": "basic",   "username": "u", "password": "<secret>" }      -> Authorization: Basic base64(u:p)
+(futuro) { "type": "oauth2_client_credentials", ... } -> fetch+cachea Bearer
+```
+`store_registry.headers` (JSONB) = headers estáticos NO-secretos (Host, User-Agent). El adapter manda
+`{defaults, **headers, + auth}`. Aplica a los 4 adapters (VTEX/Magento/RestCatalog + detail).
+
+### 15.3 Localizador de detalle — DECISIÓN
+El re-fetch por-producto (camino A, F3.2a) necesita un localizador que varía por plataforma. Hoy
+`external_id` alcanza (VTEX productId / Magento SKU); Bravo NO (external_id=idexterno, `/get` usa
+idArticulo). Decisión: **JSONB `source_ref` (nullable) en `store_product`** — NO una columna
+Bravo-shaped. Bravo mapea `{"id_articulo": "29866"}`; el resto NULL. Forward-compatible.
+
+### 15.4 Bravo: camino A + fallback C automático
+- Detail adapter REST `/public/articulo/get?idArticulo=<source_ref.id_articulo>` con los headers del
+  registry (auth aplicada por 15.2).
+- **A→C automático**: si A NO es usable (sin token / 403 / error transitorio agotado) → NO marcar
+  unavailable; enrutar a refresh por browse (C, Loop A change-only). DISTINGUIR "detail no usable"
+  (→ C) de "no encontrado con credencial válida" (→ is_available=false). Bravo se refresca solo aunque
+  el token expire.
+
+### 15.5 Seguridad (credenciales) — regla
+- El secreto vive en `store_registry.auth` (BD). La API de LECTURA del admin lo devuelve
+  **ENMASCARADO** (`••••1234`); NUNCA en claro, NUNCA logueado (`mask_auth()` helper). Escritura
+  write-only (PATCH acepta el secreto; GET nunca lo revela). HTTPS siempre; SSRF-guard ya aplica.
+
+### 15.6 Capas / tareas (Strict TDD, backend-first, por fases)
+**FASE 1 — auth general (backend):**
+- [ ] infra `source_auth.py`: `build_request_auth(headers, auth) -> (headers, query)` (bearer/api_key/
+  basic/none) + `mask_auth(auth)`. PURO, unit.
+- [ ] Plumbing: VTEX/Magento/RestCatalog (+ detail) aplican `build_request_auth` (hoy User-Agent
+  hardcodeado) — headers/auth del registry vía la factory.
+- [ ] `store_product.source_ref` (JSONB) + migración; `bravova_profile` mapea `id_articulo`.
+**FASE 2 — Bravo detail + fallback:**
+- [ ] `RestCatalogDetailAdapter` (`/articulo/get`) por profile (detail path + map single) +
+  `factory.for_detail` para REST_CATALOG.
+- [ ] A→C fallback en el orquestador de frescura (providers sin detail usable → refresh por browse).
+**FASE 3 — admin UI:**
+- [ ] Campos de auth en la feature de fuentes (tipo + secreto enmascarado + headers) — `cuadra-save-admin`.
+
