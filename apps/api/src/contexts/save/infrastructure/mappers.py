@@ -78,4 +78,5 @@ def store_product_to_entity(m: StoreProductModel) -> StoreProduct:
         Money(m.current_price_minor, Currency(m.currency)),
         url=m.url,
         ean=m.ean,
+        available=m.is_available,
     )

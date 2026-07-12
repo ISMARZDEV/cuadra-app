@@ -50,6 +50,9 @@ class StoreProduct:
     current_price: Money
     url: str | None = None
     ean: str | None = None  # señal fuerte del matching (nivel 1)
+    # F3.0 (Loop B cobertura): disponibilidad por (tienda×producto). `False` = Loop B lo buscó en la
+    # tienda y ya no lo vende — se conserva el registro (NO se borra), semántica `hidden` de SRD.
+    available: bool = True
 
     def __post_init__(self) -> None:
         if self.current_price.amount_minor <= 0:
