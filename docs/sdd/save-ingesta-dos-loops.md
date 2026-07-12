@@ -223,4 +223,62 @@ Capacidades (algunas ya existen: create/remove/update/active):
   `product_match` único por store_product ya protege; validar).
 - **Regresión de la canasta actual**: al conectar la tabla, si queda vacía la ingesta no corre — el
   backfill de los 213 debe correr ANTES de apagar el tuple hardcodeado.
-```
+
+---
+
+## 12. Decisiones RESUELTAS (2026-07-12)
+
+Las 5 abiertas del §10 quedaron cerradas con el usuario:
+
+1. **Consulta dirigida (Loop B):** **EAN primero, nombre como fallback.** Donde la tienda trae EAN
+   (Sirena/VTEX) → match exacto y barato; donde no (Magento/Bravo) → `name + brand + display_size`.
+   Es la ventaja de Cuadra sobre SRD (sin EAN ellos no matchean; nosotros sí, por semántica).
+2. **Cobertura pendiente:** **Híbrido** — refresh de lo cubierto por **frescura** (`last_seen_at`,
+   patrón SRD §3.1: 18h visibles / 3d ocultos) + **vista materializada** indexada para lo pendiente
+   (canónico×tienda sin `store_product`). Escala a miles de canónicos × N tiendas.
+3. **Loop A descubre por:** **la Canasta Curada** (basket_query, F1/F2) on-demand. El **crawl**
+   sitemap/categoría (SRD §3.4/§3.5) queda como **mejora FUTURA** de completitud, NO bloquea F3.
+4/5. **`basket_query.kind`: NO.** La canasta = solo descubrimiento (Loop A). La cobertura (Loop B)
+   **deriva de los canónicos**, no de la tabla. Separación limpia; F1/F2 siguen siendo el motor de A.
+
+**Modelo mental del usuario (validado):** Loop B corre sobre los canónicos, busca cada uno en cada
+tienda; si ya está vinculado (existe `store_product` de ese canónico×tienda) → siguiente; si no →
+lo busca (EAN-first), valida con la cascada y lo enlaza. Loop A = habilitar la Canasta Curada para
+descubrir canónicos nuevos.
+
+## 13. Plan F3 — Loop B (Cobertura dirigida) + patrones SRD
+
+> Referencia: teardown `docs/research/supermercadosrd-scrapers-teardown-y-plan-cuadra.md` (su *Prices
+> Batch* §3.1 = Loop B en prod sobre 9 cadenas). Consultar sus paths al implementar.
+
+**F3.0 — Disponibilidad en `store_product` (EL fix, primero).** Hoy NO se modela (solo `last_seen_at`).
+Loop B necesita expresar "buscado en tienda X → no encontrado / dejó de venderse" SIN borrar. Portar
+la semántica `hidden` de SRD (`apply-scrape-result.ts:39-94`: hide/show, **no ocultar si otra tienda
+aún lo vende**). Cierra además la deuda de F0 (no linkear "Comprar en X" a algo sin stock). Migración
++ campo `availability`/`is_available` + `last_seen_at` ya existe.
+
+**F3.1 — `CoverCanonicals` (use-case).** Itera (canónico × tienda) NO cubierto o stale; arma consulta
+dirigida (EAN-first); busca el mejor candidato; valida con la **misma cascada** (EAN→trgm→vector→
+size_gate→category_gate→juez); enlaza `store_product` + precio o va a revisión. **Nunca crea canónicos.**
+
+**F3.2 — Cobertura pendiente (híbrido).** Vista materializada `(canónico×tienda)` sin `store_product`
++ selección por frescura (`last_seen_at`) para el refresh. Change-only (ya lo tenemos).
+
+**F3.3 — Resiliencia (patrones SRD a portar; nuestros adapters `httpx` no los tienen):**
+- **Round-robin por tienda** (`scrape-many.ts:11-77`) — repartir carga, no martillar un host.
+- **Backoff exponencial + jitter** en 429/503 (`http-client.ts:497-524`).
+- **Abortar iteración si un backend cae** (Nacional `backend_503`, §3.1).
+- **Result tipado con flags `retryable`/`hide`** (`result.ts:9-69`) — persistencia sin inspeccionar
+  el error crudo. Formalizar en el puerto de ingesta.
+
+**F3.4 — Corridas (Dagster) para mantener precios frescos** (equivalente al *Prices Batch* de SRD,
+staleness-driven): asset `coverage_*` con **schedule** (frecuente, ej. diario/cada N h) deps de
+`embed_canonicals`; separado del `discovery_*` (Loop A, baja frecuencia). SRD recomienda 15 min pero
+solo agenda de verdad Ritmo (§3, `README:273-274`); en Cuadra el schedule de Dagster SÍ agenda.
+
+**Ventaja Cuadra a mantener:** la cascada semántica valida el candidato de Loop B (SRD solo compara
+referencia+barcode). NO reinventar: Dagster, SSRF-guard, change-only history ya están.
+
+**(Opcional/enriquece) `regular_price`** (descuento, SRD `schema.ts:75`, teardown §6.6) — `Price` no
+separa regular vs oferta; fuera del núcleo de F3.
+
