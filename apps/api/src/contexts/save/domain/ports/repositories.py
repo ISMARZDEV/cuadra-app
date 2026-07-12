@@ -19,6 +19,7 @@ from ..classification import (
     ClassifiableProduct,
 )
 from ..comparison import StoreQuote
+from ..coverage import CoveragePair
 from ..drops import PriceChange
 from ..entities import (
     BasketQuery,
@@ -268,6 +269,11 @@ class StoreProductRepository(Protocol):
         """F3.0 (Loop B): marca un store_product disponible/no-disponible SIN borrarlo. Loop B lo pone
         en `False` cuando busca el canónico en la tienda y ya no lo vende (la comparativa/`Comprar en
         X` lo excluye); vuelve a `True` en la próxima observación exitosa (`record_observation`)."""
+        ...
+
+    def list_uncovered(self, market_id: str) -> list["CoveragePair"]:
+        """F3.1 (Loop B): pares (canónico × tienda-supermercado del mercado) SIN `store_product` — lo
+        que falta cubrir. Runtime (LEFT JOIN); F3.2 lo materializa para escalar."""
         ...
 
     def max_last_seen_at(self, provider_id: str) -> datetime | None:
