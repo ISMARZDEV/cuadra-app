@@ -171,6 +171,7 @@ export function ReviewDetailScreen() {
           sku={detail.store_product_sku ?? null}
           ean={detail.store_product_ean ?? null}
           providerName={detail.provider_name ?? null}
+          url={detail.store_product_url ?? null}
           confidence={detail.confidence}
           method={detail.method}
           candidateCount={candidates.length}

@@ -216,7 +216,7 @@ type MessageKey =
   | "admin.reviewQueue.actions.menuLabel"
   | "admin.reviewQueue.actions.view"
   | "admin.reviewQueue.actions.edit"
-  | "admin.reviewQueue.actions.share"
+  | "admin.reviewQueue.actions.viewInStore"
   | "admin.reviewQueue.actions.delete"
   | "admin.reviewQueue.actions.comingSoon"
   | "admin.reviewQueue.pagination.showing"
@@ -446,7 +446,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.actions.menuLabel": "Más acciones",
     "admin.reviewQueue.actions.view": "Ver",
     "admin.reviewQueue.actions.edit": "Editar",
-    "admin.reviewQueue.actions.share": "Compartir",
+    "admin.reviewQueue.actions.viewInStore": "Ver en la tienda",
     "admin.reviewQueue.actions.delete": "Eliminar",
     "admin.reviewQueue.actions.comingSoon": "Próximamente",
     "admin.reviewQueue.pagination.showing": "Mostrar",
@@ -674,7 +674,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.actions.menuLabel": "More actions",
     "admin.reviewQueue.actions.view": "View",
     "admin.reviewQueue.actions.edit": "Edit",
-    "admin.reviewQueue.actions.share": "Share",
+    "admin.reviewQueue.actions.viewInStore": "View in store",
     "admin.reviewQueue.actions.delete": "Delete",
     "admin.reviewQueue.actions.comingSoon": "Coming soon",
     "admin.reviewQueue.pagination.showing": "Show",
@@ -902,7 +902,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.actions.menuLabel": "Mais ações",
     "admin.reviewQueue.actions.view": "Ver",
     "admin.reviewQueue.actions.edit": "Editar",
-    "admin.reviewQueue.actions.share": "Compartilhar",
+    "admin.reviewQueue.actions.viewInStore": "Ver na loja",
     "admin.reviewQueue.actions.delete": "Excluir",
     "admin.reviewQueue.actions.comingSoon": "Em breve",
     "admin.reviewQueue.pagination.showing": "Mostrar",

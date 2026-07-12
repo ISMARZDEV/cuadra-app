@@ -120,10 +120,41 @@ describe("ReviewRow (Batch 6 restyle)", () => {
     expect(onDelete).toHaveBeenCalledWith("m-xyz");
   });
 
-  it("Acciones menu: 'Editar'/'Compartir' are stubs that toast 'coming soon'", () => {
+  it("Acciones menu: 'Editar' is a stub that toasts 'coming soon'", () => {
     renderRow();
     fireEvent.click(screen.getByLabelText("Más acciones"));
     fireEvent.click(screen.getByText("Editar"));
     expect(toastMock).toHaveBeenCalledWith("Próximamente");
+  });
+
+  it("Acciones menu: 'Ver en la tienda' opens the store product url in a new tab", () => {
+    // F0 (link a la tienda): reemplaza el 'Compartir' stub — redirige a la página del producto
+    // en la tienda origen (nueva pestaña, noopener). No hay opción 'Compartir'.
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+    renderRow({ store_product_url: "https://sirena.do/arroz-la-garza/p" });
+
+    fireEvent.click(screen.getByLabelText("Más acciones"));
+    expect(screen.queryByText("Compartir")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Ver en la tienda"));
+
+    expect(openMock).toHaveBeenCalledWith(
+      "https://sirena.do/arroz-la-garza/p",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("Acciones menu: 'Ver en la tienda' is disabled when there is no store url", () => {
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+    renderRow({ store_product_url: null });
+
+    fireEvent.click(screen.getByLabelText("Más acciones"));
+    fireEvent.click(screen.getByText("Ver en la tienda"));
+
+    expect(openMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

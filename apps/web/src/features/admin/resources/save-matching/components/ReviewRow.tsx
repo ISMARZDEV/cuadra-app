@@ -1,5 +1,5 @@
 import type { AdminReviewQueueRowDto } from "@cuadra/api-client";
-import { Eye, ImageOff, MoreHorizontal, Pencil, Share2, Trash2 } from "lucide-react";
+import { ExternalLink, Eye, ImageOff, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { navigate } from "vike/client/router";
 
@@ -205,12 +205,19 @@ export function ReviewRow({ row, href, locale, selected = false, onToggleSelect,
               <Pencil className="text-orange-500" />
               {t("admin.reviewQueue.actions.edit")}
             </DropdownMenuItem>
+            {/* F0 (link a la tienda): "Ver en la tienda" reemplaza el stub "Compartir" — redirige
+                a la página del producto en la tienda origen (nueva pestaña, noopener). Deshabilitado
+                si el store_product no tiene URL (raro: `url` tiene 100% cobertura hoy, pero es nullable). */}
             <DropdownMenuItem
-              onClick={notifyComingSoon}
+              disabled={!row.store_product_url}
+              onClick={() =>
+                row.store_product_url &&
+                window.open(row.store_product_url, "_blank", "noopener,noreferrer")
+              }
               className="focus:bg-blue-500/10 focus:text-blue-600 not-data-[variant=destructive]:focus:**:text-blue-600 dark:focus:text-blue-400 dark:not-data-[variant=destructive]:focus:**:text-blue-400"
             >
-              <Share2 className="text-blue-600 dark:text-blue-400" />
-              {t("admin.reviewQueue.actions.share")}
+              <ExternalLink className="text-blue-600 dark:text-blue-400" />
+              {t("admin.reviewQueue.actions.viewInStore")}
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={() => onDelete(row.match_id)}>
               <Trash2 />

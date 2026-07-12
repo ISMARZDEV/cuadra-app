@@ -1,4 +1,4 @@
-import { ImageOff, Users } from "lucide-react";
+import { ExternalLink, ImageOff, Users } from "lucide-react";
 
 import { MethodBadge } from "@/features/admin/components/MethodBadge";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
@@ -36,6 +36,7 @@ export function StoreProductPanel({
   sku,
   ean,
   providerName,
+  url,
   confidence,
   method,
   candidateCount,
@@ -85,6 +86,20 @@ export function StoreProductPanel({
           )}
         </Field>
       </div>
+
+      {/* F0 (link a la tienda): abre la página del producto en la tienda origen. `<a>` real (más
+          accesible que window.open), nueva pestaña + noopener. Sin URL → no se renderiza. */}
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#b7e36f] bg-[#daff9f] px-3 py-2 text-sm font-semibold text-[#015442] transition-colors hover:bg-[#cdf58a] dark:border-brand-lime/30 dark:bg-brand-lime/20 dark:text-brand-lime dark:hover:bg-brand-lime/30"
+        >
+          <ExternalLink className="size-4" aria-hidden="true" />
+          Ver en la tienda
+        </a>
+      ) : null}
 
       <hr className="border-black/5 dark:border-white/10" />
 

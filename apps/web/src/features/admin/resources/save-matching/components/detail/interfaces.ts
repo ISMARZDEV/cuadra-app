@@ -12,6 +12,8 @@ export interface StoreProductPanelProps {
   sku: string | null;
   ean: string | null;
   providerName: string | null;
+  /** F0 (link a la tienda): página del producto en la tienda origen. `null` → sin botón. */
+  url: string | null;
   /** Confianza del match en 0..1 (para el donut). */
   confidence: number;
   /** Método crudo de la cascada (para el `MethodBadge`). */
