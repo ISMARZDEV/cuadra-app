@@ -582,7 +582,7 @@ class SqlStoreProductRepository:
         sp = StoreProductModel
         pr = ProviderModel
         rows = self._s.execute(
-            select(sp.id, sp.provider_id, sp.external_id, sp.url, pr.platform)
+            select(sp.id, sp.provider_id, sp.external_id, sp.url, pr.platform, sp.source_ref)
             .join(pr, pr.id == sp.provider_id)
             .where(
                 pr.market_id == market_id,
@@ -602,8 +602,9 @@ class SqlStoreProductRepository:
                 external_id=ext,
                 url=url,
                 platform=SourcePlatform(platform),
+                source_ref=source_ref,
             )
-            for spid, pid, ext, url, platform in rows
+            for spid, pid, ext, url, platform, source_ref in rows
         ]
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]:

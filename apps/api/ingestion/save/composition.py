@@ -95,9 +95,11 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
 
 
 def build_refresh_covered_prices(session: Session) -> RefreshCoveredPrices:
-    """Compone F3.2a (frescura, camino A): re-fetch DIRECTO por id/url de lo cubierto+viejo →
-    record_observation (change-only). SIN matcher (el store_product ya existe → no se re-descubre).
-    Reusa F3.3 (abort-on-down vía classify_httpx_error). Cachea los registries del mercado (1 query)."""
+    """Compone F3.2a (frescura): camino A (re-fetch por id/url/source_ref → change-only, SIN matcher)
+    + fallback C (browse por provider diferido, §15.4). Reusa F3.3 (abort-on-down vía
+    classify_httpx_error). Cachea los registries del mercado (1 query)."""
+    from src.contexts.save.domain.entities import SourcePlatform
+
     from ingestion.save.sources import SAVE_MARKET  # local: evita import circular (patrón del módulo)
 
     store_repo = SqlStoreProductRepository(session)
@@ -107,16 +109,35 @@ def build_refresh_covered_prices(session: Session) -> RefreshCoveredPrices:
         for r in SqlStoreRegistryRepository(session).list_by_market(SAVE_MARKET)
     }
 
-    def build_detail_source(item):  # type: ignore[no-untyped-def]
-        reg = registries[item.provider_id]
+    def _builder(provider_id):  # type: ignore[no-untyped-def]
+        reg = registries.get(provider_id)
+        if reg is None:
+            return None
         return CatalogSourceFactory.build(
             reg.platform, reg.base_url, endpoints=reg.endpoints, headers=reg.headers, auth=reg.auth
-        ).for_detail(item.provider_id, SAVE_MARKET)
+        )
+
+    def build_detail_source(item):  # type: ignore[no-untyped-def]
+        builder = _builder(item.provider_id)
+        if builder is None:
+            return None
+        try:
+            return builder.for_detail(item.provider_id, SAVE_MARKET)  # camino A
+        except ValueError:
+            return None  # plataforma sin ProductDetailSource → el use-case cae al browse (C)
+
+    def build_browse_source(provider_id):  # type: ignore[no-untyped-def]
+        # Solo REST_CATALOG tiene "browse completo" como refresh (VTEX/Magento son query-based).
+        reg = registries.get(provider_id)
+        if reg is None or reg.platform is not SourcePlatform.REST_CATALOG:
+            return None
+        return _builder(provider_id).for_query(provider_id, SAVE_MARKET, "")  # REST ignora la query → browse
 
     return RefreshCoveredPrices(
         store_repo=store_repo,
         refresh=refresh,
         build_detail_source=build_detail_source,
+        build_browse_source=build_browse_source,
         classify_error=classify_httpx_error,
     )
 

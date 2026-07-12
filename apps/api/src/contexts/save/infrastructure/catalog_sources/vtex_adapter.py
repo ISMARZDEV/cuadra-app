@@ -125,7 +125,9 @@ class VtexProductDetailAdapter:
         self._market_id = market_id
         self._http_get = http_get or VtexAdapter._default_get
 
-    def fetch_by_external_id(self, external_id: str, url: str | None = None) -> RawCatalogEntry | None:
+    def fetch_by_external_id(
+        self, external_id: str, url: str | None = None, source_ref: dict | None = None
+    ) -> RawCatalogEntry | None:
         detail_url = (
             f"{self._base_url}/api/catalog_system/pub/products/search"
             f"?fq=productId:{quote(external_id)}"

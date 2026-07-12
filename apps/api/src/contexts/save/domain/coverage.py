@@ -30,6 +30,7 @@ class StaleCovered:
     external_id: str
     url: str | None
     platform: SourcePlatform
+    source_ref: dict | None = None  # §15.3: localizador de detalle (Bravo id_articulo) para el /get
 
 
 class _HasProviderId(Protocol):

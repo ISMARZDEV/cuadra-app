@@ -50,4 +50,9 @@ class ProductDetailSource(Protocol):
     o, en F3.2b, fallback a la búsqueda dirigida). Lo implementan las plataformas con detalle por id
     (VTEX productId / Magento SKU); las browse-only no."""
 
-    def fetch_by_external_id(self, external_id: str, url: str | None) -> RawCatalogEntry | None: ...
+    def fetch_by_external_id(
+        self, external_id: str, url: str | None, source_ref: dict | None = None
+    ) -> RawCatalogEntry | None:
+        """`source_ref` (§15.3) trae localizadores extra (Bravo `id_articulo`) cuando `external_id`
+        no alcanza para el detalle. VTEX/Magento lo ignoran (external_id ya es el localizador)."""
+        ...

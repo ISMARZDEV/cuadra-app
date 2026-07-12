@@ -48,3 +48,18 @@ def test_list_stale_covered_selects_by_freshness(db_session) -> None:  # type: i
     assert uncovered not in ids                           # sin canónico → no es "cubierto"
     assert ids.index(hidden_stale) < ids.index(stale_visible)  # más viejo primero (4d antes que 20h)
     assert all(s.platform.value == "vtex" for s in stale)      # trae la plataforma (para el gate/adapter)
+
+
+def test_list_stale_covered_carries_source_ref(db_session) -> None:  # type: ignore[no-untyped-def]
+    # §15.3: el localizador de detalle (source_ref) viaja para el re-fetch por-producto (Bravo /get).
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
+    sp = _seed_store_product(db_session, pid, cid)
+    m = db_session.get(StoreProductModel, uuid.UUID(sp))
+    m.source_ref = {"id_articulo": "29866"}
+    _set_seen(db_session, sp, available=True, last_seen=now - timedelta(hours=20))
+
+    stale = SqlStoreProductRepository(db_session).list_stale_covered(market, now)
+
+    assert stale[0].source_ref == {"id_articulo": "29866"}

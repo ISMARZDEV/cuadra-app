@@ -5,8 +5,15 @@ ingesta (`map_vtex_product`/`map_magento_product`). Devuelven None si la tienda 
 """
 from __future__ import annotations
 
+import pytest
+
+from src.contexts.save.domain.fetch_outcome import DetailUnavailable
+from src.contexts.save.infrastructure.catalog_sources.bravova_profile import BRAVOVA_PROFILE
 from src.contexts.save.infrastructure.catalog_sources.magento_adapter import (
     MagentoProductDetailAdapter,
+)
+from src.contexts.save.infrastructure.catalog_sources.rest_catalog_adapter import (
+    RestCatalogDetailAdapter,
 )
 from src.contexts.save.infrastructure.catalog_sources.vtex_adapter import VtexProductDetailAdapter
 
@@ -91,3 +98,51 @@ def test_magento_detail_returns_none_when_empty() -> None:
         http_post=lambda u, p, h: {"data": {"products": {"items": []}}},
     )
     assert adapter.fetch_by_external_id("x", None) is None
+
+
+# --- REST_CATALOG (Bravo /get): detalle por source_ref.id_articulo (§15.4) ----------------------
+
+def _bravo_article() -> dict:
+    return {
+        "idArticulo": 29866,
+        "idexternoArticulo": "13290",
+        "nombreArticulo": "AZUCAR CREMA",
+        "associatedPvp": 124,
+        "familiaArticulo": "GR",
+        "subfamiliaArticulo": "GR-003",
+        "associatedEan": [],
+    }
+
+
+def test_rest_detail_fetches_by_source_ref_id_articulo() -> None:
+    seen: dict[str, str] = {}
+
+    def http_get(url: str) -> dict:
+        seen["url"] = url
+        return {"data": _bravo_article()}  # /get devuelve UN artículo bajo "data"
+
+    adapter = RestCatalogDetailAdapter(
+        "https://bravova-api.superbravo.com.do", "p-bravo", "DO", BRAVOVA_PROFILE, http_get=http_get
+    )
+    entry = adapter.fetch_by_external_id("13290", None, {"id_articulo": "29866"})
+
+    assert "idArticulo=29866" in seen["url"]  # usa el localizador de detalle, no el external_id
+    assert entry is not None
+    assert entry.external_id == "13290"        # el external_id sigue siendo el idexterno
+    assert entry.price.amount_minor == 12400
+
+
+def test_rest_detail_raises_detail_unavailable_without_locator() -> None:
+    # Sin source_ref (id_articulo) → NO se puede A → DetailUnavailable (→ fallback browse, no unavailable).
+    adapter = RestCatalogDetailAdapter(
+        "https://bravova-api", "p-bravo", "DO", BRAVOVA_PROFILE, http_get=lambda u: {}
+    )
+    with pytest.raises(DetailUnavailable):
+        adapter.fetch_by_external_id("13290", None, None)
+
+
+def test_rest_detail_none_when_article_gone() -> None:
+    adapter = RestCatalogDetailAdapter(
+        "https://bravova-api", "p-bravo", "DO", BRAVOVA_PROFILE, http_get=lambda u: {"data": None}
+    )
+    assert adapter.fetch_by_external_id("13290", None, {"id_articulo": "29866"}) is None

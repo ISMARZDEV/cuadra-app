@@ -20,7 +20,7 @@ from ...domain.entities import SourcePlatform
 from ...domain.ports import CatalogSource, ProductDetailSource
 from .bravova_profile import BRAVOVA_PROFILE
 from .magento_adapter import HttpPost, MagentoAdapter, MagentoProductDetailAdapter
-from .rest_catalog_adapter import CatalogProfile, RestCatalogAdapter
+from .rest_catalog_adapter import CatalogProfile, RestCatalogAdapter, RestCatalogDetailAdapter
 from .source_auth import authed_http_get, authed_http_post, build_request_auth
 from .vtex_adapter import VtexAdapter, VtexProductDetailAdapter
 
@@ -115,7 +115,22 @@ class SourceBuilder:
                 self.base_url, provider_id, market_id,
                 store_code=self.store_code, http_post=http_post or self._authed_post(),
             )
-        raise ValueError(f"Plataforma sin ProductDetailSource (browse-only): {self.platform!r}")
+        if self.platform is SourcePlatform.REST_CATALOG:
+            # §15.4: REST con endpoint de detalle en el profile (Bravo /get). El use-case cae al
+            # fallback por browse si el profile no lo declara o falta el token/localizador.
+            return RestCatalogDetailAdapter(
+                self.base_url, provider_id, market_id, self._rest_profile(),
+                http_get=http_get or self._authed_get(),
+            )
+        raise ValueError(f"Plataforma sin ProductDetailSource: {self.platform!r}")
+
+    def _rest_profile(self) -> CatalogProfile:
+        profile = _REST_CATALOG_PROFILES.get((self.endpoints or {}).get("profile", ""))
+        if profile is None:
+            raise ValueError(
+                f"REST_CATALOG sin profile registrado: {(self.endpoints or {}).get('profile')!r}"
+            )
+        return profile
 
     def _build_rest_catalog(
         self,

@@ -180,7 +180,9 @@ class MagentoProductDetailAdapter:
             headers["Store"] = self._store_code
         return headers
 
-    def fetch_by_external_id(self, external_id: str, url: str | None = None) -> RawCatalogEntry | None:
+    def fetch_by_external_id(
+        self, external_id: str, url: str | None = None, source_ref: dict | None = None
+    ) -> RawCatalogEntry | None:
         payload = {"query": _DETAIL_QUERY, "variables": {"sku": external_id}}
         response = self._http_post(f"{self._base_url}/graphql", payload, self._headers())
         items = ((response.get("data") or {}).get("products") or {}).get("items") or []
