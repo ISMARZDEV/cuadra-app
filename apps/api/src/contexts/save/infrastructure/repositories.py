@@ -23,12 +23,14 @@ from ..domain.classification import (
 )
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
+from ..domain.coverage import CoveragePair
 from ..domain.entities import (
     BasketQuery,
     CanonicalProduct,
     Collection,
     PriceType,
     Provider,
+    ProviderType,
     StoreProduct,
     StoreRegistry,
 )
@@ -527,6 +529,25 @@ class SqlStoreProductRepository:
             return
         m.is_available = available
         self._s.flush()
+
+    def list_uncovered(self, market_id: str) -> list[CoveragePair]:
+        # CROSS JOIN canónico×tienda del mercado (join por market_id) − LEFT JOIN store_product IS NULL
+        # = los pares sin cubrir. Solo tiendas SUPERMARKET (no bancos/aseguradoras del vertical F3).
+        cp = CanonicalProductModel
+        pr = ProviderModel
+        sp = StoreProductModel
+        rows = self._s.execute(
+            select(cp.id, pr.id)
+            .select_from(cp)
+            .join(pr, pr.market_id == cp.market_id)
+            .outerjoin(sp, and_(sp.canonical_product_id == cp.id, sp.provider_id == pr.id))
+            .where(
+                cp.market_id == market_id,
+                pr.type == ProviderType.SUPERMARKET.value,
+                sp.id.is_(None),
+            )
+        ).all()
+        return [CoveragePair(str(cid), str(pid)) for cid, pid in rows]
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]:
         models = self._s.scalars(
