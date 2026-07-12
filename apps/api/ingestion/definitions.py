@@ -9,21 +9,36 @@ import dagster as dg
 
 from ingestion.save.assets import (
     alert_matching,
+    coverage,
     embed_canonicals,
     price_drops,
     source_assets,
 )
 
-save_catalog_job = dg.define_asset_job("save_catalog_refresh", selection="*")
+# El refresh diario materializa TODO menos `coverage` (Loop B) — que tiene su propio ritmo (equivalente
+# al Prices Batch de SRD, separado del descubrimiento/refresh amplio de Loop A).
+save_catalog_job = dg.define_asset_job(
+    "save_catalog_refresh",
+    selection=dg.AssetSelection.all() - dg.AssetSelection.assets("coverage"),
+)
+save_coverage_job = dg.define_asset_job(
+    "save_coverage",
+    selection=dg.AssetSelection.assets("embed_canonicals", "coverage"),
+)
 
 save_daily_refresh = dg.ScheduleDefinition(
     name="save_daily_refresh",
     job=save_catalog_job,
     cron_schedule="0 6 * * *",  # 06:00 diario (interino)
 )
+save_coverage_daily = dg.ScheduleDefinition(
+    name="save_coverage_daily",
+    job=save_coverage_job,
+    cron_schedule="0 4 * * *",  # 04:00 diario — Loop B llena la matriz de cobertura (F3.1)
+)
 
 defs = dg.Definitions(
-    assets=[embed_canonicals, *source_assets, price_drops, alert_matching],
-    jobs=[save_catalog_job],
-    schedules=[save_daily_refresh],
+    assets=[embed_canonicals, *source_assets, coverage, price_drops, alert_matching],
+    jobs=[save_catalog_job, save_coverage_job],
+    schedules=[save_daily_refresh, save_coverage_daily],
 )

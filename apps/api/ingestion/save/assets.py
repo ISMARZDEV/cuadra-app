@@ -27,6 +27,7 @@ from .composition import (
     build_canonical_embedder,
     build_category_embedder,
     build_classifier,
+    build_cover_canonicals,
     build_matcher,
 )
 from .runner import refresh_source
@@ -121,6 +122,29 @@ def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
 
 
 source_assets: list[dg.AssetsDefinition] = [_build_source_asset(k) for k in SOURCE_KEYS]
+
+
+@dg.asset(
+    name="coverage",
+    deps=[dg.AssetKey("embed_canonicals")],  # la cascada valida los candidatos → índice semántico
+    group_name="save_catalog",
+    description="Loop B (cobertura dirigida, F3.1): busca cada canónico NO cubierto en cada tienda "
+    "(consulta EAN-first) y lo enlaza vía la cascada; nunca crea canónicos.",
+)
+def coverage(context) -> dg.MaterializeResult:
+    with SessionLocal() as session:
+        result = build_cover_canonicals(session).execute(SAVE_MARKET)
+        session.commit()
+    context.log.info(
+        f"coverage: pares={result.pairs_attempted} seen={result.seen} matched={result.matched}"
+    )
+    return dg.MaterializeResult(
+        metadata={
+            "pairs_attempted": result.pairs_attempted,
+            "seen": result.seen,
+            "matched": result.matched,
+        }
+    )
 
 
 @dg.asset(
