@@ -14,9 +14,22 @@ from __future__ import annotations
 import sys
 
 from src.contexts.save.infrastructure.classification.lexicon import (
+    LexiconIndex,
     build_lexicon_index,
     lexicon_match,
 )
+
+
+def _match_path(source: str, index: LexiconIndex) -> tuple[str, float] | None:
+    """Espeja ClassifyStoreProduct._match_source_path: el path es jerárquico, se matchea segmento a
+    segmento del más específico (hondo) al general, tomando el primer hit inequívoco."""
+    if not source:
+        return None
+    for segment in reversed(source.split(" > ")):
+        hit = lexicon_match(segment, index)
+        if hit is not None:
+            return hit
+    return None
 
 
 def main() -> None:
@@ -65,8 +78,8 @@ def main() -> None:
         src_text = " > ".join(e.category_path)
         if src_text:
             with_path += 1
-        s_leaf = lexicon_match(src_text, leaf_lex) if src_text else None
-        s_parent = lexicon_match(src_text, parent_lex) if src_text else None
+        s_leaf = _match_path(src_text, leaf_lex)
+        s_parent = _match_path(src_text, parent_lex)
         n_leaf = lexicon_match(e.name or "", leaf_lex)
 
         # 1) Informatividad de la señal de origen

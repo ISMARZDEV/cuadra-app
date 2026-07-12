@@ -111,11 +111,7 @@ class ClassifyStoreProduct:
         - solo la fuente resuelve      → la fuente es autoridad (`source`).
         - solo el nombre resuelve      → comportamiento por-nombre (lexicon/trgm/vector/llm).
         """
-        source_hit = (
-            lexicon_match(product.source_category, self._lexicon)
-            if product.source_category
-            else None
-        )
+        source_hit = self._match_source_path(product.source_category)
         by_name = self._classify_by_name(product, market_id)
 
         if source_hit is None:
@@ -129,6 +125,19 @@ class ClassifyStoreProduct:
                 source_leaf, _SOURCE_NAME_AGREE_CONFIDENCE, "source_name", "auto_link"
             )
         return _CONFLICT  # dos señales fuertes en conflicto → humano
+
+    def _match_source_path(self, source_category: str) -> tuple[str, float] | None:
+        """La categoría de origen es un PATH jerárquico ("A > B > C"). Matchear el string ENTERO por
+        lexicon mezcla tokens de varios niveles y crea ambigüedad falsa (una hoja por segmento →
+        None). Se matchea segmento por segmento del MÁS específico (hondo) al general, y se toma el
+        primer hit inequívoco — así el nivel más fino que resuelva limpio gana."""
+        if not source_category:
+            return None
+        for segment in reversed(source_category.split(" > ")):
+            hit = lexicon_match(segment, self._lexicon)
+            if hit is not None:
+                return hit
+        return None
 
     def _classify_by_name(
         self, product: ClassifiableProduct, market_id: str

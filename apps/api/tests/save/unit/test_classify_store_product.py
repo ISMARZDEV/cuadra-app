@@ -197,6 +197,25 @@ def test_source_only_when_name_unresolved() -> None:
     assert cls.saved and cls.saved[0].method == "source"
 
 
+def test_source_path_matches_segment_by_segment_deepest_first() -> None:
+    # El path de origen es jerárquico ("A > B > C"). Matchear el string entero mezcla tokens de
+    # varios niveles y crea ambigüedad FALSA (varias hojas → None). Debe matchear segmento a
+    # segmento, del más específico (hondo) al general, y tomar el primer hit inequívoco.
+    cls = _FakeClassifications()
+    lexicon = {
+        "conservas": "n-enlatados", "enlatados": "n-enlatados",
+        "vegetales": "n-vegetales", "legumbres": "n-legumbres",
+    }
+    uc = _make(cls, _FakeCandidates(), _FakeEmbedder(), _FakeJudge(), lexicon=lexicon)
+
+    # 4º segmento (más hondo) es ambiguo (vegetales + legumbres); el 3º resuelve limpio.
+    source = "Supermercado > Despensa > Conservas, Enlatados y aceitunas > Conserva vegetales y legumbres"
+    result = uc.execute(_product(source_category=source, name="Guandules Verdes Wala"), "DO")
+
+    assert result.taxonomy_node_id == "n-enlatados"
+    assert result.method == "source"  # el nombre no resuelve → autoridad de la fuente
+
+
 def test_no_source_category_falls_back_to_name() -> None:
     # sin categoría de origen → comportamiento actual (solo por nombre).
     cls = _FakeClassifications()
