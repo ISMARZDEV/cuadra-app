@@ -61,7 +61,7 @@ def test_map_bravova_item_full_fields() -> None:
         category_path=("GR", "GR-003"),  # taxonomía cruda de la tienda (familia/subfamilia)
         ean=None,  # associatedEan vacío
         url=None,
-        image_url=None,  # patrón de CDN por capturar (follow-up)
+        image_url="https://bravova-resources.superbravo.com.do/images/catalogo/big/13290_1.png?v=94",
         source_ref={"id_articulo": "29866"},  # §15.3: idArticulo interno para el /get de frescura
     )
 
