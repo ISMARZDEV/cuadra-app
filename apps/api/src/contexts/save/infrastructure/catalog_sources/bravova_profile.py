@@ -40,6 +40,20 @@ def _category_path(item: dict) -> tuple[str, ...]:
     )
 
 
+# CDN de imágenes de Bravo (SRD `bravo-images.ts:34-39`): `{base}/{idexterno}_{n}.png?v={version}`.
+# `imageCatalogVersion` = versión (cache-bust), `nimgArticulo` = nº de imágenes. Tomamos la primera.
+_IMAGE_BASE = "https://bravova-resources.superbravo.com.do/images/catalogo/big"
+
+
+def _image_url(item: dict) -> str | None:
+    idext = item.get("idexternoArticulo")
+    version = item.get("imageCatalogVersion")
+    nimg = item.get("nimgArticulo") or 0
+    if idext and version is not None and nimg:
+        return f"{_IMAGE_BASE}/{idext}_1.png?v={version}"
+    return None
+
+
 def _first_ean(item: dict) -> str | None:
     # `associatedEan` viene vacío en el catálogo probado; cuando trae valor, su shape exacto está
     # sin verificar → solo se acepta un string plano, cualquier otra forma se ignora.
@@ -73,7 +87,7 @@ def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalog
         category_path=_category_path(item),
         ean=_first_ean(item),
         url=None,
-        image_url=None,
+        image_url=_image_url(item),
         source_ref=source_ref,
     )
 
