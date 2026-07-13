@@ -17,7 +17,11 @@ from src.shared.money import Currency, Money
 DOP = Currency("DOP")
 
 
-def _entry(external_id: str, minor: int) -> RawCatalogEntry:
+def _entry(
+    external_id: str,
+    minor: int,
+    source_ref: dict[str, str] | None = None,
+) -> RawCatalogEntry:
     return RawCatalogEntry(
         provider_id="p-sirena",
         market_id="DO",
@@ -30,6 +34,7 @@ def _entry(external_id: str, minor: int) -> RawCatalogEntry:
         source="vtex",
         url="https://www.sirena.do/arroz-la-garza-10-lbs/p",
         ean="123",
+        source_ref=source_ref,
     )
 
 
@@ -87,3 +92,26 @@ def test_empty_source_yields_zero_counts() -> None:
     repo = FakeStoreRepo(known=set())
     result = RefreshCatalogPrices(repo).execute(FakeSource([]))
     assert result == RefreshResult(seen=0, refreshed=0, unmatched=0)
+
+
+class FakeMatcher:
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    def execute(self, incoming) -> None:  # type: ignore[no-untyped-def]
+        self.calls.append(incoming)
+
+
+def test_create_branch_persists_source_ref_regression() -> None:
+    """Regresión (§15.3): al MATERIALIZAR un producto DESCONOCIDO (rama create, cascada activa)
+    el `source_ref` del entry debe llegar a `record_observation`. El bug histórico solo pasaba
+    `source_ref` en la rama refresh (conocido) → el browse guardaba source_ref=None (JSONB null)
+    y el re-fetch por-producto (camino A) de Bravo se quedaba sin localizador."""
+    repo = FakeStoreRepo(known=set())  # producto DESCONOCIDO → rama create/matched
+    source = FakeSource([_entry("29866", 12400, source_ref={"id_articulo": "29866"})])
+
+    result = RefreshCatalogPrices(repo, matcher=FakeMatcher()).execute(source)
+
+    assert result == RefreshResult(seen=1, refreshed=0, unmatched=0, matched=1)
+    assert len(repo.observations) == 1
+    assert repo.observations[0]["source_ref"] == {"id_articulo": "29866"}
