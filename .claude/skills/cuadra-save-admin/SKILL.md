@@ -107,6 +107,19 @@ decides) → clean canonical catalog. Providers + health give visibility over th
     later). Also: **Tailwind v4 important is a SUFFIX** (`text-x!`), not the v3 prefix (`!text-x`) —
     the prefix silently no-ops. Verify icon color via `getComputedStyle(path).stroke`, never by eye on
     a small PNG (see cuadra-ui-verify). Ref: `ReviewRow.tsx` actions menu.
+12. **Sources (`save-sources`) = table/cards mirror of the curated basket + a TYPED-auth modal.** The old
+    raw form was redesigned (`SourcesScreen` mirrors `BasketEditorScreen`): search-pill, bulk Actions, Add
+    provider, pagination, sortable headers, **grid/list toggle** (the `VIEW_CHIP_*` chips from
+    `ReviewQueueToolbar`), a LIST view with its own **Logo column** + a CARDS view. `SourceModal` (add/edit)
+    uses **typed auth** (none/bearer/api_key/basic → conditional fields) + **Probar**; the Provider field is
+    a **per-country select-search** (`listProviders({market})` + `FilterSearchSelect` with logo). Backend:
+    `SourceHealthDto` now returns the config with **MASKED `auth`** (`mask_auth`) + `provider_name`/
+    `logo_url` (`ListSourcesHealth` injects `ProviderRepository`) — for the edit-modal prefill and the cards.
+    The auth model/plumbing (Authenticated Sources §15) lives in **`cuadra-save` §8**. Secret gotchas:
+    **write-only** — on edit the field arrives `••••…`; if UNCHANGED the frontend sends `auth: null` and
+    `UpdateSource` keeps the existing one; the token goes in the **value** field, not the header name.
+    `SourceLogo`: backend `logo_url` → bundled logo by name (`features/save/lib/provider-logos.ts`) →
+    initial placeholder.
 
 ## Endpoint map (all under `/v1/admin/save/*`, gated)
 

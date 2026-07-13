@@ -146,14 +146,69 @@ with a **freshness SLA** (`captured_at`), never through RAG. Faithfulness ≠ co
 - **F0 (done):** domain + unit-price normalization + VtexAdapter (Sirena) + curated basket + compare/search.
 - **F1 (done):** Shopify/Magento adapters + web portal (search→category→product) + shopping list (D1)
   + price alerts (G4) + price history (C9) + curated collections (A6) + product slug SEO + Dagster module.
-- **F2 (in progress):** **auto-matching ✅ CODE-COMPLETE + ship-dark** (the cascade — its own skill
-  `cuadra-save-matching`; flag `SAVE_MATCHING_CASCADE_ENABLED=false`, needs activation). Still to do:
-  admin console (Refine, review queue on `list_review_queue`) + PurchasesAgent + receipt OCR
-  (Claude vision) / e-CF spike + aggregators (Apify) + RAGAS/LangSmith evals.
-- **F3:** multi-country via `store_registry` + financial vertical (`provider.type=bank|insurer`).
-- **Known follow-ups:** `docs/pending/save-matching-batch10-y-activacion.md` (turn the matching
-  cascade from dark to live + the BGE-M3-vs-Qwen3 spike), `docs/pending/save-web-f1-pendientes.md`
-  (SEO leftovers, hardening), `docs/pending/save-alerts-remote-push.md` (remote APNs needs paid Apple).
+- **F2 (mostly done):** auto-matching cascade ✅ (skill `cuadra-save-matching`; activate with
+  `SAVE_MATCHING_CASCADE_ENABLED=true`) + **OFV admin console** ✅ (skill `cuadra-save-admin`: review
+  queue, providers, **sources**, basket). Still to do: PurchasesAgent + receipt OCR / e-CF + aggregators
+  (Apify) + RAGAS/LangSmith evals.
+- **F3 — two-loop ingestion ✅ built** (SDD `docs/sdd/save-ingesta-dos-loops.md`; see §8): Loop B directed
+  coverage + F3.2a freshness + F3.3 resilience + **Authenticated Sources** (Bravo detail live). Still to
+  do: F3.2b recovery, F4 isolated Loop A, activate Loop B/freshness in Dagster with real data. Multi-country
+  via `store_registry` + financial vertical (`provider.type=bank|insurer`) comes later.
+- **Known follow-ups:** `docs/pending/save-matching-batch10-y-activacion.md` (activate the cascade +
+  BGE-M3-vs-Qwen3 spike), `docs/pending/save-web-f1-pendientes.md` (SEO/hardening),
+  `docs/pending/save-alerts-remote-push.md` (remote APNs needs paid Apple). i18n es/en/pt for save-sources.
+
+### 8. Two-loop ingestion + Authenticated Sources (F3, built — SDD `save-ingesta-dos-loops.md`)
+
+**Two loops** (parity with SupermercadosRD `docs/research/supermercadosrd-scrapers-teardown-y-plan-cuadra.md`):
+**Loop A** (discovery, broad/periodic) grows the canonical catalog from the Curated Basket (`basket_query`).
+**Loop B** (coverage, directed/frequent) fills the price×store matrix of what's ALREADY known. Loop B NEVER
+creates canonicals. Lives in `apps/api/ingestion/save/` (Dagster assets `coverage` + `freshness`, own schedules).
+
+- **F3.3 resilience** (`domain/{coverage.py,fetch_outcome.py}`, `catalog_sources/fetch_classifier.py`):
+  `round_robin_by_store` (spreads load), typed `FetchOutcome` (`retryable`/`hide`) + `classify_httpx_error`
+  (401/403→AUTH_FAILED · 5xx/429/timeout→BACKEND_DOWN · 404→NOT_FOUND), abort-on-down (a downed store skips
+  its remaining pairs). The httpx classifier lives ONLY in infra; the use-case decides from the flags.
+- **Loop B DIRECTED coverage** (`application/cover_canonicals.py`, `domain/candidate_selection.py`): for each
+  uncovered (canonical×store), it builds an EAN-first query (`build_directed_query`) and **takes the BEST
+  candidate FOR that canonical** (`select_best_candidate`: exact EAN → else highest name trigram) — it does
+  NOT ingest all ~65 search results. That single candidate goes through the SAME cascade (deterministic
+  auto-link if strong, NO LLM). Gate: only query-capable platforms (`supports_directed_query`:
+  VTEX/Magento/Shopify); browse-only ones belong to Loop A. (Learned live: without top-candidate it covered
+  1/23; with it, 21/50.)
+- **F3.2a freshness** (`application/refresh_covered_prices.py`): keeps covered prices fresh.
+  `list_stale_covered` (TTL 18h visible / 3d hidden, SRD §3.1 pattern) → **path A**: DIRECT re-fetch by
+  id/url (`ProductDetailSource.fetch_by_external_id`, VTEX productId / Magento SKU / REST `/get`) →
+  `record_observation` (change-only, already built: same price = just bump `last_seen_at`, different = new
+  history row). NO matcher (the link is already known). **A→C fallback**: detail not usable (no token/403
+  AUTH_FAILED, no locator `DetailUnavailable`, or platform has no detail) → does NOT mark unavailable →
+  refreshes by BROWSE once per provider (`build_browse_source`, REST only). `is_available=false` ONLY if A
+  found-nothing WITH valid access. F3.2b (recovery B: A-fails→search→repair the locator) is still pending.
+
+**Authenticated Sources (§15 of the SDD)** — the credential lives in the DB (`store_registry.auth/headers`
+JSONB), editable in the admin UI (skill `cuadra-save-admin`), applied by ALL adapters. Zero hardcoding.
+- **TYPED auth model** (`infrastructure/catalog_sources/source_auth.py`, Postman/Airbyte pattern):
+  `{type: bearer|api_key{in:header|query}|basic|none}`. `build_request_auth(headers, auth) → RequestAuth`;
+  `authed_http_get/post` (auth-aware transport the **factory injects** when the source has a credential —
+  reuses TestSource's `http_get`/`http_post` seam); `mask_auth` masks the secret on reads/logs (write-only).
+  `store_registry.headers` = static NON-secret headers (Host, User-Agent).
+- **`source_ref`** (JSONB on `store_product`): detail locator when `external_id` isn't enough — Bravo
+  `{"id_articulo": …}` (its `/get` uses idArticulo, not the idexterno that IS the external_id). The REST
+  profile declares detail (`CatalogProfile.detail_path/param/ref_key/item_path` → `RestCatalogDetailAdapter`).
+
+**Gotchas (hard-won — do NOT relearn):**
+1. **TLS = OS trust store, not certifi.** Some super APIs (Bravo) send a chain with an intermediate that
+   certifi does NOT carry but the system DOES → httpx fails `self-signed certificate in chain` even though
+   `openssl s_client` verifies OK. Fix: `request_with_retry` verifies with `truststore.SSLContext` (dep
+   `truststore` in the ingestion group). Still SECURE (does not disable verification). Diagnosis: if ONLY
+   one source fails SSL while the rest are OK → it's not the network, it's its chain → truststore.
+2. **Bravo `/get` is gated on the token AND the User-Agent.** It requires `X-Auth-Token` **and** its iOS
+   app UA (`Domicilio/122130 CFNetwork/… Darwin/…`, see SRD `getBravoHeaders` http-client.ts:427-438).
+   Token-only = 403. → those headers go in `store_registry.headers`. The static token is the app's (no refresh).
+3. **The secret goes in the `value`/token field, NOT `name`** (the header name = "X-Auth-Token"). The admin
+   modal pre-fills the name and labels the field "Token / valor (el secreto)".
+4. **The admin sources list returns the auth MASKED** (`SourceHealthDto` via `mask_auth`) + config
+   (headers/endpoints) to prefill the edit modal; the secret never leaves in cleartext.
 
 ## Do / Don't
 
@@ -168,6 +223,10 @@ with a **freshness SLA** (`captured_at`), never through RAG. Faithfulness ≠ co
 | Confidence + human queue below threshold | Auto-merge a low-confidence match |
 | Prefer official API / receipt (legal) | Lean on aggregator scraping as the backbone |
 | Strict TDD (RED→GREEN) on domain logic | Ship price/matching logic untested |
+| Loop B: the top-candidate FOR the canonical (`select_best_candidate`) | Ingest all ~65 results of the directed search |
+| Source credential in `store_registry.auth` (typed, masked) | Hardcode tokens/headers in the code |
+| TLS via the OS trust store (`truststore`) | Disable TLS verification (`verify=false`) |
+| A→C fallback (browse) when detail isn't usable | Mark `is_available=false` for a missing token/locator |
 
 ## Commands
 
