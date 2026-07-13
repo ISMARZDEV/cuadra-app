@@ -160,7 +160,14 @@ export function ReviewRow({ row, href, locale, selected = false, onToggleSelect,
       </TableCell>
 
       <TableCell>
-        <ProviderLogo name={row.provider_name} logoUrl={row.provider_logo_url} />
+        {/* Caja uniforme para el logo — los logos anchos (Bravo) se limitan igual que los cuadrados. */}
+        <div className="flex h-8 w-12 items-center">
+          <ProviderLogo
+            name={row.provider_name}
+            logoUrl={row.provider_logo_url}
+            className="max-h-8 max-w-12 object-contain"
+          />
+        </div>
       </TableCell>
 
       <TableCell>
