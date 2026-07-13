@@ -30,6 +30,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from .http_retry import _SSL_VERIFY
+
 _CONNECT_TIMEOUT = 3.0
 _READ_TIMEOUT = 5.0
 _MAX_RESPONSE_BYTES = 5_000_000  # suficiente para una muestra de 10 productos, no una descarga libre
@@ -77,7 +79,9 @@ def _make_client() -> httpx.Client:
     timeout = httpx.Timeout(
         connect=_CONNECT_TIMEOUT, read=_READ_TIMEOUT, write=_CONNECT_TIMEOUT, pool=_CONNECT_TIMEOUT
     )
-    return httpx.Client(timeout=timeout, follow_redirects=False)
+    # Verifica TLS con el trust store del OS (igual que `http_retry`) — algunas APIs (Bravo) mandan
+    # una cadena que certifi no completa; sin esto el "Probar" del admin falla con "no respondió".
+    return httpx.Client(timeout=timeout, follow_redirects=False, verify=_SSL_VERIFY)
 
 
 def _read_capped(response: httpx.Response) -> bytes:
