@@ -28,6 +28,10 @@ from .refresh_prices import RefreshCatalogPrices
 BuildDetailSource = Callable[[StaleCovered], ProductDetailSource | None]
 BuildBrowseSource = Callable[[str], CatalogSource | None]
 ClassifyFetchError = Callable[[Exception], FetchOutcome]
+# El CONJUNTO de store_products viejos a re-preciar. Por defecto = los cubiertos (F3.2a); el asset
+# `price_refresh` inyecta `list_stale_known` (TODO lo conocido con locator, matcheado o en revisión —
+# paridad con el Prices Batch de SRD). El loop (path A + fallback C + F3.3) es idéntico para ambos.
+StaleSource = Callable[[str, datetime | None], list[StaleCovered]]
 
 
 def _reraise_classifier(exc: Exception) -> FetchOutcome:
@@ -63,18 +67,21 @@ class RefreshCoveredPrices:
         build_detail_source: BuildDetailSource,
         build_browse_source: BuildBrowseSource | None = None,
         classify_error: ClassifyFetchError = _reraise_classifier,
+        stale_source: StaleSource | None = None,
     ) -> None:
         self._store_repo = store_repo
         self._refresh = refresh
         self._build_detail_source = build_detail_source
         self._build_browse_source = build_browse_source
         self._classify_error = classify_error
+        # None → covered-only (F3.2a). El asset price_refresh inyecta list_stale_known.
+        self._stale_source = stale_source or store_repo.list_stale_covered
 
     def execute(
         self, market_id: str, *, now: datetime | None = None, captured_at: datetime | None = None
     ) -> FreshnessResult:
         checked = refreshed = unavailable = 0
-        items = round_robin_by_store(self._store_repo.list_stale_covered(market_id, now))
+        items = round_robin_by_store(self._stale_source(market_id, now))
         down: set[str] = set()      # tiendas caídas (503/timeout) → abort de sus items restantes
         deferred: set[str] = set()  # providers sin camino A usable → refresh por browse (C)
         for item in items:

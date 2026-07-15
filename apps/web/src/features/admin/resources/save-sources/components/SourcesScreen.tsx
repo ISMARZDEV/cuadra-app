@@ -301,6 +301,8 @@ export function SourcesScreen() {
                   <TableHead className="w-16">Logo</TableHead>
                   <SortableHeader label="Plataforma" state={sortStateFor("platform")} onToggle={() => toggleSort("platform")} />
                   <SortableHeader label="Base URL" state={sortStateFor("url")} onToggle={() => toggleSort("url")} />
+                  <SortableHeader label="Productos" state={sortStateFor("count")} onToggle={() => toggleSort("count")} />
+                  <SortableHeader label="Última actualización" state={sortStateFor("last_seen")} onToggle={() => toggleSort("last_seen")} />
                   <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -330,6 +332,13 @@ export function SourcesScreen() {
   );
 }
 
+// `last_seen_at` → epoch ms; null (nunca ingerido) = 0, el más viejo (queda primero en asc).
+function tsOf(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 function comparatorFor(col: string, dir: SortState) {
   const sign = dir === "desc" ? -1 : 1;
   return (a: SourceHealthDto, b: SourceHealthDto): number => {
@@ -337,6 +346,8 @@ function comparatorFor(col: string, dir: SortState) {
     if (col === "platform") cmp = a.platform.localeCompare(b.platform);
     else if (col === "url") cmp = a.base_url.localeCompare(b.base_url);
     else if (col === "health") cmp = a.health.localeCompare(b.health);
+    else if (col === "count") cmp = (a.product_count ?? 0) - (b.product_count ?? 0);
+    else if (col === "last_seen") cmp = tsOf(a.last_seen_at) - tsOf(b.last_seen_at);
     return cmp * sign;
   };
 }

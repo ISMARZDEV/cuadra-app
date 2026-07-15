@@ -69,3 +69,60 @@ def test_matcher_uses_http_provider_when_endpoint_set(
 
     assert matcher is not None
     assert isinstance(matcher._embedder, BgeM3EmbeddingProvider)
+
+
+def _bravo_registry(sections: list[str]):  # type: ignore[no-untyped-def]
+    from src.contexts.save.domain.entities import SourcePlatform, StoreRegistry
+
+    return StoreRegistry(
+        "s1", "p-bravo", SourcePlatform.REST_CATALOG, "https://bravova-api.superbravo.com.do",
+        endpoints={"profile": "bravova", "sections": sections, "store_id": "1000"},
+    )
+
+
+def test_partition_key_roundtrip() -> None:
+    key = composition.rest_catalog_partition_key("p-bravo", "14")
+    assert key == "p-bravo:14"
+    assert composition.parse_rest_catalog_partition_key(key) == ("p-bravo", "14")
+
+
+def test_rest_catalog_partition_keys_filters_rest_and_expands_sections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Una clave `{provider}:{section}` por cada sección de cada fuente REST_CATALOG; VTEX/Magento se
+    saltan (tienen su propio asset). Es lo que el sensor sincroniza con las particiones dinámicas."""
+    from src.contexts.save.domain.entities import SourcePlatform, StoreRegistry
+
+    bravo = _bravo_registry(["3", "14", "1018"])
+    sirena = StoreRegistry("s2", "p-sirena", SourcePlatform.VTEX, "https://www.sirena.do")
+
+    class FakeRegRepo:
+        def __init__(self, session: object) -> None: ...
+        def list_by_market(self, market: str) -> list[StoreRegistry]:
+            return [bravo, sirena]
+
+    monkeypatch.setattr(composition, "SqlStoreRegistryRepository", FakeRegRepo)
+
+    keys = composition.rest_catalog_partition_keys(object())
+
+    assert keys == ["p-bravo:3", "p-bravo:14", "p-bravo:1018"]  # Sirena (VTEX) NO aparece
+
+
+def test_build_rest_catalog_source_for_single_section(monkeypatch: pytest.MonkeyPatch) -> None:
+    """El partitioned asset materializa UNA sección: construye el adapter de esa (provider, section)."""
+    from src.contexts.save.infrastructure.catalog_sources.rest_catalog_adapter import RestCatalogAdapter
+
+    bravo = _bravo_registry(["3", "14", "1018"])
+
+    class FakeRegRepo:
+        def __init__(self, session: object) -> None: ...
+        def get_by_provider_id(self, provider_id: str):  # type: ignore[no-untyped-def]
+            return bravo if provider_id == "p-bravo" else None
+
+    monkeypatch.setattr(composition, "SqlStoreRegistryRepository", FakeRegRepo)
+
+    source = composition.build_rest_catalog_source_for(object(), "p-bravo", "14")
+
+    assert isinstance(source, RestCatalogAdapter)
+    assert source._sections == ["14"]  # SOLO esa sección
+    assert composition.build_rest_catalog_source_for(object(), "p-inexistente", "14") is None

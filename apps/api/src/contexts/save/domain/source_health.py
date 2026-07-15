@@ -45,9 +45,15 @@ def derive_source_health(
 @dataclass(frozen=True, slots=True)
 class SourceHealthRow:
     """Read model: una fuente (`store_registry`) + su salud efectiva (Batch 3E) + los datos del
-    proveedor (nombre + logo) para la UI (cards/lista)."""
+    proveedor (nombre + logo) para la UI (cards/lista).
+
+    `last_seen_at`/`product_count` son la señal CRUDA que sustenta el badge — la tabla los muestra
+    para dar contexto ("¿por qué Desactualizada?"). La Antigüedad la deriva el cliente desde
+    `last_seen_at` (relativo a ahora), no se persiste ni viaja calculada."""
 
     source: StoreRegistry
     health: SourceHealth
     provider_name: str = ""
     logo_url: str | None = None
+    last_seen_at: datetime | None = None
+    product_count: int = 0

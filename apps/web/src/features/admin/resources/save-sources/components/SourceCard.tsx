@@ -2,6 +2,7 @@ import type { SourceHealthDto } from "@cuadra/api-client";
 
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 
+import { formatLastSeen, formatRelativeAge, SOURCES_LOCALE } from "../lib/format-freshness";
 import { platformLabel } from "../types";
 import { HealthBadge } from "./HealthBadge";
 import { SourceActionsMenu, SourceLogo } from "./SourceActionsMenu";
@@ -49,6 +50,16 @@ export function SourceCard({
       >
         {source.base_url}
       </a>
+
+      {/* Frescura: nº de productos + antigüedad (contexto del badge de salud) */}
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>
+          <span className="tabular-nums font-medium text-foreground">{source.product_count ?? 0}</span> productos
+        </span>
+        <span title={formatLastSeen(source.last_seen_at, SOURCES_LOCALE)}>
+          {formatRelativeAge(source.last_seen_at, SOURCES_LOCALE)}
+        </span>
+      </div>
 
       {/* Pie: badge de salud (izq) + logo del proveedor en la esquina (der) */}
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">

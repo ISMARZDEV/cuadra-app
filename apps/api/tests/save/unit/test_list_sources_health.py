@@ -37,11 +37,19 @@ class FakeStoreRegistryRepo:
 
 
 class FakeStoreProductRepo:
-    def __init__(self, max_last_seen_at: dict[str, datetime | None]) -> None:
+    def __init__(
+        self,
+        max_last_seen_at: dict[str, datetime | None],
+        counts: dict[str, int] | None = None,
+    ) -> None:
         self._by_provider = max_last_seen_at
+        self._counts = counts or {}
 
     def max_last_seen_at(self, provider_id: str) -> datetime | None:
         return self._by_provider.get(provider_id)
+
+    def count_by_provider(self, provider_id: str) -> int:
+        return self._counts.get(provider_id, 0)
 
 
 def _source(
@@ -96,3 +104,30 @@ def test_never_ingested_source_is_stale() -> None:
 
     assert rows[0].health is SourceHealth.STALE
     assert rows[0].source.id == source.id
+
+
+def test_row_carries_last_seen_at_and_product_count_for_the_table() -> None:
+    """La fila expone la señal cruda de frescura (`last_seen_at`) y el conteo de productos, para que
+    la tabla del admin dé contexto al badge (la Antigüedad la deriva el cliente desde last_seen_at)."""
+    source = _source("p1")
+    seen = datetime.now(UTC) - timedelta(hours=2)
+    use_case = ListSourcesHealth(
+        FakeStoreRegistryRepo([source]),
+        FakeStoreProductRepo({"p1": seen}, counts={"p1": 55}),
+        FakeProviderRepo(),
+    )
+
+    rows = use_case.execute("DO")
+
+    assert rows[0].last_seen_at == seen
+    assert rows[0].product_count == 55
+
+
+def test_never_ingested_source_has_zero_count_and_null_last_seen() -> None:
+    source = _source("p1")
+    use_case = ListSourcesHealth(FakeStoreRegistryRepo([source]), FakeStoreProductRepo({}), FakeProviderRepo())
+
+    rows = use_case.execute("DO")
+
+    assert rows[0].last_seen_at is None
+    assert rows[0].product_count == 0

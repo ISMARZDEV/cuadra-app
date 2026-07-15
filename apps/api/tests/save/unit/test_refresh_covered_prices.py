@@ -173,3 +173,36 @@ def test_round_robin_and_abort_on_downed_store() -> None:
 
     # A cae (retryable) → abort; B ok. Ni A se difiere (abort ≠ defer).
     assert len(refresh.calls) == 2 and result.stores_aborted == 1 and browsed == []
+
+
+def test_uses_injected_stale_source_over_covered_default() -> None:
+    """El asset `price_refresh` reusa ESTE use-case pero con `list_stale_known` (incluye NO cubiertos).
+    Inyectando `stale_source`, re-precia ese conjunto en vez del covered-only por defecto."""
+    repo = _StaleRepo([])  # list_stale_covered → VACÍO
+    refresh = _Refresh()
+    known = [_stale("k1", "p1")]
+
+    uc = RefreshCoveredPrices(
+        store_repo=repo,
+        refresh=refresh,  # type: ignore[arg-type]
+        build_detail_source=lambda item: _DetailSource(),
+        stale_source=lambda market, now=None: known,  # inyectado (known, no covered)
+    )
+
+    result = uc.execute("DO")
+
+    assert result.checked == 1 and result.refreshed == 1  # usó el inyectado, no el covered-only vacío
+
+
+def test_defaults_to_covered_when_no_stale_source_injected() -> None:
+    """Sin inyección → F3.2a intacto (covered-only vía `store_repo.list_stale_covered`)."""
+    repo = _StaleRepo([_stale("c1", "p1")])
+    refresh = _Refresh()
+
+    uc = RefreshCoveredPrices(
+        store_repo=repo,
+        refresh=refresh,  # type: ignore[arg-type]
+        build_detail_source=lambda item: _DetailSource(),
+    )
+
+    assert uc.execute("DO").checked == 1

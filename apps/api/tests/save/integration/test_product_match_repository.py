@@ -16,10 +16,11 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.contexts.save.domain.entities import (
     CanonicalProduct,
+    MatchCandidateSnapshot,
     Provider,
     ProviderType,
     SourcePlatform,
@@ -31,6 +32,7 @@ from src.contexts.save.infrastructure.matching.repository.product_match_reposito
 from src.contexts.save.infrastructure.models import (
     CanonicalProductModel,
     ProductMatchModel,
+    ReviewCandidateModel,
     StoreProductModel,
     TaxonomyNodeModel,
 )
@@ -160,6 +162,64 @@ def test_record_match_is_idempotent_no_duplicate_pending_entry(db_session) -> No
     assert len(rows) == 1
     assert rows[0].status == "auto_linked"
     assert str(rows[0].canonical_product_id) == cid
+
+
+def test_record_candidates_is_idempotent_on_reruns(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Regresión: la cascada re-corre sobre un store_product YA en revisión (record_match upsertea →
+    MISMO match_id). `record_candidates` debe REEMPLAZAR el set de candidatos, no re-insertar — antes
+    reventaba con UniqueViolation en `uq_review_candidate_match_canonical` (el crash de la ingesta de
+    Bravo que se veía como 'cuelgue': la transacción abortaba)."""
+    pid, cid = _seed_provider_and_canonical(db_session)
+    sp_id = _seed_store_product(db_session, pid)
+    repo = SqlProductMatchRepository(db_session)
+    snap = MatchCandidateSnapshot(canonical_product_id=cid, score=0.62, name="Arroz La Garza", brand="La Garza")
+
+    match_id = repo.record_match(
+        store_product_id=sp_id, canonical_product_id=None,
+        confidence=0.62, method="human", status="pending_review",
+    )
+    repo.record_candidates(match_id, [snap])
+
+    # Segunda corrida: record_match REUSA el match (upsert) → record_candidates NO debe reventar.
+    match_id_2 = repo.record_match(
+        store_product_id=sp_id, canonical_product_id=None,
+        confidence=0.62, method="human", status="pending_review",
+    )
+    assert match_id_2 == match_id
+    repo.record_candidates(match_id_2, [snap])  # antes: IntegrityError (uq)
+
+    n = db_session.scalar(
+        select(func.count())
+        .select_from(ReviewCandidateModel)
+        .where(ReviewCandidateModel.product_match_id == uuid.UUID(match_id))
+    )
+    assert n == 1  # reemplazado, no duplicado
+
+
+def test_record_candidates_dedups_same_canonical_within_batch(db_session) -> None:  # type: ignore[no-untyped-def]
+    """El mismo canónico puede llegar por >1 etapa (EAN/trgm/pgvector); el set final tiene UNA fila por
+    canónico (el de mejor score), sin violar `uq_review_candidate_match_canonical`."""
+    pid, cid = _seed_provider_and_canonical(db_session)
+    sp_id = _seed_store_product(db_session, pid)
+    repo = SqlProductMatchRepository(db_session)
+    match_id = repo.record_match(
+        store_product_id=sp_id, canonical_product_id=None,
+        confidence=0.5, method="human", status="pending_review",
+    )
+
+    repo.record_candidates(
+        match_id,
+        [
+            MatchCandidateSnapshot(canonical_product_id=cid, score=0.40, name="Arroz", brand="La Garza"),
+            MatchCandidateSnapshot(canonical_product_id=cid, score=0.71, name="Arroz", brand="La Garza"),
+        ],
+    )
+
+    rows = db_session.scalars(
+        select(ReviewCandidateModel).where(ReviewCandidateModel.product_match_id == uuid.UUID(match_id))
+    ).all()
+    assert len(rows) == 1
+    assert float(rows[0].score) == 0.71  # se conserva el mejor score
 
 
 # ---------------------------------------------------------------- find_candidates_trgm ----------

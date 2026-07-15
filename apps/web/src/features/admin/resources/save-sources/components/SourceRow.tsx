@@ -3,6 +3,7 @@ import type { SourceHealthDto } from "@cuadra/api-client";
 import { TableCell, TableRow } from "@/components/ui-base/table";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 
+import { formatLastSeen, formatRelativeAge, SOURCES_LOCALE } from "../lib/format-freshness";
 import { platformLabel } from "../types";
 import { HealthBadge } from "./HealthBadge";
 import { SourceActionsMenu, SourceLogo } from "./SourceActionsMenu";
@@ -50,6 +51,17 @@ export function SourceRow({
 
       <TableCell>
         <span className="text-sm text-muted-foreground">{source.base_url}</span>
+      </TableCell>
+
+      <TableCell>
+        <span className="tabular-nums text-sm text-foreground">{source.product_count ?? 0}</span>
+      </TableCell>
+
+      <TableCell>
+        <div className="min-w-0">
+          <p className="text-sm text-foreground">{formatRelativeAge(source.last_seen_at, SOURCES_LOCALE)}</p>
+          <p className="text-xs text-muted-foreground">{formatLastSeen(source.last_seen_at, SOURCES_LOCALE)}</p>
+        </div>
       </TableCell>
 
       <TableCell>

@@ -63,3 +63,27 @@ def test_list_stale_covered_carries_source_ref(db_session) -> None:  # type: ign
     stale = SqlStoreProductRepository(db_session).list_stale_covered(market, now)
 
     assert stale[0].source_ref == {"id_articulo": "29866"}
+
+
+def test_list_stale_known_includes_uncovered(db_session) -> None:  # type: ignore[no-untyped-def]
+    """`price_refresh` re-precia TODO lo conocido: a diferencia de covered, INCLUYE los no-cubiertos
+    (en revisión) viejos — mismo filtro de frescura, sin exigir canónico."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
+
+    covered_stale = _seed_store_product(db_session, pid, cid)
+    uncovered_stale = _seed_store_product(db_session, pid, None)   # en revisión (sin canónico)
+    uncovered_fresh = _seed_store_product(db_session, pid, None)
+
+    _set_seen(db_session, covered_stale, available=True, last_seen=now - timedelta(hours=20))
+    _set_seen(db_session, uncovered_stale, available=True, last_seen=now - timedelta(hours=20))
+    _set_seen(db_session, uncovered_fresh, available=True, last_seen=now - timedelta(hours=2))
+
+    repo = SqlStoreProductRepository(db_session)
+    known_ids = [s.store_product_id for s in repo.list_stale_known(market, now)]
+    covered_ids = [s.store_product_id for s in repo.list_stale_covered(market, now)]
+
+    assert uncovered_stale in known_ids and covered_stale in known_ids  # known trae AMBOS
+    assert uncovered_fresh not in known_ids                            # fresco → se salta
+    assert uncovered_stale not in covered_ids                          # contraste: covered NO lo trae

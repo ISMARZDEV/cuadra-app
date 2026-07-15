@@ -436,6 +436,13 @@ class SqlStoreProductRepository:
             )
         )
 
+    def count_by_provider(self, provider_id: str) -> int:
+        return self._s.scalar(
+            select(func.count(StoreProductModel.id)).where(
+                StoreProductModel.provider_id == uuid.UUID(provider_id)
+            )
+        ) or 0
+
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         # Escritor del FK denormalizado (F2.0 matching). No commitea: la Session es el UoW y el
         # use case de la cascada confirma la transacción junto al product_match correspondiente.
@@ -576,22 +583,54 @@ class SqlStoreProductRepository:
         hidden_ttl_hours: int = 72,
         limit: int = 500,
     ) -> list[StaleCovered]:
+        return self._list_stale(
+            market_id, now, covered_only=True,
+            visible_ttl_hours=visible_ttl_hours, hidden_ttl_hours=hidden_ttl_hours, limit=limit,
+        )
+
+    def list_stale_known(
+        self,
+        market_id: str,
+        now: datetime | None = None,
+        *,
+        visible_ttl_hours: int = 18,
+        hidden_ttl_hours: int = 72,
+        limit: int = 500,
+    ) -> list[StaleCovered]:
+        # TODO lo conocido y viejo (matcheado O en revisión) → re-precio por id (Prices Batch de SRD).
+        return self._list_stale(
+            market_id, now, covered_only=False,
+            visible_ttl_hours=visible_ttl_hours, hidden_ttl_hours=hidden_ttl_hours, limit=limit,
+        )
+
+    def _list_stale(
+        self,
+        market_id: str,
+        now: datetime | None,
+        *,
+        covered_only: bool,
+        visible_ttl_hours: int,
+        hidden_ttl_hours: int,
+        limit: int,
+    ) -> list[StaleCovered]:
         ref = now or datetime.now(timezone.utc)
         visible_cut = ref - timedelta(hours=visible_ttl_hours)
         hidden_cut = ref - timedelta(hours=hidden_ttl_hours)
         sp = StoreProductModel
         pr = ProviderModel
+        conds = [
+            pr.market_id == market_id,
+            or_(
+                and_(sp.is_available.is_(True), sp.last_seen_at < visible_cut),
+                and_(sp.is_available.is_(False), sp.last_seen_at < hidden_cut),
+            ),
+        ]
+        if covered_only:
+            conds.append(sp.canonical_product_id.is_not(None))  # F3.2a: solo lo YA cubierto
         rows = self._s.execute(
             select(sp.id, sp.provider_id, sp.external_id, sp.url, pr.platform, sp.source_ref)
             .join(pr, pr.id == sp.provider_id)
-            .where(
-                pr.market_id == market_id,
-                sp.canonical_product_id.is_not(None),  # solo lo YA cubierto
-                or_(
-                    and_(sp.is_available.is_(True), sp.last_seen_at < visible_cut),
-                    and_(sp.is_available.is_(False), sp.last_seen_at < hidden_cut),
-                ),
-            )
+            .where(*conds)
             .order_by(sp.last_seen_at.asc())  # el más viejo primero
             .limit(limit)
         ).all()

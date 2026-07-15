@@ -30,12 +30,20 @@ from .composition import (
     build_cover_canonicals,
     build_matcher,
     build_refresh_covered_prices,
+    build_refresh_known_prices,
+    build_rest_catalog_source_for,
+    parse_rest_catalog_partition_key,
+    rest_catalog_partition_keys,
 )
 from .runner import refresh_source
 from .sources import SAVE_MARKET, build_sources
 
 SOURCE_KEYS: tuple[str, ...] = ("sirena", "nacional", "jumbo")
 _DROPS_WINDOW_DAYS = 7
+
+# Particiones DINÁMICAS del browse REST_CATALOG — una por (provider, section). Dinámicas porque las
+# secciones son config de admin (store_registry), no un set fijo en código; el sensor las sincroniza.
+rest_catalog_sections = dg.DynamicPartitionsDefinition(name="rest_catalog_section")
 
 
 def _select_queries(db_queries: Sequence[str], limit_env: str | None) -> tuple[str, ...]:
@@ -126,6 +134,71 @@ source_assets: list[dg.AssetsDefinition] = [_build_source_asset(k) for k in SOUR
 
 
 @dg.asset(
+    name="rest_catalog_prices",
+    partitions_def=rest_catalog_sections,  # UNA sección REST_CATALOG por partición ({provider}:{section})
+    deps=[dg.AssetKey("embed_canonicals")],  # el matching del refresh necesita el índice semántico
+    group_name="save_catalog",
+    description="Refresh (browse-full) de UNA sección REST_CATALOG por partición ({provider}:{section}), "
+    "registry-driven (Bravo y afines). Particionado → cada sección se materializa/reintenta por separado.",
+)
+def rest_catalog_prices(context) -> dg.MaterializeResult:
+    """Loop A por sección para súper con API REST propia: a diferencia de sirena/nacional/jumbo
+    (query-based sobre la canasta), estas se navegan COMPLETAS por sección. La partición es
+    `{provider_id}:{section}`; el sensor `sync_rest_catalog_sections` mantiene el set al día desde
+    `store_registry`. Una sección que ya no existe (partición huérfana) se salta sin fallar."""
+    provider_id, section = parse_rest_catalog_partition_key(context.partition_key)
+    with SessionLocal() as session:
+        source = build_rest_catalog_source_for(session, provider_id, section)
+        if source is None:
+            context.log.warning(
+                f"rest_catalog_prices[{context.partition_key}]: fuente REST_CATALOG inexistente "
+                "(partición huérfana) — se salta."
+            )
+            return dg.MaterializeResult(metadata={"seen": 0, "skipped": True})
+        result = refresh_source(
+            SqlStoreProductRepository(session), [source],
+            matcher=build_matcher(session), classifier=build_classifier(session),
+        )
+        session.commit()
+    context.log.info(
+        f"rest_catalog_prices[{context.partition_key}]: LISTO seen={result.seen} "
+        f"refreshed={result.refreshed} unmatched={result.unmatched} matched={result.matched}"
+    )
+    return dg.MaterializeResult(
+        metadata={
+            "seen": result.seen,
+            "refreshed": result.refreshed,
+            "unmatched": result.unmatched,
+            "matched": result.matched,
+        }
+    )
+
+
+@dg.sensor(
+    name="sync_rest_catalog_sections",
+    minimum_interval_seconds=300,
+    default_status=dg.DefaultSensorStatus.RUNNING,
+    description="Sincroniza las particiones dinámicas de rest_catalog_prices con las secciones "
+    "configuradas en store_registry (agrega las nuevas, quita las que dejaron de existir).",
+)
+def sync_rest_catalog_sections(context) -> dg.SensorResult | dg.SkipReason:
+    with SessionLocal() as session:
+        desired = set(rest_catalog_partition_keys(session))
+    current = set(context.instance.get_dynamic_partitions(rest_catalog_sections.name))
+    to_add = sorted(desired - current)
+    to_remove = sorted(current - desired)
+    if not to_add and not to_remove:
+        return dg.SkipReason("particiones REST_CATALOG ya sincronizadas con store_registry")
+    requests = []
+    if to_add:
+        requests.append(rest_catalog_sections.build_add_request(to_add))
+    if to_remove:
+        requests.append(rest_catalog_sections.build_delete_request(to_remove))
+    context.log.info(f"particiones REST_CATALOG: +{len(to_add)} / -{len(to_remove)}")
+    return dg.SensorResult(dynamic_partitions_requests=requests)
+
+
+@dg.asset(
     name="coverage",
     deps=[dg.AssetKey("embed_canonicals")],  # la cascada valida los candidatos → índice semántico
     group_name="save_catalog",
@@ -175,7 +248,33 @@ def freshness(context) -> dg.MaterializeResult:
 
 
 @dg.asset(
-    deps=[dg.AssetKey(f"{k}_prices") for k in SOURCE_KEYS],
+    name="price_refresh",
+    group_name="save_catalog",
+    description="Prices Batch (paridad SRD §3.1): re-precia por id/get TODO lo CONOCIDO y viejo "
+    "(matcheado O en revisión) → record_observation change-only, SIN matcher ni descubrimiento. "
+    "Superset de `freshness` (covered-only): mantiene fresco el precio de la cola de revisión sin "
+    "re-browsear. Sin dep de embed_canonicals (no re-descubre).",
+)
+def price_refresh(context) -> dg.MaterializeResult:
+    with SessionLocal() as session:
+        result = build_refresh_known_prices(session).execute(SAVE_MARKET)
+        session.commit()
+    context.log.info(
+        f"price_refresh: checked={result.checked} refreshed={result.refreshed} "
+        f"unavailable={result.unavailable} stores_aborted={result.stores_aborted}"
+    )
+    return dg.MaterializeResult(
+        metadata={
+            "checked": result.checked,
+            "refreshed": result.refreshed,
+            "unavailable": result.unavailable,
+            "stores_aborted": result.stores_aborted,
+        }
+    )
+
+
+@dg.asset(
+    deps=[*(dg.AssetKey(f"{k}_prices") for k in SOURCE_KEYS), dg.AssetKey("rest_catalog_prices")],
     group_name="save_catalog",
     description="Bajadas de precio detectadas tras el refresh (G4).",
 )
@@ -189,7 +288,7 @@ def price_drops(context) -> dg.MaterializeResult:
 
 
 @dg.asset(
-    deps=[dg.AssetKey(f"{k}_prices") for k in SOURCE_KEYS],
+    deps=[*(dg.AssetKey(f"{k}_prices") for k in SOURCE_KEYS), dg.AssetKey("rest_catalog_prices")],
     group_name="save_catalog",
     description="Cruce de bajadas con las suscripciones → notificaciones de alerta (G4).",
 )

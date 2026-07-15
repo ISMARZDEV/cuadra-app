@@ -38,6 +38,11 @@ class CatalogProfile:
     # params fijos extra que algunos súper EXIGEN en cada request (p.ej. Bravo Va → `showOrder`);
     # se URL-encodean. Pares (no dict) para mantener el profile inmutable/hashable.
     extra_params: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    # headers HTTP ESTRUCTURALES fijos de la plataforma (no secretos): p.ej. el User-Agent de la app
+    # de Bravo (`Domicilio/…`) que su `/get` exige. Viven en el profile (código), NO en el admin — el
+    # admin solo lleva el token (secreto). Los `headers` del registry los sobreescriben (retrocompat).
+    # Pares (no dict) para mantener el profile inmutable/hashable, como `extra_params`.
+    default_headers: tuple[tuple[str, str], ...] = field(default_factory=tuple)
     # §15.4 — DETALLE por artículo (camino A de frescura): endpoint de UN producto por su localizador.
     # Bravo: GET `/public/articulo/get?idArticulo=<id>` → `{"data": <artículo>}`. Vacío = sin detalle.
     detail_path: str | None = None          # p.ej. "/public/articulo/get"

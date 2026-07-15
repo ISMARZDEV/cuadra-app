@@ -1,0 +1,36 @@
+# Config de instancia de Dagster (storage + robustez).
+# Dagster la lee de $DAGSTER_HOME, NO del CWD → `scripts/dagster-dev.sh` copia esta plantilla ahí.
+# Ref: https://docs.dagster.io/deployment/oss/dagster-yaml
+#
+# Storage en Postgres (rol/db `dagster` dedicados dentro de la instancia cuadra-db), NO el SQLite
+# por defecto: SQLite NO soporta acceso concurrente → dos procesos Dagster sobre el mismo
+# DAGSTER_HOME se traban por lock (el cuelgue que vimos con `dagster dev` + un one-off a la vez).
+# Credenciales de DEV (rol aislado, no el de la app), inyectadas por env desde el script.
+storage:
+  postgres:
+    postgres_db:
+      hostname:
+        env: DAGSTER_PG_HOST
+      username:
+        env: DAGSTER_PG_USER
+      password:
+        env: DAGSTER_PG_PASSWORD
+      db_name:
+        env: DAGSTER_PG_DB
+      port:
+        env: DAGSTER_PG_PORT
+
+# Detecta runs colgados/huérfanos (el síntoma exacto del lock: un run "materializing" para siempre)
+# y los marca FAILED en vez de dejarlos vivos. Requiere el daemon (lo levanta `dagster dev`).
+run_monitoring:
+  enabled: true
+  start_timeout_seconds: 180
+  poll_interval_seconds: 60
+
+# Reintenta el RUN ante fallo de INFRAESTRUCTURA (worker caído). `retry_on_asset_or_op_failure: false`
+# → los fallos de step los maneja el RetryPolicy del asset (P2), no el run-retry (evita doble
+# reintento del mismo trabajo). Ref: docs.dagster.io/deployment/execution/run-retries
+run_retries:
+  enabled: true
+  max_retries: 2
+  retry_on_asset_or_op_failure: false

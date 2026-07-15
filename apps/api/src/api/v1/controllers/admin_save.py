@@ -454,6 +454,10 @@ class SourceHealthDto(BaseModel):
     enabled: bool
     paused_at: datetime | None = None
     health: SourceHealth
+    # Señal cruda que sustenta el badge (contexto en la tabla): frescura + volumen. La Antigüedad
+    # la deriva el cliente desde `last_seen_at`.
+    last_seen_at: datetime | None = None
+    product_count: int = 0
     # §15 (FASE 3): config completa para el prefill del modal de edición. `auth` viaja ENMASCARADO
     # (§15.5) — el secreto NUNCA sale en claro; para cambiarlo, el admin reescribe el campo.
     endpoints: dict | None = None
@@ -472,6 +476,8 @@ class SourceHealthDto(BaseModel):
             enabled=row.source.enabled,
             paused_at=row.source.paused_at,
             health=row.health,
+            last_seen_at=row.last_seen_at,
+            product_count=row.product_count,
             endpoints=row.source.endpoints,
             headers=row.source.headers,
             auth=mask_auth(row.source.auth),

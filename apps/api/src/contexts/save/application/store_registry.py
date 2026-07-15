@@ -155,6 +155,8 @@ class ListSourcesHealth:
                     health=health,
                     provider_name=provider.name if provider else "",
                     logo_url=provider.logo_url if provider else None,
+                    last_seen_at=max_last_seen_at,
+                    product_count=self._store_products.count_by_provider(source.provider_id),
                 )
             )
         return rows
