@@ -4,10 +4,18 @@
 resueltas por el repo). La tabla es la ÚNICA fuente — ya NO hay fallback hardcodeado (el backfill
 vive en migración y la tabla se protege de los resets). La perilla `SAVE_REFRESH_QUERY_LIMIT`
 recorta a las primeras N (runs cortos en dev).
+
+`_select_queries` vive en `assets.py`, que importa dagster a nivel de módulo → requiere el
+dependency-group `ingestion`; en CI (que no lo sincroniza) el test se SALTA con importorskip,
+igual que `test_definitions.py`.
 """
 from __future__ import annotations
 
-from ingestion.save.assets import _select_queries
+import pytest
+
+pytest.importorskip("dagster")
+
+from ingestion.save.assets import _select_queries  # noqa: E402
 
 
 def test_uses_table_queries() -> None:
