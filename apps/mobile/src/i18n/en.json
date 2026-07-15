@@ -21,6 +21,7 @@
   "language.auto": "Detect automatically",
   "language.a11y.back": "Back",
   "config.currencies": "Currencies",
+  "config.signOut": "Sign out",
   "currencies.title": "Currencies",
   "currencies.subtitle": "Your primary currency is fixed; choose up to 3 extra",
   "currencies.primary.badge": "Primary",
@@ -103,5 +104,15 @@
   "insights.dailyDiary.period.today": "Today",
   "insights.dailyDiary.period.week": "Week",
   "insights.dailyDiary.period.month": "Month",
-  "insights.dailyDiary.period.quarter": "Quarter"
+  "insights.dailyDiary.period.quarter": "Quarter",
+  "save.alerts.title": "Price alerts",
+  "save.alerts.hint": "Follow products on cuadra.do and we'll notify you when they drop.",
+  "save.alerts.notifications": "Notifications",
+  "save.alerts.subscriptions": "Products you follow",
+  "save.alerts.noNotifications": "No notifications yet.",
+  "save.alerts.noAlerts": "You're not following any product. Add them from the web.",
+  "save.alerts.droppedFromTo": "dropped from {from} to {to} at {store}",
+  "save.alerts.unsubscribe": "Unfollow",
+  "save.alerts.dropTitle": "Price dropped!",
+  "save.alerts.dropBody": "{product} dropped at {store}"
 }

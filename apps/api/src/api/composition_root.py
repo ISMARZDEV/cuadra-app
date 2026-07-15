@@ -7,11 +7,83 @@ use cases ya cableados vía `Depends`. La `Session` (`get_session`) es el Unit o
 from __future__ import annotations
 
 from collections.abc import Iterator
+from functools import lru_cache
 
 from fastapi import Depends
+from jwt import PyJWKClient
 from sqlalchemy.orm import Session
 
+from src.contexts.save.application.alerts import (
+    ListAlertNotifications,
+    ListAlerts,
+    MarkNotificationsRead,
+    RegisterPushToken,
+    RunAlertMatching,
+    SubscribeAlert,
+    UnsubscribeAlert,
+)
+from src.contexts.save.application.basket_query import (
+    CreateBasketQuery,
+    ListBasketQueries,
+    RemoveBasketQuery,
+    UpdateBasketQuery,
+)
+from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
+from src.contexts.save.application.categories import GetCategory, ListCategories
+from src.contexts.save.application.compare import CompareProduct
+from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
+from src.contexts.save.application.drops import ListPriceDrops
+from src.contexts.save.application.get_review_detail import GetReviewDetail
+from src.contexts.save.application.history import GetPriceHistory
+from src.contexts.save.application.list_review_queue import ListReviewQueue
+from src.contexts.save.application.listing import (
+    ListBrandProducts,
+    ListCategoryProducts,
+    ListFeaturedProducts,
+    ListProviderProducts,
+    ListTodaysDeals,
+)
+from src.contexts.save.application.products import ListProducts
+from src.contexts.save.application.collections import GetCollection, ListCollections
+from src.contexts.save.application.providers import (
+    CreateProvider,
+    GetProvider,
+    ListProviders,
+    SetProviderLogo,
+    UpdateProvider,
+)
+from src.contexts.save.application.resolve_review import ResolveReview
+from src.contexts.save.application.search import SearchProducts
+from src.contexts.save.application.store_registry import (
+    CreateSource,
+    ListSourcesHealth,
+    PauseSource,
+    ResumeSource,
+    UpdateSource,
+)
+from src.contexts.save.application.preview_basket_query import PreviewBasketQuery
+from src.contexts.save.application.test_source import TestSource
+from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
+    SqlProductMatchRepository,
+)
+from src.contexts.save.infrastructure.repositories import (
+    SqlAlertRepository,
+    SqlBasketQueryRepository,
+    SqlCanonicalProductRepository,
+    SqlCollectionRepository,
+    SqlProviderRepository,
+    SqlStoreProductRepository,
+    SqlStoreRegistryRepository,
+    SqlTaxonomyRepository,
+)
+
 from src.contexts.identity.application.queries import GetMe
+from src.contexts.identity.domain.ports import TokenVerifier
+from src.contexts.identity.infrastructure.clerk_token_verifier import (
+    ClerkTokenVerifier,
+    NullTokenVerifier,
+)
 from src.contexts.identity.infrastructure.repositories import (
     SqlCapabilityGatingRepository,
     SqlUserRepository,
@@ -68,6 +140,28 @@ def get_session() -> Iterator[Session]:
 
 def get_get_me(session: Session = Depends(get_session)) -> GetMe:
     return GetMe(SqlUserRepository(session), SqlCapabilityGatingRepository(session))
+
+
+_NULL_VERIFIER = NullTokenVerifier()
+
+
+@lru_cache(maxsize=1)
+def _clerk_verifier_enabled() -> ClerkTokenVerifier:
+    """Verificador Clerk real — un único PyJWKClient (cachea el JWKS entre requests)."""
+    return ClerkTokenVerifier(
+        issuer=settings.clerk_issuer,
+        authorized_parties=settings.clerk_authorized_party_list,
+        jwk_client=PyJWKClient(settings.clerk_jwks_url),
+    )
+
+
+def get_clerk_verifier() -> TokenVerifier:
+    """Verificador de tokens del IdP para la vía RS256 de `get_current_user_id`. Si Clerk no está
+    configurado (dev), devuelve el verificador nulo — así el `Depends` no construye un PyJWKClient
+    con un issuer vacío y el dev-login (HS256) sigue funcionando."""
+    if not settings.clerk_enabled:
+        return _NULL_VERIFIER
+    return _clerk_verifier_enabled()
 
 
 def get_preference_repository(
@@ -219,4 +313,213 @@ def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):
         classifier=llm_classifier,
         registry=registry,
         flow_registry={"register_expense": expense_flow},
+    )
+
+
+# ── Save (catálogo de precios) ──
+def get_search_products(session: Session = Depends(get_session)) -> SearchProducts:
+    return SearchProducts(SqlCanonicalProductRepository(session))
+
+
+def get_compare_product(session: Session = Depends(get_session)) -> CompareProduct:
+    return CompareProduct(
+        SqlCanonicalProductRepository(session),
+        SqlStoreProductRepository(session),
+        SqlTaxonomyRepository(session),
+    )
+
+
+def get_list_categories(session: Session = Depends(get_session)) -> ListCategories:
+    return ListCategories(SqlTaxonomyRepository(session))
+
+
+def get_category(session: Session = Depends(get_session)) -> GetCategory:
+    return GetCategory(SqlTaxonomyRepository(session))
+
+
+def get_list_providers(session: Session = Depends(get_session)) -> ListProviders:
+    return ListProviders(SqlProviderRepository(session))
+
+
+def get_provider(session: Session = Depends(get_session)) -> GetProvider:
+    return GetProvider(SqlProviderRepository(session))
+
+
+def get_create_provider(session: Session = Depends(get_session)) -> CreateProvider:
+    return CreateProvider(SqlProviderRepository(session))
+
+
+def get_update_provider(session: Session = Depends(get_session)) -> UpdateProvider:
+    return UpdateProvider(SqlProviderRepository(session))
+
+
+def get_set_provider_logo(session: Session = Depends(get_session)) -> SetProviderLogo:
+    return SetProviderLogo(SqlProviderRepository(session))
+
+
+def get_create_source(session: Session = Depends(get_session)) -> CreateSource:
+    return CreateSource(SqlStoreRegistryRepository(session))
+
+
+def get_update_source(session: Session = Depends(get_session)) -> UpdateSource:
+    return UpdateSource(SqlStoreRegistryRepository(session))
+
+
+def get_pause_source(session: Session = Depends(get_session)) -> PauseSource:
+    return PauseSource(SqlStoreRegistryRepository(session))
+
+
+def get_resume_source(session: Session = Depends(get_session)) -> ResumeSource:
+    return ResumeSource(SqlStoreRegistryRepository(session))
+
+
+def get_test_source(session: Session = Depends(get_session)) -> TestSource:
+    return TestSource(SqlStoreRegistryRepository(session), SqlProviderRepository(session))
+
+
+def get_preview_basket_query(session: Session = Depends(get_session)) -> PreviewBasketQuery:
+    return PreviewBasketQuery(
+        SqlStoreRegistryRepository(session), SqlProviderRepository(session)
+    )
+
+
+def get_list_sources_health(session: Session = Depends(get_session)) -> ListSourcesHealth:
+    return ListSourcesHealth(
+        SqlStoreRegistryRepository(session),
+        SqlStoreProductRepository(session),
+        SqlProviderRepository(session),
+    )
+
+
+def get_list_basket_queries(session: Session = Depends(get_session)) -> ListBasketQueries:
+    return ListBasketQueries(SqlBasketQueryRepository(session))
+
+
+def get_create_basket_query(session: Session = Depends(get_session)) -> CreateBasketQuery:
+    return CreateBasketQuery(SqlBasketQueryRepository(session))
+
+
+def get_update_basket_query(session: Session = Depends(get_session)) -> UpdateBasketQuery:
+    return UpdateBasketQuery(SqlBasketQueryRepository(session))
+
+
+def get_remove_basket_query(session: Session = Depends(get_session)) -> RemoveBasketQuery:
+    return RemoveBasketQuery(SqlBasketQueryRepository(session))
+
+
+def get_list_category_products(
+    session: Session = Depends(get_session),
+) -> ListCategoryProducts:
+    return ListCategoryProducts(
+        SqlTaxonomyRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_list_featured_products(
+    session: Session = Depends(get_session),
+) -> ListFeaturedProducts:
+    return ListFeaturedProducts(SqlStoreProductRepository(session))
+
+
+def get_list_collections(session: Session = Depends(get_session)) -> ListCollections:
+    return ListCollections(SqlCollectionRepository(session), SqlStoreProductRepository(session))
+
+
+def get_collection(session: Session = Depends(get_session)) -> GetCollection:
+    return GetCollection(SqlCollectionRepository(session), SqlStoreProductRepository(session))
+
+
+def get_list_brand_products(session: Session = Depends(get_session)) -> ListBrandProducts:
+    return ListBrandProducts(
+        SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_price_history(session: Session = Depends(get_session)) -> GetPriceHistory:
+    return GetPriceHistory(
+        SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_list_price_drops(session: Session = Depends(get_session)) -> ListPriceDrops:
+    return ListPriceDrops(SqlStoreProductRepository(session))
+
+
+def get_list_todays_deals(session: Session = Depends(get_session)) -> ListTodaysDeals:
+    return ListTodaysDeals(SqlStoreProductRepository(session))
+
+
+def get_list_provider_products(
+    session: Session = Depends(get_session),
+) -> ListProviderProducts:
+    return ListProviderProducts(SqlStoreProductRepository(session))
+
+
+# ── Alertas de precio (G4) ──
+def get_subscribe_alert(session: Session = Depends(get_session)) -> SubscribeAlert:
+    return SubscribeAlert(SqlAlertRepository(session), SqlCanonicalProductRepository(session))
+
+
+def get_list_alerts(session: Session = Depends(get_session)) -> ListAlerts:
+    return ListAlerts(SqlAlertRepository(session))
+
+
+def get_unsubscribe_alert(session: Session = Depends(get_session)) -> UnsubscribeAlert:
+    return UnsubscribeAlert(SqlAlertRepository(session))
+
+
+def get_list_alert_notifications(
+    session: Session = Depends(get_session),
+) -> ListAlertNotifications:
+    return ListAlertNotifications(SqlAlertRepository(session))
+
+
+def get_mark_notifications_read(
+    session: Session = Depends(get_session),
+) -> MarkNotificationsRead:
+    return MarkNotificationsRead(SqlAlertRepository(session))
+
+
+def get_run_alert_matching(session: Session = Depends(get_session)) -> RunAlertMatching:
+    return RunAlertMatching(
+        SqlStoreProductRepository(session), SqlAlertRepository(session), ExpoPushSender()
+    )
+
+
+def get_register_push_token(session: Session = Depends(get_session)) -> RegisterPushToken:
+    return RegisterPushToken(SqlAlertRepository(session))
+
+
+def get_list_products(session: Session = Depends(get_session)) -> ListProducts:
+    return ListProducts(SqlCanonicalProductRepository(session))
+
+
+# ── Admin — cola de revisión de matching (F2 · B1) ──
+def get_list_review_queue(session: Session = Depends(get_session)) -> ListReviewQueue:
+    return ListReviewQueue(SqlProductMatchRepository(session))
+
+
+def get_review_detail(session: Session = Depends(get_session)) -> GetReviewDetail:
+    return GetReviewDetail(
+        match_repo=SqlProductMatchRepository(session), store_repo=SqlStoreProductRepository(session)
+    )
+
+
+def get_resolve_review(session: Session = Depends(get_session)) -> ResolveReview:
+    return ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session))
+
+
+def get_create_canonical_and_link(
+    session: Session = Depends(get_session),
+) -> CreateCanonicalAndLink:
+    return CreateCanonicalAndLink(
+        canonical_repo=SqlCanonicalProductRepository(session),
+        resolver=ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session)),
+    )
+
+
+def get_bulk_resolve_review(session: Session = Depends(get_session)) -> BulkResolveReview:
+    return BulkResolveReview(
+        scope=session,
+        resolver=ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session)),
     )

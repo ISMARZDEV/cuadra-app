@@ -5,6 +5,8 @@ y el router `/v1`. La DI se cablea en `src/api/composition_root.py`.
 """
 from __future__ import annotations
 
+import sys
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -24,11 +26,19 @@ def _operation_id(route: APIRoute) -> str:
 
 def create_app() -> FastAPI:
     # Activa LangSmith tracing por entorno ANTES de armar el grafo (lazy) — ver observability.py.
-    # Banner de arranque: deja ver en la consola el estado REAL del proceso (no del .env en disco).
+    # Banner de arranque: diagnóstico → STDERR (stdout queda limpio para `openapi_dump` → make openapi).
     if configure_langsmith(settings):
-        print(f"[observability] LangSmith tracing ON → project '{settings.langsmith_project}'", flush=True)
+        print(
+            f"[observability] LangSmith tracing ON → project '{settings.langsmith_project}'",
+            file=sys.stderr,
+            flush=True,
+        )
     else:
-        print("[observability] LangSmith tracing OFF (necesita langsmith_tracing=true + key)", flush=True)
+        print(
+            "[observability] LangSmith tracing OFF (necesita langsmith_tracing=true + key)",
+            file=sys.stderr,
+            flush=True,
+        )
 
     app = FastAPI(
         title=settings.app_name,

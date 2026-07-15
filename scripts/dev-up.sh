@@ -2,10 +2,10 @@
 # dev-up.sh — Levanta TODO el entorno de desarrollo de Cuadra de un comando,
 # listo para correr en dispositivos Apple FÍSICOS (iPhone/iPad) en la misma red.
 #
-#   Postgres (Docker) → migraciones → API en 0.0.0.0:8005 → Metro apuntando a la IP de la Mac
+#   Postgres (Docker) → migraciones → API en 0.0.0.0:8005 → Web (Vite) en :3006 → Metro (IP de la Mac)
 #
 # Uso:   ./scripts/dev-up.sh
-# Parar: Ctrl+C (corta Metro y la API; Postgres queda corriendo, parar con `make db-down`)
+# Parar: Ctrl+C (corta Metro, el Web y la API; Postgres queda corriendo, parar con `make db-down`)
 #
 # Requisitos: Docker corriendo, uv, node/pnpm, el dev-build ya instalado en el device
 # (ver scripts/ios-device-build.sh y docs/running-on-apple-devices.md).
@@ -13,7 +13,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_PORT=8005
-METRO_PORT=8082
+WEB_PORT=3006
+METRO_PORT=8087
+
+# En DEV queremos CORS abierto (`*`, el default de config.py). Si la shell trae un
+# `CORS_ORIGINS` exportado a mano (p. ej. apuntando a un puerto viejo), el API nace
+# con CORS restrictivo y el navegador se come un error de preflight. Lo normalizamos
+# acá para que el script sea idempotente sin importar el estado de la terminal.
+unset CORS_ORIGINS
 
 # ── 1. IP LAN de la Mac (el iPhone/iPad NO puede usar localhost) ───────────────
 # Usamos la interfaz de la RUTA POR DEFECTO (la misma que elige Metro) para que la URL de
@@ -53,15 +60,22 @@ fi
 # `$$` = PID del script → nombre único por corrida y limpio, sin las rarezas de `mktemp` entre
 # macOS (BSD, exige las X al final) y Linux (GNU).
 API_LOG="${TMPDIR:-/tmp}/cuadra-api.$$.log"
-echo "▶ API en http://${IP}:${API_PORT}  (logs: ${API_LOG})"
-( cd "${ROOT}/apps/api" && uv run uvicorn src.main:app --host 0.0.0.0 --port "${API_PORT}" ) >"${API_LOG}" 2>&1 &
+echo "▶ API en http://${IP}:${API_PORT}  (logs: ${API_LOG})  [auto-reload en src/]"
+# --reload: recarga el API al guardar código, sin reiniciar el script a mano.
+# --reload-dir src: acota la vigilancia a src/ (evita .venv, __pycache__, seeds → recargas
+# innecesarias y arranque lento). El worker que spawnea el reloader es nieto del script, pero
+# el cleanup de abajo mata POR PUERTO, así que igual queda libre al salir.
+( cd "${ROOT}/apps/api" && uv run uvicorn src.main:app --host 0.0.0.0 --port "${API_PORT}" --reload --reload-dir src ) >"${API_LOG}" 2>&1 &
 API_PID=$!
 # Al salir, mata el árbol y libera el puerto (kill al PID del subshell NO basta: uv/uvicorn son
 # nietos y sobreviven → de ahí los zombis). Limpiar por puerto garantiza que quede libre.
 cleanup() {
-  echo; echo "▶ Cerrando API…"
+  echo; echo "▶ Cerrando API y Web…"
   kill "${API_PID}" 2>/dev/null || true
+  kill "${WEB_PID:-}" 2>/dev/null || true
+  # Limpiar por puerto: uvicorn/vite spawnean nietos que sobreviven al kill del PID directo.
   lsof -nP -tiTCP:"${API_PORT}" -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
+  lsof -nP -tiTCP:"${WEB_PORT}" -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -79,11 +93,37 @@ for _ in $(seq 1 30); do
   echo -n "."; sleep 1
 done
 
-# ── 5. Metro apuntando a la IP de la Mac (EXPO_PUBLIC_* se inyecta en el bundle) ─
+# ── 5. Web (Vite/Vike) en :${WEB_PORT} — navegador de la Mac (localhost → API :${API_PORT}) ──
+# Libera el puerto primero (un vite viejo zombi haría fallar el bind del nuevo).
+if lsof -nP -tiTCP:"${WEB_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "▶ Liberando el puerto ${WEB_PORT} (había un proceso previo)…"
+  lsof -nP -tiTCP:"${WEB_PORT}" -sTCP:LISTEN | xargs kill 2>/dev/null || true
+  sleep 1
+fi
+WEB_LOG="${TMPDIR:-/tmp}/cuadra-web.$$.log"
+echo "▶ Web en http://localhost:${WEB_PORT}  (logs: ${WEB_LOG})  [Vite HMR]"
+( cd "${ROOT}" && VITE_API_BASE_URL="http://localhost:${API_PORT}" pnpm --filter @cuadra/web dev ) >"${WEB_LOG}" 2>&1 &
+WEB_PID=$!
+echo -n "  esperando web"
+for _ in $(seq 1 30); do
+  if ! kill -0 "${WEB_PID}" 2>/dev/null; then
+    echo " ✖"
+    echo "✖ El Web murió al arrancar. Últimas líneas del log:" >&2
+    tail -n 20 "${WEB_LOG}" >&2
+    exit 1
+  fi
+  if curl -fsS -m 2 "http://localhost:${WEB_PORT}/" >/dev/null 2>&1; then echo " ✓"; break; fi
+  echo -n "."; sleep 1
+done
+
+# ── 6. Metro apuntando a la IP de la Mac (EXPO_PUBLIC_* se inyecta en el bundle) ─
 echo "▶ Metro en :${METRO_PORT} → API http://${IP}:${API_PORT}"
 echo "  En el dev-client del device: conectá a  ${IP}:${METRO_PORT}  y logueá con cualquier email."
 echo
 cd "${ROOT}/apps/mobile"
 # Pass extra args through to expo (e.g. `./scripts/dev-up.sh --clear` to reset Metro's cache,
 # needed after installing a new native module / adding assets).
-EXPO_PUBLIC_API_URL="http://${IP}:${API_PORT}" exec npx expo start --dev-client --port "${METRO_PORT}" "$@"
+# SIN `exec`: Metro corre en foreground como hijo del script, así al salir (Ctrl+C) el
+# `trap cleanup` de bash SÍ dispara y libera API + Web. Con `exec`, el shell se reemplaza
+# por expo y el trap nunca corre (los servicios quedaban zombis).
+EXPO_PUBLIC_API_URL="http://${IP}:${API_PORT}" npx expo start --dev-client --port "${METRO_PORT}" "$@"

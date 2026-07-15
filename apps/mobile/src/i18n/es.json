@@ -21,6 +21,7 @@
   "language.auto": "Detectar automáticamente",
   "language.a11y.back": "Volver",
   "config.currencies": "Monedas",
+  "config.signOut": "Cerrar sesión",
   "currencies.title": "Monedas",
   "currencies.subtitle": "Tu moneda principal es fija; elige hasta 3 adicionales",
   "currencies.primary.badge": "Principal",
@@ -103,5 +104,15 @@
   "insights.dailyDiary.period.today": "Hoy",
   "insights.dailyDiary.period.week": "Semana",
   "insights.dailyDiary.period.month": "Mes",
-  "insights.dailyDiary.period.quarter": "Trimestre"
+  "insights.dailyDiary.period.quarter": "Trimestre",
+  "save.alerts.title": "Alertas de precio",
+  "save.alerts.hint": "Sigue productos desde cuadra.do y te avisamos cuando bajen.",
+  "save.alerts.notifications": "Notificaciones",
+  "save.alerts.subscriptions": "Productos que sigues",
+  "save.alerts.noNotifications": "Sin notificaciones por ahora.",
+  "save.alerts.noAlerts": "No sigues ningún producto. Agrégalos desde la web.",
+  "save.alerts.droppedFromTo": "bajó de {from} a {to} en {store}",
+  "save.alerts.unsubscribe": "Dejar de seguir",
+  "save.alerts.dropTitle": "¡Bajó de precio!",
+  "save.alerts.dropBody": "{product} bajó en {store}"
 }

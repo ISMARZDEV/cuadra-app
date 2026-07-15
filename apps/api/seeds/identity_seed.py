@@ -28,7 +28,10 @@ _ROLE_CAPABILITIES = {
         C.WALLET, C.SAVINGS, C.BUDGET, C.SHOPPING_LIST, C.CHAT, C.NEWS_READ,
         C.CARD, C.REMITTANCE,  # extras de fase 5 — gateadas OFF en RD (abajo)
     ],
-    R.SUPER_ADMIN: [C.ADMIN_NEWS_PUBLISH, C.ADMIN_DB, C.NEWS_READ, C.CHAT],
+    R.SUPER_ADMIN: [
+        C.ADMIN_NEWS_PUBLISH, C.ADMIN_DB, C.NEWS_READ, C.CHAT,
+        C.ADMIN_SAVE_MATCHING_REVIEW, C.ADMIN_SAVE_INGESTION_OPS,  # F2·B1: consola admin de Save
+    ],
 }
 
 # Gating RD (DO): tarjeta y remesas OFF hasta fase 5 (§14)

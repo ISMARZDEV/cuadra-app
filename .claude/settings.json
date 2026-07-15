@@ -1,5 +1,35 @@
 {
   "enabledPlugins": {
     "expo@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(./scripts/env-doctor.sh*)",
+      "Bash(scripts/env-doctor.sh*)",
+      "Bash(bash scripts/env-doctor.sh*)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm typecheck*)",
+      "Bash(pnpm -C apps/web test*)",
+      "Bash(pnpm -C apps/web typecheck*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start-cuadra.sh",
+            "timeout": 10,
+            "statusMessage": "Contexto de entorno Cuadra…"
+          }
+        ]
+      }
+    ]
   }
 }

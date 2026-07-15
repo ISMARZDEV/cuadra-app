@@ -13,7 +13,7 @@ dependencies = [
     "psycopg[binary]>=3.1",
     "pgvector>=0.3",
     "python-multipart>=0.0.9",
-    "pyjwt>=2.9",
+    "pyjwt[crypto]>=2.9",
     # IA / orquestador (Fase 1+)
     "langgraph>=0.2",
     "langgraph-checkpoint-postgres>=2.0",
@@ -30,6 +30,16 @@ dev = [
     "httpx>=0.27",
     "ruff>=0.5",
     "import-linter>=2.0",
+]
+ingestion = [
+    "dagster>=1.9",
+    "dagster-webserver>=1.9",
+    "dagster-postgres>=0.25",  # storage de instancia en Postgres (no el SQLite por defecto): SQLite no
+    # soporta acceso concurrente → dos procesos Dagster sobre el mismo DAGSTER_HOME se traban por lock.
+    "sentence-transformers>=3.0",  # BGE-M3 in-process (EmbeddingProvider local, sin endpoint HTTP)
+    # TLS: usa el trust store del OS (no solo certifi) — algunas APIs de súper (Bravo) mandan una
+    # cadena con un intermedio que certifi no trae pero el sistema sí. Sigue verificando (seguro).
+    "truststore>=0.9",
 ]
 
 [tool.ruff]

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/ismartz/Desktop/DEV/cuadra-app/.codex/hooks/session-start-cuadra.sh'",
+            "timeout": 10,
+            "statusMessage": "Contexto de entorno Cuadra…"
+          }
+        ]
+      }
+    ]
+  }
+}

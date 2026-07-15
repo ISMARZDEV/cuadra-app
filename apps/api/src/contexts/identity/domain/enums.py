@@ -19,8 +19,13 @@ class RoleKey(StrEnum):
 
 
 class AuthProvider(StrEnum):
-    """Proveedores de login (el JWT trae provider + subject). §12·E E.2."""
+    """Proveedores de login (el JWT trae provider + subject). §12·E E.2.
 
+    `CLERK` = el IdP (emite el token tras el social login Google/Apple, que Clerk unifica
+    bajo un único `sub`). GOOGLE/APPLE/PASSWORD quedan para un mapeo por-social si algún día
+    se prescinde del IdP; con Clerk la clave de login es (clerk, sub)."""
+
+    CLERK = "clerk"
     GOOGLE = "google"
     APPLE = "apple"
     PASSWORD = "password"
@@ -42,3 +47,5 @@ class CapabilityKey(StrEnum):
     # Super Admin
     ADMIN_NEWS_PUBLISH = "admin_news_publish"
     ADMIN_DB = "admin_db"
+    ADMIN_SAVE_MATCHING_REVIEW = "admin_save_matching_review"  # F2·B1: cola de revisión de matching
+    ADMIN_SAVE_INGESTION_OPS = "admin_save_ingestion_ops"      # F2·B1/B3: providers/sources/basket/metrics

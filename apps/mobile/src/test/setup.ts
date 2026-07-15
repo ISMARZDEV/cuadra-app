@@ -5,6 +5,10 @@ import { afterEach, vi } from "vitest";
 
 afterEach(() => cleanup());
 
+// Metro defines `__DEV__` globally in the app; jsdom doesn't. Modules that read it at import
+// time (e.g. lib/api/client.ts) crash without it — provide it (false = quiet dev warnings).
+(globalThis as { __DEV__?: boolean }).__DEV__ ??= false;
+
 // react-native-web's onLayout uses ResizeObserver, absent in jsdom — provide a no-op.
 globalThis.ResizeObserver ??= class {
   observe() {}
