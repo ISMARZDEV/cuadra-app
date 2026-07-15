@@ -15,6 +15,7 @@ from src.contexts.save.application.classify_store_product import ClassifyStorePr
 from src.contexts.save.application.embed_canonical_products import EmbedCanonicalProducts
 from src.contexts.save.application.embed_categories import EmbedCategories
 from src.contexts.save.application.match_store_product import MatchStoreProduct
+from src.contexts.save.domain.ports import CatalogSource
 from src.contexts.save.domain.ports.repositories import EmbeddingProvider
 from src.contexts.save.infrastructure.classification.category_judge import CategoryJudge
 from src.contexts.save.infrastructure.classification.lexicon import build_lexicon_index
@@ -94,10 +95,18 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
     )
 
 
-def build_refresh_covered_prices(session: Session) -> RefreshCoveredPrices:
+def build_refresh_known_prices(session: Session) -> RefreshCoveredPrices:
+    """Compone `price_refresh` (paridad Prices Batch de SRD): re-precia por id TODO lo CONOCIDO y viejo
+    (matcheado O en revisión), no solo lo cubierto. Mismo camino A + fallback C + F3.3 que la frescura —
+    solo cambia el conjunto (`list_stale_known`)."""
+    return build_refresh_covered_prices(session, known=True)
+
+
+def build_refresh_covered_prices(session: Session, *, known: bool = False) -> RefreshCoveredPrices:
     """Compone F3.2a (frescura): camino A (re-fetch por id/url/source_ref → change-only, SIN matcher)
     + fallback C (browse por provider diferido, §15.4). Reusa F3.3 (abort-on-down vía
-    classify_httpx_error). Cachea los registries del mercado (1 query)."""
+    classify_httpx_error). Cachea los registries del mercado (1 query). `known=True` (para `price_refresh`)
+    amplía el conjunto de covered-only a TODO lo conocido con locator (`list_stale_known`)."""
     from src.contexts.save.domain.entities import SourcePlatform
 
     from ingestion.save.sources import SAVE_MARKET  # local: evita import circular (patrón del módulo)
@@ -139,7 +148,64 @@ def build_refresh_covered_prices(session: Session) -> RefreshCoveredPrices:
         build_detail_source=build_detail_source,
         build_browse_source=build_browse_source,
         classify_error=classify_httpx_error,
+        stale_source=store_repo.list_stale_known if known else None,
     )
+
+
+def rest_catalog_partition_keys(session: Session) -> list[str]:
+    """Claves de partición (`{provider_id}:{section}`) de TODAS las fuentes REST_CATALOG del mercado —
+    lo que el sensor sincroniza con las particiones dinámicas del asset `rest_catalog_prices`. Filtra a
+    REST_CATALOG (VTEX/Magento son query-based, tienen su propio asset). Registry-driven (regla SAGRADA
+    #4). Vacío si no hay ninguna configurada."""
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    from ingestion.save.sources import SAVE_MARKET  # local: evita import circular (patrón del módulo)
+
+    keys: list[str] = []
+    for reg in SqlStoreRegistryRepository(session).list_by_market(SAVE_MARKET):
+        if reg.platform is not SourcePlatform.REST_CATALOG:
+            continue
+        for section in (reg.endpoints or {}).get("sections") or []:
+            keys.append(rest_catalog_partition_key(reg.provider_id, section))
+    return keys
+
+
+# Clave de partición del asset `rest_catalog_prices`: `{provider_id}:{section}`. La sección sola NO es
+# única entre proveedores (dos súper REST podrían usar la misma), así que el provider va en la clave —
+# el asset necesita saber DE QUÉ fuente es la sección (base_url/endpoints/auth).
+_PARTITION_SEP = ":"
+
+
+def rest_catalog_partition_key(provider_id: str, section: str) -> str:
+    return f"{provider_id}{_PARTITION_SEP}{section}"
+
+
+def parse_rest_catalog_partition_key(key: str) -> tuple[str, str]:
+    """`{provider_id}:{section}` → (provider_id, section). `rsplit` con tope 1: los UUID no tienen `:`
+    y las secciones son numéricas, así que el último `:` separa bien aunque el provider fuera raro."""
+    provider_id, section = key.rsplit(_PARTITION_SEP, 1)
+    return provider_id, section
+
+
+def build_rest_catalog_source_for(
+    session: Session, provider_id: str, section: str
+) -> CatalogSource | None:
+    """UN adapter de browse REST_CATALOG para (provider, section) — el partitioned asset materializa
+    UNA sección por partición. `None` si la fuente no existe o dejó de ser REST_CATALOG (partición
+    huérfana → el asset la salta)."""
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    from ingestion.save.sources import SAVE_MARKET
+
+    reg = SqlStoreRegistryRepository(session).get_by_provider_id(provider_id)
+    if reg is None or reg.platform is not SourcePlatform.REST_CATALOG:
+        return None
+    builder = CatalogSourceFactory.build(
+        reg.platform, reg.base_url,
+        endpoints={**(reg.endpoints or {}), "sections": [section]},
+        headers=reg.headers, auth=reg.auth,
+    )
+    return builder.for_query(reg.provider_id, SAVE_MARKET, "")  # REST ignora la query → browse
 
 
 def build_matcher(session: Session) -> MatchStoreProduct | None:

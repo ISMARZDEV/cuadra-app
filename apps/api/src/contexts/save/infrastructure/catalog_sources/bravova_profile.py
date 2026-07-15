@@ -104,6 +104,15 @@ BRAVOVA_PROFILE = CatalogProfile(
     page_size=30,
     # Bravo Va RECHAZA el request sin `showOrder` ({"errors":[{"code":"required","field":"showOrder"}]})
     extra_params=(("showOrder", "importerankingArticulo asc"),),
+    # Headers de la app iOS de Bravo (SRD `getBravoHeaders` http-client.ts:427-438). Su `/get`
+    # está gateado por el token (X-Auth-Token, en `auth`) Y por este User-Agent → token-only = 403.
+    # Son estructurales/no-secretos → viven aquí, no en el admin (que solo lleva el token).
+    default_headers=(
+        ("Accept", "*/*"),
+        ("Accept-Encoding", "gzip, deflate, br"),
+        ("Accept-Language", "en-US"),
+        ("User-Agent", "Domicilio/122130 CFNetwork/3826.500.131 Darwin/24.5.0"),
+    ),
     # §15.4 — detalle por artículo (camino A de frescura): GET /public/articulo/get?idArticulo=<id>
     # (requiere X-Auth-Token, que vive en store_registry.auth). El id es `idArticulo` (interno), que se
     # guardó como source_ref.id_articulo; el `/get` devuelve el artículo bajo "data" (misma forma de item).

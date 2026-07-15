@@ -50,10 +50,21 @@ class SourceBuilder:
     headers: dict | None = None    # §15: headers estáticos del registry (Host, User-Agent propio)
     auth: dict | None = None       # §15: credencial tipada (bearer/api_key/basic) — se aplica a la request
 
+    def _profile_default_headers(self) -> dict[str, str]:
+        """Headers estructurales fijos que aporta el profile de la plataforma (Bravo: User-Agent
+        `Domicilio/…` + Accept*). Solo REST_CATALOG tiene profile; el resto no aporta ninguno."""
+        if self.platform is SourcePlatform.REST_CATALOG:
+            profile = _REST_CATALOG_PROFILES.get((self.endpoints or {}).get("profile", ""))
+            if profile is not None:
+                return dict(profile.default_headers)
+        return {}
+
     def _request_auth(self):  # type: ignore[no-untyped-def]
         # "Store" es config (→ store_code), NO un header HTTP a mandar → se excluye.
         http_headers = {k: v for k, v in (self.headers or {}).items() if k != "Store"}
-        return build_request_auth(http_headers, self.auth, defaults=_DEFAULT_HEADERS)
+        # base + headers estructurales del profile; los `headers` del registry los sobreescriben.
+        defaults = {**_DEFAULT_HEADERS, **self._profile_default_headers()}
+        return build_request_auth(http_headers, self.auth, defaults=defaults)
 
     def _has_credential(self) -> bool:
         ra = self._request_auth()

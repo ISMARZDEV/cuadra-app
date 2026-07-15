@@ -23,7 +23,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import datetime, timezone
 
-from sqlalchemy import Float, cast, func, select
+from sqlalchemy import Float, cast, delete, func, select
 from sqlalchemy.orm import Session, aliased
 
 from ....domain.entities import MatchCandidate, MatchCandidateSnapshot, ProductMatch
@@ -121,8 +121,21 @@ class SqlProductMatchRepository:
         mid = _parse_uuid(match_id)
         if mid is None:
             return
+        # Idempotente con el upsert de `record_match`: REEMPLAZA el set (borra los candidatos previos
+        # de este match antes de insertar). Sin esto, re-correr la cascada sobre un store_product ya en
+        # revisión re-inserta los mismos → viola `uq_review_candidate_match_canonical` y aborta la
+        # transacción (el crash de la ingesta que se veía como "cuelgue").
+        self._s.execute(
+            delete(ReviewCandidateModel).where(ReviewCandidateModel.product_match_id == mid)
+        )
+        # Dedup por canónico: el mismo puede llegar por >1 etapa (EAN/trgm/pgvector) → conserva el de
+        # MEJOR score crudo (el índice único es por (match, canónico)).
+        best: dict[str, MatchCandidateSnapshot] = {}
+        for c in candidates:
+            if c.canonical_product_id not in best or c.score > best[c.canonical_product_id].score:
+                best[c.canonical_product_id] = c
         # cap top-5 EN CÓDIGO, por score crudo descendente (nunca el score fusionado por RRF).
-        top5 = sorted(candidates, key=lambda c: c.score, reverse=True)[:5]
+        top5 = sorted(best.values(), key=lambda c: c.score, reverse=True)[:5]
         for candidate in top5:
             self._s.add(
                 ReviewCandidateModel(

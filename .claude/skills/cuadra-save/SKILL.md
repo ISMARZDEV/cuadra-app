@@ -196,6 +196,32 @@ JSONB), editable in the admin UI (skill `cuadra-save-admin`), applied by ALL ada
   `{"id_articulo": …}` (its `/get` uses idArticulo, not the idexterno that IS the external_id). The REST
   profile declares detail (`CatalogProfile.detail_path/param/ref_key/item_path` → `RestCatalogDetailAdapter`).
 
+**REST_CATALOG (own-API supers, e.g. Bravo) — browse-by-section, NOT query-based.** VTEX/Magento query the
+Curated Basket; a REST súper browses its FULL catalog per section (its API ignores text search).
+- **Add/extend a REST súper = data, not code**: one `*_profile.py` (`CatalogProfile`) registered in
+  `factory.py::_REST_CATALOG_PROFILES` + a `store_registry` row (`platform=REST_CATALOG`,
+  `endpoints={profile, sections:[...], store_id}`, `auth`). `RestCatalogAdapter` is generic — do NOT write a
+  per-chain adapter. The profile declares: list path/params + item mapper, `extra_params` (Bravo requires
+  `showOrder`), `default_headers` (structural non-secret headers → gotcha #2), `detail_*` (the `/get` locator,
+  freshness path A), `page_size`.
+
+**Dagster orchestration** (`apps/api/ingestion/`, UI :3070 via `scripts/dagster-dev.sh`; shares its wiring with
+the `seeds.save_refresh` CLI — one source of truth in `ingestion/save/composition.py`).
+- Query-based supers = one asset each (`sirena_prices`/`nacional_prices`/`jumbo_prices`), iterate the basket
+  (`on_progress` logs `[sirena] query i/N`). REST supers = ONE **partitioned** asset `rest_catalog_prices`,
+  **one partition per (provider, section)** — `DynamicPartitionsDefinition` key `{provider_id}:{section}`
+  (`composition.py::rest_catalog_partition_key/parse.../build_rest_catalog_source_for`). Sensor
+  `sync_rest_catalog_sections` keeps partitions in sync with `store_registry`. Trigger per-partition / backfill
+  (its own `save_rest_catalog` job) — it is EXCLUDED from the unpartitioned daily `save_catalog_refresh` (a
+  partitioned asset can't live in an unpartitioned job); an automatic daily partition backfill is a follow-up.
+- **Instance storage = Postgres, NOT the SQLite default** (`scripts/dagster.yaml` → copied to `$DAGSTER_HOME` by
+  `dagster-dev.sh`; dedicated `dagster` role/db in cuadra-db; dep `dagster-postgres`). Two Dagster processes on
+  ONE SQLite `$DAGSTER_HOME` deadlock on the lock; Postgres makes a one-off safe WHILE `dagster dev` runs, and
+  enables `run_monitoring` (auto-fails orphaned/killed runs) + `run_retries`. Never leave `dagster.yaml` in the
+  `dagster dev` CWD (`apps/api`) → Dagster warns and ignores it; keep it in `scripts/`. CLI
+  `dagster asset materialize` is superseded → prefer `dg launch --assets … --partition …`. (macOS has no
+  `timeout` — use `gtimeout` or none.)
+
 **Gotchas (hard-won — do NOT relearn):**
 1. **TLS = OS trust store, not certifi.** Some super APIs (Bravo) send a chain with an intermediate that
    certifi does NOT carry but the system DOES → httpx fails `self-signed certificate in chain` even though
@@ -204,11 +230,26 @@ JSONB), editable in the admin UI (skill `cuadra-save-admin`), applied by ALL ada
    one source fails SSL while the rest are OK → it's not the network, it's its chain → truststore.
 2. **Bravo `/get` is gated on the token AND the User-Agent.** It requires `X-Auth-Token` **and** its iOS
    app UA (`Domicilio/122130 CFNetwork/… Darwin/…`, see SRD `getBravoHeaders` http-client.ts:427-438).
-   Token-only = 403. → those headers go in `store_registry.headers`. The static token is the app's (no refresh).
+   Token-only = 403. → the STRUCTURAL headers (UA + `Accept*`, non-secret, platform-fixed) live in the
+   REST profile (`CatalogProfile.default_headers`, e.g. `bravova_profile.py`), NOT the admin — the factory
+   feeds them as `build_request_auth` defaults, and `store_registry.headers` still override them (back-compat).
+   Only the token (secret, the app's static token — no refresh) goes in the admin, in `auth`.
 3. **The secret goes in the `value`/token field, NOT `name`** (the header name = "X-Auth-Token"). The admin
    modal pre-fills the name and labels the field "Token / valor (el secreto)".
 4. **The admin sources list returns the auth MASKED** (`SourceHealthDto` via `mask_auth`) + config
    (headers/endpoints) to prefill the edit modal; the secret never leaves in cleartext.
+5. **`record_candidates` MUST stay idempotent (replace, not append).** `record_match` UPSERTS by
+   `store_product_id` (re-running the cascade reuses the SAME match id). So `record_candidates` DELETEs the
+   match's prior `review_candidate` rows + dedups candidates by canonical BEFORE inserting — otherwise
+   re-matching a product already in the review queue violates `uq_review_candidate_match_canonical` and ABORTS
+   the transaction (this surfaced as an ingestion "hang" in the Dagster subprocess, not a crash).
+6. **"Ingestion hung" is almost always SLOW, not stuck.** Loop A over a REST súper embeds EVERY new product
+   with in-process BGE-M3 (CPU, ~seconds each); Bravo has ~41 sections, so a monolithic browse looks dead (no
+   per-item log). Fix visibility with per-section partitioning + `on_progress`; the real speed lever is the HTTP
+   embedding endpoint (`SAVE_BGE_M3_ENDPOINT_URL`). To tell slow from a REAL stall: `faulthandler.dump_traceback_later`
+   (py-spy needs sudo on macOS) + check `pg_stat_activity` for `idle in transaction`. When the LLM judge is down
+   (OpenAI 429) the `LlmCircuitBreaker` opens after 3 fails and the rest degrade to review WITHOUT API calls —
+   the browse still completes (everything goes to the human queue).
 
 ## Do / Don't
 
@@ -225,8 +266,12 @@ JSONB), editable in the admin UI (skill `cuadra-save-admin`), applied by ALL ada
 | Strict TDD (RED→GREEN) on domain logic | Ship price/matching logic untested |
 | Loop B: the top-candidate FOR the canonical (`select_best_candidate`) | Ingest all ~65 results of the directed search |
 | Source credential in `store_registry.auth` (typed, masked) | Hardcode tokens/headers in the code |
+| Platform-fixed non-secret headers in the profile (`default_headers`) | Make the admin re-enter the User-Agent each time |
 | TLS via the OS trust store (`truststore`) | Disable TLS verification (`verify=false`) |
 | A→C fallback (browse) when detail isn't usable | Mark `is_available=false` for a missing token/locator |
+| Partition the REST browse per section (visible, retryable) | One monolithic browse of all ~41 sections |
+| Dagster instance storage on Postgres (`scripts/dagster.yaml`) | A one-off `dagster asset materialize` against a SQLite `$DAGSTER_HOME` while `dagster dev` runs |
+| `record_candidates` replaces the candidate set (idempotent) | Append candidates on a re-match (uq violation → aborts the txn) |
 
 ## Commands
 
@@ -235,7 +280,12 @@ make openapi                              # after any Save DTO/endpoint change �
 cd apps/api && uv run pytest tests/save   # backend Save suite (unit + integration; needs cuadra-db)
 cd apps/api && uv run alembic upgrade head # apply schema `save` migrations to the DB
 make save-refresh                         # manual catalog refresh (CLI, no Dagster) — same wiring as the assets
-make ingestion-dev                        # Dagster dev (uv sync --group ingestion)
+./scripts/dagster-dev.sh                  # Dagster dev UI :3070 (Postgres storage + sensor; NOT bare `dagster dev`)
+./scripts/dagster-down.sh                 # stop the dev server tree cleanly
+# materialize ONE REST section partition (key = {provider_id}:{section}); needs the partition to exist
+#   (the sensor adds them) + Postgres env from dagster-dev.sh:
+cd apps/api && DAGSTER_HOME=$HOME/.cuadra-dagster SAVE_MATCHING_CASCADE_ENABLED=true \
+  uv run --group ingestion dagster asset materialize --select rest_catalog_prices --partition "<pid>:<section>" -m ingestion.definitions
 ```
 
 ## Resources

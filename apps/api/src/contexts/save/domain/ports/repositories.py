@@ -296,9 +296,29 @@ class StoreProductRepository(Protocol):
         `< now-3d`. Orden `last_seen_at` asc (más viejo primero), tope `limit` por corrida (batching)."""
         ...
 
+    def list_stale_known(
+        self,
+        market_id: str,
+        now: datetime | None = None,
+        *,
+        visible_ttl_hours: int = 18,
+        hidden_ttl_hours: int = 72,
+        limit: int = 500,
+    ) -> list[StaleCovered]:
+        """Como `list_stale_covered` pero SIN exigir canónico: TODO `store_product` conocido y viejo
+        (matcheado O en revisión). Lo consume el asset `price_refresh` para re-preciar por id todo lo
+        conocido — paridad con el Prices Batch de SRD (los en-revisión mantienen precio fresco sin
+        re-browsear ni re-matchear)."""
+        ...
+
     def max_last_seen_at(self, provider_id: str) -> datetime | None:
         """Señal de frescura para el badge de salud (F2·B1/B3, Batch 3E): MAX `last_seen_at` de
         todos los `store_product` del Provider. `None` si nunca se ingirió nada de esta fuente."""
+        ...
+
+    def count_by_provider(self, provider_id: str) -> int:
+        """Nº de `store_product` del Provider — contexto del badge de salud en la tabla de Fuentes.
+        `0` si nunca se ingirió nada de esta fuente."""
         ...
 
     def get_raw_attrs(self, store_product_id: str) -> StoreProductRawAttrs | None:
