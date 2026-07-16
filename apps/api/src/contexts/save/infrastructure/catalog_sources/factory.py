@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from ...domain.directed_query import DirectedCapability, platform_capability
 from ...domain.entities import SourcePlatform
 from ...domain.ports import CatalogSource, ProductDetailSource
 from .bravova_profile import BRAVOVA_PROFILE
@@ -37,6 +38,27 @@ _SUPPORTED_PLATFORMS = (
 _REST_CATALOG_PROFILES: dict[str, CatalogProfile] = {
     "bravova": BRAVOVA_PROFILE,
 }
+
+
+def directed_capability(
+    platform: SourcePlatform, endpoints: dict | None
+) -> DirectedCapability:
+    """Capacidad REAL de la fuente para Loop B — la que el dominio no puede deducir solo.
+
+    `platform_capability` solo ve la plataforma, y para REST_CATALOG eso obliga al default
+    conservador (browse-only). Acá, que es la ÚNICA capa que conoce los profiles, se afina: un
+    REST_CATALOG cuyo profile declara `ean_param` SÍ admite consulta dirigida por barcode — Bravo
+    (`model.filterByEan`, sondeo en vivo 2026-07-15: artículo exacto, UNA request, sin sección).
+
+    No levanta si el profile no está registrado (a diferencia de `_rest_profile`): preguntar por una
+    capacidad no es construir un adapter. Desconocido → default conservador.
+    """
+    if platform is not SourcePlatform.REST_CATALOG:
+        return platform_capability(platform)
+    profile = _REST_CATALOG_PROFILES.get((endpoints or {}).get("profile", ""))
+    if profile is None or not profile.ean_param:
+        return platform_capability(platform)  # browse-only: es de Loop A
+    return DirectedCapability(supported=True, by_ean=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,13 +104,19 @@ class SourceBuilder:
         market_id: str,
         query: str,
         *,
+        by_ean: bool = False,
         http_get: Callable[[str], list[dict]] | None = None,
         http_post: HttpPost | None = None,
     ) -> CatalogSource:
         """`http_get`/`http_post` son overrides opcionales (F2·B1/B3, Batch 3C) — el hook que usa
         `TestSource` para inyectar el HTTP SSRF-guardado (`ssrf_guard.py`) en el adapter real, en
         vez del `httpx.get`/`post` crudo por defecto. `None` (default) preserva el comportamiento
-        previo de cada adapter — cambio retrocompatible, sin impacto en callers existentes."""
+        previo de cada adapter — cambio retrocompatible, sin impacto en callers existentes.
+
+        `by_ean` dice que `query` ES un barcode (lo trae `DirectedQuery.by_ean`, de Loop B). Solo lo
+        usa REST_CATALOG: VTEX/Magento buscan barcode y texto por el MISMO param, así que les da
+        igual; Bravo necesita distinguirlo porque el EAN va por `filterByEan` y el texto libre no va
+        por ningún lado (su `list` ignora toda búsqueda textual — sondeo en vivo 2026-07-15)."""
         if self.platform is SourcePlatform.VTEX:
             return VtexAdapter(
                 self.base_url, provider_id, market_id, query, http_get=http_get or self._authed_get()
@@ -103,7 +131,10 @@ class SourceBuilder:
                 http_post=http_post or self._authed_post(),
             )
         if self.platform is SourcePlatform.REST_CATALOG:
-            return self._build_rest_catalog(provider_id, market_id, http_get or self._authed_get())
+            return self._build_rest_catalog(
+                provider_id, market_id, http_get or self._authed_get(),
+                ean=query if by_ean else None,
+            )
         raise ValueError(f"Plataforma sin adapter de ingesta: {self.platform!r}")
 
     def for_detail(
@@ -148,9 +179,13 @@ class SourceBuilder:
         provider_id: str,
         market_id: str,
         http_get: Callable[[str], dict] | None,
+        ean: str | None = None,
     ) -> CatalogSource:
-        """REST_CATALOG (browse-full): el `query` NO aplica. Toda la config viene de `endpoints`:
-        `profile` (clave del `_REST_CATALOG_PROFILES`), `sections` (categorías a iterar) y `store_id`."""
+        """REST_CATALOG. Config desde `endpoints`: `profile` (clave del `_REST_CATALOG_PROFILES`),
+        `sections` (categorías a iterar) y `store_id`.
+
+        Dos modos: sin `ean` = browse-full (Loop A; el texto de búsqueda NO aplica). Con `ean` =
+        DIRIGIDO (Loop B): una request por `profile.ean_param`, ignorando `sections`."""
         endpoints = self.endpoints or {}
         profile = _REST_CATALOG_PROFILES.get(endpoints.get("profile", ""))
         if profile is None:
@@ -169,6 +204,7 @@ class SourceBuilder:
             sections=list(sections),
             store_id=str(store_id),
             http_get=http_get,
+            ean=ean,
         )
 
 

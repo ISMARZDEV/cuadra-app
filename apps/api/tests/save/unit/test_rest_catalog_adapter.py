@@ -171,3 +171,61 @@ def test_fetch_skips_items_that_fail_to_map() -> None:
     entries = list(adapter.fetch())
 
     assert [e.external_id for e in entries] == ["1"]  # el item sin precio se salta, no rompe
+
+
+# ── Loop B dirigido por EAN (F3.1) ────────────────────────────────────────────
+# Hallazgo en vivo 2026-07-15: la API de Bravo NO busca por texto (12 params probados, todos
+# ignorados: el totalCount no se movía) pero SÍ tiene lookup EXACTO por EAN, y funciona SIN filtro
+# de sección (global sobre el catálogo). Eso invalida la premisa del gate browse-only de 2026-07-12
+# ("correr Loop B ahí haría N navegaciones del catálogo entero"): con `ean_param` es UNA request.
+# El param se declara en el PROFILE, no en el adapter — acá se usa `barcode`, distinto del
+# `model.filterByEan` real de Bravo, para probar que la capacidad es parametrizable.
+
+
+def test_directed_by_ean_uses_profile_param_in_a_single_request_without_section() -> None:
+    calls: list[str] = []
+
+    def fake_get(url: str) -> dict:
+        calls.append(url)
+        return {"result": {"count": 1, "items": [_entry(9)]}}
+
+    profile = replace(FAKE_PROFILE, ean_param="barcode")
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test",
+        provider_id="p-fake",
+        market_id="DO",
+        profile=profile,
+        sections=["7", "8", "9"],  # aunque haya secciones, el lookup por EAN las IGNORA
+        store_id="55",
+        ean="7460083780146",
+        http_get=fake_get,
+    )
+
+    entries = list(adapter.fetch())
+
+    assert len(calls) == 1, "el lookup por EAN es UNA request, no una navegación por sección"
+    url = calls[0]
+    assert "barcode=7460083780146" in url, "usa el ean_param del profile"
+    assert "catId=" not in url, "el lookup por EAN es GLOBAL: no filtra por sección"
+    assert "shopId=55" in url, "la tienda sigue importando (el precio es por sucursal)"
+    assert [e.external_id for e in entries] == ["9"]
+
+
+def test_directed_by_ean_returns_empty_when_the_store_has_no_such_product() -> None:
+    # Un EAN que la tienda no vende → 0 resultados. Loop B debe ver "no cubierto", NO un error.
+    def fake_get(url: str) -> dict:
+        return {"result": {"count": 0, "items": []}}
+
+    profile = replace(FAKE_PROFILE, ean_param="barcode")
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test",
+        provider_id="p-fake",
+        market_id="DO",
+        profile=profile,
+        sections=["7"],
+        store_id="55",
+        ean="7400000000000",
+        http_get=fake_get,
+    )
+
+    assert list(adapter.fetch()) == []

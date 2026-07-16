@@ -4,8 +4,16 @@ REST propia integrado por esta vía.
 API pública: `GET {base}/public/articulo/list?model.filterByIdSeccion=..&model.filterByIdTienda=..&
 paginationMaxItems=..&paginationOffset=..` → `{"data": {"list": [...], "totalCount": N}}`. Precio vía
 `Money.from_major` (sin float, §12·B) desde `associatedPvp` (el precio EFECTIVO; `originalPvp` es el
-previo al descuento). Moneda derivada del `market_id`. Bravo Va no expone marca ni (por ahora) EAN —
-el matching los resuelve; `familiaArticulo`/`subfamiliaArticulo` son su taxonomía cruda.
+previo al descuento). Moneda derivada del `market_id`. `familiaArticulo`/`subfamiliaArticulo` son su
+taxonomía cruda.
+
+**EAN — corregido 2026-07-15 (el docstring anterior decía "Bravo Va no expone marca ni EAN"):**
+eso vale para `articulo/list` (su campo `associatedEan` viene SIEMPRE vacío: 0/200 verificado), pero
+NO para el detalle `articulo/get`, que sí trae `associatedEan` poblado (y `marcaArticulo`). Además
+`list` acepta `model.filterByEan` → lookup EXACTO y GLOBAL por barcode (sin filtro de sección).
+Medición sobre 100 artículos: **30% tiene un EAN GLOBAL** usable cross-tienda (prefijo 746 = Rep.
+Dominicana); el resto son códigos INTERNOS 2x ("restricted distribution": peso variable, solo válidos
+dentro de Bravo) o PLU cortos. Por eso el EAN de Bravo NUNCA se toma crudo — ver el filtro de §15.5.
 
 Sumar otro súper con API propia = otro módulo `*_profile.py` como este, sin tocar el adapter.
 """
@@ -120,4 +128,8 @@ BRAVOVA_PROFILE = CatalogProfile(
     detail_param="idArticulo",
     detail_ref_key="id_articulo",
     detail_item_path=("data",),
+    # Bravo NO busca por texto pero SÍ por barcode (sondeo en vivo 2026-07-15): `filterByEan` devuelve
+    # el artículo exacto y funciona SIN `filterByIdSeccion` → lookup GLOBAL en una request. Habilita
+    # Loop B dirigido (F3.1) y el recovery determinista (F3.2b) sobre una fuente "browse-only".
+    ean_param="model.filterByEan",
 )

@@ -13,6 +13,7 @@ from decimal import Decimal
 from src.contexts.save.application.cover_canonicals import CoverCanonicals
 from src.contexts.save.application.refresh_prices import RefreshResult
 from src.contexts.save.domain.coverage import CoveragePair
+from src.contexts.save.domain.directed_query import DirectedCapability
 from src.contexts.save.domain.entities import (
     CanonicalProduct,
     Provider,
@@ -270,3 +271,64 @@ def test_skips_browse_only_stores() -> None:
     assert built == []          # nunca se construyó adapter para la tienda browse-only
     assert refresh.calls == []
     assert result.pairs_attempted == 0
+
+
+# ── Loop B en fuentes REST cuyo PROFILE sabe buscar por EAN ───────────────────────────────────
+# Bravo es REST_CATALOG: por PLATAFORMA es browse-only y Loop B la saltea (correcto por defecto —
+# correr Loop B sobre un browse-full costaría N navegaciones del catálogo entero). Pero su profile
+# declara `model.filterByEan` → lookup exacto en UNA request (verificado en vivo 2026-07-15).
+# La capacidad la calcula INFRAESTRUCTURA (única capa que conoce profiles) y se inyecta; el
+# use-case solo consume {supported, by_ean}, sin enterarse de que existe un profile "bravova".
+
+
+class _RestSourceRepo:
+    def get_by_provider_id(self, provider_id: str) -> StoreRegistry:
+        return StoreRegistry(
+            "s2", "p1", SourcePlatform.REST_CATALOG, "https://bravova-api.test",
+            endpoints={"profile": "bravova", "store_id": "1000", "sections": ["14"]},
+        )
+
+
+def _build_rest(capability_of=None):  # type: ignore[no-untyped-def]
+    captured: dict[str, object] = {}
+    refresh = _Refresh()
+
+    def build_adapter(source, provider, query):  # type: ignore[no-untyped-def]
+        captured["query"] = query
+        return _FetchAdapter([_Cand("Arroz La Garza Premium", ean="7460083780023")])
+
+    kwargs = {} if capability_of is None else {"capability_of": capability_of}
+    uc = CoverCanonicals(
+        store_repo=_StoreRepo("7460083780023"),
+        canonical_repo=_CanonicalRepo(),
+        source_repo=_RestSourceRepo(),
+        provider_repo=_ProviderRepo(),
+        refresh=refresh,  # type: ignore[arg-type]
+        build_adapter=build_adapter,
+        **kwargs,
+    )
+    return uc, captured, refresh
+
+
+def test_covers_rest_source_when_injected_capability_says_it_looks_up_by_ean() -> None:
+    uc, captured, refresh = _build_rest(
+        capability_of=lambda source: DirectedCapability(supported=True, by_ean=True)
+    )
+
+    result = uc.execute("DO")
+
+    q = captured["query"]
+    assert q.by_ean is True and q.text == "7460083780023"  # le pide el barcode, no el nombre
+    assert result.pairs_attempted == 1, "REST con lookup por EAN SÍ es target de Loop B"
+    assert len(refresh.calls) == 1
+
+
+def test_skips_rest_source_by_default_because_the_platform_alone_means_browse_only() -> None:
+    # Sin capacidad inyectada manda el default de plataforma → retrocompatible: Bravo se saltea.
+    uc, captured, refresh = _build_rest()
+
+    result = uc.execute("DO")
+
+    assert result.pairs_attempted == 0
+    assert "query" not in captured, "ni siquiera construye el adapter"
+    assert refresh.calls == []

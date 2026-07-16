@@ -12,6 +12,7 @@ from src.contexts.save.domain.entities import (
     StoreRegistry,
 )
 from src.contexts.save.infrastructure.catalog_sources.magento_adapter import MagentoAdapter
+from src.contexts.save.infrastructure.catalog_sources.rest_catalog_adapter import RestCatalogAdapter
 from src.contexts.save.infrastructure.catalog_sources.vtex_adapter import VtexAdapter
 
 
@@ -40,3 +41,19 @@ def test_builds_magento_adapter_for_magento_platform() -> None:
 
     assert isinstance(adapter, MagentoAdapter)
     assert adapter._query == "Arroz La Garza 20 Lb"
+
+
+def test_rest_catalog_directed_by_ean_gets_a_single_request_adapter() -> None:
+    """Wiring de producción del hallazgo 2026-07-15: `DirectedQuery.by_ean` tiene que LLEGAR al
+    factory. Antes se pasaba solo `query.text` y el `by_ean` se perdía → Bravo habría navegado el
+    catálogo entero en vez de hacer el lookup exacto."""
+    source = StoreRegistry(
+        "s2", "p-bravo", SourcePlatform.REST_CATALOG, "https://bravova-api.test",
+        endpoints={"profile": "bravova", "store_id": "1000", "sections": ["14", "15"]},
+    )
+    query = DirectedQuery(text="7460083780023", by_ean=True)
+
+    adapter = build_directed_adapter(source, _provider(SourcePlatform.REST_CATALOG), query)
+
+    assert isinstance(adapter, RestCatalogAdapter)
+    assert adapter._ean == "7460083780023"
