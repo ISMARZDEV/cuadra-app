@@ -40,6 +40,7 @@ from ..infrastructure.matching.cascade.embedding_text import build_embedding_tex
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
 from ..infrastructure.matching.cascade.scoring import apply_boosts
 from ..infrastructure.matching.cascade.size_gate import sizes_conflict
+from ..infrastructure.matching.cascade.variant_gate import variants_conflict
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,8 +186,13 @@ class MatchStoreProduct:
         # size_gate no lo atajaba (los tamaños COINCIDEN). Ver `_ean_conflicts`.
         ean_conflict = self._ean_conflicts(product.ean, winner_id)
 
+        # Variant gate: dos SKUs de la misma marca+tamaño que solo difieren en el CONTENIDO
+        # (Habichuela Pinta vs Negra). Cubre el falso-merge donde el EAN gate no llega — Magento
+        # no expone barcode. Lee la variante del nombre; ver `variant_gate`.
+        variant_conflict = variants_conflict(product.name, canonical.name if canonical else "")
+
         if band == "auto_link":
-            if size_conflict or category_conflict or ean_conflict:
+            if size_conflict or category_conflict or ean_conflict or variant_conflict:
                 return self._to_review(
                     product, method=stage_method, confidence=final_score,
                     candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
@@ -230,6 +236,7 @@ class MatchStoreProduct:
                 and not size_conflict
                 and not category_conflict
                 and not ean_conflict
+                and not variant_conflict
             ):
                 return self._auto_link(
                     product, winner_id, confidence=verdict.confidence, method="llm",
