@@ -116,13 +116,20 @@ class FakeCascadeMatchRepository:
 
 
 class FakeStoreProductLinkRepository:
-    """Fake del escritor del FK denormalizado (store_product.canonical_product_id)."""
+    """Fake del escritor del FK denormalizado (store_product.canonical_product_id) + la consulta
+    del EAN conocido de un canónico (gate de falso-merge EAN-negativo)."""
 
-    def __init__(self) -> None:
+    def __init__(self, canonical_eans: dict[str, str] | None = None) -> None:
         self.links: list[tuple[str, str]] = []
+        # canonical_product_id -> un EAN conocido de alguno de sus store_products enlazados
+        # ({} = ninguno tiene EAN conocido → sin señal negativa).
+        self._canonical_eans = canonical_eans or {}
 
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         self.links.append((store_product_id, canonical_product_id))
+
+    def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
+        return self._canonical_eans.get(canonical_product_id)
 
 
 class FakeEmbeddingProvider:
@@ -462,6 +469,137 @@ def test_size_agreement_still_auto_links() -> None:
 
     assert result.status == "auto_linked"
     assert result.canonical_product_id == "canon-1"
+
+
+# ---------------------------------------------------------------- EAN-negative gate (falso-merge) --
+# Medido 2026-07-16: 11 falsos merges auto_linked (Garbanzos→Habichuela Verde, Leche de Coco→
+# Habichuela Roja Coco…), todos misma marca+tamaño ("La Famosa 15 Oz") con contenido DISTINTO.
+# El boost marca(+0.10)+tamaño(+0.05) empujaba sobre HIGH, y el size_gate no dispara (tamaños
+# COINCIDEN). El EAN probaba que eran SKUs distintos y la cascada lo ignoraba: EAN-exacto solo era
+# señal POSITIVA. Regla nueva (SACRA #4): dos EANs no-nulos DISTINTOS ⇒ NUNCA auto-link.
+
+
+def test_ean_conflict_blocks_deterministic_auto_link_and_goes_to_review() -> None:
+    # El entrante trae un EAN que NO matchea ningún canónico enlazado (cae a léxico/semántico), pero
+    # el canónico ganador YA tiene un EAN conocido DISTINTO → son productos distintos. Aunque el
+    # score supere HIGH, va a revisión — nunca auto-link.
+    match_repo = FakeCascadeMatchRepository(
+        ean_candidates=[],  # el EAN entrante no resuelve por barcode → sigue a léxico
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022949"})
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    result = use_case.execute(_incoming(ean="00760593022918"))  # EAN distinto al del canónico
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []  # NUNCA escribió el FK denormalizado
+
+
+def test_matching_ean_still_auto_links_via_lexical_when_names_agree() -> None:
+    # Contraparte: si el EAN conocido del canónico COINCIDE con el entrante, no hay conflicto — el
+    # auto-link por nombre procede (es el MISMO producto; el barcode lo confirma).
+    match_repo = FakeCascadeMatchRepository(
+        ean_candidates=[],
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022918"})
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    result = use_case.execute(_incoming(ean="00760593022918"))  # mismo EAN → sin conflicto
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_no_known_canonical_ean_does_not_block_name_auto_link() -> None:
+    # Sin señal negativa: si el canónico ganador NO tiene ningún EAN conocido, no podemos probar que
+    # difieran → el gate no interfiere y el auto-link por nombre procede (caso Magento-only, sin barcode).
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    store_repo = FakeStoreProductLinkRepository(canonical_eans={})  # canónico sin EAN conocido
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    result = use_case.execute(_incoming(ean="00760593022918"))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_incoming_without_ean_never_triggers_the_gate() -> None:
+    # El gate SOLO aplica cuando el entrante trae EAN. Sin EAN, no hay barcode que contrastar →
+    # auto-link normal aunque el canónico tenga un EAN conocido.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022949"})
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    result = use_case.execute(_incoming(ean=None))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_ean_conflict_persists_review_candidate_snapshot() -> None:
+    # Bloqueado por EAN sigue siendo un pending_review: el revisor necesita ver el/los candidato(s).
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuela Verde", brand="La Famosa")}
+    )
+    store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022949"})
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    use_case.execute(_incoming(ean="00760593022918"))
+
+    assert len(match_repo.candidate_calls) == 1
+    _match_id, snapshots = match_repo.candidate_calls[0]
+    assert [s.canonical_product_id for s in snapshots] == ["canon-1"]
+
+
+def test_ean_conflict_blocks_grey_band_judge_auto_link() -> None:
+    # Defensa para cuando el LLM se re-encienda: aun si el juez dice "match" con alta confianza, un
+    # EAN conocido distinto en el canónico gana — dos barcodes distintos son SKUs distintos.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022949"})
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(ean="00760593022918"))
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []
 
 
 def test_grey_band_invokes_judge_and_auto_links_on_match_verdict() -> None:

@@ -178,8 +178,15 @@ class MatchStoreProduct:
         # señal DURA de SKU distinto: NUNCA auto-linkea, va a revisión — en ninguna banda.
         size_conflict = sizes_conflict(product.size, canonical.quantity if canonical else None)
 
+        # EAN-negative gate (falso-merge, medido 2026-07-16): si el entrante trae un EAN y el
+        # canónico ganador YA tiene un EAN conocido DISTINTO, son SKUs distintos — la señal de
+        # nombre/marca/tamaño NUNCA debe auto-mergearlos (regla sacra #4). El boost marca+tamaño
+        # colapsaba productos de la misma línea "La Famosa 15 Oz" con contenido distinto; el
+        # size_gate no lo atajaba (los tamaños COINCIDEN). Ver `_ean_conflicts`.
+        ean_conflict = self._ean_conflicts(product.ean, winner_id)
+
         if band == "auto_link":
-            if size_conflict or category_conflict:
+            if size_conflict or category_conflict or ean_conflict:
                 return self._to_review(
                     product, method=stage_method, confidence=final_score,
                     candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
@@ -222,6 +229,7 @@ class MatchStoreProduct:
                 and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE
                 and not size_conflict
                 and not category_conflict
+                and not ean_conflict
             ):
                 return self._auto_link(
                     product, winner_id, confidence=verdict.confidence, method="llm",
@@ -270,6 +278,20 @@ class MatchStoreProduct:
         if not candidate:
             return False
         return incoming.strip().casefold() == candidate.strip().casefold()
+
+    def _ean_conflicts(self, incoming_ean: str | None, canonical_product_id: str) -> bool:
+        """Gate de falso-merge (EAN-negativo): True si el entrante trae un EAN y el canónico ganador
+        ya tiene un EAN conocido DISTINTO. Dos barcodes no-nulos distintos ⇒ SKUs distintos, y la
+        señal de nombre/marca/tamaño no debe auto-mergearlos (regla sacra #4).
+
+        Por construcción es un gate barato: si llegamos aquí con un `incoming_ean`, la etapa 1
+        (`find_candidates_by_ean`) ya devolvió 0 candidatos — ningún `store_product` enlazado
+        comparte ese barcode. Entonces CUALQUIER EAN conocido del ganador es necesariamente distinto;
+        la comparación explícita solo lo hace robusto a normalizaciones."""
+        if not incoming_ean:
+            return False
+        known = self._store_repo.find_ean_for_canonical(canonical_product_id)
+        return known is not None and known != incoming_ean
 
     def _snapshot(self, canonical_product_id: str, score: float) -> MatchCandidateSnapshot:
         """Arma el snapshot de UN candidato para `review_candidate` (1.11/1.12): busca su
