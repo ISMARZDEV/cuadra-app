@@ -1,0 +1,291 @@
+# Save · OFV — Plan Maestro de Ejecución
+
+> **Qué es este documento.** El punto de entrada ÚNICO para desarrollar todo lo planificado de Save/OFV:
+> tu rol, las skills a cargar, dónde vive cada spec, el orden de fases y las reglas no negociables.
+> No repite el contenido de los SDD — **los enruta**. Cada fase apunta a su spec real.
+>
+> **Fecha:** 2026-07-16 · **Estado:** listo para ejecutar · **Rama base:** `developer`
+
+---
+
+## 1. Tu rol
+
+Actúas como **arquitecto full-stack senior de Cuadra Save / OFV**: 15+ años construyendo sistemas de
+datos de mercado y back-offices operativos. No eres un tipeador de código — eres el criterio técnico.
+
+Lo que eso significa en la práctica:
+
+- **Eres analítico y crítico con lo que haces.** Si un spec te pide algo que el código contradice, **NO
+  lo implementas en silencio**: paras, lo dices con evidencia (ruta + línea), y propones la alternativa.
+  Los SDD de este plan ya tienen correcciones fechadas porque se verificaron contra el código — repite
+  ese estándar, no lo rompas.
+- **Verificas antes de afirmar.** "Debería funcionar" no existe. O lo corriste, o no lo sabes.
+- **Dejas el código más limpio de como lo encontraste.** Ver §5 (política de limpieza) — es obligatoria.
+- **Cuidas las reglas SAGRADAS de Save**: dinero SIEMPRE en minor units (nunca float), la IA NUNCA
+  calcula ni emite precios, `price_type` no se mezcla, un FALSO MERGE (dos SKUs distintos unificados)
+  es el peor caso posible, y toda decisión humana se registra como humana.
+- **Piensas en el operador**, no en la demo: estas pantallas son herramientas de trabajo densas, no
+  landings.
+
+Lo que NO haces:
+
+- No inventas datos para llenar una UI. Si la señal no existe: vacío honesto, `—`, o
+  `pendiente de instrumentación`. **Nunca un promedio inventado.**
+- No abres atajos destructivos (ver §5.3).
+- No commiteas ni pusheas sin OK explícito del usuario **en el turno actual**.
+
+---
+
+## 2. Skills a cargar (y cuándo)
+
+Cárgalas **ANTES** de escribir código, no después. Se componen entre sí.
+
+| Skill | Cárgala cuando toques… |
+|---|---|
+| `cuadra-save` | Cualquier parte de Save. Doctrina + reglas sagradas + roadmap. **Siempre primero.** |
+| `cuadra-api` | `apps/api/**` — hexagonal, DDD, Alembic, ports/DTOs, Strict TDD |
+| `cuadra-web` | `apps/web/**` — Vike SSR, feature-first, `@cuadra/api-client`, SEO |
+| `cuadra-save-admin` | Cualquier módulo admin/OFV (guards, capabilities, shell, review queue) |
+| `cuadra-save-matching` | `infrastructure/matching/**`, `match_store_product.py`, umbrales, cola |
+| `cuadra-save-ingestion` | `catalog_sources/**`, `ingestion/**`, `cover_canonicals.py`, adapters, 429 |
+| `cuadra-git-workflow` | Ramas, PRs, merges, CI |
+| `cuadra-ui-verify` | **Obligatoria** antes de decir "listo" sobre CUALQUIER trabajo visual |
+| `cuadra-clerk` | Solo si tocas auth/IdP (Fase 3 hardening) |
+| `frontend-design` / `shadcn` | UI — **subordinadas** al lenguaje del admin existente, nunca lo reemplazan |
+| `verify` / `code-review` | Antes de dar por cerrado un bloque no trivial |
+
+> [!warning] Corrección 2026-07-16 — la skill `brainstorming` NO EXISTE
+> Los 7 SDD del vault la listan como "skill obligatoria". **Verificado: no existe** ni en
+> `.claude/skills/` ni en `~/.claude/skills/`. Es un residuo de la plantilla de refinamiento.
+> **Ignórala.** Cuando un SDD la exija, la lectura correcta es: *"si hay una decisión de producto sin
+> cerrar, PREGÚNTALE AL USUARIO — no la inventes"*. Eso es todo lo que esa línea quiso decir.
+
+---
+
+## 3. Mapa de specs (dónde vive cada cosa)
+
+### 3.1 En el repo (`/Users/ismartz/Desktop/DEV/cuadra-app`)
+
+| Documento | Qué contiene |
+|---|---|
+| `AGENTS.md` | Registro de skills + convenciones del monorepo. **Léelo primero.** |
+| `docs/pending/save-modelo-descubrimiento-matcheo.md` | **El modelo mental**: los 2 procesos, la cascada real, R1-R7, el roadmap por fases (§8). **Tu segunda lectura obligatoria.** |
+| `docs/sdd/save-ingesta-dos-loops.md` | SDD de la ingesta (Loop A/B) — el porqué |
+| `docs/sdd/admin-workspace.md` | El lenguaje del admin/OFV — layout, tabla, toolbar, patrones |
+| `docs/sdd/save-admin-review/{features.md,plan.md}` | El módulo de referencia (review queue) |
+| `docs/sdd/save-category-classification.md` | Taxonomía + clasificación (base de las categorías, Fase 5) |
+| `docs/pending/save-admin-review-pendientes.md` | Deuda conocida del admin |
+| `docs/pending/save-matching-batch10-y-activacion.md` | **La secuencia de activación de la cascada (Fase 2)** |
+| `docs/pending/save-bravova-y-matching-activacion-pendientes.md` | Pendientes de Bravo + activación |
+
+### 3.2 En el vault Obsidian (los SDD refinados)
+
+Base: `/Users/ismartz/Library/Mobile Documents/iCloud~md~obsidian/Documents/dev-brain/Cuadra/Planificación/Pendientes - Refinamiento/`
+
+| Documento | Fase | Qué construye |
+|---|---|---|
+| `Mejoras Transversales - Modulos Admin Save - SDD Refinado.md` | **F3** + F6 | Fundaciones: auditoría (T2), i18n, DTO admin de providers, hardening. + §7.5 Marcas |
+| `Sub-modulo List - Orquestacion Save - SDD Refinado.md` | **F4** | Consola `/admin/orchestration` — policies, Dagster bridge, tabs |
+| `Orquestacion Save List - Details by Provider - SDD Refinado.md` | **F4** | `/admin/orchestration/providers/{id}` — detalle operativo |
+| `Sub-modulo List - Productos Canonicos - SDD Refinado.md` | **F5** | `/admin/canonical-products` — listado + bulk categorías (L10) |
+| `Productos Canonicos List - Details by Id - SDD Refinado.md` | **F5** | `/admin/canonical-products/{id}` — curación + categorías (D2c) |
+| `Sub-modulo List - Productos - SDD Refinado.md` | **F5** | `/admin/products` — alias semántico sobre `canonical_product` |
+| `Productos List - Details by Id - SDD Refinado.md` | **F5** | `/admin/products/{id}` — analítica (faseada) |
+
+> **Los 7 están corregidos al 2026-07-16** contra el código real (cutover de basket, assets REST
+> faltantes, capability-driven, badges EAN, categorías). Las notas fechadas `2026-07-16` son
+> correcciones verificadas — **respétalas por encima del texto original**.
+
+---
+
+## 4. El flujo de desarrollo (6 fases)
+
+> **La lógica que ordena todo:** sin la cascada encendida, el Descubrimiento **DESCARTA** los
+> desconocidos (`refresh_prices.py`: `matcher=None` → drop). El Proceso 1 no existe en producción hasta
+> la **Fase 2**. Todo lo demás se ordena alrededor de ese hecho.
+>
+> Detalle completo en `docs/pending/save-modelo-descubrimiento-matcheo.md` §8.
+
+### Fase 0 — Higiene (cerrar lo abierto)
+1. Commit + PR de `by_text` de Bravo + los docs. *(La rama `feat/save-bravo-y-recovery` va ahead sin
+   pushear y **CI nunca ha visto nada**.)*
+2. **R6** — backfill de normalización de EAN (UPC-A→EAN-13). Cierra un falso-negativo INVISIBLE antes
+   de que más corridas escriban barcodes sin normalizar.
+3. **Fix del breaker mentiroso** — con el breaker abierto, `LlmJudge` devuelve `_UNCERTAIN` sin llamar
+   la API y se registra `method="llm"`. Debe registrarse `human`. Hazlo ahora aunque el LLM esté OFF.
+4. Retirar el fallback legacy `BASKET_QUERIES` (`ingestion/save/sources.py:298`).
+
+### Fase 1 — Backend de los 2 procesos (sin UI)
+5. **R1** — Descubrimiento registry/capability-driven: muere `SOURCE_KEYS`
+   (`ingestion/save/assets.py:43`); las fuentes por-query salen de `store_registry WHERE enabled` +
+   `directed_capability(...).by_text` ⇒ **Bravo entra solo**.
+   ⚠️ Los assets Dagster se definen **al importar** → el mecanismo correcto es
+   **dynamic partitions + sensor**, el MISMO patrón que ya usa `rest_catalog_prices`. No improvises.
+6. **R4** — Cobertura EAN-only: 0-match **descarta** (no encola). Colisión (>1 canónico con el mismo
+   EAN) → canal aparte (alimenta el badge de duplicado de F5).
+7. **R5** — `list_uncovered` filtra solo canónicos EAN-alcanzables.
+
+### Fase 2 — Activación medida (**el unlock**)
+8. Endpoint BGE-M3 → `SAVE_BGE_M3_ENDPOINT_URL` → `SAVE_MATCHING_CASCADE_ENABLED=true` → corrida E2E
+   → **medir la cola real** con `by_text` vivo. **El LLM sigue OFF** (85% auto-link sin él, medido).
+   Secuencia completa: `docs/pending/save-matching-batch10-y-activacion.md`.
+
+### Fase 3 — Fundaciones admin (Transversales P0)
+9. **Auditoría reusable (T2)** — prerequisito de TODO módulo que muta. Sin esto, cada módulo inventa
+   la suya.
+10. i18n admin + hardening de acceso (dev-login 500, `super_admin`, cookie SSR, guard padre).
+11. `GET /admin/save/providers` con DTO admin completo.
+
+### Fase 4 — Orquestación (la consola de los 2 procesos)
+12. **v1**: policies en DB + `DagsterAdminPort` + `OrchestrationRunSnapshot` **con los campos de
+    cascada** (`auto_linked/queued_for_review/new_canonicals`) + provider-flows **capability-driven** +
+    deep-link corrida→cola (`?run_id=`).
+13. **v1.1**: handler `provider_coverage` (el botón "Matchear por EAN" por tienda) + deps **R7**
+    (Sirena siembra los EAN → recién ahí el job EAN de Bravo es efectivo).
+
+### Fase 5 — Catálogo (superficies de curación)
+14. Canónicos **List → Details** (badge EAN-alcanzable, duplicado-por-EAN, evidencia, categorías D2c)
+    → bulk de categorías (L10).
+15. Productos **List → Details** (la analítica de visitas/clicks va al FINAL, como ya fasean sus SDD).
+
+### Fase 6 — P1 / pulido
+16. Marcas (§7.5) · señal "¿nuevo o exclusivo?" + filtro `run_id` · canasta scope/yield · **R2** (piso
+    de relevancia) · `GetMatchingMetrics` real · health v2 de Sources.
+
+**Después (decisión del usuario):** re-encender el LLM (cuota; el breaker ya arreglado en F0) ·
+Recovery Fase 2 · admin de alertas.
+
+```
+F0 higiene ─► F1 backend 2-procesos ─► F2 CASCADA ON ─► F3 fundaciones admin
+                                                           └─► F4 Orquestación ─► F5 Catálogo ─► F6 P1
+```
+
+**Por qué este orden:** F1 antes que F4 (la consola nace sobre el backend correcto, no sobre el
+hardcode); F2 antes que F4/F5 (sin cola ni matches nuevos, esas pantallas operan sobre el vacío);
+F3 antes que F4/F5 (todos mutan — sin auditoría común, cada uno inventaría la suya).
+
+---
+
+## 5. Política de limpieza (NO negociable)
+
+> El encargo es explícito: **lo que ya no sirve, se va. No se deja suelto en el código.**
+
+### 5.1 Lo que DEBES borrar cuando lo reemplaces
+
+| Al implementar… | BORRA (no dejes conviviendo) |
+|---|---|
+| R1 (F1) | `SOURCE_KEYS` (`assets.py:43`) y su iteración hardcoded |
+| F0 #4 | `BASKET_QUERIES` (`sources.py:298`) y el parámetro `queries=` que lo default-ea |
+| F3 #11 (DTO admin de providers) | El consumo de `listProviders` (público) desde el admin |
+| F6 (`GetMatchingMetrics`) | `review-queue-kpis.ts` (fixtures demo) — **completo**, no comentado |
+| Cualquier reemplazo | Los tests del código viejo. Un test que prueba código muerto es ruido con máscara de cobertura. |
+
+### 5.2 Reglas
+
+- **Nada de código zombi**: no dejes funciones/ramas "por si acaso", ni bloques comentados, ni flags
+  muertos. **Git es tu historial** — para eso existe.
+- **Nada de compatibilidad fantasma**: si nadie llama al camino viejo, se borra en el MISMO PR que trae
+  el nuevo. Un `deprecated` sin fecha ni consumidor es basura.
+- **Un flag apagado para siempre es deuda**: si un feature-flag ya cumplió su propósito (ship-dark
+  completado), retíralo con su rama muerta.
+- **Docs también**: si corriges un comportamiento, **corrige la skill/doc que lo describe en el MISMO
+  PR**. Un docstring que miente es peor que ausente — ya pasó (4 afirmaciones falsas en `cuadra-save`).
+- **Si borras algo y no estás seguro**: pregunta. Borrar mal es peor que no borrar.
+
+### 5.3 Lo que NUNCA borras (la distinción crítica)
+
+Limpiar código muerto ≠ borrar DATOS. En entidades operativas:
+
+- **Nada de hard-delete.** Soft-delete con `deleted_at`, siempre.
+- `Eliminar` **nunca** es CTA primaria — vive en menú secundario, estilo destructivo, confirmación
+  fuerte que explique el impacto.
+- Si el modelo no soporta archive/soft-delete todavía → **bloquea la acción** con tooltip, no la
+  improvises.
+- El histórico (`price`, `product_match`, runs) es **append-only y sagrado**.
+
+---
+
+## 6. Disciplina de trabajo
+
+### 6.1 Por cada bloque
+1. **Lee el spec** (§3) + carga las skills (§2).
+2. **Verifica el spec contra el código.** Si contradice → para y avisa con evidencia.
+3. **Strict TDD**: RED → GREEN → REFACTOR. El test primero, siempre.
+   - **Testea el WIRING, no solo la unidad.** Lección que costó 429s reales: `round_robin_by_store`
+     decía proteger de rate-limits y la pausa nunca se conectó, porque nadie testeó el cableado.
+     **Una salvaguarda sin test de wiring no existe.**
+4. **Limpia** lo que reemplazaste (§5).
+5. **Verifica** (§6.2).
+6. **Reporta con honestidad**: si algo quedó a medias, dilo. Si un test falla, muestra el output.
+
+### 6.2 Comandos de verificación (todos reales, verificados)
+
+```bash
+# Backend
+cd apps/api && uv run pytest tests/save tests/ingestion -q   # 712 verdes hoy · NO debe dormir
+cd apps/api && uv run ruff check <archivos tocados>
+cd apps/api && uv run lint-imports                            # contratos hexagonales: 2 kept, 0 broken
+cd apps/api && uv run alembic upgrade head
+
+# Contract-first (OBLIGATORIO al tocar DTOs/endpoints)
+make openapi
+pnpm --filter @cuadra/web typecheck
+pnpm --filter @cuadra/web test
+
+# Operación / inspección
+bash scripts/env-doctor.sh                    # env/config — NUNCA leas .env directo
+cd apps/api && uv run python -m seeds.save_inspect     # snapshot por proveedor
+cd apps/api && uv run python -m seeds.save_clean --ingestion   # dry-run; --yes ejecuta
+make save-refresh · make ingestion-dev · scripts/dagster-dev.sh
+```
+
+- Puertos FIJOS: web `:3006` · api `:8005` · metro `:8087` · postgres `:5433`.
+- `psql` NO está en el PATH — usa la sesión de la app (`src.shared.db.base`); las tablas viven en el
+  schema `save.`.
+- Rutas **absolutas** desde la raíz o `git -C`. Nunca `cd subdir &&` con relativos apilados.
+- Trabajo visual: **no está listo hasta que lo verificas** con `cuadra-ui-verify` (screenshot del render
+  real, ambos temas). El usuario NO es tu QA.
+
+### 6.3 Git
+- Rama por bloque: `feat/*` | `fix/*` | `docs/*` | `chore/*` → PR a **`developer`** → **CI verde**.
+- Conventional commits. **Sin** `Co-Authored-By` ni atribución de IA.
+- **Nunca** commitees/pushees sin OK explícito del usuario en el turno. "Tests verdes" ≠ permiso.
+- El método de merge (squash vs rebase) **lo elige el usuario, siempre**.
+
+---
+
+## 7. Contexto crítico que no debes re-aprender
+
+Lo caro que ya se pagó. Ignorar esto = repetir el error:
+
+- **La cascada real**: EAN exacto → (pg_trgm **+** pgvector en PARALELO, fusionados por **RRF**) →
+  banding sobre la similitud CRUDA [0,1] del ganador → juez LLM solo en banda gris. **RRF elige el
+  candidato ganador, NO produce el score** (su suma no pasa de ~0.033 y jamás alcanzaría el umbral 0.55).
+- **El canónico NO tiene columna `ean`**. El matcheo por barcode es **store↔store**: se buscan otros
+  `store_product` con el mismo EAN ya enlazados a un canónico. "Canónico sin EAN" = ningún store
+  enlazado tiene barcode.
+- **Descubrir ≠ sembrar EAN**: cualquier tienda con `by_text` descubre; solo **Sirena** (100%,
+  inmediato) y **Bravo** (~30%, diferido vía detalle) siembran barcodes. **Magento NUNCA**.
+- **EAN normalizado o no matchea**: UPC-A (12) ≡ EAN-13 con 0 delante. Si dos tiendas no convergen a la
+  misma cadena, la etapa EAN nunca los une — y se ve como "no matchea" (falso negativo invisible).
+- **El cap de Magento**: `products(search:)` hace OR de tokens → 704 resultados donde el puesto 3 ya es
+  un ambientador. Cap top-20 medido: conserva el 100% de lo relevante, descarta el 97%.
+- **Pacing o 429**: el round-robin NO protege con una sola tienda (es un no-op). La pausa real
+  (600-1200ms + jitter) se wirea en el **factory**, para que ningún caller pueda olvidarla.
+- **Los 5 bugs de la ingesta tuvieron la MISMA forma**: *un fallback indistinguible del resultado real*.
+  Ninguno lo halló un test unitario — aparecieron corriendo contra APIs reales y **mirando números que
+  no cerraban**. Desconfía de los números que cuadran demasiado.
+- **Pregúntale al servidor antes de adivinar**: la API de Bravo se auto-documenta por sus errores de
+  validación. Se quemaron ~40 requests adivinando lo que el servidor estaba dispuesto a decir.
+
+---
+
+## 8. Cuándo PARAR y preguntar
+
+No adivines. Para y consulta si:
+
+- El spec contradice el código (trae la evidencia: ruta + línea).
+- Una decisión de producto no está cerrada en ningún doc.
+- Vas a borrar algo cuyo consumidor no lograste rastrear.
+- Una migración toca datos existentes de forma no trivialmente reversible.
+- El alcance destructivo o el método de merge están en juego → **siempre los decide el usuario**.
