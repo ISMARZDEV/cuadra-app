@@ -1,18 +1,17 @@
-"""Unit — selección del mejor candidato para un canónico OBJETIVO (Loop B cobertura dirigida, PURO).
+"""Unit — verificación del candidato devuelto por una búsqueda por BARCODE (Loop B). PURO.
 
 Fix del hallazgo live 2026-07-12: Loop B ingestaba los ~65 resultados de la búsqueda dirigida y
-matcheaba cada uno contra CUALQUIER canónico → el objetivo se cubría por casualidad (1/23). Ahora
-selecciona el ÚNICO mejor candidato PARA el objetivo (EAN-exacto → o mayor similitud trigram) y solo
-ESE pasa a la cascada. Sin red ni DB.
+matcheaba cada uno contra CUALQUIER canónico → el objetivo se cubría por casualidad (1/23). Se pasó a
+seleccionar UN candidato para el objetivo (EAN exacto → o mayor similitud trigram del nombre) y solo
+ESE va a la cascada.
+
+R4 (2026-07-16) sacó la mitad del nombre: la Cobertura es **EAN puro**. Ver el bloque de abajo.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.contexts.save.domain.candidate_selection import (
-    select_best_candidate,
-    trigram_similarity,
-)
+from src.contexts.save.domain.candidate_selection import select_ean_match
 
 
 @dataclass(frozen=True)
@@ -21,56 +20,48 @@ class _Cand:
     ean: str | None = None
 
 
-def test_trigram_similarity_identical_is_1() -> None:
-    assert trigram_similarity("arroz la garza", "arroz la garza") == 1.0
+def test_returns_the_candidate_whose_barcode_is_the_target() -> None:
+    cands = [_Cand("otra cosa", ean="0760593023182"), _Cand("Arroz La Garza", ean="07460083780023")]
+    assert select_ean_match(target_ean="07460083780023", candidates=cands) is cands[1]
 
 
-def test_trigram_similarity_unrelated_is_low() -> None:
-    assert trigram_similarity("guandules goya", "azucar crema") < 0.3
+def test_the_barcode_wins_no_matter_what_the_name_says() -> None:
+    # El nombre puede ser IRRECONOCIBLE ("GOYA GANDULES C/ COCO" vs "Guandules Verdes Con Coco Goya"):
+    # ese es justamente el punto del barcode — es el único id que no depende de la tienda.
+    cands = [_Cand("nombre completamente distinto", ean="07460083780023")]
+    assert select_ean_match(target_ean="07460083780023", candidates=cands) is cands[0]
 
 
-def test_trigram_similarity_is_case_insensitive() -> None:
-    assert trigram_similarity("Arroz LA Garza", "arroz la garza") == 1.0
+# ── R4: sin EAN exacto NO hay candidato — y ese es todo el cambio ──────────────────────────────
+# Antes, si ningún candidato traía el barcode del objetivo, se caía a "el nombre más parecido".
+# En una consulta POR BARCODE eso es una adivinanza disfrazada de lookup exacto.
+#
+# El argumento no es de pureza. El fallback existía para no volver con las manos vacías, y es
+# EXACTAMENTE la forma de los cinco bugs que ya pagó la ingesta: un fallback indistinguible del
+# resultado real. Le pedimos a la tienda "el artículo con barcode X"; si nos devuelve otra cosa, la
+# lectura correcta es "la tienda ignoró el filtro" o "no lo tiene" — NO "encontré el producto". Con
+# el fallback, una tienda que ignore `filterByEan` y devuelva su catálogo entero pareceria estar
+# cubriendo canónicos, y nadie lo notaría: se vería como cobertura funcionando.
+#
+# Y la decisión no se toma a ciegas: sin candidato, la Cobertura DESCARTA (no encola), y el producto
+# igual se descubre por NOMBRE en el Proceso 1, que sí tiene red de contención humana. La división es
+# Cobertura = barcode puro / Descubrimiento = texto.
 
 
-def test_prefers_ean_exact_over_name_similarity() -> None:
-    # Aunque otro candidato tenga el nombre más parecido, el EAN exacto del objetivo gana.
-    cands = [
-        _Cand("Arroz La Garza Premium 20 Lb", ean=None),
-        _Cand("otra cosa distinta", ean="7460083780023"),
-    ]
-    best = select_best_candidate(
-        target_name="Arroz La Garza Premium 20 Lb",
-        target_ean="7460083780023",
-        candidates=cands,
-    )
-    assert best is cands[1]
+def test_a_name_lookalike_is_not_a_barcode_match() -> None:
+    # El caso que motiva R4: la tienda devolvió algo, pero NO lo que pedimos. Un nombre idéntico no
+    # convierte a un SKU distinto en el mismo producto (1 Lb vs 20 Lb del mismo arroz comparten
+    # casi todo el nombre y son productos distintos — el size gate de la cascada existe por eso).
+    cands = [_Cand("Arroz La Garza Premium 20 Lb", ean="09999999999993")]
+    assert select_ean_match(target_ean="07460083780023", candidates=cands) is None
 
 
-def test_picks_highest_trigram_when_no_ean() -> None:
-    cands = [
-        _Cand("Azucar Crema Blanca"),
-        _Cand("Guandules Verdes Goya 15.5 Oz"),
-        _Cand("Cafe Santo Domingo"),
-    ]
-    best = select_best_candidate(
-        target_name="Guandules Verdes Con Coco Goya 15.5 Oz",
-        target_ean=None,
-        candidates=cands,
-    )
-    assert best is cands[1]
+def test_a_candidate_without_a_barcode_is_never_a_match() -> None:
+    # Nombre perfecto, sin barcode → no hay nada que verificar → no hay match.
+    cands = [_Cand("Arroz La Garza Premium 20 Lb", ean=None)]
+    assert select_ean_match(target_ean="07460083780023", candidates=cands) is None
 
 
-def test_returns_none_when_all_below_floor() -> None:
-    # Solo ruido (nada parecido al objetivo) → no se ingesta nada (deja el canónico sin cubrir).
-    cands = [_Cand("Azucar Crema"), _Cand("Cafe Molido")]
-    best = select_best_candidate(
-        target_name="Guandules Verdes Con Coco Goya",
-        target_ean=None,
-        candidates=cands,
-    )
-    assert best is None
-
-
-def test_returns_none_on_empty() -> None:
-    assert select_best_candidate(target_name="x", target_ean=None, candidates=[]) is None
+def test_returns_none_when_the_store_answers_nothing() -> None:
+    # "Si no se encuentra, se descarta" — el canónico sigue sin cubrir hasta la próxima corrida.
+    assert select_ean_match(target_ean="07460083780023", candidates=[]) is None

@@ -24,6 +24,12 @@ from src.contexts.save.domain.entities import (
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 
 
+def _ean_of(canonical_product_id: str) -> str:
+    """Barcode determinista por canónico. No hace falta que sea válido GS1: `select_ean_match`
+    COMPARA cadenas (los dos lados ya vienen normalizados a GTIN-14 desde la escritura)."""
+    return f"0746008378{sum(map(ord, canonical_product_id)) % 10000:04d}"
+
+
 def _canonical() -> CanonicalProduct:
     return CanonicalProduct(
         "c1", "Arroz La Garza Premium", "La Garza",
@@ -34,7 +40,7 @@ def _canonical() -> CanonicalProduct:
 
 @dataclass(frozen=True)
 class _Cand:
-    """Candidato crudo mínimo — `select_best_candidate` solo lee name/ean; `provider` es para que el
+    """Candidato crudo mínimo — `select_ean_match` solo lee ean; `provider` es para que el
     refresh-fake sepa de qué tienda vino (la cascada real recibiría un RawCatalogEntry completo)."""
 
     name: str
@@ -131,39 +137,53 @@ def test_covers_uncovered_pair_with_ean_query_on_vtex() -> None:
     assert result.matched == 1
 
 
-def test_falls_back_to_name_query_when_no_ean() -> None:
-    uc, captured, _ = _build(store_ean=None)
-
-    uc.execute("DO")
-
-    q = captured["query"]
-    assert q.by_ean is False
-    assert q.text == "Arroz La Garza Premium 20 Lb"
+# ── R4: la Cobertura es BARCODE PURO, y sin hallazgo DESCARTA (no encola) ─────────────────────
+# Antes, un canónico sin barcode caía a una consulta por NOMBRE — metiendo descubrimiento adentro de
+# cobertura. Y si la tienda devolvía cualquier cosa, se tomaba "la más parecida". Los dos son la
+# misma clase de error: convertir "no lo encontré" en "acá está".
 
 
-def test_selects_best_candidate_for_target_not_all_results() -> None:
-    # La tienda devuelve ruido + el real → solo el REAL pasa a la cascada (no los 3).
-    noise_a = _Cand("Azucar Crema Blanca")
-    real = _Cand("Arroz La Garza Premium 20 Lb")
-    noise_b = _Cand("Cafe Santo Domingo 1 Lb")
-    uc, _captured, refresh = _build(store_ean=None, candidates=[noise_a, real, noise_b])
+def test_a_canonical_without_a_barcode_is_not_for_this_process() -> None:
+    # No hay nada que preguntar: el Proceso 2 identifica POR barcode. Este canónico se descubre por
+    # nombre en el Proceso 1, que tiene cola y revisión humana. Ni siquiera se hace la request.
+    uc, captured, refresh = _build(store_ean=None)
 
     result = uc.execute("DO")
 
-    assert refresh.received == [[real]]  # UN solo candidato — el mejor para el objetivo
-    assert result.matched == 1
+    assert "query" not in captured, "se armó una consulta para un canónico sin barcode"
+    assert refresh.calls == []
+    assert result.pairs_attempted == 0
 
 
-def test_skips_pair_when_no_relevant_candidate() -> None:
-    # Solo ruido → no se ingesta nada, el canónico queda sin cubrir (no se fuerza un mal match).
+def test_only_the_candidate_carrying_the_barcode_reaches_the_cascade() -> None:
+    # La tienda devuelve ruido + el real → solo el REAL pasa a la cascada (no los 3). El criterio es
+    # el barcode, no el parecido del nombre.
+    noise_a = _Cand("Azucar Crema Blanca", ean="00000000000017")
+    real = _Cand("GOYA GANDULES C/ COCO", ean="7460083780023")  # nombre irreconocible, barcode exacto
+    noise_b = _Cand("Arroz La Garza Premium 20 Lb", ean=None)   # nombre IDÉNTICO al objetivo, sin barcode
     uc, _captured, refresh = _build(
-        store_ean=None, candidates=[_Cand("Azucar Crema"), _Cand("Detergente Ace")]
+        store_ean="7460083780023", candidates=[noise_a, real, noise_b]
     )
 
     result = uc.execute("DO")
 
-    assert refresh.calls == []
+    assert refresh.received == [[real]]
+    assert result.matched == 1
+
+
+def test_discards_instead_of_queueing_when_the_barcode_is_not_there() -> None:
+    # "Si no se encuentra, se descarta". La cola es para lo que un humano debe DECIDIR; acá no hay
+    # decisión, hay ausencia. Encolar un "no está" ahogaría la cola con intentos fallidos.
+    uc, _captured, refresh = _build(
+        store_ean="7460083780023",
+        candidates=[_Cand("Azucar Crema", ean="00000000000017"), _Cand("Detergente Ace")],
+    )
+
+    result = uc.execute("DO")
+
+    assert refresh.calls == []  # nada entró a la cascada → nada pudo encolarse
     assert result.matched == 0
+    assert result.pairs_attempted == 1  # se preguntó, y la respuesta fue "no lo tengo"
 
 
 # --- round-robin + abort-on-down + gate browse-only (F3.3) --------------------------------------
@@ -178,7 +198,9 @@ class _MultiStoreRepo:
         ]
 
     def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
-        return None
+        # R4: la Cobertura es barcode puro y `list_uncovered` (R5) solo lista EAN-alcanzables →
+        # un par sin barcode ya no llega hasta acá. Un barcode determinista por canónico.
+        return _ean_of(canonical_product_id)
 
 
 class _AnyCanonicalRepo:
@@ -206,7 +228,10 @@ def _build_multi(down_provider: str):  # type: ignore[no-untyped-def]
         order.append(provider.id)
         if provider.id == down_provider:
             return _FailingAdapter()
-        return _FetchAdapter([_Cand("Arroz La Garza Premium", provider=provider.id)])
+        # El candidato trae el barcode del canónico pedido: la tienda respetó el filtro.
+        return _FetchAdapter(
+            [_Cand("Arroz La Garza Premium", ean=query.text, provider=provider.id)]
+        )
 
     def classify(exc: Exception) -> FetchOutcome:
         if isinstance(exc, _BackendDown):
@@ -375,14 +400,27 @@ def test_skips_the_pair_when_the_store_only_knows_barcode_and_the_canonical_has_
     assert refresh.calls == []
 
 
-def test_still_covers_by_name_when_the_store_can_search_text() -> None:
-    # Magento SÍ busca por término: sin EAN, la consulta por nombre es legítima.
+def test_a_store_that_only_searches_by_text_has_no_place_in_coverage() -> None:
+    """R4 — la división del modelo: **Cobertura = barcode puro / Descubrimiento = texto**.
+
+    Este test decía lo contrario: que una tienda con `by_text` cubriera por NOMBRE cuando el canónico
+    no tenía barcode. Eso metía descubrimiento adentro de cobertura — y el Descubrimiento ya hace ese
+    trabajo mejor, porque tiene cola y canonización humana. La Cobertura es el proceso BARATO y
+    ESPECÍFICO: preguntar por un artículo puntual, por su código. Si no se puede preguntar por
+    código, no es su trabajo.
+
+    Magento (by_ean=False) queda entonces FUERA del Proceso 2 por completo, que es correcto: nunca
+    expone barcodes. Sus productos se descubren por nombre y consiguen EAN cuando Sirena o Bravo los
+    matchean (R7).
+    """
     uc, captured, refresh = _build_rest(
         capability_of=lambda source: DirectedCapability(by_ean=False, by_text=True),
-        store_ean=None,
+        store_ean="7460083780023",  # el canónico SÍ tiene barcode…
     )
 
     result = uc.execute("DO")
 
-    assert result.pairs_attempted == 1
-    assert captured["query"].by_ean is False, "cae al nombre, que es lo correcto acá"
+    # …pero la tienda no sabe buscar por barcode → no hay cobertura posible acá.
+    assert result.pairs_attempted == 0
+    assert "query" not in captured
+    assert refresh.calls == []
