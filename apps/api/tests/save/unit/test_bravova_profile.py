@@ -137,6 +137,20 @@ def test_profile_declares_the_ean_lookup_param() -> None:
     assert BRAVOVA_PROFILE.ean_param == "model.filterByEan"
 
 
+def test_profile_declares_the_text_search_mode() -> None:
+    """Bravo SÍ busca por texto — corrección del hallazgo previo (desbloqueo 2026-07-16).
+
+    El `showOrder` que faltaba es `score` (no `importerankingArticulo asc`, que `/search` rechaza).
+    Verificado en vivo: `GET /public/articulo/search?model.nombreArticulo=arroz&showOrder=score`
+    devuelve productos COMPLETOS. Es un endpoint DISTINTO del browse (`/search`, no `/list`) y con
+    su propio `showOrder`, por eso el profile lo declara aparte de `resource_path`/`extra_params`.
+    """
+    assert BRAVOVA_PROFILE.text_param == "model.nombreArticulo"
+    assert BRAVOVA_PROFILE.search_path == "/public/articulo/search"
+    assert ("showOrder", "score") in BRAVOVA_PROFILE.search_extra_params
+    assert BRAVOVA_PROFILE.text_max_results == 20
+
+
 # ── Cosecha de EAN desde el detalle (§15.5) ───────────────────────────────────────────────────
 # `articulo/list` trae `associatedEan` SIEMPRE vacío (0/200 verificado); `articulo/get` lo trae
 # poblado. Como AMBOS pasan por este mapper, cosechar acá hace que `price_refresh` —que ya llama a

@@ -67,12 +67,15 @@ def supports_directed_query(platform: SourcePlatform) -> bool:
 class DirectedCapability:
     """QUÉ sabe buscar esta fuente: ¿por barcode? ¿por texto? Son dimensiones INDEPENDIENTES.
 
-    Por qué DOS flags y no un `supported`: Bravo es el primer caso donde difieren — encuentra por
-    barcode (`model.filterByEan`, verificado en vivo 2026-07-15: artículo exacto, una request, sin
-    sección) pero es CIEGO al texto (12 params de búsqueda probados, todos ignorados). Con un solo
-    `supported`, Loop B lo aceptaba y, ante un canónico SIN EAN, armaba una consulta por NOMBRE que
-    el adapter REST ignora → BROWSEA el catálogo entero. Con 23 canónicos sin EAN eso son MILES de
-    requests: el desastre exacto que el gate browse-only prevenía.
+    Por qué DOS flags y no un `supported`: las dos capacidades son INDEPENDIENTES. Bravo lo hizo
+    evidente — encuentra por barcode (`model.filterByEan`) y, tras el desbloqueo 2026-07-16, TAMBIÉN
+    por texto (`/articulo/search?showOrder=score`, endpoint distinto del browse). Pero durante días
+    pareció CIEGO al texto (12 params probados contra `/list`, todos ignorados), y esa asimetría
+    aparente es la que enseñó la lección: con un solo `supported`, un barcode-only aceptaría un
+    canónico SIN EAN, armaría una consulta por NOMBRE que su adapter ignora y BROWSEARÍA el catálogo
+    entero — MILES de requests. El gate sigue protegiendo a cualquier fuente futura que sepa por
+    barcode pero no por texto; que Bravo hoy sepa ambas no elimina el caso, lo vuelve un DATO por
+    profile (`by_ean`/`by_text` derivados de `ean_param`/`text_param`).
 
     Por qué es un DATO y no una heurística del dominio: `REST_CATALOG` es un adapter GENÉRICO
     manejado por profiles y cada súper decide qué expone — **una plataforma no puede responder por

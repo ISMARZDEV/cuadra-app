@@ -58,7 +58,7 @@ def test_build_rest_catalog_returns_rest_catalog_adapter() -> None:
         endpoints={"profile": "bravova", "sections": ["3"], "store_id": "1000"},
     )
 
-    source = builder.for_query("provider-1", "DO", "arroz")  # query se ignora (browse-full)
+    source = builder.for_query("provider-1", "DO", "arroz")
 
     assert isinstance(source, RestCatalogAdapter)
 
@@ -126,10 +126,12 @@ def test_non_rest_platforms_unaffected_by_profile_headers() -> None:
 # `ean_param="model.filterByEan"` → sí admite consulta dirigida por barcode (verificado en vivo).
 
 
-def test_rest_catalog_with_ean_param_in_its_profile_is_directed_by_ean() -> None:
+def test_rest_catalog_bravova_is_directed_by_ean_and_text() -> None:
     cap = directed_capability(SourcePlatform.REST_CATALOG, {"profile": "bravova"})
-    # by_text=False: encuentra por barcode, ciego al texto → un canónico sin EAN NO lo browsea.
-    assert cap == DirectedCapability(by_ean=True, by_text=False)
+    # by_text=True desde el desbloqueo 2026-07-16: `/articulo/search?showOrder=score` SÍ busca por
+    # nombre → cubre los canónicos sin EAN (los nacidos de Magento) que antes eran invisibles para
+    # Loop B en Bravo. La capacidad se DERIVA del profile (ean_param + text_param), no se hardcodea.
+    assert cap == DirectedCapability(by_ean=True, by_text=True)
 
 
 def test_rest_catalog_with_unknown_profile_stays_browse_only() -> None:
@@ -173,12 +175,46 @@ def test_for_query_by_ean_builds_a_directed_rest_adapter() -> None:
     assert source._ean == "7460083780023", "el EAN llega al adapter → una request, sin browse"
 
 
-def test_for_query_without_by_ean_keeps_the_browse_behaviour() -> None:
-    # Retrocompat: el refresh amplio (Loop A) sigue navegando secciones e ignorando el texto.
-    source = _bravo_factory().for_query("p1", "DO", "arroz la garza")
+def test_for_query_empty_query_keeps_the_browse_behaviour() -> None:
+    # Loop A (refresh amplio) pasa query VACÍO → navega secciones. Ni EAN ni texto dirigido.
+    source = _bravo_factory().for_query("p1", "DO", "")
 
     assert isinstance(source, RestCatalogAdapter)
     assert source._ean is None
+    assert source._text is None
+
+
+def test_for_query_with_text_builds_a_directed_search_adapter() -> None:
+    # Desbloqueo 2026-07-16: un canónico SIN EAN ya no es invisible en Bravo. for_query con texto
+    # (by_ean=False, no vacío) sobre un profile que declara text_param → modo búsqueda dirigida.
+    source = _bravo_factory().for_query("p1", "DO", "arroz la garza")
+
+    assert isinstance(source, RestCatalogAdapter)
+    assert source._text == "arroz la garza"
+    assert source._ean is None
+
+
+def test_for_query_text_on_bravova_hits_search_endpoint_not_a_browse() -> None:
+    """WIRING (la lección de los 429): una salvaguarda sin test de wiring no existe.
+
+    El riesgo REAL del desbloqueo: si `for_query` rutea mal, un canónico sin EAN dispararía un browse
+    del catálogo entero por Loop B — el desastre exacto que el gate `by_text` prevenía. Este test hace
+    el `fetch()` y verifica que el texto pega a `/search` (UNA request), NO a `/list` por secciones.
+    """
+    calls: list[str] = []
+
+    def fake_get(url: str) -> dict:
+        calls.append(url)
+        return {"data": {"totalCount": 0, "list": []}}
+
+    source = _bravo_factory().for_query("p1", "DO", "arroz la garza", http_get=fake_get)
+    list(source.fetch())
+
+    assert len(calls) == 1, "búsqueda dirigida: UNA request, no una navegación por secciones"
+    assert "/public/articulo/search" in calls[0], "usa el search_path del profile, no /list"
+    assert "model.nombreArticulo=arroz" in calls[0], "manda el nombre por el text_param"
+    assert "showOrder=score" in calls[0], "el /search exige score, no el showOrder del browse"
+    assert "model.filterByIdSeccion" not in calls[0], "NO browsea secciones"
 
 
 def test_factory_always_wires_a_pace_into_the_rest_adapter() -> None:

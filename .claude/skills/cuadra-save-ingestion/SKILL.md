@@ -40,19 +40,20 @@ Search semantics differ per platform. **This table is the whole skill**; everyth
 | Sirena | VTEX | ✅ `ft=` | ✅ `ft=` | productId | **100%** | ~6 — precise |
 | Nacional | Magento | ❌ | ✅ `search:` | SKU | ❌ never | ~90 |
 | Jumbo | Magento | ❌ | ✅ `search:` | SKU | ❌ never | **~250** 🔥 |
-| **Bravo** | REST_CATALOG | ✅ `model.filterByEan` | ⚠️ **exists, not wired** | `/get?idArticulo` | detail only | browse-only |
+| **Bravo** | REST_CATALOG | ✅ `model.filterByEan` | ✅ `/search?showOrder=score` | `/get?idArticulo` | detail only | top-20 (score) |
 
-- **`by_ean` and `by_text` are INDEPENDENT.** Bravo is the case that proves it: its `articulo/list`
-  finds by barcode and IGNORES text (12 params probed live). A model with a single `supported` flag
-  CANNOT express this, and Loop B then browses the whole catalog per canonical.
-- **⚠️ `by_text=False` on Bravo is OUR limit, not Bravo's.** `/public/articulo/search` EXISTS (200 while
-  every other path 500s) and its validation demands **`model.nombreArticulo`** — a text field. It is a
-  search endpoint. Blocked on `showOrder`: it wants a type nothing guessed matches (rejects `0`, `1`,
-  `true`, `asc`, enum-ish names, and even `importerankingArticulo asc`, the value that WORKS on `list`).
-  **Resolve by capturing the "Domicilio" app with Proxyman** — how Bravo's payload and SRD's headers were
-  obtained in the first place — NOT by brute force. Unblocking it makes Bravo `{by_ean, by_text}` = the
-  only store with both, and covers the canonicals born from Magento (which NEVER have an EAN → today
-  invisible to Bravo's Loop B).
+- **`by_ean` and `by_text` are INDEPENDENT.** Bravo proved it: its `articulo/list` finds by barcode and
+  IGNORES text, while `articulo/search` finds by text. A single `supported` flag CANNOT express a
+  barcode-only source, and Loop B would then browse the whole catalog per canonical.
+- **✅ Bravo `by_text` is WIRED (unblocked 2026-07-16). Bravo is the ONLY store with `{by_ean, by_text}`.**
+  The missing piece was the `showOrder` VALUE: **`score`** (not `importerankingArticulo asc`, the browse
+  value, which `/search` REJECTS). `/public/articulo/search?model.filterByIdTienda=…&model.nombreArticulo=…
+  &showOrder=score&paginationMaxItems=20` returns FULL products (same shape as `/list`; `associatedEan`
+  empty → EAN still harvested from the detail). It is a DIFFERENT endpoint (`/search`, not `/list`) with
+  its OWN `showOrder`, so the profile declares `search_path` + `search_extra_params` apart from
+  `resource_path`/`extra_params`. This covers the canonicals born from Magento (which NEVER have an EAN →
+  were invisible to Bravo's Loop B). **Lesson: the endpoint was never "text-blind" — we were probing the
+  wrong endpoint (`/list`) for days.** The user found the value the same way the API always offered it.
 - Capability is a property of the **PROFILE**, not the platform: `REST_CATALOG` is a generic adapter
   and each súper decides what it exposes. Domain owns the TYPE (`DirectedCapability`), infra
   computes the VALUE (`factory.directed_capability`). The domain must never learn the word "bravova".
@@ -123,14 +124,14 @@ Only súper with its own REST API. Everything specific lives in `bravova_profile
 
 | Fact | Consequence |
 |---|---|
-| `articulo/list` **ignores all text search** (12 params probed) | Loop A = browse by section (41 sections) |
-| **`articulo/search` EXISTS** — demands `model.nombreArticulo` (text) | ⚠️ blocked on `showOrder`'s type → capture the app with Proxyman |
-| `list` accepts **`model.filterByEan`** → exact, **GLOBAL** (no section needed), 1 request | Loop B ✅ + deterministic recovery ✅ |
+| `articulo/list` **ignores all text search** (it is the browse endpoint) | Loop A = browse by section (41 sections) |
+| **`articulo/search`** searches by `model.nombreArticulo` with **`showOrder=score`** (the value `/list` never took) | Loop B by TEXT ✅ — covers no-EAN canonicals. Own endpoint + `search_extra_params` in the profile |
+| `list` accepts **`model.filterByEan`** → exact, **GLOBAL** (no section needed), 1 request | Loop B by EAN ✅ + deterministic recovery ✅ |
 | `list.associatedEan` **always empty** (0/200) | the browse yields NO barcode |
 | `articulo/get` **does** return `associatedEan` + `marcaArticulo` | `price_refresh` harvests EAN for FREE (it already calls `/get`) |
 | `/get` id is **`idArticulo`**, not the `idexterno` that IS the `external_id` | lives in `store_product.source_ref` |
 | `/get` is gated by token **AND** the `Domicilio/…` User-Agent | token-only ⇒ 403. UA is in `profile.default_headers` (code), token in `store_registry.auth` (admin) |
-| Rejects any request without `showOrder` | `profile.extra_params` |
+| Rejects any request without `showOrder` | browse → `profile.extra_params` (`importerankingArticulo asc`); search → `search_extra_params` (`score`) |
 | Rate-limits `/get` under load | 429 → BACKEND_DOWN → abort-on-down |
 | `store_id: 1000` | same preferred store SRD uses (`idTiendaArticuloTienda === 1000`) |
 
@@ -170,7 +171,7 @@ pick_global_ean(["33334", "760593023182"])           # → "0760593023182"  (UPC
 ## Commands
 
 ```bash
-cd apps/api && uv run pytest tests/save tests/ingestion -q     # 702 green, ~10s (must NOT sleep)
+cd apps/api && uv run pytest tests/save tests/ingestion -q     # 712 green, ~10s (must NOT sleep)
 cd apps/api && uv run python -m seeds.save_inspect             # per-provider snapshot
 cd apps/api && uv run python -m seeds.save_clean --ingestion   # dry-run; --yes to execute
 # Live run (cascade ships dark; the LLM stays off by default):

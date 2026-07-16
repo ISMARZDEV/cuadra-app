@@ -57,3 +57,20 @@ def test_rest_catalog_directed_by_ean_gets_a_single_request_adapter() -> None:
 
     assert isinstance(adapter, RestCatalogAdapter)
     assert adapter._ean == "7460083780023"
+
+
+def test_rest_catalog_directed_by_text_gets_a_search_adapter() -> None:
+    """Wiring de producción del desbloqueo 2026-07-16: un `DirectedQuery` SIN EAN (canónico nacido de
+    Magento) sobre Bravo tiene que armar un adapter de BÚSQUEDA por texto, no un browse del catálogo.
+    Espeja `composition.py:build_directed_adapter` → `for_query(query.text, by_ean=query.by_ean)`."""
+    source = StoreRegistry(
+        "s2", "p-bravo", SourcePlatform.REST_CATALOG, "https://bravova-api.test",
+        endpoints={"profile": "bravova", "store_id": "1000", "sections": ["14", "15"]},
+    )
+    query = DirectedQuery(text="arroz la garza 10 lb", by_ean=False)
+
+    adapter = build_directed_adapter(source, _provider(SourcePlatform.REST_CATALOG), query)
+
+    assert isinstance(adapter, RestCatalogAdapter)
+    assert adapter._text == "arroz la garza 10 lb", "el texto llega al adapter → búsqueda dirigida"
+    assert adapter._ean is None
