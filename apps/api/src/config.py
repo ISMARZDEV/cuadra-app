@@ -63,15 +63,23 @@ class Settings(BaseSettings):
     # Reusa `save_bge_m3_endpoint_url` (mismo BGE-M3) y `llm_provider` (juez).
     save_classification_enabled: bool = False
 
-    # Save · switch PREVENTIVO del LLM en las corridas de ingesta (matching + clasificación).
-    # `false` = la banda gris va DIRECTO a revisión humana, sin round-trip: `method="human"` (el juez
-    # NO corrió — registrarlo como "llm" mentiría). La cascada DETERMINISTA sigue intacta: el EAN
-    # exacto y la banda alta auto-enlazan igual. Apagar el LLM no apaga el matching, solo su tramo caro.
+    # Save · el LLM en las corridas de ingesta (juez de matching + juez de categoría).
     #
-    # No reemplaza al circuit-breaker, lo COMPLEMENTA: el breaker es REACTIVO (corta tras 3 fallos
-    # SEGUIDOS, o sea después de comerse 3 llamadas). Este flag es PREVENTIVO, para cuando ya sabés
-    # que no querés LLM: cuota agotada, correr barato, o medir la cascada determinista aislada.
-    save_llm_judge_enabled: bool = True
+    # OFF por decisión explícita (2026-07-15): la cuota está agotada y el juez se habilita a mano
+    # cuando se decida pagarla. Con `false`, el LLM NO INTERVIENE en el flujo — no se construye el
+    # juez, así que el circuit-breaker tampoco participa: no hay nada que pueda fallar ni degradar.
+    #
+    # La banda gris pasa a decidirla un HUMANO:
+    #   · matcher    → revisión con method="human" (NO "llm": el juez no corrió, y decir lo contrario
+    #                  mentiría — mirarías la cola creyendo que el LLM dudó de productos que no vio).
+    #   · classifier → sin clasificar, method="none".
+    #
+    # La cascada DETERMINISTA queda intacta: EAN exacto (score 1.0), banda alta y léxico siguen
+    # resolviendo gratis. Apagar el LLM no apaga el matching — apaga su tramo caro.
+    #
+    # Es el switch PREVENTIVO; el circuit-breaker (`llm_circuit_breaker.py`) es el REACTIVO, para
+    # cuando el LLM está ON y se cae a mitad de batch. Se complementan, no se reemplazan.
+    save_llm_judge_enabled: bool = False
 
     # CORS (§12·E E.1) — coma-separado (evita el parseo JSON de listas de pydantic-settings).
     # La web de Cuadra corre SIEMPRE en :3006 (dev). Prod se agrega vía CORS_ORIGINS en el entorno.
