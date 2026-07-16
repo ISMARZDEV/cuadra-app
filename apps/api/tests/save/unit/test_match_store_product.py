@@ -143,6 +143,9 @@ class FakeVerdict:
     input_tokens: int | None = None
     output_tokens: int | None = None
     model: str | None = None
+    # ¿El juez emitió este veredicto, o es nuestro fail-safe? (breaker abierto / API caída /
+    # salida ilegible). Solo el adapter puede saberlo.
+    degraded: bool = False
 
 
 class FakeJudge:
@@ -870,3 +873,55 @@ def test_ean_and_high_band_still_work_with_the_judge_off() -> None:
     assert result.status == "auto_linked"
     assert result.method == "ean"
     assert result.confidence == 1.0
+
+
+# ── El breaker mentiroso: un veredicto degradado NO es señal del juez (2026-07-16) ─────────────
+# `method` responde a UNA pregunta: ¿quién decidió que esto va a revisión? Con el breaker abierto el
+# `LlmJudge` devolvía `uncertain` SIN llamar la API, y el use-case lo registraba como `method="llm"`.
+# Medido 2026-07-15: de 11 `pending_review/llm`, el LLM nunca vio 8 → mirarías la cola creyendo que
+# el juez dudó de 11 productos y "afinarías el juez" sobre una señal que jamás emitió.
+#
+# La regla: `method="llm"` ⟺ el juez emitió un veredicto VÁLIDO y actuamos sobre él. Todo lo demás
+# es la cascada determinista cayendo a la red humana → `method="human"`, que es la semántica que ya
+# tiene el camino "juez apagado".
+#
+# Hoy está latente (`SAVE_LLM_JUDGE_ENABLED=false`: sin juez no hay breaker). Se arregla ANTES de
+# re-encender el LLM, no después — si no, la primera cola con el juez vivo ya viene contaminada.
+
+
+def _grey_band_with(verdict: FakeVerdict):  # type: ignore[no-untyped-def]
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    judge = FakeJudge(verdict)
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
+    return use_case.execute(_incoming()), c
+
+
+def test_a_degraded_verdict_is_recorded_as_human_not_llm() -> None:
+    # Breaker abierto / API caída: el juez NUNCA vio este par. Decir `llm` sería mentir en la misma
+    # distinción que CRITICAL-1 defiende.
+    result, _ = _grey_band_with(FakeVerdict("uncertain", 0.0, [], degraded=True))
+
+    assert result.status == "pending_review"
+    assert result.method == "human"
+
+
+def test_a_genuine_uncertain_verdict_is_still_recorded_as_llm() -> None:
+    # El contraste que le da sentido al flag: acá el juez SÍ corrió y SÍ dudó. Esa es una señal
+    # legítima suya y la cola debe poder decir "el juez miró esto y no se decidió".
+    result, _ = _grey_band_with(FakeVerdict("uncertain", 0.4, ["size"], degraded=False))
+
+    assert result.status == "pending_review"
+    assert result.method == "llm"
+
+
+def test_a_degraded_verdict_still_keeps_the_candidates_for_the_human() -> None:
+    # Cambia quién firma la decisión, no lo que el revisor necesita para decidir.
+    result, c = _grey_band_with(FakeVerdict("uncertain", 0.0, [], degraded=True))
+
+    assert result.method == "human"
+    assert c["match_repo"].candidate_calls, "el humano se queda sin candidatos que revisar"

@@ -72,6 +72,13 @@ class JudgeVerdict:
     fields carried alongside the decision so the cascade use-case can persist them onto
     `product_match` on the grey-band/llm path — pure observability, never part of the decision.
     `None` when there is no usage to report (e.g. the client call raised before any response).
+
+    `degraded` answers a DIFFERENT question from `decision`: did the judge actually render this
+    verdict, or is it our fail-safe standing in for one? An open breaker, a client failure and an
+    unreadable output ALL produce `uncertain` — but in none of those did the judge weigh the pair.
+    Only this adapter can tell the difference (the use-case cannot see whether the API was called),
+    so the answer travels WITH the verdict. The use-case needs it to record `method` honestly:
+    `llm` must mean "the judge ruled", never "the judge was unreachable".
     """
 
     decision: Literal["match", "no_match", "uncertain"]
@@ -80,6 +87,7 @@ class JudgeVerdict:
     input_tokens: int | None = None
     output_tokens: int | None = None
     model: str | None = None
+    degraded: bool = False
 
 
 class StructuredChatModel(Protocol):
@@ -91,7 +99,8 @@ class StructuredChatModel(Protocol):
 
 
 # Fail-safe verdict: returned on ANY invalid output or error. Never `match`, never a price.
-_UNCERTAIN = JudgeVerdict(decision="uncertain", confidence=0.0, cited_fields=[])
+# `degraded=True` — this is US standing in for the judge, not the judge speaking.
+_UNCERTAIN = JudgeVerdict(decision="uncertain", confidence=0.0, cited_fields=[], degraded=True)
 
 
 class LlmJudge:
@@ -165,7 +174,11 @@ class LlmJudge:
         """Fail-safe `uncertain` verdict that still carries usage when tokens WERE spent (the
         call succeeded but the output was unparseable/invalid) — cost instrumentation must see
         it even on a degraded path. Falls back to the shared `_UNCERTAIN` singleton when there's
-        no usage at all (e.g. the client raised before any response came back)."""
+        no usage at all (e.g. the client raised before any response came back).
+
+        Tokens spent and `degraded=True` are not contradictory — they are the honest reading of
+        "we paid for a call and got nothing we could trust."
+        """
         if usage is None:
             return _UNCERTAIN
         return JudgeVerdict(
@@ -175,6 +188,7 @@ class LlmJudge:
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
             model=usage.get("model"),
+            degraded=True,
         )
 
     @staticmethod
