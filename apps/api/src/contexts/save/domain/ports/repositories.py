@@ -282,6 +282,16 @@ class StoreProductRepository(Protocol):
         para la consulta dirigida EAN-first cuando la tienda destino soporta búsqueda por barcode."""
         ...
 
+    def repair_locator(self, store_product_id: str, external_id: str, url: str | None) -> None:
+        """F3.2b (recovery): la tienda le cambió el localizador al producto (Bravo rota el
+        `idArticulo`) → se apunta el `store_product` al nuevo id/url SIN tocar su enlace al canónico:
+        es el MISMO producto, solo se movió de dirección.
+
+        Solo lo invoca el use-case tras un match por EAN EXACTO (§14.3). Reparar por nombre haría que
+        el canónico empiece a mostrar el precio de OTRO producto — un false merge silencioso, que
+        además nadie revisa porque fue automático."""
+        ...
+
     def list_stale_covered(
         self,
         market_id: str,

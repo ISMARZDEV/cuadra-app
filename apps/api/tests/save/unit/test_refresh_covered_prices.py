@@ -7,6 +7,8 @@ vez por provider). Reusa F3.3 (round-robin + abort-on-down). No red, no DB.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from src.contexts.save.application.refresh_covered_prices import RefreshCoveredPrices
 from src.contexts.save.application.refresh_prices import RefreshResult
 from src.contexts.save.domain.coverage import StaleCovered
@@ -206,3 +208,140 @@ def test_defaults_to_covered_when_no_stale_source_injected() -> None:
     )
 
     assert uc.execute("DO").checked == 1
+
+
+# ── F3.2b · Recovery determinista (Fase 1: solo EAN exacto) ───────────────────────────────────
+# Cuando el camino A dice "ya no está" (el localizador murió: Bravo rotó el idArticulo), antes de
+# ocultar el producto se intenta RE-ENCONTRARLO preguntándole a la tienda por el EAN del CANÓNICO
+# (Sirena lo aporta al 100%). Habilitado por el hallazgo 2026-07-15: `filterByEan` es un lookup
+# global y exacto. SupermercadosRD NO puede hacer esto en Bravo (su RecoverableShopId=1|2|3|4).
+#
+# REGLA DURA (SDD §14.3): auto-repara SOLO con EAN exacto. Reparar por nombre escribiría el precio
+# de OTRO producto en el canónico — la versión silenciosa del false merge, que nadie revisa.
+
+
+@dataclass(frozen=True)
+class _Found:
+    """Lo mínimo que el use-case mira de un candidato devuelto por la búsqueda dirigida."""
+
+    external_id: str
+    url: str | None
+    ean: str | None
+
+
+class _RecoveryRepo(_StaleRepo):
+    def __init__(self, items, *, canonical_ean: str | None) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(items)
+        self._canonical_ean = canonical_ean
+        self.repaired: list[tuple[str, str, str | None]] = []
+
+    def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
+        return self._canonical_ean
+
+    def repair_locator(self, store_product_id: str, external_id: str, url: str | None) -> None:
+        self.repaired.append((store_product_id, external_id, url))
+
+
+def _stale_covered(sp_id: str = "s1", canonical: str | None = "c1") -> StaleCovered:
+    return StaleCovered(
+        store_product_id=sp_id, provider_id="p1", external_id=f"ext-{sp_id}",
+        url=None, platform=SourcePlatform.REST_CATALOG, source_ref={"id_articulo": "33631"},
+        canonical_product_id=canonical,
+    )
+
+
+def _build_recovery(*, canonical_ean, candidates):  # type: ignore[no-untyped-def]
+    repo = _RecoveryRepo([_stale_covered()], canonical_ean=canonical_ean)
+    refresh = _Refresh()
+    asked: list[str] = []
+
+    def build_detail_source(item):  # type: ignore[no-untyped-def]
+        return _DetailSource(entry=None)  # camino A: "ya no está"
+
+    def build_recovery_source(item, ean):  # type: ignore[no-untyped-def]
+        asked.append(ean)
+        return _SourceOf(candidates)
+
+    uc = RefreshCoveredPrices(
+        store_repo=repo,
+        refresh=refresh,  # type: ignore[arg-type]
+        build_detail_source=build_detail_source,
+        classify_error=_classify,
+        build_recovery_source=build_recovery_source,
+    )
+    return uc, repo, refresh, asked
+
+
+class _SourceOf:
+    def __init__(self, entries) -> None:  # type: ignore[no-untyped-def]
+        self._entries = entries
+
+    def fetch(self):  # type: ignore[no-untyped-def]
+        return list(self._entries)
+
+
+def test_recovers_locator_when_the_store_still_sells_it_under_a_new_id() -> None:
+    uc, repo, refresh, asked = _build_recovery(
+        canonical_ean="7460083780146",
+        candidates=[_Found(external_id="99999", url="https://b.test/99999", ean="7460083780146")],
+    )
+
+    result = uc.execute("DO")
+
+    assert asked == ["7460083780146"], "le pregunta a la tienda por el EAN del canónico"
+    assert repo.repaired == [("s1", "99999", "https://b.test/99999")], "repara el localizador"
+    assert len(refresh.calls) == 1, "y re-precia con lo encontrado"
+    assert repo.unavailable == [], "NO lo oculta: sigue a la venta"
+    assert result.unavailable == 0
+
+
+def test_hides_the_product_when_recovery_finds_nothing() -> None:
+    uc, repo, refresh, _ = _build_recovery(canonical_ean="7460083780146", candidates=[])
+
+    result = uc.execute("DO")
+
+    assert repo.repaired == []
+    assert repo.unavailable == ["s1"], "desapareció de verdad → se oculta (no se borra, F3.0)"
+    assert result.unavailable == 1
+
+
+def test_never_auto_repairs_when_the_candidate_ean_differs() -> None:
+    # La tienda devolvió ALGO, pero con otro barcode → no es el mismo producto. Reparar acá
+    # escribiría el precio de otro producto en el canónico. Se oculta y que lo vea un humano.
+    uc, repo, _, _ = _build_recovery(
+        canonical_ean="7460083780146",
+        candidates=[_Found(external_id="99999", url=None, ean="7460083789999")],
+    )
+
+    uc.execute("DO")
+
+    assert repo.repaired == [], "EAN distinto → NUNCA auto-repara"
+    assert repo.unavailable == ["s1"]
+
+
+def test_never_auto_repairs_when_several_candidates_share_the_ean() -> None:
+    # Ambigüedad → no hay decisión determinista. Mismo criterio que la COLISIÓN de la cascada de
+    # matching (>1 canónico con el mismo EAN → cola humana, jamás auto-link).
+    uc, repo, _, _ = _build_recovery(
+        canonical_ean="7460083780146",
+        candidates=[
+            _Found(external_id="1", url=None, ean="7460083780146"),
+            _Found(external_id="2", url=None, ean="7460083780146"),
+        ],
+    )
+
+    uc.execute("DO")
+
+    assert repo.repaired == [], "ambiguo → NUNCA auto-repara"
+    assert repo.unavailable == ["s1"]
+
+
+def test_hides_without_asking_when_the_canonical_has_no_known_ean() -> None:
+    # Sin EAN no hay llave determinista → la recuperación por NOMBRE es Fase 2 (propuesta a un
+    # humano), nunca automática. Por ahora se oculta.
+    uc, repo, _, asked = _build_recovery(canonical_ean=None, candidates=[])
+
+    uc.execute("DO")
+
+    assert asked == [], "ni siquiera sale a buscar"
+    assert repo.unavailable == ["s1"]

@@ -148,6 +148,20 @@ def build_refresh_covered_prices(session: Session, *, known: bool = False) -> Re
             return None
         return _builder(provider_id).for_query(provider_id, SAVE_MARKET, "")  # REST ignora la query → browse
 
+    def build_recovery_source(item, ean):  # type: ignore[no-untyped-def]
+        """F3.2b (B): el localizador murió → repreguntarle a la tienda por el barcode del canónico.
+        Solo donde la búsqueda matchea por EAN (`by_ean`): sin barcode no hay llave determinista y
+        recuperar por nombre es Fase 2 (propuesta a un humano), nunca automático."""
+        reg = registries.get(item.provider_id)
+        if reg is None:
+            return None
+        cap = directed_capability(reg.platform, reg.endpoints)
+        if not (cap.supported and cap.by_ean):
+            return None
+        return _builder(item.provider_id).for_query(
+            item.provider_id, SAVE_MARKET, ean, by_ean=True
+        )
+
     return RefreshCoveredPrices(
         store_repo=store_repo,
         refresh=refresh,
@@ -155,6 +169,7 @@ def build_refresh_covered_prices(session: Session, *, known: bool = False) -> Re
         build_browse_source=build_browse_source,
         classify_error=classify_httpx_error,
         stale_source=store_repo.list_stale_known if known else None,
+        build_recovery_source=build_recovery_source,
     )
 
 
