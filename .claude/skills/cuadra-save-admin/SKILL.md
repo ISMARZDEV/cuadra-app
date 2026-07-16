@@ -159,9 +159,17 @@ uv run python -c "from src.shared.db.base import SessionLocal; from seeds.identi
   - **P0 i18n in the admin** (decision reversed — see gotcha #8).
   - **P1 Phase 4 (Observability):** `GetMatchingMetrics` (auto-link rate, %-to-judge, judge cost/latency
     p50/p95/p99, NEVER average-only) + `MatchingMetricsScreen` (tasks 4.1-4.6).
-  - **P2 follow-ups:** ingestion cutover to read `basket_query` (still reads hardcoded `BASKET_QUERIES`);
-    no admin provider/source LIST endpoint; `position` reorder unused downstream; provider logo not in
+  - **P2 follow-ups:** ~~ingestion cutover to read `basket_query`~~ ✅ **DONE** (the hardcoded
+    `BASKET_QUERIES` is gone, 2026-07-16 — it was not dead code but DIVERGENCE: `make save-refresh`
+    kept ingesting the 213-term tuple while Dagster read the table, so deactivating a query in the
+    admin did nothing to the CLI. They matched at 213, which is why it was invisible); no admin
+    provider/source LIST endpoint; `position` reorder unused downstream; provider logo not in
     `compare-table` (ComparedPriceDto); no manual browser E2E of the authed panel.
+  - **The admin's switches now REACH the ingestion (R1, 2026-07-16):** the per-query discovery derives
+    its stores from `store_registry` (active × `directed_capability(...).by_text`), so `enabled` /
+    `paused_at` finally take a store out of ingestion — before, the set was a hardcoded tuple and the
+    toggles were decoration for it. Adding a súper is a ROW. Note for the Orchestration module (F4):
+    provider-flow compatibility must derive from `directed_capability`, never an allowlist.
   - **OPS:** re-run `seed_identity` post-Phase-1; no seeded super_admin; `dev-login` returns 500;
     SSR gate needs a Clerk cookie.
 
