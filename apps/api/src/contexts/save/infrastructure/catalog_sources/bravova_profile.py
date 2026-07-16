@@ -19,6 +19,7 @@ Sumar otro súper con API propia = otro módulo `*_profile.py` como este, sin to
 """
 from __future__ import annotations
 
+from src.contexts.save.domain.value_objects import pick_global_ean
 from src.shared.money import Currency, Money, primary_currency_for_market
 
 from ...domain.entities import PriceType
@@ -62,13 +63,24 @@ def _image_url(item: dict) -> str | None:
     return None
 
 
-def _first_ean(item: dict) -> str | None:
-    # `associatedEan` viene vacío en el catálogo probado; cuando trae valor, su shape exacto está
-    # sin verificar → solo se acepta un string plano, cualquier otra forma se ignora.
-    for ean in item.get("associatedEan", []):
-        if isinstance(ean, str) and ean.strip():
-            return ean
-    return None
+def _global_ean(item: dict) -> str | None:
+    """El EAN GLOBAL del artículo (§15.5), o `None` si no tiene uno confiable.
+
+    Shape VERIFICADA en vivo (2026-07-15, `articulo/get`): `associatedEan` es una LISTA de
+    `{"idEan": "...", "idArticuloEan": N}`. Antes se la daba por "sin verificar" y solo se aceptaban
+    strings planos — o sea, nunca disparaba; esa cautela es la que evitó que se colara basura.
+
+    La lista MEZCLA tres tipos y el global NO viene primero, así que `[0]` no sirve: hay globales
+    (746 = Rep. Dominicana), internos 2x (peso variable, solo válidos dentro de Bravo) y PLU cortos.
+    `pick_global_ean` filtra por checksum GS1 y descarta el rango interno. `None` en ~70% de los
+    casos es el resultado ESPERADO: sin barcode confiable, la cascada sigue por nombre/vector.
+
+    Se sigue tolerando el string plano por si otro profile REST reusa esta forma.
+    """
+    codes: list[object] = []
+    for entry in item.get("associatedEan") or []:
+        codes.append(entry.get("idEan") if isinstance(entry, dict) else entry)
+    return pick_global_ean(codes)
 
 
 def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalogEntry:
@@ -93,7 +105,7 @@ def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalog
         price_type=PriceType.ONLINE,
         source=_SOURCE,
         category_path=_category_path(item),
-        ean=_first_ean(item),
+        ean=_global_ean(item),
         url=None,
         image_url=_image_url(item),
         source_ref=source_ref,

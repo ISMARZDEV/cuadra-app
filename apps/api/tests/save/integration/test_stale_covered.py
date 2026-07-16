@@ -12,6 +12,9 @@ from datetime import datetime, timedelta, timezone
 from src.contexts.save.infrastructure.models import StoreProductModel
 from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
 
+from src.contexts.save.domain.entities import PriceType
+from src.shared.money import Currency, Money
+
 from .test_product_match_repository import _seed_provider_and_canonical, _seed_store_product
 
 
@@ -102,3 +105,42 @@ def test_stale_covered_carries_the_canonical_id_as_recovery_key(db_session) -> N
 
     row = next(s for s in stale if s.store_product_id == sp)
     assert row.canonical_product_id == cid, "la llave de recuperación viaja en la fila"
+
+
+def test_record_observation_backfills_the_ean_when_the_detail_finally_brings_it(db_session) -> None:  # type: ignore[no-untyped-def]
+    """§15.5: el browse de Bravo NO trae barcode y el detalle SÍ. `price_refresh` ya llama al /get por
+    cada producto conocido → si `record_observation` refresca el ean, la cosecha sale GRATIS (sin una
+    request extra). Sin esto, el barcode se descarta en cada refresh y solo se escribiría al crear."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    sp_id = _seed_store_product(db_session, pid, cid)  # nació sin ean (vino del browse)
+    repo = SqlStoreProductRepository(db_session)
+    ext = db_session.get(StoreProductModel, uuid.UUID(sp_id)).external_id
+    assert db_session.get(StoreProductModel, uuid.UUID(sp_id)).ean is None
+
+    repo.record_observation(
+        provider_id=pid, external_id=ext, canonical_product_id=None,
+        price=Money(42400, Currency("DOP")), captured_at=datetime.now(timezone.utc),
+        price_type=PriceType.ONLINE, source="bravova", ean="7460083780146",
+    )
+
+    assert db_session.get(StoreProductModel, uuid.UUID(sp_id)).ean == "7460083780146"
+
+
+def test_record_observation_never_erases_a_known_ean_with_none(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Misma regla que name/brand/source_ref: una observación posterior SIN el dato (p.ej. el browse,
+    que nunca trae barcode) no debe pisar lo ya conocido por el detalle."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    sp_id = _seed_store_product(db_session, pid, cid)
+    repo = SqlStoreProductRepository(db_session)
+    ext = db_session.get(StoreProductModel, uuid.UUID(sp_id)).external_id
+    common = dict(
+        provider_id=pid, external_id=ext, canonical_product_id=None,
+        price=Money(42400, Currency("DOP")), price_type=PriceType.ONLINE, source="bravova",
+    )
+    repo.record_observation(captured_at=datetime.now(timezone.utc), ean="7460083780146", **common)
+
+    repo.record_observation(captured_at=datetime.now(timezone.utc), ean=None, **common)  # browse
+
+    assert db_session.get(StoreProductModel, uuid.UUID(sp_id)).ean == "7460083780146"
