@@ -244,3 +244,58 @@ def test_loop_b_wires_a_real_pace(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(time, "sleep", slept.append)
     pace()
     assert slept and 0.6 <= slept[0] <= 1.2
+
+
+def test_matcher_gets_no_judge_when_the_llm_switch_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`SAVE_LLM_JUDGE_ENABLED=false` → el matcher se arma SIN juez: la banda gris va directo a
+    revisión, sin tocar la API. Complementa al circuit-breaker (que es reactivo: corta recién tras
+    3 fallos). Este test falla si alguien desconecta el switch del wiring."""
+    monkeypatch.setattr(settings, "save_matching_cascade_enabled", True)
+    monkeypatch.setattr(settings, "save_classification_enabled", False)
+    monkeypatch.setattr(settings, "save_llm_judge_enabled", False)
+    monkeypatch.setattr(composition, "build_embedding_provider", lambda: MagicMock())
+
+    matcher = composition.build_matcher(MagicMock())
+
+    assert matcher is not None, "la cascada sigue activa: apagar el LLM no apaga el matching"
+    assert matcher._judge is None, "sin juez → la banda gris no llama a la API"
+
+
+def test_matcher_gets_a_real_judge_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "save_matching_cascade_enabled", True)
+    monkeypatch.setattr(settings, "save_classification_enabled", False)
+    monkeypatch.setattr(settings, "save_llm_judge_enabled", True)
+    monkeypatch.setattr(composition, "build_embedding_provider", lambda: MagicMock())
+    monkeypatch.setattr(composition, "LlmJudge", lambda: "JUEZ-REAL")
+
+    matcher = composition.build_matcher(MagicMock())
+
+    assert matcher._judge == "JUEZ-REAL", "el default no cambia: el juez corre como siempre"
+
+
+def test_classifier_gets_no_judge_when_the_llm_switch_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """El switch cubre los DOS jueces LLM de la ingesta (matching y clasificación) — si no, apagar
+    el LLM seguiría llamando a la API por el otro lado."""
+    monkeypatch.setattr(settings, "save_classification_enabled", True)
+    monkeypatch.setattr(settings, "save_llm_judge_enabled", False)
+    monkeypatch.setattr(composition, "build_embedding_provider", lambda: MagicMock())
+    monkeypatch.setattr(composition, "_build_lexicon", lambda s, m: {})
+
+    classifier = composition.build_classifier(MagicMock())
+
+    assert classifier is not None, "la clasificación sigue activa: el léxico no necesita LLM"
+    assert classifier._judge is None
+
+
+def test_classifier_gets_a_real_judge_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "save_classification_enabled", True)
+    monkeypatch.setattr(settings, "save_llm_judge_enabled", True)
+    monkeypatch.setattr(composition, "build_embedding_provider", lambda: MagicMock())
+    monkeypatch.setattr(composition, "_build_lexicon", lambda s, m: {})
+    monkeypatch.setattr(composition, "CategoryJudge", lambda: "JUEZ-CATEGORIA")
+
+    classifier = composition.build_classifier(MagicMock())
+
+    assert classifier._judge == "JUEZ-CATEGORIA"

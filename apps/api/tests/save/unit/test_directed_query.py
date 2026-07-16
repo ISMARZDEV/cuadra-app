@@ -97,9 +97,9 @@ def test_supports_directed_query_only_query_capable_platforms() -> None:
 
 
 def test_platform_capability_mirrors_the_platform_heuristics() -> None:
-    assert platform_capability(SourcePlatform.VTEX) == DirectedCapability(supported=True, by_ean=True)
+    assert platform_capability(SourcePlatform.VTEX) == DirectedCapability(by_ean=True, by_text=True)
     assert platform_capability(SourcePlatform.MAGENTO) == DirectedCapability(
-        supported=True, by_ean=False
+        by_ean=False, by_text=True
     )
 
 
@@ -108,7 +108,39 @@ def test_platform_capability_assumes_browse_only_without_knowing_the_profile() -
     # Equivocarse hacia "es dirigida" costaría N navegaciones completas (una por canónico) — el
     # riesgo que motivó el gate browse-only de 2026-07-12. Infraestructura lo sobreescribe si sabe más.
     assert platform_capability(SourcePlatform.REST_CATALOG) == DirectedCapability(
-        supported=False, by_ean=False
+        by_ean=False, by_text=False
     )
     assert platform_capability(SourcePlatform.AGGREGATOR).supported is False
     assert platform_capability(SourcePlatform.SPA).supported is False
+
+
+# ── by_text: la dimensión que faltaba (bug encontrado en el experimento 2026-07-15) ───────────
+# `DirectedCapability{supported, by_ean}` no alcanzaba: Bravo es el primer caso donde una tienda
+# SABE buscar por barcode pero NO por texto. Con solo `supported`, Loop B aceptaba a Bravo y, ante
+# un canónico SIN EAN, armaba una consulta por NOMBRE → el adapter REST ignora el texto y BROWSEA
+# las 41 secciones. Con 23 canónicos sin EAN eso son MILES de requests: exactamente el desastre que
+# el gate browse-only prevenía. La capacidad tiene que decir QUÉ sabe hacer, no solo QUE puede.
+
+
+def test_capability_distinguishes_barcode_search_from_text_search() -> None:
+    # Bravo: encuentra por barcode, es ciego al texto.
+    only_ean = DirectedCapability(by_ean=True, by_text=False)
+    assert only_ean.supported is True
+
+    # Magento: busca por término, no indexa barcode.
+    only_text = DirectedCapability(by_ean=False, by_text=True)
+    assert only_text.supported is True
+
+    # Ni una ni otra → no es target de Loop B.
+    assert DirectedCapability(by_ean=False, by_text=False).supported is False
+
+
+def test_platform_capabilities_spell_out_both_dimensions() -> None:
+    vtex = platform_capability(SourcePlatform.VTEX)          # `ft=` matchea barcode Y nombre
+    assert (vtex.by_ean, vtex.by_text) == (True, True)
+
+    magento = platform_capability(SourcePlatform.MAGENTO)    # busca por término, sin barcode
+    assert (magento.by_ean, magento.by_text) == (False, True)
+
+    rest = platform_capability(SourcePlatform.REST_CATALOG)  # sin profile: no sabemos nada
+    assert (rest.by_ean, rest.by_text) == (False, False)

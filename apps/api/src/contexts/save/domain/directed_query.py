@@ -65,32 +65,41 @@ def supports_directed_query(platform: SourcePlatform) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class DirectedCapability:
-    """¿Se le puede pedir a ESTA fuente un producto puntual, y su búsqueda matchea por EAN?
+    """QUÉ sabe buscar esta fuente: ¿por barcode? ¿por texto? Son dimensiones INDEPENDIENTES.
+
+    Por qué DOS flags y no un `supported`: Bravo es el primer caso donde difieren — encuentra por
+    barcode (`model.filterByEan`, verificado en vivo 2026-07-15: artículo exacto, una request, sin
+    sección) pero es CIEGO al texto (12 params de búsqueda probados, todos ignorados). Con un solo
+    `supported`, Loop B lo aceptaba y, ante un canónico SIN EAN, armaba una consulta por NOMBRE que
+    el adapter REST ignora → BROWSEA el catálogo entero. Con 23 canónicos sin EAN eso son MILES de
+    requests: el desastre exacto que el gate browse-only prevenía.
 
     Por qué es un DATO y no una heurística del dominio: `REST_CATALOG` es un adapter GENÉRICO
-    manejado por profiles, y cada súper decide qué expone. Bravo tiene lookup exacto por barcode
-    (`model.filterByEan`, verificado en vivo 2026-07-15: devuelve el artículo exacto en UNA request
-    y SIN filtro de sección) pero NO busca por texto; el próximo súper REST puede ser al revés, o no
-    exponer nada. **Una plataforma no puede responder por todos sus profiles.**
-
-    El dominio define el TIPO; infraestructura —la única capa que conoce los profiles— calcula el
-    VALOR y lo inyecta (`cover_canonicals`, mismo patrón que `build_adapter`/`classify_error`). Así
+    manejado por profiles y cada súper decide qué expone — **una plataforma no puede responder por
+    todos sus profiles**. El dominio define el TIPO; infraestructura —la única capa que conoce los
+    profiles— calcula el VALOR y lo inyecta (mismo patrón que `build_adapter`/`classify_error`). Así
     el dominio nunca se entera de que existe un profile llamado "bravova" (ADR 31: domain PURO).
     """
 
-    supported: bool
-    by_ean: bool
+    by_ean: bool    # ¿su búsqueda matchea el barcode?
+    by_text: bool   # ¿su búsqueda matchea el nombre?
+
+    @property
+    def supported(self) -> bool:
+        """¿Se le puede pedir un producto puntual, de alguna forma? Si no sabe ninguna de las dos,
+        navega el catálogo e ignora la query → es de Loop A."""
+        return self.by_ean or self.by_text
 
 
 def platform_capability(platform: SourcePlatform) -> DirectedCapability:
     """Capacidad DERIVABLE solo de la plataforma — el default cuando nadie sabe más.
 
-    Para las browse-only devuelve `supported=False`: sin conocer el profile hay que asumir que la
-    fuente navega el catálogo. El default es CONSERVADOR a propósito — equivocarse hacia "es dirigida"
+    Para las browse-only devuelve todo en False: sin conocer el profile hay que asumir que la fuente
+    navega el catálogo. El default es CONSERVADOR a propósito — equivocarse hacia "es dirigida"
     costaría N navegaciones del catálogo entero (una por canónico), que es el riesgo que motivó el
     gate de 2026-07-12. Equivocarse hacia "browse-only" solo cuesta no cubrirla por Loop B.
     """
     return DirectedCapability(
-        supported=supports_directed_query(platform),
         by_ean=supports_ean(platform),
+        by_text=supports_directed_query(platform),
     )

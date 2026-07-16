@@ -96,3 +96,28 @@ def test_captured_at_is_forwarded() -> None:
 
     refresh_source(RecordingRepo(known={("p-sirena", "a")}), [FakeSource([_entry("a")])], captured_at=ts)
     assert captured == [ts]
+
+
+# ── Pacing en Loop A (el hueco que quedó del fix de 2026-07-15) ────────────────────────────────
+# `build_sources()` arma UN adapter por término de canasta POR tienda: hoy son 213 términos × 3
+# tiendas ≈ 639 búsquedas. El runner las corría en un for pelado, sin ninguna pausa. Es el MISMO
+# bug que en price_refresh/Loop B/browse: la protección de SRD (`randomDelay(600,1200)`) nunca se
+# copió. Acá ni siquiera hay round-robin: los adapters de UNA tienda vienen juntos por construcción.
+
+
+def test_paces_between_adapters_because_each_one_is_a_search_against_the_same_store() -> None:
+    paced: list[int] = []
+    repo = FakeStoreRepo(set())
+    adapters = [FakeSource([_entry("1")]), FakeSource([_entry("2")]), FakeSource([_entry("3")])]
+
+    refresh_source(repo, adapters, pace=lambda: paced.append(1))
+
+    assert len(paced) == 2, "3 búsquedas → 2 pausas (nunca antes de la primera)"
+
+
+def test_does_not_pace_a_single_adapter() -> None:
+    paced: list[int] = []
+
+    refresh_source(FakeStoreRepo(set()), [FakeSource([_entry("1")])], pace=lambda: paced.append(1))
+
+    assert paced == []

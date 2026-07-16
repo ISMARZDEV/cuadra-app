@@ -14,6 +14,7 @@ from ingestion.save.composition import (
     build_matcher,
 )
 from ingestion.save.runner import refresh_source
+from src.contexts.save.infrastructure.catalog_sources.pacing import build_pace
 from ingestion.save.sources import SAVE_MARKET, build_sources
 from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
 
@@ -36,7 +37,9 @@ def main() -> None:
         matcher = build_matcher(session)  # None salvo SAVE_MATCHING_CASCADE_ENABLED=true
         classifier = build_classifier(session)  # None salvo SAVE_CLASSIFICATION_ENABLED=true
         for name, adapters in build_sources().items():
-            result = refresh_source(repo, adapters, matcher=matcher, classifier=classifier)
+            result = refresh_source(
+                repo, adapters, matcher=matcher, classifier=classifier, pace=build_pace()
+            )
             print(
                 f"save-refresh {name}: seen={result.seen} "
                 f"refreshed={result.refreshed} unmatched={result.unmatched} "

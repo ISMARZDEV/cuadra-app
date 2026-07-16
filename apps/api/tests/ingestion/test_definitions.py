@@ -95,3 +95,15 @@ def test_coverage_has_its_own_schedule() -> None:
     # Ritmo propio de Loop B (equivalente al Prices Batch de SRD), separado del refresh diario.
     schedule = defs.get_schedule_def("save_coverage_daily")
     assert schedule.cron_schedule == "0 4 * * *"
+
+
+def test_loop_a_asset_wires_a_real_pace_into_the_runner() -> None:
+    """Loop A dispara UNA búsqueda por término de canasta (hoy 213) contra la MISMA tienda. Sin
+    pausa es un martilleo — el bug que costó los 429 de Bravo. Este test falla si alguien
+    desconecta el pacing del asset: una salvaguarda sin test de wiring no existe."""
+    import inspect
+
+    from ingestion.save import assets
+
+    src = inspect.getsource(assets._build_source_asset)
+    assert "pace=build_pace()" in src, "el asset de Loop A debe pasarle la pausa real al runner"

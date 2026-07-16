@@ -128,14 +128,15 @@ def test_non_rest_platforms_unaffected_by_profile_headers() -> None:
 
 def test_rest_catalog_with_ean_param_in_its_profile_is_directed_by_ean() -> None:
     cap = directed_capability(SourcePlatform.REST_CATALOG, {"profile": "bravova"})
-    assert cap == DirectedCapability(supported=True, by_ean=True)
+    # by_text=False: encuentra por barcode, ciego al texto → un canónico sin EAN NO lo browsea.
+    assert cap == DirectedCapability(by_ean=True, by_text=False)
 
 
 def test_rest_catalog_with_unknown_profile_stays_browse_only() -> None:
     # Profile no registrado → no sabemos nada de la fuente → el default conservador manda.
     # NO revienta: la capacidad es una PREGUNTA, no la construcción del adapter.
     assert directed_capability(SourcePlatform.REST_CATALOG, {"profile": "no-existe"}) == (
-        DirectedCapability(supported=False, by_ean=False)
+        DirectedCapability(by_ean=False, by_text=False)
     )
     assert directed_capability(SourcePlatform.REST_CATALOG, None).supported is False
 
@@ -143,10 +144,10 @@ def test_rest_catalog_with_unknown_profile_stays_browse_only() -> None:
 def test_non_rest_platforms_keep_the_platform_default() -> None:
     # VTEX/Magento no tienen profile: su capacidad se deduce de la plataforma, como siempre.
     assert directed_capability(SourcePlatform.VTEX, None) == DirectedCapability(
-        supported=True, by_ean=True
+        by_ean=True, by_text=True
     )
     assert directed_capability(SourcePlatform.MAGENTO, None) == DirectedCapability(
-        supported=True, by_ean=False
+        by_ean=False, by_text=True
     )
     assert directed_capability(SourcePlatform.AGGREGATOR, None).supported is False
 

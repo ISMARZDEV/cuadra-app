@@ -139,6 +139,11 @@ class CoverCanonicals:
                 ean=ean,
                 store_supports_ean=capability.by_ean,
             )
+            if not query.by_ean and not capability.by_text:
+                # La tienda encuentra por barcode pero es CIEGA al texto (Bravo), y este canónico no
+                # tiene EAN conocido → no hay consulta dirigida posible. Seguir sería mandarle un
+                # nombre que IGNORA y navegarle el catálogo entero por UN canónico. Es de Loop A.
+                continue
             adapter = self._build_adapter(source, provider, query)
             if pairs_attempted:
                 self._pace()  # ENTRE requests, nunca antes del primero (SRD `scrape-many.ts`)
