@@ -602,6 +602,51 @@ def test_ean_conflict_blocks_grey_band_judge_auto_link() -> None:
     assert c["store_repo"].links == []
 
 
+# ---------------------------------------------------------------- variant gate (falso-merge sin EAN) --
+# El EAN gate cubre el falso-merge SOLO donde hay barcode. En Magento (Jumbo/Nacional, sin EAN) un
+# cruce de VARIANTE (pinta→negra, roja→pinta) auto-linkeaba: marca+tamaño coinciden, solo el
+# contenido difiere, y el size_gate no dispara (tamaños iguales). Medido 2026-07-16: 3 casos.
+
+
+def test_variant_conflict_blocks_auto_link_even_at_high_band() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    # size "5 LB" == la quantity del canónico (2.267 kg) → aísla el variant gate del size_gate.
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuelas Negras La Sanjuanera", brand="La Sanjuanera")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="Habichuela Pinta La Sanjuanera", brand="La Sanjuanera", size="5 LB")
+    )
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []  # pinta ≠ negra: distinto SKU
+
+
+def test_same_variant_still_auto_links() -> None:
+    # Contraparte: mismo color → el gate no interfiere.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuelas Rojas La Famosa", brand="La Famosa")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="Habichuelas Rojas La Famosa", brand="La Famosa", size="5 LB")
+    )
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
 def test_grey_band_invokes_judge_and_auto_links_on_match_verdict() -> None:
     match_repo = FakeCascadeMatchRepository(
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
