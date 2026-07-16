@@ -79,7 +79,7 @@ class ClassifyStoreProduct:
         classifications: CategoryClassificationRepository,
         candidates: CategoryCandidateRepository,
         embedder: EmbeddingProvider,
-        judge: CategoryJudgePort,
+        judge: CategoryJudgePort | None,
         lexicon_index: LexiconIndex,
     ) -> None:
         self._classifications = classifications
@@ -163,6 +163,11 @@ class ClassifyStoreProduct:
             return ClassificationResult(winner_id, raw_score, method, "auto_link")
 
         if band == "grey":
+            if self._judge is None:
+                # LLM apagado (`SAVE_LLM_JUDGE_ENABLED=false`): sin veredicto NO se clasifica —
+                # mismo resultado que un "uncertain", y por la misma razón: no inventar. Lo
+                # determinista (léxico / banda alta) ya resolvió antes y no se toca.
+                return ClassificationResult(None, 0.0, "none", "grey")
             verdict = self._judge.judge(product, winner_name)
             if verdict.decision == "match" and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE:
                 return ClassificationResult(winner_id, verdict.confidence, "llm", "grey")

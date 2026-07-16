@@ -23,6 +23,7 @@ def refresh_source(
     matcher: MatchStoreProduct | None = None,
     classifier: ClassifyStoreProduct | None = None,
     on_progress: Callable[[int, int, RefreshResult], None] | None = None,
+    pace: Callable[[], None] | None = None,
 ) -> RefreshResult:
     """Corre el refresh sobre cada adapter de la fuente y agrega los conteos.
 
@@ -32,11 +33,17 @@ def refresh_source(
     store_product materializado (idempotente). `None` = clasificación dark.
     `on_progress` opcional: callback `(indice, total, acumulado)` tras CADA adapter/query —
     observabilidad de progreso (p.ej. `context.log` de Dagster). `None` = silencioso (default).
+    `pace` opcional: espera ENTRE adapters. CADA adapter es una búsqueda contra la MISMA tienda
+    (`build_sources` arma uno por término de canasta: hoy 213), así que sin pausa esto es un
+    martilleo — el mismo bug que en price_refresh/Loop B/browse. Acá el round-robin ni participa.
+    `None` = sin espera (tests); prod wirea `build_pace()`.
     """
     use_case = RefreshCatalogPrices(store_repo, matcher=matcher, classifier=classifier)
     seen = refreshed = unmatched = matched = 0
     total = len(adapters)
     for index, adapter in enumerate(adapters, start=1):
+        if index > 1 and pace is not None:
+            pace()  # ENTRE búsquedas, nunca antes de la primera (SRD `scrape-many.ts`)
         result = use_case.execute(adapter, captured_at=captured_at)
         seen += result.seen
         refreshed += result.refreshed

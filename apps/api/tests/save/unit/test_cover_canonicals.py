@@ -289,7 +289,7 @@ class _RestSourceRepo:
         )
 
 
-def _build_rest(capability_of=None, pace=None):  # type: ignore[no-untyped-def]
+def _build_rest(capability_of=None, pace=None, store_ean="7460083780023"):  # type: ignore[no-untyped-def]
     captured: dict[str, object] = {}
     refresh = _Refresh()
 
@@ -301,7 +301,7 @@ def _build_rest(capability_of=None, pace=None):  # type: ignore[no-untyped-def]
     if pace is not None:
         kwargs["pace"] = pace
     uc = CoverCanonicals(
-        store_repo=_StoreRepo("7460083780023"),
+        store_repo=_StoreRepo(store_ean),
         canonical_repo=_CanonicalRepo(),
         source_repo=_RestSourceRepo(),
         provider_repo=_ProviderRepo(),
@@ -314,7 +314,7 @@ def _build_rest(capability_of=None, pace=None):  # type: ignore[no-untyped-def]
 
 def test_covers_rest_source_when_injected_capability_says_it_looks_up_by_ean() -> None:
     uc, captured, refresh = _build_rest(
-        capability_of=lambda source: DirectedCapability(supported=True, by_ean=True)
+        capability_of=lambda source: DirectedCapability(by_ean=True, by_text=True)
     )
 
     result = uc.execute("DO")
@@ -343,7 +343,7 @@ def test_paces_between_stores_because_interleaving_alone_does_not_rate_limit() -
     """
     paced: list[int] = []
     uc, _, refresh = _build_rest(
-        capability_of=lambda source: DirectedCapability(supported=True, by_ean=True),
+        capability_of=lambda source: DirectedCapability(by_ean=True, by_text=True),
         pace=lambda: paced.append(1),
     )
 
@@ -351,3 +351,38 @@ def test_paces_between_stores_because_interleaving_alone_does_not_rate_limit() -
 
     assert len(refresh.calls) == 1
     assert paced == [], "un solo par → ninguna espera (la pausa es ENTRE requests)"
+
+
+def test_skips_the_pair_when_the_store_only_knows_barcode_and_the_canonical_has_none() -> None:
+    """EL GATE QUE FALTABA (bug del experimento 2026-07-15).
+
+    Bravo encuentra por barcode pero es CIEGO al texto. Si el canónico no tiene EAN,
+    `build_directed_query` cae al NOMBRE — y el adapter REST ignora el texto y browsea las 41
+    secciones. Con 23 canónicos sin EAN eso son MILES de requests: el desastre que el gate
+    browse-only prevenía y que yo reintroduje al declarar a Bravo "dirigible" sin decir CÓMO.
+
+    Sin llave utilizable, el par NO se intenta: ese canónico es trabajo de Loop A.
+    """
+    uc, captured, refresh = _build_rest(
+        capability_of=lambda source: DirectedCapability(by_ean=True, by_text=False),
+        store_ean=None,  # el canónico no tiene barcode conocido
+    )
+
+    result = uc.execute("DO")
+
+    assert result.pairs_attempted == 0, "sin EAN y sin búsqueda por texto → no hay consulta posible"
+    assert "query" not in captured, "ni siquiera construye el adapter (eso ya sería el browse)"
+    assert refresh.calls == []
+
+
+def test_still_covers_by_name_when_the_store_can_search_text() -> None:
+    # Magento SÍ busca por término: sin EAN, la consulta por nombre es legítima.
+    uc, captured, refresh = _build_rest(
+        capability_of=lambda source: DirectedCapability(by_ean=False, by_text=True),
+        store_ean=None,
+    )
+
+    result = uc.execute("DO")
+
+    assert result.pairs_attempted == 1
+    assert captured["query"].by_ean is False, "cae al nombre, que es lo correcto acá"

@@ -257,7 +257,9 @@ def build_matcher(session: Session) -> MatchStoreProduct | None:
         store_repo=SqlStoreProductRepository(session),
         canonical_repo=SqlCanonicalProductRepository(session),
         embedding_provider=build_embedding_provider(),
-        judge=LlmJudge(),
+        # Switch preventivo (`SAVE_LLM_JUDGE_ENABLED=false`): sin juez, la banda gris va directo
+        # a revisión. El EAN y la banda alta siguen auto-enlazando sin tocar la API.
+        judge=LlmJudge() if settings.save_llm_judge_enabled else None,
         category_lexicon=category_lexicon,
         leaf_to_parent=leaf_to_parent,
     )
@@ -295,7 +297,9 @@ def build_classifier(session: Session) -> ClassifyStoreProduct | None:
         SqlCategoryClassificationRepository(session),
         SqlCategoryCandidateRepository(session),
         build_embedding_provider(),
-        CategoryJudge(),
+        # Mismo switch preventivo que el matcher: sin juez, la banda gris no clasifica en vez de
+        # llamar a una API que sabemos que no queremos usar. El léxico sigue clasificando gratis.
+        CategoryJudge() if settings.save_llm_judge_enabled else None,
         _build_lexicon(session, SAVE_MARKET),
     )
 

@@ -94,7 +94,7 @@ class MatchStoreProduct:
         store_repo: StoreProductRepository,
         canonical_repo: CanonicalProductRepository,
         embedding_provider: EmbeddingProvider,
-        judge: GreyBandJudge,
+        judge: GreyBandJudge | None,
         category_lexicon: LexiconIndex | None = None,
         leaf_to_parent: dict[str, str] | None = None,
     ) -> None:
@@ -183,7 +183,20 @@ class MatchStoreProduct:
                 )
             return self._auto_link(product, winner_id, confidence=final_score, method=stage_method)
 
+        if band == "grey" and self._judge is None:
+            # LLM apagado (`SAVE_LLM_JUDGE_ENABLED=false`): la banda gris va DIRECTO a revisión, sin
+            # round-trip. `method="human"` y NO "llm" a propósito — el juez nunca corrió, y decir lo
+            # contrario mentiría en la misma distinción que defiende CRITICAL-1 abajo (mirarías la
+            # cola creyendo que el LLM dudó de N productos). Los candidatos SÍ se guardan: son lo que
+            # el humano necesita para decidir. La cascada determinista (EAN/alta) no se toca: apagar
+            # el LLM no apaga el matching, solo su tramo caro.
+            return self._to_review(
+                product, method="human", confidence=final_score,
+                candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
+            )
+
         if band == "grey":
+            assert self._judge is not None  # el caso None ya retornó arriba
             verdict = self._judge.judge(
                 store_product={
                     "name": product.name,

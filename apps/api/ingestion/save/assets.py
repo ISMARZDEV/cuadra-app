@@ -23,6 +23,8 @@ from src.contexts.save.infrastructure.repositories import (
 )
 from src.shared.db.base import SessionLocal
 
+from src.contexts.save.infrastructure.catalog_sources.pacing import build_pace
+
 from .composition import (
     build_canonical_embedder,
     build_category_embedder,
@@ -112,6 +114,9 @@ def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
                     f"[{source_key}] query {i}/{n} · acumulado: "
                     f"seen={r.seen} matched={r.matched} unmatched={r.unmatched}"
                 ),
+                # Un adapter POR TÉRMINO de canasta contra la MISMA tienda (hoy 213) → sin pausa es
+                # un martilleo. El browse REST (abajo) no la necesita acá: trae la suya del factory.
+                pace=build_pace(),
             )
             session.commit()
         context.log.info(

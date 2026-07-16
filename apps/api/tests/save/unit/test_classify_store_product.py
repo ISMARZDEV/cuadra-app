@@ -246,3 +246,32 @@ def test_already_classified_is_idempotent() -> None:
 
     assert result.taxonomy_node_id == "leaf-existente"
     assert emb.called is False and jdg.called is False
+
+
+# ── LLM apagado (`SAVE_LLM_JUDGE_ENABLED=false`) ──────────────────────────────────────────────
+# Mismo switch preventivo que en el matcher. Acá es más simple: sin veredicto NO se clasifica, y
+# ese camino ya usa method="none" (no "llm"), así que no hay riesgo de mentir en el método.
+# Lo determinista NO se toca: el léxico y la banda alta siguen clasificando gratis.
+
+
+def test_grey_band_without_a_judge_does_not_classify_and_never_calls_the_api() -> None:
+    cls = _FakeClassifications()
+    cand = _FakeCandidates(trgm=[_cand("n1", 0.6, "trgm", name="Arroz, Granos & Legumbres")])
+    uc = _make(cls, cand, _FakeEmbedder(), None)
+
+    result = uc.execute(_PRODUCT, "DO")
+
+    assert result.taxonomy_node_id is None, "sin juez no se inventa una categoría"
+    assert result.method == "none"
+    assert cls.saved == [], "no persiste nada"
+
+
+def test_lexicon_still_classifies_with_the_judge_off() -> None:
+    # Apagar el LLM no apaga la clasificación: el léxico es determinista y sigue igual.
+    cls, cand, emb = _FakeClassifications(), _FakeCandidates(), _FakeEmbedder()
+    uc = _make(cls, cand, emb, None, lexicon={"arroz": "n-arroz"})
+
+    result = uc.execute(_PRODUCT, "DO")
+
+    assert result.taxonomy_node_id == "n-arroz" and result.method == "lexicon"
+    assert emb.called is False, "el léxico ni siquiera embebe"

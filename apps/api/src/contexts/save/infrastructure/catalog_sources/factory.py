@@ -59,7 +59,9 @@ def directed_capability(
     profile = _REST_CATALOG_PROFILES.get((endpoints or {}).get("profile", ""))
     if profile is None or not profile.ean_param:
         return platform_capability(platform)  # browse-only: es de Loop A
-    return DirectedCapability(supported=True, by_ean=True)
+    # Bravo: `filterByEan` SÍ, búsqueda por texto NO (12 params probados en vivo, todos ignorados).
+    # `by_text=False` es lo que impide que un canónico sin EAN dispare un browse del catálogo entero.
+    return DirectedCapability(by_ean=True, by_text=False)
 
 
 @dataclass(frozen=True, slots=True)

@@ -222,12 +222,13 @@ def _make_use_case(
     judge: FakeJudge | None = None,
     category_lexicon: dict[str, str] | None = None,
     leaf_to_parent: dict[str, str] | None = None,
+    no_judge: bool = False,
 ) -> tuple[MatchStoreProduct, dict]:
     match_repo = match_repo or FakeCascadeMatchRepository()
     store_repo = store_repo or FakeStoreProductLinkRepository()
     canonical_repo = canonical_repo or FakeCanonicalProductRepository({})
     embedder = embedder or FakeEmbeddingProvider()
-    judge = judge or FakeJudge(FakeVerdict("uncertain", 0.0, []))
+    judge = None if no_judge else (judge or FakeJudge(FakeVerdict("uncertain", 0.0, [])))
     use_case = MatchStoreProduct(
         match_repo=match_repo,
         store_repo=store_repo,
@@ -826,3 +827,46 @@ def test_human_band_never_wires_judge_cost() -> None:
     assert "judge_input_tokens" not in record
     assert "judge_output_tokens" not in record
     assert "judge_model" not in record
+
+
+# ── LLM apagado: la banda gris cae a revisión SIN llamar a nadie ──────────────────────────────
+# El circuit-breaker es REACTIVO: corta recién tras 3 fallos, o sea después de comerse 3 llamadas
+# y 3 tracebacks. Cuando ya SABÉS que no querés LLM (cuota agotada, correr barato, medir la
+# cascada determinista sola), hace falta un switch PREVENTIVO: `judge=None`.
+
+
+def test_grey_band_without_a_judge_goes_to_review_as_human_not_llm() -> None:
+    # El `method` NO puede ser "llm": el juez nunca corrió. Registrarlo como "llm" mentiría en la
+    # misma distinción que defiende el comentario de CRITICAL-1 ("el judge SÍ corrió, solo no fue
+    # lo bastante seguro") — mirarías la cola y creerías que el LLM dudó de N productos.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+    )
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=None, no_judge=True
+    )
+
+    result = use_case.execute(_incoming())
+
+    assert result.status == "pending_review"
+    assert result.method == "human", "sin juez, la decisión es del humano — no del LLM"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == [], "NADA se auto-enlaza sin juez"
+
+
+def test_ean_and_high_band_still_work_with_the_judge_off() -> None:
+    # Apagar el LLM NO apaga la cascada determinista: el EAN exacto sigue auto-enlazando gratis.
+    # Es justamente el modo que sirve cuando no hay cuota.
+    match_repo = FakeCascadeMatchRepository(
+        ean_candidates=[MatchCandidate(canonical_product_id="canon-1", score=1.0)],
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, judge=None, no_judge=True)
+
+    result = use_case.execute(_incoming(ean="7460083780146"))
+
+    assert result.status == "auto_linked"
+    assert result.method == "ean"
+    assert result.confidence == 1.0
