@@ -31,6 +31,11 @@ class StaleCovered:
     url: str | None
     platform: SourcePlatform
     source_ref: dict | None = None  # §15.3: localizador de detalle (Bravo id_articulo) para el /get
+    # §14.3 (F3.2b recovery): a qué canónico está enlazado — la LLAVE de recuperación. Si el camino A
+    # dice "ya no está", el EAN de ese canónico (lo aporta cualquier tienda que lo tenga, p.ej. Sirena
+    # al 100%) es con lo que se le vuelve a preguntar a la tienda. `None` = sin cubrir (lo trae
+    # `list_stale_known`, que incluye la cola de revisión) → no hay llave, no hay recovery.
+    canonical_product_id: str | None = None
 
 
 class _HasProviderId(Protocol):

@@ -542,6 +542,19 @@ class SqlStoreProductRepository:
         m.is_available = available
         self._s.flush()
 
+    def repair_locator(self, store_product_id: str, external_id: str, url: str | None) -> None:
+        """F3.2b: apunta el `store_product` al nuevo localizador. NO toca `canonical_product_id`: es
+        el MISMO producto, solo se movió de dirección — el enlace al canónico sigue siendo válido.
+        `url` solo se pisa si la búsqueda trajo una (un candidato sin url no debe borrar la vieja)."""
+        sid = _parse_uuid(store_product_id)
+        m = self._s.get(StoreProductModel, sid) if sid else None
+        if m is None:  # I/O puro (ADR 31): el "no encontrado" es regla del use case
+            return
+        m.external_id = external_id
+        if url:
+            m.url = url
+        self._s.flush()
+
     def list_uncovered(self, market_id: str) -> list[CoveragePair]:
         # CROSS JOIN canónico×tienda del mercado (join por market_id) − LEFT JOIN store_product IS NULL
         # = los pares sin cubrir. Solo tiendas SUPERMARKET (no bancos/aseguradoras del vertical F3).
@@ -628,7 +641,12 @@ class SqlStoreProductRepository:
         if covered_only:
             conds.append(sp.canonical_product_id.is_not(None))  # F3.2a: solo lo YA cubierto
         rows = self._s.execute(
-            select(sp.id, sp.provider_id, sp.external_id, sp.url, pr.platform, sp.source_ref)
+            # `canonical_product_id` = la llave de recuperación de F3.2b (§14.3): si el camino A dice
+            # "ya no está", con ella se pide el EAN del canónico y se le repregunta a la tienda.
+            select(
+                sp.id, sp.provider_id, sp.external_id, sp.url, pr.platform, sp.source_ref,
+                sp.canonical_product_id,
+            )
             .join(pr, pr.id == sp.provider_id)
             .where(*conds)
             .order_by(sp.last_seen_at.asc())  # el más viejo primero
@@ -642,8 +660,9 @@ class SqlStoreProductRepository:
                 url=url,
                 platform=SourcePlatform(platform),
                 source_ref=source_ref,
+                canonical_product_id=str(cid) if cid else None,
             )
-            for spid, pid, ext, url, platform, source_ref in rows
+            for spid, pid, ext, url, platform, source_ref, cid in rows
         ]
 
     def list_by_canonical(self, canonical_product_id: str) -> list[StoreProduct]:

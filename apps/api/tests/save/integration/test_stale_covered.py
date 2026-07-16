@@ -87,3 +87,18 @@ def test_list_stale_known_includes_uncovered(db_session) -> None:  # type: ignor
     assert uncovered_stale in known_ids and covered_stale in known_ids  # known trae AMBOS
     assert uncovered_fresh not in known_ids                            # fresco → se salta
     assert uncovered_stale not in covered_ids                          # contraste: covered NO lo trae
+
+
+def test_stale_covered_carries_the_canonical_id_as_recovery_key(db_session) -> None:  # type: ignore[no-untyped-def]
+    """F3.2b: sin `canonical_product_id` en la fila, el use-case no puede pedir el EAN del canónico
+    → la llave de recuperación llega siempre None y el recovery NUNCA se dispara."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
+    sp = _seed_store_product(db_session, pid, cid)
+    _set_seen(db_session, sp, available=True, last_seen=now - timedelta(hours=30))
+
+    stale = SqlStoreProductRepository(db_session).list_stale_covered(market, now)
+
+    row = next(s for s in stale if s.store_product_id == sp)
+    assert row.canonical_product_id == cid, "la llave de recuperación viaja en la fila"

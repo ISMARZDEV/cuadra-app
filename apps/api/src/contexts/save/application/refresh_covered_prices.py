@@ -32,6 +32,9 @@ ClassifyFetchError = Callable[[Exception], FetchOutcome]
 # `price_refresh` inyecta `list_stale_known` (TODO lo conocido con locator, matcheado o en revisión —
 # paridad con el Prices Batch de SRD). El loop (path A + fallback C + F3.3) es idéntico para ambos.
 StaleSource = Callable[[str, datetime | None], list[StaleCovered]]
+# §14.3 (F3.2b): la búsqueda DIRIGIDA por barcode para re-encontrar un producto cuyo localizador
+# murió. `None` (default) = sin recovery → el comportamiento previo (A no lo encuentra → se oculta).
+BuildRecoverySource = Callable[[StaleCovered, str], CatalogSource | None]
 
 
 def _reraise_classifier(exc: Exception) -> FetchOutcome:
@@ -68,7 +71,9 @@ class RefreshCoveredPrices:
         build_browse_source: BuildBrowseSource | None = None,
         classify_error: ClassifyFetchError = _reraise_classifier,
         stale_source: StaleSource | None = None,
+        build_recovery_source: BuildRecoverySource | None = None,
     ) -> None:
+        self._build_recovery_source = build_recovery_source
         self._store_repo = store_repo
         self._refresh = refresh
         self._build_detail_source = build_detail_source
@@ -107,7 +112,12 @@ class RefreshCoveredPrices:
                     continue
                 raise  # fatal (bug/parseo) → NO se silencia
             if entry is None:
-                # A lo buscó CON acceso válido y ya no está → oculta (no borra, F3.0).
+                # A lo buscó CON acceso válido y ya no está. Antes de ocultarlo, B intenta
+                # re-encontrarlo por el EAN del canónico (§14.3) — quizá la tienda solo le rotó el id.
+                if self._try_recover(item, captured_at):
+                    refreshed += 1
+                    continue
+                # No se pudo recuperar de forma determinista → oculta (no borra, F3.0).
                 self._store_repo.set_availability(item.store_product_id, False)
                 unavailable += 1
             else:
@@ -119,6 +129,38 @@ class RefreshCoveredPrices:
             checked=checked, refreshed=refreshed, unavailable=unavailable,
             stores_aborted=len(down), browsed_providers=browsed,
         )
+
+    def _try_recover(self, item: StaleCovered, captured_at: datetime | None) -> bool:
+        """B (F3.2b, §14.3): el localizador murió → ¿la tienda sigue vendiendo el producto con otro id?
+
+        La llave es el EAN del CANÓNICO (lo aporta cualquier tienda que lo tenga; Sirena/VTEX trae
+        barcode al 100%) — por eso Cuadra puede recuperar donde SupermercadosRD no: ellos necesitan
+        `product_shop_recovery_keys` por tienda porque no tienen EAN.
+
+        Auto-repara SOLO si hay EXACTAMENTE UN candidato con EAN idéntico. Todo lo demás devuelve
+        False → el producto se oculta y queda para un humano:
+          · sin EAN conocido → la recuperación por nombre es Fase 2, nunca automática;
+          · EAN distinto     → no es el mismo producto;
+          · varios con el mismo EAN → ambiguo (mismo criterio que la COLISIÓN de la cascada de
+            matching: >1 canónico con el mismo EAN → cola humana, jamás auto-link).
+        Reparar mal es peor que no reparar: el canónico empezaría a mostrar el precio de OTRO
+        producto, y al ser automático nadie lo revisa.
+        """
+        if self._build_recovery_source is None or item.canonical_product_id is None:
+            return False
+        ean = self._store_repo.find_ean_for_canonical(item.canonical_product_id)
+        if not ean:
+            return False
+        source = self._build_recovery_source(item, ean)
+        if source is None:
+            return False
+        exact = [e for e in source.fetch() if e.ean and e.ean == ean]
+        if len(exact) != 1:
+            return False
+        found = exact[0]
+        self._store_repo.repair_locator(item.store_product_id, found.external_id, found.url)
+        self._refresh.execute(_SingleEntrySource((found,)), captured_at=captured_at)
+        return True
 
     def _browse_deferred(self, deferred: set[str], captured_at: datetime | None) -> int:
         """Fallback C: refresca por BROWSE (catálogo completo, change-only) UNA vez por provider

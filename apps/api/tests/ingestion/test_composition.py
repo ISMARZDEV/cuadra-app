@@ -126,3 +126,74 @@ def test_build_rest_catalog_source_for_single_section(monkeypatch: pytest.Monkey
     assert isinstance(source, RestCatalogAdapter)
     assert source._sections == ["14"]  # SOLO esa sección
     assert composition.build_rest_catalog_source_for(object(), "p-inexistente", "14") is None
+
+
+# ── F3.2b · wiring de producción del recovery ─────────────────────────────────────────────────
+
+
+def _bravo_recovery_registry():  # type: ignore[no-untyped-def]
+    from src.contexts.save.domain.entities import SourcePlatform, StoreRegistry
+
+    return StoreRegistry(
+        "s1", "p-bravo", SourcePlatform.REST_CATALOG, "https://bravova-api.test",
+        endpoints={"profile": "bravova", "store_id": "1000", "sections": ["14"]},
+    )
+
+
+def _recovery_builder(monkeypatch: pytest.MonkeyPatch, registry):  # type: ignore[no-untyped-def]
+    """Extrae el `build_recovery_source` que la composición inyecta, sin tocar la DB."""
+    monkeypatch.setattr(composition, "SqlStoreProductRepository", lambda s: MagicMock())
+    monkeypatch.setattr(composition, "RefreshCatalogPrices", lambda *a, **k: MagicMock())
+    repo = MagicMock()
+    repo.list_by_market.return_value = [registry]
+    monkeypatch.setattr(composition, "SqlStoreRegistryRepository", lambda s: repo)
+    captured: dict = {}
+    real = composition.RefreshCoveredPrices
+
+    def spy(**kw):  # type: ignore[no-untyped-def]
+        captured.update(kw)
+        return MagicMock()
+
+    monkeypatch.setattr(composition, "RefreshCoveredPrices", spy)
+    composition.build_refresh_covered_prices(MagicMock())
+    assert real is not None
+    return captured
+
+
+def test_recovery_source_is_wired_and_asks_bravo_by_barcode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.contexts.save.domain.coverage import StaleCovered
+    from src.contexts.save.domain.entities import SourcePlatform
+    from src.contexts.save.infrastructure.catalog_sources.rest_catalog_adapter import (
+        RestCatalogAdapter,
+    )
+
+    captured = _recovery_builder(monkeypatch, _bravo_recovery_registry())
+    build = captured["build_recovery_source"]
+
+    item = StaleCovered(
+        store_product_id="sp1", provider_id="p-bravo", external_id="33631", url=None,
+        platform=SourcePlatform.REST_CATALOG, canonical_product_id="c1",
+    )
+    source = build(item, "7460083780146")
+
+    assert isinstance(source, RestCatalogAdapter)
+    assert source._ean == "7460083780146", "recovery le pregunta a Bravo por el barcode"
+
+
+def test_no_recovery_source_for_stores_that_cannot_look_up_by_barcode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Magento busca por término, no por barcode → no hay llave determinista → sin recovery.
+    from src.contexts.save.domain.coverage import StaleCovered
+    from src.contexts.save.domain.entities import SourcePlatform, StoreRegistry
+
+    reg = StoreRegistry("s3", "p-nac", SourcePlatform.MAGENTO, "https://nacional.test")
+    captured = _recovery_builder(monkeypatch, reg)
+    item = StaleCovered(
+        store_product_id="sp2", provider_id="p-nac", external_id="x", url=None,
+        platform=SourcePlatform.MAGENTO, canonical_product_id="c1",
+    )
+
+    assert captured["build_recovery_source"](item, "7460083780146") is None
