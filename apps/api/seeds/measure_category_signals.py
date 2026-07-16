@@ -37,7 +37,8 @@ def main() -> None:
     if "--queries" in sys.argv:
         n_queries = int(sys.argv[sys.argv.index("--queries") + 1])
 
-    from ingestion.save.sources import BASKET_QUERIES, build_sources
+    from ingestion.save.composition import build_basket_queries
+    from ingestion.save.sources import SAVE_MARKET, build_sources
     from src.shared.db.base import SessionLocal
     from sqlalchemy import text
 
@@ -50,6 +51,12 @@ def main() -> None:
         parents = s.execute(
             text("SELECT id::text, name FROM save.taxonomy_node WHERE level=0 AND market_id='DO'")
         ).all()
+        # La canasta sale de la TABLA (antes: `BASKET_QUERIES[:n]`). Se lee DENTRO de la sesión.
+        queries = build_basket_queries(s, SAVE_MARKET)[:n_queries]
+
+    if not queries:
+        print(f"✖ Canasta VACÍA para {SAVE_MARKET} (basket_query sin filas active).")
+        return
 
     leaf_lex = build_lexicon_index([(r[0], r[1]) for r in leaves])
     parent_lex = build_lexicon_index([(r[0], r[1]) for r in parents])
@@ -58,7 +65,7 @@ def main() -> None:
     leaf_name = {r[0]: r[1] for r in leaves}
 
     # Fetch en vivo de Sirena (acotado a N queries de la canasta). category_path lo pobla el VtexAdapter.
-    adapters = build_sources(queries=BASKET_QUERIES[:n_queries])["sirena"]
+    adapters = build_sources(queries=queries)["sirena"]
     seen: set[str] = set()
     entries = []
     for a in adapters:

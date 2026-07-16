@@ -8,6 +8,7 @@ es `ingestion.definitions` (`make ingestion-dev`); esto es el atajo sin proceso 
 from __future__ import annotations
 
 from ingestion.save.composition import (
+    build_basket_queries,
     build_canonical_embedder,
     build_category_embedder,
     build_classifier,
@@ -36,7 +37,18 @@ def main() -> None:
             print(f"save-refresh embeddings: {cat_embedded} categorías embebidas (índice semántico)")
         matcher = build_matcher(session)  # None salvo SAVE_MATCHING_CASCADE_ENABLED=true
         classifier = build_classifier(session)  # None salvo SAVE_CLASSIFICATION_ENABLED=true
-        for name, adapters in build_sources().items():
+        # La canasta sale de la TABLA, igual que en los assets de Dagster. Hasta 2026-07-16 esto
+        # era `build_sources()` a secas y se llevaba un tuple hardcodeado de 213 términos: el CLI
+        # ingería una canasta DISTINTA de la que el admin había configurado, y ninguno avisaba.
+        queries = build_basket_queries(session, SAVE_MARKET)
+        if not queries:
+            print(
+                f"save-refresh: canasta VACÍA para {SAVE_MARKET} (basket_query sin filas active) "
+                "— no hay nada que ingerir. Poblá la canasta (migración/admin)."
+            )
+            return
+        print(f"save-refresh: {len(queries)} queries activas de la canasta")
+        for name, adapters in build_sources(queries=queries).items():
             result = refresh_source(
                 repo, adapters, matcher=matcher, classifier=classifier, pace=build_pace()
             )
