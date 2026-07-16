@@ -85,17 +85,46 @@ the **factory**, so no new caller can forget it).
 Cost is real and correct: full Loop A (213 terms × 3 stores) ≈ **11 min**. It used to take seconds
 because we were externalizing the cost to the supermarkets' servers.
 
-### 3. Barcodes — normalize, then filter STRICTLY
+### 3. Barcodes — the GTIN family: normalize, then filter STRICTLY
 
 `domain/value_objects/ean.py`. Feeds the EAN stage, which auto-links at score 1.0 **with no human review**.
 
-- **UPC-A (12 digits) ≡ EAN-13 with a leading `0`** (GS1). Rejecting it silently drops most imported
-  products (Goya `0041331…`, La Famosa `0760593…`). Measured: Bravo went **2/10 → 10/10** on this fix alone.
+**The app is GLOBAL** (RD → USA → Europe → LatAm), so the domain speaks the whole GTIN family, not
+"EAN-13 plus a UPC-A patch":
+
+| Format | Digits | Where |
+|---|---|---|
+| GTIN-8 | 8 | EAN-8, small products |
+| **UPC-E** | 8 | zero-suppressed UPC-A (USA). **Ambiguous with GTIN-8 by length** → disambiguate by number system (0\|1) and validate by EXPANDING it: its check digit is the expanded UPC-A's, not its own |
+| GTIN-12 | 12 | UPC-A — USA/Canada |
+| GTIN-13 | 13 | EAN-13 — Europe/LatAm/RD |
+| GTIN-14 | 14 | case/logistics code (indicator digit 1-8) |
+
+- **Canonical form = GTIN-14, zero-padded** (GS1 right-align + pad). The check digit survives because
+  the 3,1,3,1… weights count FROM the check digit leftward — padding zeros can't shift the sum. All four
+  ways a store can write the same code converge to ONE string, so the EAN stage compares strings.
+  A GTIN-14 with indicator 1-8 is a CASE (another SKU, own check digit) → stays a distinct string, which
+  is correct: a case is not a jar.
 - **Normalizing is not cosmetic**: if Bravo writes `760593023182` and Sirena `0760593023182` and they
-  don't converge to the same string, the EAN stage NEVER links them — an INVISIBLE false negative.
-- **Restricted (in-store) ranges are THREE**, over the normalized form: `200-299`, **`020-029`**,
-  **`040-049`**. The last two are UPC-A number-systems 2 (variable weight — the barcode encodes the
-  WEIGHT, not the product) and 4 (local use). A filter that only checks `2x` lets them through disguised.
+  don't converge, the EAN stage NEVER links them — an INVISIBLE false negative. **Measured 2026-07-16,
+  not theoretical: 33/63 rows with EAN (52%) violated the invariant**, and it was faking 2 "legitimately
+  new products" in the review queue.
+- **Restricted ranges** over the GTIN-13 view: `200-299`, **`020-029`**, **`040-049`** (UPC-A number
+  systems 2 = variable weight — the barcode encodes the WEIGHT, not the product — and 4 = local use; a
+  filter that only checks `2x` lets them through disguised), plus **GTIN-8 leading `0`\|`2`**, plus
+  coupons/refunds `980-984` and `990-999`. **ISBN/ISSN (`977`/`978`/`979`) are ACCEPTED**: books and
+  magazines are global product identifiers a súper does sell.
+- **The zero-eaten UPC-A**: an 11-digit code is no barcode at all — it's a UPC-A whose leading zero a
+  NUMERIC parse upstream ate. Restore it and validate. Evidence it's real (Sirena, 11 rows): 11/11 pass
+  checksum (chance = 10⁻¹¹) **and the prefix matches the brand in the name** (41331=Goya, 0039978=Bob's
+  Red Mill, 0070560=Pictsweet).
+- **EVERY adapter writes through `pick_global_ean`** — VTEX did NOT until 2026-07-16 (`ean=first.get("ean")`,
+  raw), and since **Sirena is THE SEEDER** (R7), the unguarded path contaminated the one source everything
+  else depends on. A backfill without fixing the write path undoes itself on the next run.
+- **The filter runs on the RAW form, never on a stored one.** A restricted GTIN-8 padded to GTIN-14
+  (`00000021061684`) is indistinguishable from a global UPC-A — the format is gone. So the filter lives at
+  the WRITE boundary (`pick_global_ean`), decides while the format is still visible, and what's stored is
+  already filtered.
 - **NEVER take `associatedEan[0]`**: the list mixes global, internal and PLU codes, and the global one
   is NOT first. Use `pick_global_ean`. `None` is a healthy, expected outcome — the cascade then goes
   by name/vector, which HAS a human safety net.
@@ -146,10 +175,12 @@ EAN, high band and lexicon still resolve for free. **Measured: 85% auto-linked w
 
 - Grey band with no judge → matcher: review with **`method="human"`** (NOT `"llm"` — the judge never ran;
   saying otherwise lies in the exact distinction CRITICAL-1 defends). Classifier: unclassified, `method="none"`.
-- **KNOWN LATENT BUG (fix before turning the LLM back on):** with the breaker OPEN, `LlmJudge` returns
-  `_UNCERTAIN` **without calling the API**, and it is recorded as `method="llm"`. Measured: of 11
-  `pending_review/llm`, **the LLM never saw 8**. You would read the queue and "tune the judge" over a
-  fake signal. The degraded uncertain must be recorded as `human`.
+- **FIXED 2026-07-16** (was a latent bug): with the breaker OPEN, `LlmJudge` returned `_UNCERTAIN`
+  **without calling the API** and it was recorded as `method="llm"`. Measured: of 11 `pending_review/llm`,
+  **the LLM never saw 8**. Now `JudgeVerdict.degraded` marks every fail-safe verdict (open breaker /
+  client failure / unreadable output) and the use-case records `human`; a REAL `uncertain` from the judge
+  stays `llm`. The flag rides on the verdict because only the adapter knows whether the API ever spoke.
+  See `cuadra-save-matching` §7bis.
 
 ## Code Examples
 
@@ -160,8 +191,10 @@ if not cap.supported:            continue            # browse-only → Loop A
 query = build_directed_query(..., store_supports_ean=cap.by_ean)
 if not query.by_ean and not cap.by_text: continue    # ← the gate: no barcode + text-blind ⇒ full browse
 
-# Barcode: normalize FIRST, then filter. Never [0].
-pick_global_ean(["33334", "760593023182"])           # → "0760593023182"  (UPC-A → EAN-13)
+# Barcode: EVERY adapter writes through this. Normalizes to GTIN-14, filters restricted. Never [0].
+pick_global_ean(["33334", "760593023182"])           # → "00760593023182"  (UPC-A → GTIN-14)
+pick_global_ean(["41331026123"])                     # → "00041331026123"  (zero-eaten UPC-A, rescued)
+pick_global_ean(["21061684"])                        # → None (valid GTIN-8, but prefix 2 = in-store)
 
 # Late lookup: `def f(*, sleep=time.sleep)` FREEZES the ref at import → monkeypatch is ignored and
 # the test SLEEPS FOR REAL, silently. Resolve inside the closure.
@@ -181,6 +214,12 @@ cd apps/api && uv run python -c "from src.shared.db.base import SessionLocal; ..
 ```
 
 ## Live baseline (2026-07-15 — clean DB, full stack)
+
+> ⚠️ **This baseline is PESSIMISTIC and must be RE-MEASURED in F2** (correction 2026-07-16). It was taken
+> while Sirena's EANs were unnormalized, so part of that 15% queue was the invisible false-negative, not
+> genuine ambiguity — two of the queued items turned out to be the SAME product Sirena had already
+> auto-linked, split only by a zero. The EAN backfill alone made **10 barcodes cross Bravo↔Sirena** that
+> previously could not converge. Re-measure before tuning anything on these numbers.
 
 | Metric | Value |
 |---|---|

@@ -106,14 +106,29 @@ Base: `/Users/ismartz/Library/Mobile Documents/iCloud~md~obsidian/Documents/dev-
 >
 > Detalle completo en `docs/pending/save-modelo-descubrimiento-matcheo.md` §8.
 
-### Fase 0 — Higiene (cerrar lo abierto)
-1. Commit + PR de `by_text` de Bravo + los docs. *(La rama `feat/save-bravo-y-recovery` va ahead sin
-   pushear y **CI nunca ha visto nada**.)*
-2. **R6** — backfill de normalización de EAN (UPC-A→EAN-13). Cierra un falso-negativo INVISIBLE antes
-   de que más corridas escriban barcodes sin normalizar.
-3. **Fix del breaker mentiroso** — con el breaker abierto, `LlmJudge` devuelve `_UNCERTAIN` sin llamar
-   la API y se registra `method="llm"`. Debe registrarse `human`. Hazlo ahora aunque el LLM esté OFF.
-4. Retirar el fallback legacy `BASKET_QUERIES` (`ingestion/save/sources.py:298`).
+### Fase 0 — Higiene (cerrar lo abierto) — ✅ COMPLETA 2026-07-16
+1. ✅ Commit + PR de `by_text` de Bravo + los docs (PR #31, mergeado).
+2. ✅ **R6** — normalización de EAN **en ambos lados** + backfill. **Resultó ALTA, no MEDIA**: la causa
+   no eran "filas viejas" sino que `vtex_adapter` escribía `ean` CRUDO — y Sirena es el SEMBRADOR de
+   barcodes. 52% de las filas con EAN violaban el invariante, todas de Sirena. El dominio pasó a hablar
+   la familia GTIN completa (GTIN-8/UPC-E/12/13/14, canónico **GTIN-14**) porque la app se extiende a
+   USA/Europa/LatAm. Destrabó 10 barcodes que ahora cruzan Bravo↔Sirena.
+3. ✅ **Fix del breaker mentiroso** — el veredicto degradado ahora se declara (`JudgeVerdict.degraded`)
+   y el use-case registra `human`. `method="llm"` vuelve a significar "el juez emitió un veredicto".
+4. ✅ Retirar el fallback legacy `BASKET_QUERIES` — **no era código muerto, era DIVERGENCIA**: el CLI
+   `make save-refresh` ingería el hardcode mientras Dagster leía la tabla. `queries` ahora es
+   obligatorio (el olvido es imposible por construcción) y el lector vive en `composition.py`.
+
+> [!important] Lo que la Fase 0 enseñó, y que la Fase 1 debe heredar
+> Los tres ítems eran "chicos e independientes". Ninguno lo era, y los tres fallaban de la MISMA forma
+> que los 5 bugs de la ingesta: **algo indistinguible del resultado real.** Un EAN sin normalizar que
+> se ve como "no matchea". Un `method="llm"` que se ve como "el juez dudó". Un CLI que se ve como
+> "ingerí la canasta". Ninguno rompe nada: todos MIENTEN en verde.
+>
+> Corolario operativo, ya cobrado dos veces en esta rama: **el 15% de cola y los "2 productos nuevos
+> legítimos" de §4 del doc del modelo eran ambos este bug**, y un test que decía defender el rango
+> interno pasaba con fixtures de checksum roto. Antes de creerle a una medición, verificá que la
+> salvaguarda que la respalda tenga un test que falle cuando debe.
 
 ### Fase 1 — Backend de los 2 procesos (sin UI)
 5. **R1** — Descubrimiento registry/capability-driven: muere `SOURCE_KEYS`

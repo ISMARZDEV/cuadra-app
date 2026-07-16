@@ -40,7 +40,7 @@ metadata:
 | Pure scoring (RRF / boosts / banding) | `contexts/save/infrastructure/matching/cascade/{fusion,scoring,banding}.py` |
 | Repo (pgvector/trgm queries + review queue) | `contexts/save/infrastructure/matching/repository/product_match_repository.py` |
 | Embedding adapter (BGE-M3, injectable client) | `contexts/save/infrastructure/matching/embeddings.py` |
-| Claude judge (fail-safe, structured output) | `contexts/save/infrastructure/matching/claude_judge.py` |
+| LLM judge (fail-safe, structured output) | `contexts/save/infrastructure/matching/llm_judge.py` |
 | Entity + ports | `domain/entities/product_match.py` · `domain/ports/repositories.py` |
 | Ingestion wiring + flag gate | `application/refresh_prices.py` · `ingestion/save/composition.py` |
 | Migration (extensions + product_match + HNSW) | `migrations/versions/614e370d452c_*.py` |
@@ -48,9 +48,12 @@ metadata:
 
 ## The cascade contract (cheapest → most expensive)
 
-El EAN que entra debe venir **NORMALIZADO** (`pick_global_ean`, skill `cuadra-save-ingestion`): un UPC-A
-`760593023182` y su forma EAN-13 `0760593023182` son el MISMO barcode, y si dos tiendas no convergen a la
-misma cadena esta etapa NUNCA los enlaza — un falso negativo INVISIBLE (se ve como "no matchea").
+El EAN que entra debe venir **NORMALIZADO a GTIN-14** (`pick_global_ean`, skill `cuadra-save-ingestion`):
+un UPC-A `760593023182` y su forma EAN-13 `0760593023182` son el MISMO barcode, y si dos tiendas no
+convergen a la misma cadena esta etapa NUNCA los enlaza — un falso negativo INVISIBLE (se ve como "no
+matchea"). **No es teórico: medido 2026-07-16, era el 52% de las filas con EAN** (Sirena escribía crudo)
+y explicaba 2 de los productos que la cola daba por "nuevos legítimos". Todo adapter escribe vía
+`pick_global_ean` — el filtro corre sobre la forma CRUDA, nunca sobre una ya almacenada.
 
 ```
 EAN exacto (score 1.0) ─┬─ 1 match  → auto_link (method=ean)
@@ -89,12 +92,17 @@ Claude-juez {decision, confidence, cited_fields}:
 6. **The Anthropic client lives ONLY in `infrastructure/matching/`** (`claude_judge.py`, via
    `shared.llm.get_chat_model` — not the raw SDK). import-linter `domain-puro` FAILS if it leaks into
    domain. The judge is consumed by the use-case via a LOCAL `Protocol` (`GreyBandJudge`), not a domain port.
-7bis. **El breaker ABIERTO miente sobre el `method` (BUG CONOCIDO, latente).** Con el breaker abierto
-   `LlmJudge` devuelve `_UNCERTAIN` **sin llamar la API**, y el use-case lo registra como `method="llm"`.
-   Medido 2026-07-15: de 11 `pending_review/llm`, **el LLM nunca vio 8** → leerías la cola y "afinarías el
-   juez" sobre una señal falsa. El uncertain DEGRADADO debe registrarse como `human`. Hoy es moot
-   (`SAVE_LLM_JUDGE_ENABLED=false` por defecto, sin juez no hay breaker) — **arreglar ANTES de re-habilitarlo**.
-   Con el juez apagado la banda gris ya va a revisión con `method="human"`, que es la semántica correcta.
+7bis. **`method="llm"` ⟺ el juez emitió un veredicto VÁLIDO** (ARREGLADO 2026-07-16). El breaker abierto
+   hacía que `LlmJudge` devolviera `_UNCERTAIN` **sin llamar la API**, y el use-case lo registraba como
+   `method="llm"`. Medido 2026-07-15: de 11 `pending_review/llm`, **el LLM nunca vio 8** → leerías la cola
+   y "afinarías el juez" sobre una señal que jamás emitió.
+   **El fix:** `JudgeVerdict.degraded` distingue *"el juez dudó"* (señal legítima suya → `llm`) de *"el
+   juez no estuvo"* (breaker abierto / API caída / salida ilegible → `human`). El flag vive en el
+   VEREDICTO y no en el use-case porque **solo el adapter sabe si la API llegó a hablar**. Los tres
+   caminos degradados devuelven `uncertain`, así que `decision` NO alcanza para distinguirlos — por eso
+   hace falta el flag, y por eso un `uncertain` REAL del juez sigue siendo `llm`.
+   Nota: un veredicto degradado puede traer tokens (la llamada se pagó y volvió ilegible). No es
+   contradictorio: es la lectura honesta de "pagamos y no obtuvimos nada confiable".
 
 7. **Judge fail-safe.** Any invalid/unparseable/out-of-range/timeout judge output is forced to
    `uncertain` → review queue. It re-validates the payload (`_Verdict.model_validate`) — never trusts
