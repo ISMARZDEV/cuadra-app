@@ -28,27 +28,59 @@ from .composition import (
     build_classifier,
     build_cover_canonicals,
     build_matcher,
+    build_query_catalog_sources_for,
     build_refresh_covered_prices,
     build_refresh_known_prices,
     build_rest_catalog_source_for,
     parse_rest_catalog_partition_key,
+    query_catalog_partition_keys,
     rest_catalog_partition_keys,
 )
 from .runner import refresh_source
-from .sources import SAVE_MARKET, build_sources
+from .sources import SAVE_MARKET
 
-SOURCE_KEYS: tuple[str, ...] = ("sirena", "nacional", "jumbo")
 _DROPS_WINDOW_DAYS = 7
 
 # Particiones DINÁMICAS del browse REST_CATALOG — una por (provider, section). Dinámicas porque las
 # secciones son config de admin (store_registry), no un set fijo en código; el sensor las sincroniza.
 rest_catalog_sections = dg.DynamicPartitionsDefinition(name="rest_catalog_section")
 
+# Particiones DINÁMICAS del descubrimiento por-query — una por PROVEEDOR (R1). Antes esto era
+# `SOURCE_KEYS = ("sirena","nacional","jumbo")`: un tuple hardcodeado, mientras el browse REST ya era
+# registry-driven. Esa inconsistencia era la raíz — Bravo aprendió a buscar por texto y no había forma
+# de que entrara sin editar código, y pausar una tienda desde el admin no la sacaba de la ingesta.
+# Dinámicas porque los assets se definen AL IMPORTAR y el set vive en el DB: el sensor las sincroniza.
+query_catalog_providers = dg.DynamicPartitionsDefinition(name="query_catalog_provider")
+
+# ── Automatización declarativa: el orden lo da la DEPENDENCIA, no el reloj ─────────────────────
+# Particionar el descubrimiento lo saca del job diario unpartitioned (Dagster no mezcla assets
+# particionados y no particionados en un job), así que la cadena embed → descubrimiento → drops
+# había que reconstruirla. La alternativa era encadenar por RELOJ (05:00/06:00/07:00) y se descartó:
+# si embed tarda de más, el descubrimiento corre igual sobre un índice viejo y NADIE se entera —
+# la forma exacta de los bugs que esta fase viene destapando (no rompen, mienten en verde).
+
+# Cabeza de la cadena: lo único con reloj. El resto lo arrastran las dependencias.
+_DAILY_CHAIN_HEAD = dg.AutomationCondition.on_cron("0 6 * * *")
+
+# "Cuando lo de arriba TERMINÓ de verdad" — `eager()` MENOS su guarda `~any_deps_missing`.
+# Por qué: `price_drops`/`alert_matching` dependen también de `rest_catalog_prices`, el browse MANUAL
+# de Bravo. En un deploy nuevo sus particiones nunca se materializaron → están "missing" → `eager()`
+# ("will not execute targets that have any missing dependencies") los bloquearía PARA SIEMPRE y las
+# alertas de bajada no saldrían nunca. Hoy corren igual porque el job diario no mira eso.
+# Se conserva `~any_deps_in_progress`: sin eso contaría bajadas sobre una ingesta a medio hacer.
+_AFTER_DEPS_SETTLE = (
+    dg.AutomationCondition.any_deps_updated()
+    & ~dg.AutomationCondition.any_deps_in_progress()
+    & ~dg.AutomationCondition.in_progress()
+)
+
 
 @dg.asset(
     name="embed_canonicals",
     group_name="save_catalog",
-    description="Backfill del índice semántico: embebe los canónicos antes del matching (no-op si dark).",
+    automation_condition=_DAILY_CHAIN_HEAD,
+    description="Backfill del índice semántico: embebe los canónicos antes del matching (no-op si dark). "
+    "Cabeza de la cadena diaria (06:00) — lo que sigue lo arrastran las dependencias, no el reloj.",
 )
 def embed_canonicals(context) -> dg.MaterializeResult:
     """Upstream de las fuentes: la etapa vectorial de la cascada necesita canónicos ya embebidos.
@@ -64,57 +96,92 @@ def embed_canonicals(context) -> dg.MaterializeResult:
     return dg.MaterializeResult(metadata={"embedded": embedded, "categories": cat_embedded})
 
 
-def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
-    @dg.asset(
-        name=f"{source_key}_prices",
-        deps=[dg.AssetKey("embed_canonicals")],  # matching necesita el índice semántico poblado
-        group_name="save_catalog",
-        description=f"Refresh de precios vivos (change-only) — {source_key}",
-    )
-    def _asset(context) -> dg.MaterializeResult:
-        with SessionLocal() as session:
-            # F1 (Gap #1): la canasta sale de la TABLA `basket_query` (active) del mercado, no del
-            # tuple hardcodeado. La sesión se abre antes para leerla y reusarla en el refresh.
-            queries = build_basket_queries(session, SAVE_MARKET)
-            if not queries:
-                context.log.warning(
-                    f"{source_key}: canasta VACÍA para {SAVE_MARKET} (basket_query sin filas active) "
-                    f"— no hay nada que ingerir. Poblá la canasta (migración/admin)."
-                )
-            context.log.info(
-                f"{source_key}: arrancando refresh sobre {len(queries)} queries de la canasta "
-                f"(cascada/clasificación según flags)"
+@dg.asset(
+    name="query_catalog_prices",
+    partitions_def=query_catalog_providers,  # UNA tienda por partición (provider_id)
+    deps=[dg.AssetKey("embed_canonicals")],  # matching necesita el índice semántico poblado
+    group_name="save_catalog",
+    automation_condition=dg.AutomationCondition.eager(),
+    description="Descubrimiento (Loop A): busca las queries ACTIVAS de la canasta en UNA tienda por "
+    "partición. Registry-driven — el set de tiendas sale de `store_registry` activo × capacidad "
+    "by_text, no de un tuple en código. Particionado → cada tienda se materializa/reintenta sola.",
+)
+def query_catalog_prices(context) -> dg.MaterializeResult:
+    """Antes eran tres assets fijos (`sirena_prices`/`nacional_prices`/`jumbo_prices`) armados desde
+    `SOURCE_KEYS`. Ahora la partición ES el proveedor y el sensor la sincroniza con el registry:
+    sumar un súper es una FILA (regla SAGRADA #4), y `enabled`/`paused_at` por fin sacan una tienda
+    de la ingesta. Una partición cuyo proveedor se apagó o dejó de saber por texto se salta sin
+    fallar (el sensor tarda en limpiarla)."""
+    provider_id = context.partition_key
+    with SessionLocal() as session:
+        # La canasta sale de la TABLA `basket_query` (active) del mercado. La sesión se abre antes
+        # para leerla y reusarla en el refresh.
+        queries = build_basket_queries(session, SAVE_MARKET)
+        if not queries:
+            context.log.warning(
+                f"query_catalog_prices[{provider_id}]: canasta VACÍA para {SAVE_MARKET} "
+                "(basket_query sin filas active) — no hay nada que ingerir. Poblá la canasta."
             )
-            adapters = build_sources(queries=queries)[source_key]
-            result = refresh_source(
-                SqlStoreProductRepository(session), adapters,
-                matcher=build_matcher(session), classifier=build_classifier(session),
-                on_progress=lambda i, n, r: context.log.info(
-                    f"[{source_key}] query {i}/{n} · acumulado: "
-                    f"seen={r.seen} matched={r.matched} unmatched={r.unmatched}"
-                ),
-                # Un adapter POR TÉRMINO de canasta contra la MISMA tienda (hoy 213) → sin pausa es
-                # un martilleo. El browse REST (abajo) no la necesita acá: trae la suya del factory.
-                pace=build_pace(),
+            return dg.MaterializeResult(metadata={"seen": 0, "skipped": True})
+        adapters = build_query_catalog_sources_for(session, provider_id, queries)
+        if adapters is None:
+            context.log.warning(
+                f"query_catalog_prices[{provider_id}]: fuente inexistente, apagada, o que ya no "
+                "busca por texto (partición huérfana) — se salta."
             )
-            session.commit()
+            return dg.MaterializeResult(metadata={"seen": 0, "skipped": True})
         context.log.info(
-            f"{source_key}: LISTO seen={result.seen} refreshed={result.refreshed} "
-            f"unmatched={result.unmatched} matched={result.matched}"
+            f"query_catalog_prices[{provider_id}]: arrancando sobre {len(queries)} queries de la "
+            "canasta (cascada/clasificación según flags)"
         )
-        return dg.MaterializeResult(
-            metadata={
-                "seen": result.seen,
-                "refreshed": result.refreshed,
-                "unmatched": result.unmatched,
-                "matched": result.matched,
-            }
+        result = refresh_source(
+            SqlStoreProductRepository(session), adapters,
+            matcher=build_matcher(session), classifier=build_classifier(session),
+            on_progress=lambda i, n, r: context.log.info(
+                f"[{provider_id}] query {i}/{n} · acumulado: "
+                f"seen={r.seen} matched={r.matched} unmatched={r.unmatched}"
+            ),
+            # Un adapter POR TÉRMINO de canasta contra la MISMA tienda (hoy 213) → sin pausa es un
+            # martilleo. El browse REST (abajo) no la necesita acá: trae la suya del factory.
+            pace=build_pace(),
         )
+        session.commit()
+    context.log.info(
+        f"query_catalog_prices[{provider_id}]: LISTO seen={result.seen} refreshed={result.refreshed} "
+        f"unmatched={result.unmatched} matched={result.matched}"
+    )
+    return dg.MaterializeResult(
+        metadata={
+            "seen": result.seen,
+            "refreshed": result.refreshed,
+            "unmatched": result.unmatched,
+            "matched": result.matched,
+        }
+    )
 
-    return _asset
 
-
-source_assets: list[dg.AssetsDefinition] = [_build_source_asset(k) for k in SOURCE_KEYS]
+@dg.sensor(
+    name="sync_query_catalog_providers",
+    minimum_interval_seconds=300,
+    default_status=dg.DefaultSensorStatus.RUNNING,
+    description="Sincroniza las particiones de query_catalog_prices con las fuentes de store_registry "
+    "que están activas y saben buscar por texto (agrega las nuevas, quita las que dejaron de serlo).",
+)
+def sync_query_catalog_providers(context) -> dg.SensorResult | dg.SkipReason:
+    with SessionLocal() as session:
+        desired = set(query_catalog_partition_keys(session))
+    current = set(context.instance.get_dynamic_partitions(query_catalog_providers.name))
+    to_add = sorted(desired - current)
+    to_remove = sorted(current - desired)
+    if not to_add and not to_remove:
+        return dg.SkipReason("particiones de descubrimiento ya sincronizadas con store_registry")
+    requests = []
+    if to_add:
+        requests.append(query_catalog_providers.build_add_request(to_add))
+    if to_remove:
+        requests.append(query_catalog_providers.build_delete_request(to_remove))
+    context.log.info(f"particiones de descubrimiento: +{len(to_add)} / -{len(to_remove)}")
+    return dg.SensorResult(dynamic_partitions_requests=requests)
 
 
 @dg.asset(
@@ -258,8 +325,9 @@ def price_refresh(context) -> dg.MaterializeResult:
 
 
 @dg.asset(
-    deps=[*(dg.AssetKey(f"{k}_prices") for k in SOURCE_KEYS), dg.AssetKey("rest_catalog_prices")],
+    deps=[dg.AssetKey("query_catalog_prices"), dg.AssetKey("rest_catalog_prices")],
     group_name="save_catalog",
+    automation_condition=_AFTER_DEPS_SETTLE,
     description="Bajadas de precio detectadas tras el refresh (G4).",
 )
 def price_drops(context) -> dg.MaterializeResult:
@@ -272,8 +340,9 @@ def price_drops(context) -> dg.MaterializeResult:
 
 
 @dg.asset(
-    deps=[*(dg.AssetKey(f"{k}_prices") for k in SOURCE_KEYS), dg.AssetKey("rest_catalog_prices")],
+    deps=[dg.AssetKey("query_catalog_prices"), dg.AssetKey("rest_catalog_prices")],
     group_name="save_catalog",
+    automation_condition=_AFTER_DEPS_SETTLE,
     description="Cruce de bajadas con las suscripciones → notificaciones de alerta (G4).",
 )
 def alert_matching(context) -> dg.MaterializeResult:

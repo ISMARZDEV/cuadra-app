@@ -299,3 +299,154 @@ def test_classifier_gets_a_real_judge_when_the_switch_is_on(monkeypatch: pytest.
     classifier = composition.build_classifier(MagicMock())
 
     assert classifier._judge == "JUEZ-CATEGORIA"
+
+
+# ── R1: qué fuentes entran al DESCUBRIMIENTO por-query (Fase 1, 2026-07-16) ────────────────────
+# Hasta ahora el set era `SOURCE_KEYS = ("sirena","nacional","jumbo")`: un tuple hardcodeado en
+# `assets.py`, mientras el browse REST YA era registry-driven. Esa inconsistencia era la raíz —
+# Bravo aprendió a buscar por texto el 2026-07-16 y no había forma de que entrara sin editar código,
+# y una tienda pausada desde el admin seguía ingiriéndose igual.
+#
+# El set se DERIVA: `store_registry` activo × `directed_capability(...).by_text`. Bravo entra solo
+# (su profile declara `text_param`), y `enabled`/`paused_at` —el gate manual del admin— por fin
+# significan algo para la ingesta.
+
+
+def _registry(  # type: ignore[no-untyped-def]
+    provider_id: str, platform, base_url: str = "https://x.test", **kw
+):
+    from src.contexts.save.domain.entities import StoreRegistry
+
+    return StoreRegistry("id-" + provider_id, provider_id, platform, base_url, **kw)
+
+
+def _fake_registry_repo(monkeypatch: pytest.MonkeyPatch, rows: list) -> None:  # type: ignore[no-untyped-def]
+    class FakeRegRepo:
+        def __init__(self, session: object) -> None: ...
+        def list_by_market(self, market: str) -> list:
+            return rows
+        def get_by_provider_id(self, pid: str):  # type: ignore[no-untyped-def]
+            return next((r for r in rows if r.provider_id == pid), None)
+
+    monkeypatch.setattr(composition, "SqlStoreRegistryRepository", FakeRegRepo)
+
+
+def test_query_partitions_include_every_platform_that_searches_by_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # VTEX y Magento buscan por texto por plataforma; Bravo (REST_CATALOG) por PROFILE — y por eso
+    # la capacidad la calcula infra, no el dominio: una plataforma no puede responder por todos sus
+    # profiles. Bravo entra SOLO, sin tocar código: es el desbloqueo que R1 existe para dar.
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    _fake_registry_repo(monkeypatch, [
+        _registry("p-sirena", SourcePlatform.VTEX),
+        _registry("p-nacional", SourcePlatform.MAGENTO),
+        _registry("p-bravo", SourcePlatform.REST_CATALOG,
+                  endpoints={"profile": "bravova", "sections": ["14"], "store_id": "1000"}),
+    ])
+
+    assert set(composition.query_catalog_partition_keys(object())) == {
+        "p-sirena", "p-nacional", "p-bravo"
+    }
+
+
+def test_query_partitions_skip_a_source_disabled_from_the_admin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # "solo los supermercados que yo tenga activos". `enabled` existía y la ingesta por-query lo
+    # IGNORABA por completo (el tuple hardcodeado no consultaba nada).
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    _fake_registry_repo(monkeypatch, [
+        _registry("p-sirena", SourcePlatform.VTEX),
+        _registry("p-jumbo", SourcePlatform.MAGENTO, enabled=False),
+    ])
+
+    assert composition.query_catalog_partition_keys(object()) == ["p-sirena"]
+
+
+def test_query_partitions_skip_a_paused_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime
+
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    _fake_registry_repo(monkeypatch, [
+        _registry("p-sirena", SourcePlatform.VTEX),
+        _registry("p-nacional", SourcePlatform.MAGENTO, paused_at=datetime.now(UTC)),
+    ])
+
+    assert composition.query_catalog_partition_keys(object()) == ["p-sirena"]
+
+
+def test_query_partitions_skip_a_browse_only_rest_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    # EL gate que R1 no puede romper: un REST_CATALOG cuyo profile NO declara `text_param` es CIEGO
+    # al texto. Mandarle las 213 queries de la canasta le navegaría el catálogo entero 213 veces.
+    # Default conservador ante profile desconocido (misma regla que `directed_capability`).
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    _fake_registry_repo(monkeypatch, [
+        _registry("p-sirena", SourcePlatform.VTEX),
+        _registry("p-otro", SourcePlatform.REST_CATALOG,
+                  endpoints={"profile": "no-registrado", "sections": ["1"], "store_id": "9"}),
+    ])
+
+    assert composition.query_catalog_partition_keys(object()) == ["p-sirena"]
+
+
+def test_builds_one_adapter_per_basket_query_for_the_partitioned_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    _fake_registry_repo(monkeypatch, [_registry("p-sirena", SourcePlatform.VTEX, "https://sirena.do")])
+
+    sources = composition.build_query_catalog_sources_for(
+        object(), "p-sirena", ("arroz", "aceite")
+    )
+
+    assert sources is not None
+    assert len(sources) == 2
+    assert sources[0]._query == "arroz"
+    assert sources[0]._base_url == "https://sirena.do"
+
+
+def test_the_magento_store_view_header_comes_from_the_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Jumbo y Nacional comparten instancia Magento (CCN): sin el header `Store: jumbo`, jumbo.com.do
+    # sirve NACIONAL (hallazgo doc 09). Ese dato vivía HARDCODEADO en `build_sources`; ahora sale
+    # del registry, que es lo que permite que una tienda nueva sea una FILA y no un deploy.
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    _fake_registry_repo(monkeypatch, [
+        _registry("p-jumbo", SourcePlatform.MAGENTO, "https://jumbo.com.do",
+                  headers={"Store": "jumbo"}),
+    ])
+
+    sources = composition.build_query_catalog_sources_for(object(), "p-jumbo", ("arroz",))
+
+    assert sources is not None
+    assert sources[0]._store_code == "jumbo"
+
+
+def test_building_sources_for_an_orphan_partition_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Una partición cuyo provider ya no existe (o dejó de ser by_text) → el asset la salta sin
+    # fallar, igual que `build_rest_catalog_source_for`. El sensor tarda en limpiarla.
+    _fake_registry_repo(monkeypatch, [])
+
+    assert composition.build_query_catalog_sources_for(object(), "p-fantasma", ("arroz",)) is None
+
+
+def test_building_sources_for_a_disabled_provider_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Defensa en profundidad: aunque el sensor no haya limpiado la partición todavía, materializarla
+    # a mano NO debe ingerir una tienda que el admin apagó.
+    from src.contexts.save.domain.entities import SourcePlatform
+
+    _fake_registry_repo(monkeypatch, [_registry("p-jumbo", SourcePlatform.MAGENTO, enabled=False)])
+
+    assert composition.build_query_catalog_sources_for(object(), "p-jumbo", ("arroz",)) is None

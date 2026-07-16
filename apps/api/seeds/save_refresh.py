@@ -13,11 +13,16 @@ from ingestion.save.composition import (
     build_category_embedder,
     build_classifier,
     build_matcher,
+    build_query_catalog_sources_for,
+    query_catalog_partition_keys,
 )
 from ingestion.save.runner import refresh_source
 from src.contexts.save.infrastructure.catalog_sources.pacing import build_pace
-from ingestion.save.sources import SAVE_MARKET, build_sources
-from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
+from ingestion.save.sources import SAVE_MARKET
+from src.contexts.save.infrastructure.repositories import (
+    SqlProviderRepository,
+    SqlStoreProductRepository,
+)
 
 
 def main() -> None:
@@ -47,8 +52,27 @@ def main() -> None:
                 "— no hay nada que ingerir. Poblá la canasta (migración/admin)."
             )
             return
-        print(f"save-refresh: {len(queries)} queries activas de la canasta")
-        for name, adapters in build_sources(queries=queries).items():
+        # Las TIENDAS salen del registry (R1), igual que en los assets de Dagster: activas ×
+        # capacidad by_text. Antes eran el tuple hardcodeado sirena/nacional/jumbo, así que este CLI
+        # no veía a Bravo ni respetaba una tienda pausada desde el admin.
+        provider_ids = query_catalog_partition_keys(session)
+        if not provider_ids:
+            print(
+                f"save-refresh: NINGUNA fuente activa que busque por texto en {SAVE_MARKET} "
+                "(store_registry vacío, todo apagado/pausado, o sin capacidad by_text)."
+            )
+            return
+        provider_repo = SqlProviderRepository(session)
+        print(
+            f"save-refresh: {len(queries)} queries activas de la canasta × "
+            f"{len(provider_ids)} tiendas activas"
+        )
+        for provider_id in provider_ids:
+            adapters = build_query_catalog_sources_for(session, provider_id, queries)
+            if adapters is None:
+                continue
+            provider = provider_repo.get_by_id(provider_id)
+            name = provider.name if provider else provider_id
             result = refresh_source(
                 repo, adapters, matcher=matcher, classifier=classifier, pace=build_pace()
             )

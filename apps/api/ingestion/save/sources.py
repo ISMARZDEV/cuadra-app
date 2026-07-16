@@ -1,59 +1,22 @@
-"""Wiring de fuentes de catálogo de Save — config PURA (sin red, sin dagster).
+"""Mercado que ingiere Save.
 
-Única fuente de verdad del wiring, compartida por el runner CLI (`make save-refresh`) y por los
-assets de Dagster. Un adaptador por (fuente, query de la canasta). Fuentes verificadas en vivo
-(doc 09): Sirena=VTEX · Nacional/Jumbo=Magento CCN (Jumbo con header `Store: jumbo`). Scoping por
-CANASTA curada (doc 02), no full-catalog. Los IDs de provider salen del seed (bridge de F1 hasta
-que exista `store_registry`, doc 06).
+Esto era el "bridge F1": el wiring HARDCODEADO de las fuentes de catálogo —`build_sources`, con las
+base_url de Sirena/Nacional/Jumbo y el `store_code="jumbo"` escritos en código— más el tuple
+`BASKET_QUERIES` con los 213 términos de la canasta. Su propio docstring lo admitía: *"Los IDs de
+provider salen del seed (bridge de F1 hasta que exista `store_registry`)"*.
 
-La canasta NO vive acá: es DATO (tabla `basket_query`, editable desde el admin) y la lee
-`composition.build_basket_queries`. `queries` es OBLIGATORIO a propósito — el default hardcodeado
-que existía hasta 2026-07-16 hacía que un caller distraído (`seeds/save_refresh.py`) ingiriera una
-canasta DISTINTA de la que el admin había configurado, y ninguno de los dos se enteraba.
+`store_registry` existe desde F2·B1, y R1 (2026-07-16) terminó el cutover:
+
+- **Las tiendas** salen de `store_registry` (activo × capacidad by_text) →
+  `composition.query_catalog_partition_keys` / `build_query_catalog_sources_for`. Sumar un súper es
+  una FILA, no un deploy (regla SAGRADA #4), y pausarlo desde el admin por fin lo saca de la ingesta.
+- **La canasta** sale de la tabla `basket_query` → `composition.build_basket_queries` (Fase 0).
+- **La config por-plataforma** (el header `Store: jumbo`, el profile de Bravo) sale del registry y la
+  arma `CatalogSourceFactory`.
+
+Queda solo el mercado, que sigue siendo una constante mientras Save opere un país (el multi-país es
+F3: `market_id` ya se carga por ID en todo el pipeline).
 """
 from __future__ import annotations
 
-from src.contexts.save.domain.ports import CatalogSource
-from src.contexts.save.infrastructure.catalog_sources.magento_adapter import MagentoAdapter
-from src.contexts.save.infrastructure.catalog_sources.vtex_adapter import VtexAdapter
-
-from seeds.save_seed import provider_id
-
 SAVE_MARKET = "DO"
-
-
-def build_sources(queries: tuple[str, ...]) -> dict[str, list[CatalogSource]]:
-    """Fuentes de catálogo por tienda: {clave: [adapter por query]}. No dispara red."""
-    sirena_id = str(provider_id("Sirena"))
-    nacional_id = str(provider_id("Nacional"))
-    jumbo_id = str(provider_id("Jumbo"))
-    return {
-        "sirena": [
-            VtexAdapter(
-                base_url="https://www.sirena.do",
-                provider_id=sirena_id,
-                market_id=SAVE_MARKET,
-                query=query,
-            )
-            for query in queries
-        ],
-        "nacional": [
-            MagentoAdapter(
-                base_url="https://supermercadosnacional.com",
-                provider_id=nacional_id,
-                market_id=SAVE_MARKET,
-                query=query,
-            )
-            for query in queries
-        ],
-        "jumbo": [
-            MagentoAdapter(
-                base_url="https://jumbo.com.do",
-                provider_id=jumbo_id,
-                market_id=SAVE_MARKET,
-                query=query,
-                store_code="jumbo",  # misma instancia CCN; el header elige el store view
-            )
-            for query in queries
-        ],
-    }
