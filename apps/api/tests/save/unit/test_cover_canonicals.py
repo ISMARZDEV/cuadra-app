@@ -289,7 +289,7 @@ class _RestSourceRepo:
         )
 
 
-def _build_rest(capability_of=None):  # type: ignore[no-untyped-def]
+def _build_rest(capability_of=None, pace=None):  # type: ignore[no-untyped-def]
     captured: dict[str, object] = {}
     refresh = _Refresh()
 
@@ -298,6 +298,8 @@ def _build_rest(capability_of=None):  # type: ignore[no-untyped-def]
         return _FetchAdapter([_Cand("Arroz La Garza Premium", ean="7460083780023")])
 
     kwargs = {} if capability_of is None else {"capability_of": capability_of}
+    if pace is not None:
+        kwargs["pace"] = pace
     uc = CoverCanonicals(
         store_repo=_StoreRepo("7460083780023"),
         canonical_repo=_CanonicalRepo(),
@@ -332,3 +334,20 @@ def test_skips_rest_source_by_default_because_the_platform_alone_means_browse_on
     assert result.pairs_attempted == 0
     assert "query" not in captured, "ni siquiera construye el adapter"
     assert refresh.calls == []
+
+
+def test_paces_between_stores_because_interleaving_alone_does_not_rate_limit() -> None:
+    """Loop B tiene el mismo agujero que la frescura: `round_robin_by_store` reordena, pero sin la
+    pausa de SRD (`randomDelay(600,1200)` entre rondas) los requests salen a fondo. Con Bravo ahora
+    habilitado (lookup por EAN), Loop B le va a pegar UNA vez por canónico — sin pausa, eso es un 429.
+    """
+    paced: list[int] = []
+    uc, _, refresh = _build_rest(
+        capability_of=lambda source: DirectedCapability(supported=True, by_ean=True),
+        pace=lambda: paced.append(1),
+    )
+
+    uc.execute("DO")
+
+    assert len(refresh.calls) == 1
+    assert paced == [], "un solo par → ninguna espera (la pausa es ENTRE requests)"

@@ -9,6 +9,7 @@ seteada, ambos usan el endpoint HTTP. Los dos providers usan el MISMO modelo (`B
 """
 from __future__ import annotations
 
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -197,3 +198,49 @@ def test_no_recovery_source_for_stores_that_cannot_look_up_by_barcode(
     )
 
     assert captured["build_recovery_source"](item, "7460083780146") is None
+
+
+# ── El wiring de la protección (el test que faltaba) ──────────────────────────────────────────
+# `round_robin_by_store` decía en su docstring que evitaba rate-limits, pero solo copió el
+# INTERCALADO de SRD y no su `randomDelay(600,1200)`. Nadie lo notó porque NADIE TESTEÓ EL WIRING de
+# la protección. El bug no fue "faltó una pausa": fue que una salvaguarda sin test de wiring es una
+# salvaguarda que no existe. Estos tests fallan si alguien vuelve a dejar el pacing sin conectar.
+
+
+def _wired_kwargs(monkeypatch: pytest.MonkeyPatch, builder, registry=None):  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(composition, "SqlStoreProductRepository", lambda s: MagicMock())
+    monkeypatch.setattr(composition, "RefreshCatalogPrices", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(composition, "SqlCanonicalProductRepository", lambda s: MagicMock())
+    monkeypatch.setattr(composition, "SqlProviderRepository", lambda s: MagicMock())
+    repo = MagicMock()
+    repo.list_by_market.return_value = [registry] if registry else []
+    monkeypatch.setattr(composition, "SqlStoreRegistryRepository", lambda s: repo)
+    monkeypatch.setattr(composition, "build_matcher", lambda s: None)
+    monkeypatch.setattr(composition, "build_classifier", lambda s: None)
+    captured: dict = {}
+    target = "RefreshCoveredPrices" if "known" in builder.__name__ or "covered" in builder.__name__ else "CoverCanonicals"
+    monkeypatch.setattr(composition, target, lambda **kw: captured.update(kw) or MagicMock())
+    builder(MagicMock())
+    return captured
+
+
+def test_freshness_wires_a_real_pace(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _wired_kwargs(monkeypatch, composition.build_refresh_covered_prices)
+
+    pace = captured.get("pace")
+    assert pace is not None, "price_refresh le pega al /get por CADA producto → sin pausa = 429"
+    slept: list[float] = []
+    monkeypatch.setattr(time, "sleep", slept.append)
+    pace()
+    assert slept and 0.6 <= slept[0] <= 1.2, "debe esperar de verdad, en el rango probado por SRD"
+
+
+def test_loop_b_wires_a_real_pace(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _wired_kwargs(monkeypatch, composition.build_cover_canonicals)
+
+    pace = captured.get("pace")
+    assert pace is not None, "Loop B le pega UNA vez por canónico → sin pausa = 429"
+    slept: list[float] = []
+    monkeypatch.setattr(time, "sleep", slept.append)
+    pace()
+    assert slept and 0.6 <= slept[0] <= 1.2

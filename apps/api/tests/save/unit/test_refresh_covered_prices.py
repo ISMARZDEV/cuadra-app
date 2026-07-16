@@ -72,7 +72,7 @@ def _classify(exc: Exception) -> FetchOutcome:
     return FetchOutcome(kind=FetchErrorKind.FATAL, retryable=False, hide=False)
 
 
-def _build(items, *, detail_for=None, browse_for=None):  # type: ignore[no-untyped-def]
+def _build(items, *, detail_for=None, browse_for=None, pace=None):  # type: ignore[no-untyped-def]
     repo = _StaleRepo(items)
     refresh = _Refresh()
     browsed: list[str] = []
@@ -90,6 +90,7 @@ def _build(items, *, detail_for=None, browse_for=None):  # type: ignore[no-untyp
         build_detail_source=build_detail_source,
         build_browse_source=build_browse_source,
         classify_error=_classify,
+        **({} if pace is None else {"pace": pace}),
     )
     return uc, repo, refresh, browsed
 
@@ -345,3 +346,33 @@ def test_hides_without_asking_when_the_canonical_has_no_known_ean() -> None:
 
     assert asked == [], "ni siquiera sale a buscar"
     assert repo.unavailable == ["s1"]
+
+
+# ── Pacing: la MITAD del patrón SRD que faltaba ───────────────────────────────────────────────
+# `round_robin_by_store` cita `scrape-many.ts:11-77` y su docstring dice que evita rate-limits.
+# Pero SRD hace DOS cosas: intercala las tiendas Y espera `randomDelay(600,1200)` ENTRE RONDAS.
+# Nos trajimos el orden y dejamos la pausa. Con UNA tienda el intercalado es un NO-OP (devuelve la
+# misma lista) y los N requests salen a fondo. `price_refresh` sobre Bravo es exactamente ese caso:
+# una tienda, cientos de /get. Verificado en vivo 2026-07-15: Bravo responde 429.
+
+
+def test_paces_between_requests_because_interleaving_alone_does_not_rate_limit() -> None:
+    paced: list[int] = []
+    uc, repo, refresh, _ = _build(
+        [_stale("s1", "p1"), _stale("s2", "p1"), _stale("s3", "p1")],
+        pace=lambda: paced.append(1),
+    )
+
+    uc.execute("DO")
+
+    assert len(refresh.calls) == 3, "se refrescaron los 3"
+    assert len(paced) == 2, "N requests → N-1 pausas (no se espera antes del primero)"
+
+
+def test_does_not_pace_before_the_very_first_request() -> None:
+    paced: list[int] = []
+    uc, _, _, _ = _build([_stale("s1", "p1")], pace=lambda: paced.append(1))
+
+    uc.execute("DO")
+
+    assert paced == [], "un solo item → ninguna espera; la pausa es ENTRE requests"
