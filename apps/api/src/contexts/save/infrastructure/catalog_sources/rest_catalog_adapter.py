@@ -81,6 +81,7 @@ class RestCatalogAdapter:
         page_size: int | None = None,
         http_get: Callable[[str], dict] | None = None,
         ean: str | None = None,
+        pace: Callable[[], None] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._provider_id = provider_id
@@ -93,6 +94,9 @@ class RestCatalogAdapter:
         # `ean` presente → modo DIRIGIDO (Loop B): una sola request filtrando por barcode, en vez de
         # navegar `sections`. Requiere `profile.ean_param`; el factory ya no lo construye así si falta.
         self._ean = ean
+        # Espera ENTRE requests. El browse pagina secciones enteras contra UNA tienda — el caso donde
+        # `round_robin_by_store` ni participa. Bravo: 41 secciones × N páginas → sin pausa, 429.
+        self._pace = pace or (lambda: None)
 
     @staticmethod
     def _default_get(url: str) -> dict:
@@ -141,9 +145,13 @@ class RestCatalogAdapter:
         if self._ean is not None:
             yield from self._fetch_by_ean(self._ean)
             return
+        first = True
         for section in self._sections:
             offset = 0
             while True:
+                if not first:
+                    self._pace()  # ENTRE requests, nunca antes del primero (SRD `scrape-many.ts`)
+                first = False
                 payload = self._http_get(self._page_url(section, offset)) or {}
                 items = _dig(payload, p.list_path) or []
                 total = _dig(payload, p.total_path) or 0

@@ -35,10 +35,20 @@ StaleSource = Callable[[str, datetime | None], list[StaleCovered]]
 # §14.3 (F3.2b): la búsqueda DIRIGIDA por barcode para re-encontrar un producto cuyo localizador
 # murió. `None` (default) = sin recovery → el comportamiento previo (A no lo encuentra → se oculta).
 BuildRecoverySource = Callable[[StaleCovered, str], CatalogSource | None]
+# Puerto: espera ENTRE requests. Es la otra mitad del rate limiting de SRD (`scrape-many.ts`:
+# `randomDelay(600,1200)` entre rondas) — sin ella, `round_robin_by_store` solo REORDENA, y con una
+# sola tienda el intercalado es un no-op: los N requests salen a fondo. Inyectable → los tests no
+# duermen; prod wirea la espera real con jitter.
+Pace = Callable[[], None]
 
 
 def _reraise_classifier(exc: Exception) -> FetchOutcome:
     return FetchOutcome(kind=FetchErrorKind.FATAL, retryable=False, hide=False)
+
+
+def _no_pace() -> None:
+    """Default PURO: sin espera. Prod DEBE inyectar la real — hay un test de composición que lo
+    verifica, porque olvidarse de wirear la protección es justo cómo aparecieron los 429."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +82,9 @@ class RefreshCoveredPrices:
         classify_error: ClassifyFetchError = _reraise_classifier,
         stale_source: StaleSource | None = None,
         build_recovery_source: BuildRecoverySource | None = None,
+        pace: Pace = _no_pace,
     ) -> None:
+        self._pace = pace
         self._build_recovery_source = build_recovery_source
         self._store_repo = store_repo
         self._refresh = refresh
@@ -96,6 +108,8 @@ class RefreshCoveredPrices:
             if source is None:
                 deferred.add(item.provider_id)  # la plataforma no tiene detalle → browse
                 continue
+            if checked:
+                self._pace()  # ENTRE requests, nunca antes del primero (SRD `scrape-many.ts`)
             checked += 1
             try:
                 entry = source.fetch_by_external_id(item.external_id, item.url, item.source_ref)

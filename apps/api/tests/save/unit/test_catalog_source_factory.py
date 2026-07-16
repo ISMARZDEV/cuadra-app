@@ -178,3 +178,21 @@ def test_for_query_without_by_ean_keeps_the_browse_behaviour() -> None:
 
     assert isinstance(source, RestCatalogAdapter)
     assert source._ean is None
+
+
+def test_factory_always_wires_a_pace_into_the_rest_adapter() -> None:
+    """El pacing se wirea en el FACTORY, no en cada caller: así ningún camino nuevo puede olvidarlo.
+    Es la lección del bug — `round_robin_by_store` decía proteger de rate-limits y la protección real
+    (la pausa de SRD) nunca se conectó porque nadie testeó el wiring."""
+    source = _bravo_factory().for_query("p1", "DO", "")
+
+    assert isinstance(source, RestCatalogAdapter)
+    slept: list[float] = []
+    import src.contexts.save.infrastructure.catalog_sources.pacing as pacing_mod
+
+    original, pacing_mod.time.sleep = pacing_mod.time.sleep, slept.append
+    try:
+        source._pace()
+    finally:
+        pacing_mod.time.sleep = original
+    assert slept and 0.6 <= slept[0] <= 1.2, "el adapter sale del factory con la pausa real puesta"

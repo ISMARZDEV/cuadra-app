@@ -229,3 +229,46 @@ def test_directed_by_ean_returns_empty_when_the_store_has_no_such_product() -> N
     )
 
     assert list(adapter.fetch()) == []
+
+
+def test_browse_paces_between_pages_and_sections() -> None:
+    # El browse pagina secciones ENTERAS contra UNA tienda: el caso donde el round-robin no protege
+    # (ni siquiera participa). Bravo tiene 41 secciones × N páginas → sin pausa, es un 429.
+    calls: list[str] = []
+    paced: list[int] = []
+
+    def fake_get(url: str) -> dict:
+        calls.append(url)
+        return {"result": {"count": 2, "items": [_entry(len(calls))]}}  # 2 totales → 2 páginas
+
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test",
+        provider_id="p-fake",
+        market_id="DO",
+        profile=FAKE_PROFILE,
+        sections=["7", "8"],
+        store_id="55",
+        page_size=1,
+        http_get=fake_get,
+        pace=lambda: paced.append(1),
+    )
+
+    list(adapter.fetch())
+
+    assert len(calls) == 4, "2 secciones × 2 páginas"
+    assert len(paced) == 3, "pausa ENTRE requests: 4 requests → 3 pausas"
+
+
+def test_directed_by_ean_does_not_pace_a_single_request() -> None:
+    paced: list[int] = []
+    profile = replace(FAKE_PROFILE, ean_param="barcode")
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test", provider_id="p", market_id="DO", profile=profile,
+        sections=["7"], store_id="55", ean="7460083780146",
+        http_get=lambda url: {"result": {"count": 1, "items": [_entry(1)]}},
+        pace=lambda: paced.append(1),
+    )
+
+    list(adapter.fetch())
+
+    assert paced == [], "el lookup dirigido es UNA request → nada que espaciar"

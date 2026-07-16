@@ -22,6 +22,7 @@ from ...domain.ports import CatalogSource, ProductDetailSource
 from .bravova_profile import BRAVOVA_PROFILE
 from .magento_adapter import HttpPost, MagentoAdapter, MagentoProductDetailAdapter
 from .rest_catalog_adapter import CatalogProfile, RestCatalogAdapter, RestCatalogDetailAdapter
+from .pacing import build_pace
 from .source_auth import authed_http_get, authed_http_post, build_request_auth
 from .vtex_adapter import VtexAdapter, VtexProductDetailAdapter
 
@@ -205,6 +206,9 @@ class SourceBuilder:
             store_id=str(store_id),
             http_get=http_get,
             ean=ean,
+            # El browse pagina secciones enteras contra UNA tienda → sin pausa es un 429 (verificado
+            # en vivo con Bravo). Se wirea acá, en el factory, para que NINGÚN caller pueda olvidarlo.
+            pace=build_pace(),
         )
 
 

@@ -33,6 +33,7 @@ from src.contexts.save.infrastructure.catalog_sources.factory import (
     directed_capability,
 )
 from src.contexts.save.infrastructure.catalog_sources.fetch_classifier import classify_httpx_error
+from src.contexts.save.infrastructure.catalog_sources.pacing import build_pace
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlCategoryCandidateRepository,
@@ -98,6 +99,9 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
         # Capacidad REAL por fuente (no la heurística por plataforma): habilita Loop B en las REST
         # cuyo profile declara lookup por barcode — Bravo (`model.filterByEan`, 2026-07-15).
         capability_of=lambda source: directed_capability(source.platform, source.endpoints),
+        # Rate limiting de salida (SRD `scrape-many.ts`): el round-robin SOLO reordena — con una
+        # tienda es un no-op. Loop B pega UNA vez por canónico: sin pausa, es un 429 asegurado.
+        pace=build_pace(),
     )
 
 
@@ -170,6 +174,9 @@ def build_refresh_covered_prices(session: Session, *, known: bool = False) -> Re
         classify_error=classify_httpx_error,
         stale_source=store_repo.list_stale_known if known else None,
         build_recovery_source=build_recovery_source,
+        # `price_refresh` pide el /get de CADA producto conocido contra UNA tienda → el caso exacto
+        # donde el intercalado no protege. Verificado en vivo: Bravo responde 429.
+        pace=build_pace(),
     )
 
 

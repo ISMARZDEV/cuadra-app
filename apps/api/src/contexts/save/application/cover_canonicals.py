@@ -48,6 +48,15 @@ ClassifyFetchError = Callable[[Exception], FetchOutcome]
 # respuesta puede depender del PROFILE (REST_CATALOG es un adapter genérico), y los profiles viven en
 # infraestructura — el use-case no puede ni debe conocerlos.
 DirectedCapabilityOf = Callable[[StoreRegistry], DirectedCapability]
+# Puerto: espera ENTRE requests — la otra mitad del rate limiting de SRD (`scrape-many.ts`:
+# `randomDelay(600,1200)` entre rondas). `round_robin_by_store` SOLO reordena; con una tienda el
+# intercalado es un no-op. Inyectable → los tests no duermen; prod wirea la espera real con jitter.
+Pace = Callable[[], None]
+
+
+def _no_pace() -> None:
+    """Default PURO: sin espera. Prod DEBE inyectar la real (hay un test de composición que lo
+    verifica: olvidarse de wirear la protección es exactamente cómo aparecieron los 429)."""
 
 
 def _reraise_classifier(exc: Exception) -> FetchOutcome:
@@ -94,7 +103,9 @@ class CoverCanonicals:
         build_adapter: BuildAdapter,
         classify_error: ClassifyFetchError = _reraise_classifier,
         capability_of: DirectedCapabilityOf = _platform_capability_of,
+        pace: Pace = _no_pace,
     ) -> None:
+        self._pace = pace
         self._store_repo = store_repo
         self._canonical_repo = canonical_repo
         self._source_repo = source_repo
@@ -129,6 +140,8 @@ class CoverCanonicals:
                 store_supports_ean=capability.by_ean,
             )
             adapter = self._build_adapter(source, provider, query)
+            if pairs_attempted:
+                self._pace()  # ENTRE requests, nunca antes del primero (SRD `scrape-many.ts`)
             pairs_attempted += 1
             try:
                 candidates = list(adapter.fetch())  # aquí ocurre el HTTP → abort-on-down envuelve esto
