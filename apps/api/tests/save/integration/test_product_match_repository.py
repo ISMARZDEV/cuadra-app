@@ -74,7 +74,7 @@ def _seed_provider_and_canonical(
 
 
 def _seed_store_product(
-    db_session, provider_id: str, canonical_product_id: str | None = None
+    db_session, provider_id: str, canonical_product_id: str | None = None, ean: str | None = None
 ) -> str:  # type: ignore[no-untyped-def]
     sp = StoreProductModel(
         provider_id=uuid.UUID(provider_id),
@@ -82,6 +82,7 @@ def _seed_store_product(
         external_id=f"sku-{uuid.uuid4().hex[:8]}",
         current_price_minor=42400,
         currency="DOP",
+        ean=ean,
     )
     db_session.add(sp)
     db_session.flush()

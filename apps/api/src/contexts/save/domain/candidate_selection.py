@@ -1,67 +1,54 @@
-"""Selección del mejor candidato para un canónico OBJETIVO (Loop B cobertura dirigida), PURO (ADR 31).
+"""Verificación del candidato que devuelve una búsqueda por BARCODE (Loop B / Cobertura). PURO (ADR 31).
 
-Fix del hallazgo live 2026-07-12: Loop B ingestaba TODOS los ~65 resultados de la búsqueda dirigida y
-matcheaba cada uno contra CUALQUIER canónico → el objetivo se cubría por casualidad (1/23). Ahora,
-sabiendo el canónico que se quiere cubrir, se elige el ÚNICO mejor candidato PARA ese objetivo y solo
-ESE pasa a la cascada (que decide el enlace real, auto-link determinista si es fuerte — SIN LLM).
+Historia, porque explica por qué esto es tan chico:
 
-La selección es una HEURÍSTICA barata (EAN exacto → o similitud trigram del nombre); la decisión
-autoritativa la sigue tomando la cascada de matching (EAN→trgm→vector→boosts→gates→banding). Por eso
-un trigram simple en Python alcanza: solo ELIGE cuál candidato validar, no decide el merge.
+1. Loop B ingestaba TODOS los ~65 resultados de la búsqueda dirigida y matcheaba cada uno contra
+   CUALQUIER canónico → el objetivo se cubría por casualidad (1/23, hallazgo live 2026-07-12). Se
+   pasó a elegir UN candidato para el objetivo: EAN exacto → o el nombre más parecido (trigram).
+2. **R4 (2026-07-16) sacó la mitad del nombre.** La Cobertura es **barcode puro**: se le pregunta a
+   la tienda por un artículo PUNTUAL, por su código. Si ningún candidato trae ese código, no hay
+   candidato — punto.
+
+Por qué se fue el fallback por nombre, que es el corazón de este módulo:
+
+En una consulta POR BARCODE, tomar "el más parecido por nombre" es una adivinanza disfrazada de
+lookup exacto. Existía para no volver con las manos vacías, y es EXACTAMENTE la forma de los cinco
+bugs que ya pagó la ingesta: **un fallback indistinguible del resultado real**. Le pedimos a la
+tienda *"el artículo con barcode X"*; si devuelve otra cosa, la lectura correcta es *"ignoró el
+filtro"* o *"no lo tiene"* — nunca *"encontré el producto"*. Con el fallback, una tienda que ignorara
+`filterByEan` y devolviera su catálogo entero parecería estar cubriendo canónicos, y nadie lo
+notaría: se vería como cobertura funcionando.
+
+No se pierde nada: sin candidato la Cobertura DESCARTA (no encola — el par sigue sin cubrir hasta la
+próxima corrida), y el producto igual se descubre por NOMBRE en el Proceso 1, que sí tiene cola y
+revisión humana. La división es **Cobertura = barcode puro / Descubrimiento = texto**.
+
+Esto ELIGE cuál candidato validar; la decisión autoritativa la sigue tomando la cascada de matching
+(EAN→trgm→vector→boosts→gates→banding), que vuelve a verificar el barcode por su cuenta.
 """
 from __future__ import annotations
 
 from typing import Protocol, TypeVar
 
-# Piso de similitud para NO ingestar puro ruido (guandules→azúcar). La cascada rechazaría igual, pero
-# un piso evita materializar/matchear un candidato sin relación con el objetivo.
-_MIN_SIMILARITY = 0.3
-
-
-def _trigrams(text: str) -> set[str]:
-    """Trigramas del texto (aproxima pg_trgm: minúsculas + padding de bordes)."""
-    norm = f"  {text.strip().lower()} "
-    return {norm[i : i + 3] for i in range(len(norm) - 2)}
-
-
-def trigram_similarity(a: str, b: str) -> float:
-    """Similitud Jaccard sobre trigramas (0..1). Aproxima `similarity()` de pg_trgm para ORDENAR
-    candidatos; no pretende ser idéntica bit-a-bit (la cascada usa el pg_trgm real para decidir)."""
-    ta, tb = _trigrams(a), _trigrams(b)
-    if not ta or not tb:
-        return 0.0
-    union = len(ta | tb)
-    return len(ta & tb) / union if union else 0.0
-
 
 class _Candidate(Protocol):
-    name: str
     ean: str | None
 
 
 C = TypeVar("C", bound=_Candidate)
 
 
-def select_best_candidate(
-    *,
-    target_name: str,
-    target_ean: str | None,
-    candidates: list[C],
-    min_similarity: float = _MIN_SIMILARITY,
-) -> C | None:
-    """El mejor candidato PARA el canónico objetivo, o None si ninguno es relevante.
+def select_ean_match(*, target_ean: str, candidates: list[C]) -> C | None:
+    """El candidato cuyo barcode ES el del objetivo, o `None` si ninguno lo es.
 
-    Prioridad: (1) EAN exacto del objetivo (señal más fuerte, gana sin importar el nombre);
-    (2) mayor similitud trigram del nombre, siempre que supere `min_similarity`.
+    `None` es un resultado sano y esperado: la tienda no lo tiene, o ignoró el filtro. En ambos casos
+    lo correcto es no cubrir el par, no adivinar cuál de lo que devolvió "se le parece".
+
+    Los dos lados vienen NORMALIZADOS a GTIN-14 (`pick_global_ean`): un UPC-A `760593023182` y su
+    forma `0760593023182` son el MISMO barcode, y si no convergen a la misma cadena esta comparación
+    no los une — un falso negativo invisible (medido: era el 52% de las filas con EAN de Sirena).
     """
-    if target_ean:
-        for cand in candidates:
-            if getattr(cand, "ean", None) and cand.ean == target_ean:
-                return cand
-    best: C | None = None
-    best_sim = 0.0
     for cand in candidates:
-        sim = trigram_similarity(cand.name, target_name)
-        if sim > best_sim:
-            best, best_sim = cand, sim
-    return best if best_sim >= min_similarity else None
+        if cand.ean and cand.ean == target_ean:
+            return cand
+    return None

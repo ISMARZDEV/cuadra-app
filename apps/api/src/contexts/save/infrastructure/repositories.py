@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from src.shared.money import Currency, Money
@@ -563,9 +563,19 @@ class SqlStoreProductRepository:
     def list_uncovered(self, market_id: str) -> list[CoveragePair]:
         # CROSS JOIN canónico×tienda del mercado (join por market_id) − LEFT JOIN store_product IS NULL
         # = los pares sin cubrir. Solo tiendas SUPERMARKET (no bancos/aseguradoras del vertical F3).
+        #
+        # R5: además, SOLO los canónicos ALCANZABLES POR BARCODE. El Proceso 2 identifica POR barcode
+        # ("¿tenés el artículo con el código X?"); sin X conocido no hay consulta posible, y listar el
+        # par solo produce requests inútiles contra APIs de terceros.
+        #
+        # "Alcanzable" es DERIVADO, no una columna: `canonical_product` no tiene `ean`. Significa
+        # "algún store_product ligado a él tiene barcode" — el código vive en el store y el canónico
+        # es el hub. En cuanto Sirena (100% de cobertura) lo descubre y matchea, el canónico se vuelve
+        # alcanzable y el job por EAN de Bravo empieza a servirle (R7).
         cp = CanonicalProductModel
         pr = ProviderModel
         sp = StoreProductModel
+        seeder = aliased(StoreProductModel)  # la presencia (de cualquier tienda) que aporta el barcode
         rows = self._s.execute(
             select(cp.id, pr.id)
             .select_from(cp)
@@ -575,6 +585,9 @@ class SqlStoreProductRepository:
                 cp.market_id == market_id,
                 pr.type == ProviderType.SUPERMARKET.value,
                 sp.id.is_(None),
+                exists().where(
+                    and_(seeder.canonical_product_id == cp.id, seeder.ean.is_not(None))
+                ),
             )
         ).all()
         return [CoveragePair(str(cid), str(pid)) for cid, pid in rows]

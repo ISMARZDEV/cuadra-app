@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from ..domain.candidate_selection import select_best_candidate
+from ..domain.candidate_selection import select_ean_match
 from ..domain.coverage import round_robin_by_store
 from ..domain.directed_query import (
     DirectedCapability,
@@ -129,21 +129,24 @@ class CoverCanonicals:
             if canonical is None or source is None or provider is None:
                 continue  # el par referencia algo que ya no existe → se salta
             capability = self._capability_of(source)
-            if not capability.supported:
-                continue  # tienda browse-only (navega el catálogo, ignora la query) → es de Loop A
+            if not capability.by_ean:
+                # R4: la Cobertura es BARCODE PURO. Una tienda que no busca por barcode no tiene nada
+                # que hacer acá — sus productos se descubren por NOMBRE en el Proceso 1, que tiene
+                # cola y revisión humana. Antes esto miraba `capability.supported` y dejaba pasar a
+                # las que solo saben por texto, metiendo descubrimiento dentro de cobertura.
+                continue
 
             ean = self._store_repo.find_ean_for_canonical(pair.canonical_product_id)
+            if not ean:
+                # Canónico sin barcode conocido → el Proceso 2 no es para él (R5 ya lo filtra en
+                # `list_uncovered`; esto es defensa en profundidad). Se descubre por nombre.
+                continue
             query = build_directed_query(
                 name=canonical.name,
                 display_size=canonical.display_size,
                 ean=ean,
-                store_supports_ean=capability.by_ean,
+                store_supports_ean=True,  # el gate de arriba ya lo garantiza
             )
-            if not query.by_ean and not capability.by_text:
-                # La tienda encuentra por barcode pero es CIEGA al texto (Bravo), y este canónico no
-                # tiene EAN conocido → no hay consulta dirigida posible. Seguir sería mandarle un
-                # nombre que IGNORA y navegarle el catálogo entero por UN canónico. Es de Loop A.
-                continue
             adapter = self._build_adapter(source, provider, query)
             if pairs_attempted:
                 self._pace()  # ENTRE requests, nunca antes del primero (SRD `scrape-many.ts`)
@@ -156,13 +159,16 @@ class CoverCanonicals:
                     down.add(pair.provider_id)  # backend caído → abortar la tienda esta corrida
                     continue
                 raise  # error fatal (bug/parseo) → NO se silencia
-            # Cobertura DIRIGIDA: solo el mejor candidato PARA este canónico entra a la cascada,
-            # no los ~65 crudos. La cascada decide el enlace (auto-link determinista si es fuerte).
-            best = select_best_candidate(
-                target_name=canonical.name, target_ean=ean, candidates=candidates
-            )
+            # Cobertura DIRIGIDA: solo el candidato con ESE barcode entra a la cascada, no los N
+            # crudos. La cascada decide el enlace (auto-link determinista si es fuerte).
+            best = select_ean_match(target_ean=ean, candidates=candidates)
             if best is None:
-                continue  # nada relevante en esta tienda esta corrida → el canónico sigue sin cubrir
+                # R4 ("si no se encuentra, se descarta"): la tienda no lo tiene, o ignoró el filtro.
+                # No se encola: la cola es para lo que un humano debe DECIDIR, y acá no hay decisión
+                # — hay ausencia. Encolar un "no está" convertiría la cola en un log de intentos
+                # fallidos y ahogaría lo que sí necesita ojo humano. El par sigue sin cubrir hasta la
+                # próxima corrida, que es exactamente lo correcto.
+                continue
             result = self._refresh.execute(_SelectedSource((best,)), captured_at=captured_at)
             seen += result.seen
             matched += result.matched
