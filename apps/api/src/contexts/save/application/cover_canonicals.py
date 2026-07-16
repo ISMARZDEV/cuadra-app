@@ -20,10 +20,10 @@ from datetime import datetime
 from ..domain.candidate_selection import select_best_candidate
 from ..domain.coverage import round_robin_by_store
 from ..domain.directed_query import (
+    DirectedCapability,
     DirectedQuery,
     build_directed_query,
-    supports_directed_query,
-    supports_ean,
+    platform_capability,
 )
 from ..domain.entities import Provider, StoreRegistry
 from ..domain.fetch_outcome import FetchErrorKind, FetchOutcome
@@ -44,11 +44,23 @@ BuildAdapter = Callable[[StoreRegistry, Provider, DirectedQuery], CatalogSource]
 # la aplicación. En prod = `classify_httpx_error` (infra); en tests = un fake.
 ClassifyFetchError = Callable[[Exception], FetchOutcome]
 
+# Puerto: ¿esta fuente admite consulta dirigida, y su búsqueda matchea por EAN? Inyectable porque la
+# respuesta puede depender del PROFILE (REST_CATALOG es un adapter genérico), y los profiles viven en
+# infraestructura — el use-case no puede ni debe conocerlos.
+DirectedCapabilityOf = Callable[[StoreRegistry], DirectedCapability]
+
 
 def _reraise_classifier(exc: Exception) -> FetchOutcome:
     """Default PURO: sin clasificador inyectado, todo error es FATAL (no reintentable) → el use-case
     lo propaga (comportamiento previo a F3.3). Prod inyecta el clasificador httpx real."""
     return FetchOutcome(kind=FetchErrorKind.FATAL, retryable=False, hide=False)
+
+
+def _platform_capability_of(source: StoreRegistry) -> DirectedCapability:
+    """Default PURO: sin resolver inyectado, la capacidad se deduce solo de la plataforma → las
+    browse-only se saltean (comportamiento previo). Prod inyecta `directed_capability` (infra), que
+    además mira el profile y habilita las REST con lookup por EAN (Bravo)."""
+    return platform_capability(source.platform)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +93,7 @@ class CoverCanonicals:
         refresh: RefreshCatalogPrices,
         build_adapter: BuildAdapter,
         classify_error: ClassifyFetchError = _reraise_classifier,
+        capability_of: DirectedCapabilityOf = _platform_capability_of,
     ) -> None:
         self._store_repo = store_repo
         self._canonical_repo = canonical_repo
@@ -89,6 +102,7 @@ class CoverCanonicals:
         self._refresh = refresh
         self._build_adapter = build_adapter
         self._classify_error = classify_error
+        self._capability_of = capability_of
 
     def execute(self, market_id: str, *, captured_at: datetime | None = None) -> CoverageResult:
         pairs_attempted = seen = matched = 0
@@ -103,15 +117,16 @@ class CoverCanonicals:
             provider = self._provider_repo.get_by_id(pair.provider_id)
             if canonical is None or source is None or provider is None:
                 continue  # el par referencia algo que ya no existe → se salta
-            if not supports_directed_query(source.platform):
-                continue  # tienda browse-only (REST_CATALOG/aggregator/spa) → es de Loop A, no de B
+            capability = self._capability_of(source)
+            if not capability.supported:
+                continue  # tienda browse-only (navega el catálogo, ignora la query) → es de Loop A
 
             ean = self._store_repo.find_ean_for_canonical(pair.canonical_product_id)
             query = build_directed_query(
                 name=canonical.name,
                 display_size=canonical.display_size,
                 ean=ean,
-                store_supports_ean=supports_ean(source.platform),
+                store_supports_ean=capability.by_ean,
             )
             adapter = self._build_adapter(source, provider, query)
             pairs_attempted += 1

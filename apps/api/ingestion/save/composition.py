@@ -28,7 +28,10 @@ from src.contexts.save.infrastructure.matching.repository import SqlProductMatch
 from src.contexts.save.application.cover_canonicals import CoverCanonicals
 from src.contexts.save.application.refresh_covered_prices import RefreshCoveredPrices
 from src.contexts.save.application.refresh_prices import RefreshCatalogPrices
-from src.contexts.save.infrastructure.catalog_sources.factory import CatalogSourceFactory
+from src.contexts.save.infrastructure.catalog_sources.factory import (
+    CatalogSourceFactory,
+    directed_capability,
+)
 from src.contexts.save.infrastructure.catalog_sources.fetch_classifier import classify_httpx_error
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
@@ -73,7 +76,7 @@ def build_directed_adapter(source, provider, query):  # type: ignore[no-untyped-
         endpoints=source.endpoints,
         headers=source.headers,
         auth=source.auth,
-    ).for_query(provider.id, provider.market_id, query.text)
+    ).for_query(provider.id, provider.market_id, query.text, by_ean=query.by_ean)
 
 
 def build_cover_canonicals(session: Session) -> CoverCanonicals:
@@ -92,6 +95,9 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
         refresh=refresh,
         build_adapter=build_directed_adapter,
         classify_error=classify_httpx_error,  # F3.3: 503/timeout → abortar la tienda (no martillarla)
+        # Capacidad REAL por fuente (no la heurística por plataforma): habilita Loop B en las REST
+        # cuyo profile declara lookup por barcode — Bravo (`model.filterByEan`, 2026-07-15).
+        capability_of=lambda source: directed_capability(source.platform, source.endpoints),
     )
 
 

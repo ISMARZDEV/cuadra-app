@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import pytest
 
+from src.contexts.save.domain.directed_query import DirectedCapability
 from src.contexts.save.domain.entities import SourcePlatform
-from src.contexts.save.infrastructure.catalog_sources.factory import CatalogSourceFactory
+from src.contexts.save.infrastructure.catalog_sources.factory import (
+    CatalogSourceFactory,
+    directed_capability,
+)
 from src.contexts.save.infrastructure.catalog_sources.magento_adapter import MagentoAdapter
 from src.contexts.save.infrastructure.catalog_sources.rest_catalog_adapter import RestCatalogAdapter
 from src.contexts.save.infrastructure.catalog_sources.vtex_adapter import VtexAdapter
@@ -114,3 +118,63 @@ def test_non_rest_platforms_unaffected_by_profile_headers() -> None:
     builder = CatalogSourceFactory.build(SourcePlatform.VTEX, "https://www.sirena.do")
 
     assert builder._request_auth().headers == {"User-Agent": "Cuadra/Save"}
+
+
+# ── directed_capability: la capacidad REAL de la fuente (profile-aware) ───────────────────────
+# El dominio solo puede deducir la capacidad de la PLATAFORMA, y para REST_CATALOG eso obliga a
+# asumir browse-only. Infraestructura conoce los profiles y puede afinarlo: Bravo declara
+# `ean_param="model.filterByEan"` → sí admite consulta dirigida por barcode (verificado en vivo).
+
+
+def test_rest_catalog_with_ean_param_in_its_profile_is_directed_by_ean() -> None:
+    cap = directed_capability(SourcePlatform.REST_CATALOG, {"profile": "bravova"})
+    assert cap == DirectedCapability(supported=True, by_ean=True)
+
+
+def test_rest_catalog_with_unknown_profile_stays_browse_only() -> None:
+    # Profile no registrado → no sabemos nada de la fuente → el default conservador manda.
+    # NO revienta: la capacidad es una PREGUNTA, no la construcción del adapter.
+    assert directed_capability(SourcePlatform.REST_CATALOG, {"profile": "no-existe"}) == (
+        DirectedCapability(supported=False, by_ean=False)
+    )
+    assert directed_capability(SourcePlatform.REST_CATALOG, None).supported is False
+
+
+def test_non_rest_platforms_keep_the_platform_default() -> None:
+    # VTEX/Magento no tienen profile: su capacidad se deduce de la plataforma, como siempre.
+    assert directed_capability(SourcePlatform.VTEX, None) == DirectedCapability(
+        supported=True, by_ean=True
+    )
+    assert directed_capability(SourcePlatform.MAGENTO, None) == DirectedCapability(
+        supported=True, by_ean=False
+    )
+    assert directed_capability(SourcePlatform.AGGREGATOR, None).supported is False
+
+
+# ── for_query dirigido por EAN en REST ────────────────────────────────────────────────────────
+# `DirectedQuery` lleva {text, by_ean}, pero `for_query` solo recibía `query.text` → el `by_ean` se
+# PERDÍA. A VTEX no le importa (su `ft=` matchea barcode y nombre con el mismo param); Bravo sí
+# necesita saberlo, porque el EAN va por `filterByEan` y el texto libre no va por ningún lado.
+
+_BRAVO_ENDPOINTS = {"profile": "bravova", "store_id": "1000", "sections": ["14", "15"]}
+
+
+def _bravo_factory() -> CatalogSourceFactory:
+    return CatalogSourceFactory.build(
+        SourcePlatform.REST_CATALOG, "https://bravova-api.test", endpoints=_BRAVO_ENDPOINTS
+    )
+
+
+def test_for_query_by_ean_builds_a_directed_rest_adapter() -> None:
+    source = _bravo_factory().for_query("p1", "DO", "7460083780023", by_ean=True)
+
+    assert isinstance(source, RestCatalogAdapter)
+    assert source._ean == "7460083780023", "el EAN llega al adapter → una request, sin browse"
+
+
+def test_for_query_without_by_ean_keeps_the_browse_behaviour() -> None:
+    # Retrocompat: el refresh amplio (Loop A) sigue navegando secciones e ignorando el texto.
+    source = _bravo_factory().for_query("p1", "DO", "arroz la garza")
+
+    assert isinstance(source, RestCatalogAdapter)
+    assert source._ean is None

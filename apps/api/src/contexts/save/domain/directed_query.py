@@ -56,5 +56,41 @@ def supports_directed_query(platform: SourcePlatform) -> bool:
     (REST_CATALOG/AGGREGATOR/SPA) navegan el catálogo completo e IGNORAN la query — no son target de
     Loop B (cobertura dirigida); su descubrimiento pertenece a Loop A. Hallazgo de la activación en
     vivo 2026-07-12: `RestCatalogAdapter` es browse-full (`factory.py`), correr Loop B ahí haría N
-    navegaciones del catálogo entero (una por canónico)."""
+    navegaciones del catálogo entero (una por canónico).
+
+    OJO: es el default DERIVABLE de la plataforma, no la última palabra — ver `DirectedCapability`.
+    """
     return platform in _DIRECTED_PLATFORMS
+
+
+@dataclass(frozen=True, slots=True)
+class DirectedCapability:
+    """¿Se le puede pedir a ESTA fuente un producto puntual, y su búsqueda matchea por EAN?
+
+    Por qué es un DATO y no una heurística del dominio: `REST_CATALOG` es un adapter GENÉRICO
+    manejado por profiles, y cada súper decide qué expone. Bravo tiene lookup exacto por barcode
+    (`model.filterByEan`, verificado en vivo 2026-07-15: devuelve el artículo exacto en UNA request
+    y SIN filtro de sección) pero NO busca por texto; el próximo súper REST puede ser al revés, o no
+    exponer nada. **Una plataforma no puede responder por todos sus profiles.**
+
+    El dominio define el TIPO; infraestructura —la única capa que conoce los profiles— calcula el
+    VALOR y lo inyecta (`cover_canonicals`, mismo patrón que `build_adapter`/`classify_error`). Así
+    el dominio nunca se entera de que existe un profile llamado "bravova" (ADR 31: domain PURO).
+    """
+
+    supported: bool
+    by_ean: bool
+
+
+def platform_capability(platform: SourcePlatform) -> DirectedCapability:
+    """Capacidad DERIVABLE solo de la plataforma — el default cuando nadie sabe más.
+
+    Para las browse-only devuelve `supported=False`: sin conocer el profile hay que asumir que la
+    fuente navega el catálogo. El default es CONSERVADOR a propósito — equivocarse hacia "es dirigida"
+    costaría N navegaciones del catálogo entero (una por canónico), que es el riesgo que motivó el
+    gate de 2026-07-12. Equivocarse hacia "browse-only" solo cuesta no cubrirla por Loop B.
+    """
+    return DirectedCapability(
+        supported=supports_directed_query(platform),
+        by_ean=supports_ean(platform),
+    )

@@ -121,3 +121,17 @@ def test_profile_composes_with_generic_adapter() -> None:
     assert len(entries) == 1
     assert entries[0].external_id == "13290"
     assert entries[0].source == "bravova"
+
+
+def test_profile_declares_the_ean_lookup_param() -> None:
+    """Bravo SÍ sabe buscar por barcode, aunque NO sepa buscar por texto.
+
+    Sondeo en vivo 2026-07-15 contra su API real: 12 params de búsqueda por texto
+    (`filterByDescripcion`, `filterByNombre`, `search`, `q`…) fueron IGNORADOS —el `totalCount` no se
+    movía de 94—, pero `model.filterByEan=7466555500137` devolvió `totalCount=1` con el artículo
+    exacto, y también SIN filtro de sección (lookup global).
+
+    Declararlo acá es lo que habilita Loop B dirigido (F3.1) y el recovery determinista (F3.2b) para
+    Bravo — algo que SupermercadosRD no tiene (su `RecoverableShopId` es 1|2|3|4; Bravo es el 6).
+    """
+    assert BRAVOVA_PROFILE.ean_param == "model.filterByEan"

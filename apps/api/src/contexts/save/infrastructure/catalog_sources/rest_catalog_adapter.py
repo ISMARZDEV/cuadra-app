@@ -49,6 +49,12 @@ class CatalogProfile:
     detail_param: str = ""                  # query param del id de detalle, p.ej. "idArticulo"
     detail_ref_key: str = ""                # llave en `source_ref`, p.ej. "id_articulo"
     detail_item_path: tuple[str, ...] = ()  # ruta al artículo único en el envelope, p.ej. ("data",)
+    # LOOKUP EXACTO POR EAN (F3.1 Loop B + F3.2b recovery): query param que hace que el `list` filtre
+    # por barcode. `None` = la fuente no sabe buscar por EAN → sigue siendo browse-only (Loop A).
+    # Es capacidad del PROFILE, no de la plataforma: REST_CATALOG es un adapter genérico y cada súper
+    # decide qué expone. Bravo: `model.filterByEan` (verificado en vivo 2026-07-15 — devuelve el
+    # artículo exacto y funciona SIN filtro de sección, o sea es global sobre el catálogo).
+    ean_param: str | None = None
 
 
 def _dig(payload: object, path: tuple[str, ...]) -> object:
@@ -74,6 +80,7 @@ class RestCatalogAdapter:
         store_id: str,
         page_size: int | None = None,
         http_get: Callable[[str], dict] | None = None,
+        ean: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._provider_id = provider_id
@@ -83,6 +90,9 @@ class RestCatalogAdapter:
         self._store_id = store_id
         self._page_size = page_size if page_size is not None else profile.page_size
         self._http_get = http_get or self._default_get
+        # `ean` presente → modo DIRIGIDO (Loop B): una sola request filtrando por barcode, en vez de
+        # navegar `sections`. Requiere `profile.ean_param`; el factory ya no lo construye así si falta.
+        self._ean = ean
 
     @staticmethod
     def _default_get(url: str) -> dict:
@@ -102,8 +112,35 @@ class RestCatalogAdapter:
         query = urlencode(params, quote_via=quote)  # espacios → %20 (no `+`)
         return f"{self._base_url}{p.resource_path}?{query}"
 
+    def _ean_url(self, ean: str) -> str:
+        """URL del lookup DIRIGIDO por barcode. SIN `section_param`: el filtro por EAN es global sobre
+        el catálogo (verificado en vivo). La tienda SÍ va — el precio es por sucursal."""
+        p = self._profile
+        params = [
+            (str(p.ean_param), ean),
+            (p.store_param, self._store_id),
+            (p.page_size_param, str(self._page_size)),
+            (p.offset_param, "0"),
+            *p.extra_params,
+        ]
+        return f"{self._base_url}{p.resource_path}?{urlencode(params, quote_via=quote)}"
+
+    def _fetch_by_ean(self, ean: str) -> Iterator[RawCatalogEntry]:
+        """Loop B: pedirle a la tienda UN producto por barcode. 0 resultados = no lo vende (no cubierto),
+        NO un error. Una request, sin browse, sin paginar: por eso Loop B puede correr en fuentes REST."""
+        p = self._profile
+        payload = self._http_get(self._ean_url(ean)) or {}
+        for item in _dig(payload, p.list_path) or []:
+            try:
+                yield p.map_item(item, self._provider_id, self._market_id)
+            except ValueError:
+                continue  # item sin precio → se salta, igual que en el browse
+
     def fetch(self) -> Iterator[RawCatalogEntry]:
         p = self._profile
+        if self._ean is not None:
+            yield from self._fetch_by_ean(self._ean)
+            return
         for section in self._sections:
             offset = 0
             while True:

@@ -7,7 +7,9 @@ PURO — sin red ni DB.
 from __future__ import annotations
 
 from src.contexts.save.domain.directed_query import (
+    DirectedCapability,
     build_directed_query,
+    platform_capability,
     supports_directed_query,
     supports_ean,
 )
@@ -85,3 +87,28 @@ def test_supports_directed_query_only_query_capable_platforms() -> None:
     assert supports_directed_query(SourcePlatform.REST_CATALOG) is False
     assert supports_directed_query(SourcePlatform.AGGREGATOR) is False
     assert supports_directed_query(SourcePlatform.SPA) is False
+
+
+# ── DirectedCapability: la capacidad como DATO, no como heurística del dominio ─────────────────
+# `REST_CATALOG` es un adapter GENÉRICO manejado por profiles: Bravo expone `model.filterByEan`
+# (verificado en vivo 2026-07-15), otro súper REST puede no exponer nada. Una PLATAFORMA no puede
+# responder por todos sus profiles. Por eso el dominio define el TIPO y deja que infraestructura
+# —que sí conoce los profiles— calcule el VALOR.
+
+
+def test_platform_capability_mirrors_the_platform_heuristics() -> None:
+    assert platform_capability(SourcePlatform.VTEX) == DirectedCapability(supported=True, by_ean=True)
+    assert platform_capability(SourcePlatform.MAGENTO) == DirectedCapability(
+        supported=True, by_ean=False
+    )
+
+
+def test_platform_capability_assumes_browse_only_without_knowing_the_profile() -> None:
+    # Default CONSERVADOR: sin conocer el profile hay que asumir que la fuente navega el catálogo.
+    # Equivocarse hacia "es dirigida" costaría N navegaciones completas (una por canónico) — el
+    # riesgo que motivó el gate browse-only de 2026-07-12. Infraestructura lo sobreescribe si sabe más.
+    assert platform_capability(SourcePlatform.REST_CATALOG) == DirectedCapability(
+        supported=False, by_ean=False
+    )
+    assert platform_capability(SourcePlatform.AGGREGATOR).supported is False
+    assert platform_capability(SourcePlatform.SPA).supported is False
