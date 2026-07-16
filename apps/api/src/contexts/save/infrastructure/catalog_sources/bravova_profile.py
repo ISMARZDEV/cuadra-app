@@ -140,8 +140,18 @@ BRAVOVA_PROFILE = CatalogProfile(
     detail_param="idArticulo",
     detail_ref_key="id_articulo",
     detail_item_path=("data",),
-    # Bravo NO busca por texto pero SÍ por barcode (sondeo en vivo 2026-07-15): `filterByEan` devuelve
-    # el artículo exacto y funciona SIN `filterByIdSeccion` → lookup GLOBAL en una request. Habilita
-    # Loop B dirigido (F3.1) y el recovery determinista (F3.2b) sobre una fuente "browse-only".
+    # Bravo busca por barcode (sondeo en vivo 2026-07-15): `filterByEan` devuelve el artículo exacto y
+    # funciona SIN `filterByIdSeccion` → lookup GLOBAL en una request. Habilita Loop B dirigido (F3.1)
+    # y el recovery determinista (F3.2b) sobre una fuente "browse-only".
     ean_param="model.filterByEan",
+    # Y TAMBIÉN por texto (desbloqueo 2026-07-16): el `showOrder` que faltaba era `score`. Endpoint
+    # DISTINTO del browse (`/public/articulo/search`, no `/list`) y con su propio `showOrder` (el
+    # `importerankingArticulo asc` del browse es rechazado por `/search`). Verificado en vivo:
+    # `?model.nombreArticulo=arroz&showOrder=score` devuelve productos COMPLETOS (misma shape que
+    # `/list`, `associatedEan` vacío → el EAN sigue viniendo del detalle, §15.5). Con esto Bravo pasa
+    # a cubrir por NOMBRE los canónicos sin EAN (los nacidos de Magento), antes invisibles para Loop B.
+    text_param="model.nombreArticulo",
+    search_path="/public/articulo/search",
+    search_extra_params=(("showOrder", "score"),),
+    text_max_results=20,  # top-N por score (search hace OR de tokens; el cap evita el ruido, como Magento)
 )

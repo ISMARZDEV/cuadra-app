@@ -272,3 +272,122 @@ def test_directed_by_ean_does_not_pace_a_single_request() -> None:
     list(adapter.fetch())
 
     assert paced == [], "el lookup dirigido es UNA request → nada que espaciar"
+
+
+# ── Loop B dirigido por TEXTO (F3.1, desbloqueo 2026-07-16) ────────────────────
+# Bravo SÍ busca por nombre en un endpoint DISTINTO (`/search`, no `/list`) y con un `showOrder`
+# distinto (`score`, no el `importerankingArticulo asc` del browse — que `/search` rechaza). Por eso
+# el modo texto no reusa `resource_path`/`extra_params`: usa `search_path`/`text_param`/
+# `search_extra_params`, y capea en `text_max_results` (top-N por score, como Magento). El profile
+# sintético usa nombres propios (`q`, `/catalog/search`, `order`) para probar que es parametrizable.
+
+_TEXT_PROFILE = replace(
+    FAKE_PROFILE,
+    text_param="q",
+    search_path="/catalog/search",
+    search_extra_params=(("order", "score"),),
+    text_max_results=5,
+    extra_params=(("sort", "rank asc"),),  # las del BROWSE: NO deben viajar en el /search
+)
+
+
+def test_directed_by_text_uses_search_path_and_param_in_a_single_request_without_section() -> None:
+    calls: list[str] = []
+
+    def fake_get(url: str) -> dict:
+        calls.append(url)
+        return {"result": {"count": 1, "items": [_entry(9)]}}
+
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test",
+        provider_id="p-fake",
+        market_id="DO",
+        profile=_TEXT_PROFILE,
+        sections=["7", "8", "9"],  # aunque haya secciones, la búsqueda por texto las IGNORA
+        store_id="55",
+        text="habichuelas rojas",
+        http_get=fake_get,
+    )
+
+    entries = list(adapter.fetch())
+
+    assert len(calls) == 1, "la búsqueda dirigida por texto es UNA request, no una navegación"
+    url = calls[0]
+    assert "/catalog/search" in url, "usa search_path, NO resource_path"
+    assert "q=habichuelas%20rojas" in url, "usa el text_param del profile, URL-encodeado"
+    assert "catId=" not in url, "la búsqueda es GLOBAL: no filtra por sección"
+    assert "shopId=55" in url, "la tienda sigue importando (el precio es por sucursal)"
+    assert [e.external_id for e in entries] == ["9"]
+
+
+def test_directed_by_text_uses_search_extra_params_not_the_browse_ones() -> None:
+    calls: list[str] = []
+
+    def fake_get(url: str) -> dict:
+        calls.append(url)
+        return {"result": {"count": 0, "items": []}}
+
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test", provider_id="p", market_id="DO",
+        profile=_TEXT_PROFILE, sections=["7"], store_id="55", text="arroz", http_get=fake_get,
+    )
+
+    list(adapter.fetch())
+
+    assert "order=score" in calls[0], "el /search usa search_extra_params"
+    assert "sort=rank" not in calls[0], "los extra_params del browse rompen /search → no viajan"
+
+
+def test_directed_by_text_caps_page_size_at_text_max_results() -> None:
+    calls: list[str] = []
+
+    def fake_get(url: str) -> dict:
+        calls.append(url)
+        return {"result": {"count": 0, "items": []}}
+
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test", provider_id="p", market_id="DO",
+        profile=_TEXT_PROFILE, sections=["7"], store_id="55", text="arroz", http_get=fake_get,
+    )
+
+    list(adapter.fetch())
+
+    assert "limit=5" in calls[0], "top-N por score: pide text_max_results, no el page_size del browse"
+    assert "skip=0" in calls[0], "una sola página, sin paginar"
+
+
+def test_directed_by_text_returns_empty_when_the_store_has_no_match() -> None:
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test", provider_id="p", market_id="DO",
+        profile=_TEXT_PROFILE, sections=["7"], store_id="55", text="xyzzy",
+        http_get=lambda url: {"result": {"count": 0, "items": []}},
+    )
+
+    assert list(adapter.fetch()) == []
+
+
+def test_directed_by_text_does_not_pace_a_single_request() -> None:
+    paced: list[int] = []
+    adapter = RestCatalogAdapter(
+        base_url="https://api.fakesuper.test", provider_id="p", market_id="DO",
+        profile=_TEXT_PROFILE, sections=["7"], store_id="55", text="arroz",
+        http_get=lambda url: {"result": {"count": 1, "items": [_entry(1)]}},
+        pace=lambda: paced.append(1),
+    )
+
+    list(adapter.fetch())
+
+    assert paced == [], "la búsqueda dirigida es UNA request → nada que espaciar"
+
+
+def test_fetch_rejects_both_ean_and_text() -> None:
+    import pytest
+
+    profile = replace(_TEXT_PROFILE, ean_param="barcode")
+    with pytest.raises(ValueError):
+        RestCatalogAdapter(
+            base_url="https://api.fakesuper.test", provider_id="p", market_id="DO",
+            profile=profile, sections=["7"], store_id="55",
+            ean="7460083780146", text="arroz",
+            http_get=lambda url: {"result": {"count": 0, "items": []}},
+        )

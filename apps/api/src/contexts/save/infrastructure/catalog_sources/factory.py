@@ -57,11 +57,15 @@ def directed_capability(
     if platform is not SourcePlatform.REST_CATALOG:
         return platform_capability(platform)
     profile = _REST_CATALOG_PROFILES.get((endpoints or {}).get("profile", ""))
-    if profile is None or not profile.ean_param:
-        return platform_capability(platform)  # browse-only: es de Loop A
-    # Bravo: `filterByEan` SÍ, búsqueda por texto NO (12 params probados en vivo, todos ignorados).
-    # `by_text=False` es lo que impide que un canónico sin EAN dispare un browse del catálogo entero.
-    return DirectedCapability(by_ean=True, by_text=False)
+    if profile is None:
+        return platform_capability(platform)  # profile desconocido → default conservador (browse-only)
+    # Se DERIVA del profile, no se hardcodea: cada dimensión existe si el profile declara su param.
+    # Bravo declara ambos → `by_ean` (`filterByEan`) y `by_text` (`/search?showOrder=score`, desbloqueo
+    # 2026-07-16). `by_text=True` es lo que deja a Loop B cubrir por nombre los canónicos sin EAN; un
+    # profile sin `text_param` sigue con `by_text=False` (un canónico sin EAN NO le dispara un browse).
+    return DirectedCapability(
+        by_ean=bool(profile.ean_param), by_text=bool(profile.text_param)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +141,7 @@ class SourceBuilder:
             return self._build_rest_catalog(
                 provider_id, market_id, http_get or self._authed_get(),
                 ean=query if by_ean else None,
+                text=query if not by_ean else None,
             )
         raise ValueError(f"Plataforma sin adapter de ingesta: {self.platform!r}")
 
@@ -183,12 +188,16 @@ class SourceBuilder:
         market_id: str,
         http_get: Callable[[str], dict] | None,
         ean: str | None = None,
+        text: str | None = None,
     ) -> CatalogSource:
         """REST_CATALOG. Config desde `endpoints`: `profile` (clave del `_REST_CATALOG_PROFILES`),
         `sections` (categorías a iterar) y `store_id`.
 
-        Dos modos: sin `ean` = browse-full (Loop A; el texto de búsqueda NO aplica). Con `ean` =
-        DIRIGIDO (Loop B): una request por `profile.ean_param`, ignorando `sections`."""
+        Tres modos: con `ean` = DIRIGIDO por barcode (Loop B). Con `text` NO vacío y profile que
+        declara `text_param` = DIRIGIDO por nombre (Loop B, canónicos sin EAN — desbloqueo 2026-07-16).
+        Sin ninguno (o `text` sobre un profile sin búsqueda) = browse-full (Loop A). El default a browse
+        preserva `preview_basket_query`/`test_source` sobre REST browse-only; el gate del dominio
+        (`cover_canonicals`) es el que impide que Loop B mande un texto a una fuente sin `by_text`."""
         endpoints = self.endpoints or {}
         profile = _REST_CATALOG_PROFILES.get(endpoints.get("profile", ""))
         if profile is None:
@@ -199,6 +208,9 @@ class SourceBuilder:
         store_id = endpoints.get("store_id")
         if not sections or not store_id:
             raise ValueError("REST_CATALOG requiere 'sections' y 'store_id' en endpoints")
+        # Solo se dispara la búsqueda por texto si el profile la soporta; si no, el texto se ignora y
+        # cae a browse (retrocompat con las fuentes REST browse-only en preview/test).
+        text_query = text if (text and profile.text_param) else None
         return RestCatalogAdapter(
             self.base_url,
             provider_id,
@@ -208,6 +220,7 @@ class SourceBuilder:
             store_id=str(store_id),
             http_get=http_get,
             ean=ean,
+            text=text_query,
             # El browse pagina secciones enteras contra UNA tienda → sin pausa es un 429 (verificado
             # en vivo con Bravo). Se wirea acá, en el factory, para que NINGÚN caller pueda olvidarlo.
             pace=build_pace(),
