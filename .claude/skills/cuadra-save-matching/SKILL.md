@@ -48,6 +48,10 @@ metadata:
 
 ## The cascade contract (cheapest → most expensive)
 
+El EAN que entra debe venir **NORMALIZADO** (`pick_global_ean`, skill `cuadra-save-ingestion`): un UPC-A
+`760593023182` y su forma EAN-13 `0760593023182` son el MISMO barcode, y si dos tiendas no convergen a la
+misma cadena esta etapa NUNCA los enlaza — un falso negativo INVISIBLE (se ve como "no matchea").
+
 ```
 EAN exacto (score 1.0) ─┬─ 1 match  → auto_link (method=ean)
                         ├─ 0 match  → sigue a léxico
@@ -85,6 +89,13 @@ Claude-juez {decision, confidence, cited_fields}:
 6. **The Anthropic client lives ONLY in `infrastructure/matching/`** (`claude_judge.py`, via
    `shared.llm.get_chat_model` — not the raw SDK). import-linter `domain-puro` FAILS if it leaks into
    domain. The judge is consumed by the use-case via a LOCAL `Protocol` (`GreyBandJudge`), not a domain port.
+7bis. **El breaker ABIERTO miente sobre el `method` (BUG CONOCIDO, latente).** Con el breaker abierto
+   `LlmJudge` devuelve `_UNCERTAIN` **sin llamar la API**, y el use-case lo registra como `method="llm"`.
+   Medido 2026-07-15: de 11 `pending_review/llm`, **el LLM nunca vio 8** → leerías la cola y "afinarías el
+   juez" sobre una señal falsa. El uncertain DEGRADADO debe registrarse como `human`. Hoy es moot
+   (`SAVE_LLM_JUDGE_ENABLED=false` por defecto, sin juez no hay breaker) — **arreglar ANTES de re-habilitarlo**.
+   Con el juez apagado la banda gris ya va a revisión con `method="human"`, que es la semántica correcta.
+
 7. **Judge fail-safe.** Any invalid/unparseable/out-of-range/timeout judge output is forced to
    `uncertain` → review queue. It re-validates the payload (`_Verdict.model_validate`) — never trusts
    the LLM parse alone. Never risk a false merge on a judge error. Token usage is logged per call.
@@ -135,4 +146,5 @@ make save-refresh                                             # CLI refresh; wir
 - **Plan (SDD, full):** `docs/sdd/save-matching/plan.md`
 - **Activation + Batch 10 spike (how to turn it on):** `docs/pending/save-matching-batch10-y-activacion.md`
 - **Design source of truth (why):** `docs/research/save-fable/05-pilar3-matching-agregadores.md`
-- **Composes with:** `cuadra-save` (domain + sacred rules) · `cuadra-api` (hexagonal/TDD/Alembic)
+- **Composes with:** `cuadra-save` (domain + sacred rules) · **`cuadra-save-ingestion`** (what FEEDS this
+  cascade: adapters, per-store barcode quirks, EAN normalization, the Magento noise cap) · `cuadra-api`
