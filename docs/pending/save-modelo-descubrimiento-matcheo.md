@@ -169,9 +169,34 @@ by_ean, 0-match ⇒ **descartar**, no encolar.
 | Global | 80 | 14 | 15% |
 | Bravo | 8 | 2 | 20% |
 
-Los **2 de Bravo en cola** son `GOYA GANDULES C/COCO` y `GOYA ARROZ INTEGRAL`: **tienen EAN válido pero NO
-existen en Sirena/Nacional** → productos nuevos legítimos que hay que canonizar a mano. El EAN **no** los
-habría rescatado (no hay canónico con ese barcode). Es tu visión de descubrimiento, funcionando.
+> [!error] Corrección 2026-07-16 — esta sección estaba EQUIVOCADA, y el 15% está INFLADO
+> El texto original decía: *"Los 2 de Bravo en cola son `GOYA GANDULES C/COCO` y `GOYA ARROZ INTEGRAL`:
+> tienen EAN válido pero NO existen en Sirena/Nacional → productos nuevos legítimos que hay que
+> canonizar a mano. El EAN no los habría rescatado (no hay canónico con ese barcode). Es tu visión de
+> descubrimiento, funcionando."*
+>
+> **Falso en las cuatro cláusulas.** Verificado contra el DB al implementar R6:
+>
+> | El doc decía | La realidad (medida) |
+> |---|---|
+> | "NO existen en Sirena/Nacional" | Existen: Sirena los tiene, `auto_linked/hybrid` |
+> | "no hay canónico con ese barcode" | Lo hay — el que Sirena ya enlazó |
+> | "El EAN **no** los habría rescatado" | Sí: mismo EAN `00041331020053` / `00041331026123` |
+> | "Es tu visión de descubrimiento, funcionando" | Era **el bug del cero comido** llenando la cola |
+>
+> **Qué pasaba de verdad:** Sirena guardaba el EAN con el cero inicial comido (`41331020053`, 11 díg.)
+> y Bravo lo guardaba normalizado (`0041331020053`). **Nunca convergían** → la etapa EAN no podía
+> enlazarlos y caían a revisión humana. Es EXACTAMENTE el falso-negativo invisible que R6 describe —
+> y estaba operando delante nuestro, disfrazado de "producto nuevo legítimo".
+>
+> Son el mismo producto (comprobado): Bravo "ARROZ INTEGRAL 32 oz" = Sirena "Arroz Goya Integral 2 Lb"
+> (2 lb = 32 oz).
+>
+> **Consecuencias:** (1) el baseline **85% auto-link / 15% cola está inflado** — hay que RE-MEDIRLO en
+> Fase 2 con el backfill aplicado; (2) tras R6 esos 2 pasan a auto-link a 1.0 solos; (3) la lección:
+> "cae a la cola" no probaba "es un producto nuevo" — probaba que **no sabíamos por qué caía**. Con el
+> EAN normalizado, R6 destrabó **10 barcodes que ahora cruzan Bravo↔Sirena** y antes era imposible que
+> convergieran.
 
 > ⚠️ Sobre "los exclusivos de Bravo suelen tener el texto BRAVO delante": cierto, pero estos 2 son GOYA
 > (importados), no marca propia. O sea: "cae a la cola" no implica "exclusivo de Bravo" — implica
@@ -251,10 +276,42 @@ exclusivo). Codifica tu heurística del "BRAVO delante" y acelera la decisión d
 Obviar los canónicos que no tienen ningún `store_product` con EAN (tu *"los que no tienen se obvian"*).
 Evita requests inútiles a Bravo. `list_uncovered` ya filtra por no-cubierto; sumar "tiene EAN".
 
-**R6 — Normalizar el EAN en AMBOS lados + backfill (MEDIA).**
+**R6 — Normalizar el EAN en AMBOS lados + backfill (MEDIA).** ✅ **HECHO 2026-07-16** (`fix/save-fase0-higiene`)
 El fix UPC-A→EAN-13 es **reciente**. Filas viejas de `store_product.ean` pueden estar sin normalizar →
 Bravo escribe `760593…` y Sirena `0760593…` y **nunca cruzan** (falso negativo INVISIBLE, se ve como
 "no matchea"). Un backfill que normalice lo existente cierra ese hueco silencioso.
+
+> [!warning] Al implementarlo resultó MUCHO más grande que "un backfill" — y la prioridad estaba mal
+> **R6 no era MEDIA: era ALTA.** El diagnóstico "filas viejas sin normalizar" apuntaba al síntoma, no
+> a la causa. La causa: **`vtex_adapter.py` escribía `ean` CRUDO** (`first.get("ean")`, sin normalizar
+> ni filtrar) — solo Bravo pasaba por `pick_global_ean`. Y como **Sirena es EL SEMBRADOR** de barcodes
+> (R7: la tienda que hace efectivo el Proceso 2), la ruta sin guarda contaminaba justo la fuente que
+> todo lo demás depende. Medido: **33 de 63 filas con EAN (52%) violaban el invariante, TODAS de Sirena.**
+> Un backfill sin arreglar la escritura se deshacía en la corrida siguiente.
+>
+> **Lo que se hizo:**
+> 1. **Dominio → familia GTIN completa** (`domain/value_objects/ean.py`). La app se extiende a USA,
+>    Europa y LatAm: soporta GTIN-8, **UPC-E** (comprimido, USA — ambiguo con GTIN-8 por largo, se
+>    desambigua por número de sistema y se valida expandiéndolo), GTIN-12 (UPC-A), GTIN-13, GTIN-14.
+>    **Forma canónica: GTIN-14 zero-padded** (regla GS1 right-align+pad; el check digit se preserva
+>    porque los pesos se cuentan DESDE el verificador). Filtro: rechaza internos (02/04/20-29, GTIN-8
+>    con prefijo 0|2) y cupones (980-984, 99); **acepta ISBN/ISSN** (977/978/979 son identificadores
+>    globales de productos que un súper sí vende).
+> 2. **Rescate del cero comido:** 11 filas de Sirena con 11 dígitos = UPC-A cuyo cero inicial se comió
+>    un parseo numérico. Evidencia: 11/11 pasan checksum al restaurarlo (azar 10⁻¹¹) **y el prefijo
+>    cuadra con la marca del nombre** (41331=Goya, 0039978=Bob's Red Mill, 0070560=Pictsweet).
+> 3. **Ruta de escritura:** `map_vtex_product` → `pick_global_ean`.
+> 4. **Backfill** (`f4a5b6c7d8e9`): 54 normalizados a GTIN-14, 9 códigos internos a NULL. Idempotente.
+>
+> **Trampa a no re-aprender:** el filtro corre sobre la forma CRUDA, nunca sobre la normalizada. Un
+> GTIN-8 interno padeado a GTIN-14 (`00000021061684`) es indistinguible de un UPC-A global. Por eso el
+> filtro vive en el BORDE de escritura (`pick_global_ean`) y lo almacenado ya viene filtrado.
+>
+> **Además destapó un test mentiroso:** `test_rejects_upc_a_reserved_for_in_store_use` pasaba en verde
+> con fixtures de checksum ROTO → se rechazaban por malformados y el rango 020-029/040-049 que decía
+> defender nunca se evaluaba. El filtro estaba bien; el test no probaba nada.
+>
+> **Resultado medible:** 10 barcodes que ahora cruzan Bravo↔Sirena y antes no podían converger (ver §4).
 
 ### TRANSVERSAL
 
@@ -351,11 +408,23 @@ Transversales P0 (menos el cutover, ya hecho; queda el fallback legacy)
 > hasta la Fase 2. Cada ítem = rama `feat/*` → PR a `developer` → CI verde, Strict TDD; los SDD del
 > vault son el spec.
 
-**Fase 0 — Higiene (cerrar lo abierto):**
-1. Commit + PR de `by_text` + este doc (la rama va ahead sin pushear; CI no ha visto nada).
-2. R6: backfill de normalización EAN (cierra el falso-negativo ANTES de más corridas).
-3. Fix del breaker mentiroso (`method='llm'` → `human` degradado) — ahora, aunque el LLM siga off.
-4. Retirar el fallback legacy `BASKET_QUERIES` (`sources.py:298`).
+**Fase 0 — Higiene (cerrar lo abierto):** ✅ **COMPLETA 2026-07-16**
+1. ✅ Commit + PR de `by_text` + este doc (PR #31, mergeado).
+2. ✅ R6: normalización EAN en AMBOS lados + backfill → resultó ALTA, no MEDIA (ver R6 arriba).
+3. ✅ Fix del breaker mentiroso (`method='llm'` → `human` degradado): el veredicto degradado ahora se
+   DECLARA degradado (`JudgeVerdict.degraded`) y el use-case registra `human`. Solo el adapter sabe si
+   la API llegó a hablar, así que el flag viaja CON el veredicto. `method="llm"` vuelve a significar
+   una sola cosa: el juez emitió un veredicto válido y actuamos sobre él.
+4. ✅ Retirar el fallback legacy `BASKET_QUERIES` → **no era código muerto, era DIVERGENCIA**:
+   `seeds/save_refresh.py` (el CLI de `make save-refresh`) llamaba `build_sources()` sin argumentos y
+   se llevaba el tuple hardcodeado de 213 términos, mientras Dagster leía la tabla. Desactivabas una
+   query en el admin y el CLI la seguía corriendo — sin que ninguno avisara. Coincidían en 213 hoy, que
+   es justo por qué era invisible. Se mató la constante y el default (`queries` ahora es OBLIGATORIO:
+   el olvido es imposible, no una cuestión de disciplina), y el lector de canasta se movió de
+   `assets.py` a `composition.py` — su ubicación ERA el bug, porque `assets.py` importa dagster y el
+   CLI no podía reusarlo. Efecto lateral: `test_refresh_queries.py` deja de saltarse en CI.
+
+   Rama: `fix/save-fase0-higiene`. 739 tests verdes · ruff limpio · lint-imports 2 kept/0 broken.
 
 **Fase 1 — Backend de los DOS procesos (sin UI):**
 5. R1 backend: fuentes por-query derivadas de `store_registry` + `directed_capability` (muere
