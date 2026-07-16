@@ -13,6 +13,7 @@ import pytest
 from src.contexts.save.domain.entities import PriceType
 from src.contexts.save.domain.ports import RawCatalogEntry
 from src.contexts.save.infrastructure.catalog_sources.magento_adapter import (
+    MAGENTO_MAX_RESULTS,
     MagentoAdapter,
     map_magento_product,
 )
@@ -182,3 +183,58 @@ def test_fetch_skips_items_without_price() -> None:
     )
     entries = list(adapter.fetch())
     assert [e.external_id for e in entries] == ["2140283"]  # el roto se salta, no rompe la corrida
+
+
+# ── Cap de resultados: la búsqueda de Magento es difusa (OR de tokens) ────────────────────────
+# Medido en vivo contra Jumbo (2026-07-15): "habichuelas rojas la famosa" → 704 productos, de los
+# cuales 2 son relevantes; a partir del puesto 3 aparecen AMBIENTADORES (matchean por "rojos").
+# Magento hace OR de los tokens → cuantas más palabras, más basura. Nos traíamos las 704, las
+# embebíamos con BGE-M3 y las mandábamos a la cola humana: 1502 productos de Jumbo en una corrida.
+#
+# El cap sale de DATOS, no de intuición. Posición del ÚLTIMO relevante en 6 términos medidos:
+#   arroz la garza 7 · habichuelas rojas la famosa 2 · aceite mazola 7
+#   arroz integral 8 · leche evaporada 15 · azucar crema 12   ← y sus posiciones NO son contiguas
+# top-10 habría perdido 5 de "leche evaporada" y 1 de "azucar crema". top-20 conserva el 100%.
+
+
+def _paged_post(total_pages: int, per_page: int):  # type: ignore[no-untyped-def]
+    calls: list[int] = []
+
+    def fake_post(url: str, payload: dict, headers: dict[str, str]) -> dict:
+        page = payload["variables"]["currentPage"]
+        calls.append(page)
+        items = [dict(NACIONAL_ITEM, sku=f"sku-{page}-{i}") for i in range(per_page)]
+        return {
+            "data": {
+                "products": {
+                    "total_count": total_pages * per_page,
+                    "page_info": {"total_pages": total_pages},
+                    "items": items,
+                }
+            }
+        }
+
+    return fake_post, calls
+
+
+def test_fetch_stops_at_the_result_cap_instead_of_draining_the_fuzzy_match() -> None:
+    fake_post, calls = _paged_post(total_pages=15, per_page=50)  # 750 productos disponibles
+    adapter = MagentoAdapter(
+        base_url="https://x.test", provider_id="p", market_id="DO",
+        query="habichuelas rojas la famosa", http_post=fake_post,
+    )
+
+    entries = list(adapter.fetch())
+
+    assert len(entries) == MAGENTO_MAX_RESULTS, "corta en el cap, no drena las 15 páginas"
+    assert calls == [1], "una sola request: el cap cabe en la primera página"
+
+
+def test_fetch_returns_everything_when_the_store_has_less_than_the_cap() -> None:
+    # Sin ruido que cortar, el cap no molesta: se traen todos.
+    fake_post, calls = _paged_post(total_pages=1, per_page=3)
+    adapter = MagentoAdapter(
+        base_url="https://x.test", provider_id="p", market_id="DO", query="arroz", http_post=fake_post
+    )
+
+    assert len(list(adapter.fetch())) == 3

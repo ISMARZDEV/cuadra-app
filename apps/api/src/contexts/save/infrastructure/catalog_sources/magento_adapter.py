@@ -21,6 +21,21 @@ from .size_from_name import extract_size
 
 _PAGE_SIZE = 50
 
+# Cuántos resultados se ingieren por término. La búsqueda de Magento (`products(search:)`) es DIFUSA
+# y hace OR de los tokens: "habichuelas rojas la famosa" devuelve 704 productos y desde el puesto 3
+# son AMBIENTADORES (matchean por "rojos"). Cuantas más palabras tiene el término, MÁS basura trae.
+# Drenar ese set completo era el inundador real de la cola: 1502 productos de Jumbo en una corrida
+# de 8 términos, cada uno embebido con BGE-M3 y enviado a revisión humana.
+#
+# El número sale de MEDIR (Jumbo, 2026-07-15), no de intuición. Posición del ÚLTIMO relevante:
+#   arroz la garza 7 · habichuelas rojas la famosa 2 · aceite mazola 7
+#   arroz integral 8 · leche evaporada 15 · azucar crema 12  ← posiciones NO contiguas (ruido entre medio)
+# top-10 habría perdido 5 relevantes de "leche evaporada" y 1 de "azucar crema". top-20 conserva
+# el 100% de los 6 términos y descarta ~97% del ruido. Cabe en UNA página → también ahorra requests.
+#
+# NO aplica a VTEX: su `ft=` es full-text preciso (mismo término → 6 resultados, no 704).
+MAGENTO_MAX_RESULTS = 20
+
 _PRODUCTS_QUERY = """
 query CuadraSaveCatalog($search: String!, $pageSize: Int!, $currentPage: Int!) {
   products(search: $search, pageSize: $pageSize, currentPage: $currentPage) {
@@ -122,15 +137,27 @@ class MagentoAdapter:
         return (response.get("data") or {}).get("products") or {}
 
     def fetch(self) -> Iterator[RawCatalogEntry]:
+        """Los `MAGENTO_MAX_RESULTS` más relevantes del término, NO el set difuso completo.
+
+        Magento ordena por relevancia y los productos que de verdad importan viven en los primeros
+        puestos (medido: el último relevante nunca pasó del 15 en 6 términos). Drenar hasta
+        `total_pages` traía cientos de productos que solo comparten UNA palabra con la consulta.
+        El corte se aplica sobre los items CRUDOS (posición tal como los ordenó la tienda), antes de
+        descartar los que no tienen precio — así el cap significa "los 20 primeros que la tienda
+        considera más relevantes", no "los 20 primeros que además tenían precio"."""
         current_page = 1
         total_pages = 1
-        while current_page <= total_pages:
+        taken = 0
+        while current_page <= total_pages and taken < MAGENTO_MAX_RESULTS:
             products = self._page(current_page)
             total_pages = (products.get("page_info") or {}).get("total_pages", 0)
             items = products.get("items") or []
             if not items:
                 break
             for item in items:
+                if taken >= MAGENTO_MAX_RESULTS:
+                    break
+                taken += 1
                 try:
                     yield map_magento_product(
                         item, self._provider_id, self._market_id, self._base_url

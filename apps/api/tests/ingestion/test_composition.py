@@ -261,7 +261,7 @@ def test_matcher_gets_no_judge_when_the_llm_switch_is_off(monkeypatch: pytest.Mo
     assert matcher._judge is None, "sin juez → la banda gris no llama a la API"
 
 
-def test_matcher_gets_a_real_judge_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_matcher_gets_a_real_judge_when_the_switch_is_on(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "save_matching_cascade_enabled", True)
     monkeypatch.setattr(settings, "save_classification_enabled", False)
     monkeypatch.setattr(settings, "save_llm_judge_enabled", True)
@@ -270,7 +270,7 @@ def test_matcher_gets_a_real_judge_by_default(monkeypatch: pytest.MonkeyPatch) -
 
     matcher = composition.build_matcher(MagicMock())
 
-    assert matcher._judge == "JUEZ-REAL", "el default no cambia: el juez corre como siempre"
+    assert matcher._judge == "JUEZ-REAL", "con el switch en true el juez vuelve, sin tocar nada más"
 
 
 def test_classifier_gets_no_judge_when_the_llm_switch_is_off(
@@ -289,7 +289,7 @@ def test_classifier_gets_no_judge_when_the_llm_switch_is_off(
     assert classifier._judge is None
 
 
-def test_classifier_gets_a_real_judge_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_classifier_gets_a_real_judge_when_the_switch_is_on(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "save_classification_enabled", True)
     monkeypatch.setattr(settings, "save_llm_judge_enabled", True)
     monkeypatch.setattr(composition, "build_embedding_provider", lambda: MagicMock())
