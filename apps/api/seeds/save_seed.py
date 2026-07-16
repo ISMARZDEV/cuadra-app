@@ -8,6 +8,7 @@ change-only → seguro de correr N veces.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -436,22 +437,56 @@ def _seed_collections(session: Session, canon_repo, store_repo, now: datetime) -
         )
 
 
-def _seed_sources(session: Session) -> None:
-    """Siembra el `StoreRegistry` de las fuentes con adapter propio (hoy: Bravo Va, REST_CATALOG).
+@dataclass(frozen=True, slots=True)
+class _SourceSeed:
+    """Config de extracción de una cadena — el DATO que se siembra en `store_registry`."""
 
-    Idempotente (1:1 con Provider): no re-crea si ya existe. Es lo que hace aparecer la fuente en el
-    panel de ingesta y habilita su botón "Probar". El resto de cadenas (VTEX/Magento/agregadores) aún
-    no tienen StoreRegistry sembrado — su wiring vive en `ingestion/save/sources.py` (bridge F1)."""
+    provider_name: str
+    platform: SourcePlatform
+    base_url: str
+    endpoints: dict | None = None
+    headers: dict | None = None
+
+
+# Las fuentes de extracción de las cadenas que se ingieren. NO llevan credencial: el seed siembra
+# CONFIG, y el secreto (el token de Bravo) se carga desde el admin y vive en `store_registry.auth`
+# (§15) — un secreto en el repo es un secreto filtrado.
+#
+# R1 (2026-07-16): antes acá SOLO estaba Bravo, y el wiring de Sirena/Nacional/Jumbo vivía hardcodeado
+# en `ingestion/save/sources.py` (el "bridge F1"). R1 corta ese bridge: el descubrimiento deriva sus
+# tiendas del registry, así que una omisión acá ya no es una molestia — es una tienda que desaparece
+# de la ingesta sin un solo error. Verificado contra dev antes de escribir esto: el registry tenía a
+# Bravo (del seed) + Nacional y Sirena creadas A MANO desde la consola admin, y **Jumbo no existía**.
+STORE_SOURCES: tuple[_SourceSeed, ...] = (
+    _SourceSeed("Sirena", SourcePlatform.VTEX, "https://www.sirena.do"),
+    _SourceSeed("Nacional", SourcePlatform.MAGENTO, "https://supermercadosnacional.com"),
+    # Misma instancia Magento (CCN) que Nacional: el header elige el store view. SIN él, jumbo.com.do
+    # sirve el catálogo de NACIONAL → la ingesta no falla, guarda precios de Nacional etiquetados como
+    # Jumbo (hallazgo doc 09). El factory lo traduce a `store_code` (`headers["Store"]`).
+    _SourceSeed("Jumbo", SourcePlatform.MAGENTO, "https://jumbo.com.do", headers={"Store": "jumbo"}),
+    _SourceSeed("Bravo", SourcePlatform.REST_CATALOG, BRAVO_BASE_URL, endpoints=BRAVO_SOURCE_ENDPOINTS),
+)
+
+
+def _seed_sources(session: Session) -> None:
+    """Siembra el `StoreRegistry` de cada cadena que se ingiere (ver `STORE_SOURCES`).
+
+    Idempotente (1:1 con Provider): no re-crea ni pisa si ya existe — respeta lo que un admin haya
+    editado desde la consola. Es lo que hace aparecer la fuente en el panel de ingesta, habilita su
+    botón "Probar", y —desde R1— lo que la mete en el descubrimiento."""
     registry_repo = SqlStoreRegistryRepository(session)
-    bravo_pid = str(provider_id("Bravo"))
-    if registry_repo.get_by_provider_id(bravo_pid) is None:
+    for source in STORE_SOURCES:
+        pid = str(provider_id(source.provider_name))
+        if registry_repo.get_by_provider_id(pid) is not None:
+            continue
         registry_repo.add(
             StoreRegistry(
-                id=str(uuid.uuid5(_NS, "store_registry:DO:Bravo")),
-                provider_id=bravo_pid,
-                platform=SourcePlatform.REST_CATALOG,
-                base_url=BRAVO_BASE_URL,
-                endpoints=BRAVO_SOURCE_ENDPOINTS,
+                id=str(uuid.uuid5(_NS, f"store_registry:DO:{source.provider_name}")),
+                provider_id=pid,
+                platform=source.platform,
+                base_url=source.base_url,
+                endpoints=source.endpoints,
+                headers=source.headers,
             )
         )
 

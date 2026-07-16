@@ -37,8 +37,9 @@ def main() -> None:
     if "--queries" in sys.argv:
         n_queries = int(sys.argv[sys.argv.index("--queries") + 1])
 
-    from ingestion.save.composition import build_basket_queries
-    from ingestion.save.sources import SAVE_MARKET, build_sources
+    from ingestion.save.composition import build_basket_queries, build_query_catalog_sources_for
+    from ingestion.save.sources import SAVE_MARKET
+    from seeds.save_seed import provider_id
     from src.shared.db.base import SessionLocal
     from sqlalchemy import text
 
@@ -51,11 +52,20 @@ def main() -> None:
         parents = s.execute(
             text("SELECT id::text, name FROM save.taxonomy_node WHERE level=0 AND market_id='DO'")
         ).all()
-        # La canasta sale de la TABLA (antes: `BASKET_QUERIES[:n]`). Se lee DENTRO de la sesión.
+        # La canasta sale de la TABLA (antes: `BASKET_QUERIES[:n]`) y la fuente del REGISTRY (R1,
+        # antes: un dict hardcodeado). Las dos lecturas van DENTRO de la sesión.
         queries = build_basket_queries(s, SAVE_MARKET)[:n_queries]
+        adapters = (
+            build_query_catalog_sources_for(s, str(provider_id("Sirena")), queries)
+            if queries
+            else None
+        )
 
     if not queries:
         print(f"✖ Canasta VACÍA para {SAVE_MARKET} (basket_query sin filas active).")
+        return
+    if not adapters:
+        print("✖ Sirena inexistente, apagada, o sin capacidad by_text en store_registry.")
         return
 
     leaf_lex = build_lexicon_index([(r[0], r[1]) for r in leaves])
@@ -65,7 +75,6 @@ def main() -> None:
     leaf_name = {r[0]: r[1] for r in leaves}
 
     # Fetch en vivo de Sirena (acotado a N queries de la canasta). category_path lo pobla el VtexAdapter.
-    adapters = build_sources(queries=queries)["sirena"]
     seen: set[str] = set()
     entries = []
     for a in adapters:

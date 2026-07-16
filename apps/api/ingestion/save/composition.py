@@ -210,6 +210,61 @@ def build_refresh_covered_prices(session: Session, *, known: bool = False) -> Re
     )
 
 
+def _is_active(reg) -> bool:  # type: ignore[no-untyped-def]
+    """El gate MANUAL del admin (`enabled` / `paused_at`). Existía desde F2·B1 y la ingesta por-query
+    lo ignoraba por completo: el set de fuentes era un tuple hardcodeado que no consultaba nada, así
+    que pausar una tienda desde la consola no la sacaba de la ingesta."""
+    return reg.enabled and reg.paused_at is None
+
+
+def query_catalog_partition_keys(session: Session) -> list[str]:
+    """`provider_id` de cada fuente ACTIVA que sabe buscar por TEXTO — las particiones dinámicas del
+    asset `query_catalog_prices` (Descubrimiento / Loop A dirigido por la canasta).
+
+    R1: reemplaza `SOURCE_KEYS = ("sirena","nacional","jumbo")`. El set se DERIVA del registry, así
+    que sumar un súper es una FILA, no un deploy (regla SAGRADA #4), y `enabled`/`paused_at` por fin
+    significan algo para la ingesta.
+
+    La capacidad se pregunta a `directed_capability` (infra) y no a la plataforma: `REST_CATALOG` es
+    un adapter genérico y cada súper decide qué expone — una plataforma no puede responder por todos
+    sus profiles. Así **Bravo entra solo** (su profile declara `text_param` desde el desbloqueo
+    2026-07-16) y un REST browse-only queda fuera, que es el gate que impide mandarle las 213 queries
+    de la canasta a una fuente que las ignora y navegarle el catálogo entero 213 veces.
+    """
+    from ingestion.save.sources import SAVE_MARKET  # local: evita import circular (patrón del módulo)
+
+    return [
+        reg.provider_id
+        for reg in SqlStoreRegistryRepository(session).list_by_market(SAVE_MARKET)
+        if _is_active(reg) and directed_capability(reg.platform, reg.endpoints).by_text
+    ]
+
+
+def build_query_catalog_sources_for(
+    session: Session, provider_id: str, queries: tuple[str, ...]
+) -> list[CatalogSource] | None:
+    """Un adapter por query de la canasta para UNA fuente — el partitioned asset materializa UN
+    proveedor por partición. `None` si la fuente ya no existe, la apagaron, o dejó de saber por texto
+    (partición huérfana → el asset la salta sin fallar).
+
+    Re-chequea el gate en vez de confiar en la partición: el sensor tarda hasta 5 min en limpiar, y
+    materializar a mano NO debe ingerir una tienda que el admin apagó.
+    """
+    from ingestion.save.sources import SAVE_MARKET
+
+    reg = SqlStoreRegistryRepository(session).get_by_provider_id(provider_id)
+    if reg is None or not _is_active(reg):
+        return None
+    if not directed_capability(reg.platform, reg.endpoints).by_text:
+        return None
+    builder = CatalogSourceFactory.build(
+        reg.platform, reg.base_url, endpoints=reg.endpoints, headers=reg.headers, auth=reg.auth,
+    )
+    # `for_query` rutea por plataforma: VTEX/Magento por su param de búsqueda, REST_CATALOG al
+    # `/search` del profile (Bravo: `showOrder=score`). El `Store: jumbo` sale de `headers` en `build`.
+    return [builder.for_query(reg.provider_id, SAVE_MARKET, q) for q in queries]
+
+
 def rest_catalog_partition_keys(session: Session) -> list[str]:
     """Claves de partición (`{provider_id}:{section}`) de TODAS las fuentes REST_CATALOG del mercado —
     lo que el sensor sincroniza con las particiones dinámicas del asset `rest_catalog_prices`. Filtra a

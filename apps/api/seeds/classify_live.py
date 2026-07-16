@@ -30,9 +30,11 @@ def main() -> None:
         build_basket_queries,
         build_category_embedder,
         build_classifier,
+        build_query_catalog_sources_for,
     )
     from ingestion.save.runner import refresh_source
-    from ingestion.save.sources import SAVE_MARKET, build_sources
+    from ingestion.save.sources import SAVE_MARKET
+    from seeds.save_seed import provider_id
     from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
     from src.shared.db.base import SessionLocal
 
@@ -55,10 +57,16 @@ def main() -> None:
             print(f"✖ Canasta VACÍA para {SAVE_MARKET} (basket_query sin filas active).")
             return
 
-        sources = build_sources(queries=queries)
-        adapters = sources.get(source_key)
+        # La fuente sale del registry (R1): `--source sirena` → provider "Sirena". Antes era una
+        # clave de un dict hardcodeado, así que Bravo no era elegible ni existiendo.
+        adapters = build_query_catalog_sources_for(
+            session, str(provider_id(source_key.capitalize())), queries
+        )
         if not adapters:
-            print(f"✖ Fuente «{source_key}» desconocida. Opciones: {', '.join(sources)}.")
+            print(
+                f"✖ Fuente «{source_key}» inexistente, apagada, o que no busca por texto. "
+                "Opciones: sirena, nacional, jumbo, bravo."
+            )
             return
 
         repo = SqlStoreProductRepository(session)
