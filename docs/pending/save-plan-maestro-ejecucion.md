@@ -130,15 +130,43 @@ Base: `/Users/ismartz/Library/Mobile Documents/iCloud~md~obsidian/Documents/dev-
 > interno pasaba con fixtures de checksum roto. Antes de creerle a una medición, verificá que la
 > salvaguarda que la respalda tenga un test que falle cuando debe.
 
-### Fase 1 — Backend de los 2 procesos (sin UI)
-5. **R1** — Descubrimiento registry/capability-driven: muere `SOURCE_KEYS`
-   (`ingestion/save/assets.py:43`); las fuentes por-query salen de `store_registry WHERE enabled` +
-   `directed_capability(...).by_text` ⇒ **Bravo entra solo**.
-   ⚠️ Los assets Dagster se definen **al importar** → el mecanismo correcto es
-   **dynamic partitions + sensor**, el MISMO patrón que ya usa `rest_catalog_prices`. No improvises.
-6. **R4** — Cobertura EAN-only: 0-match **descarta** (no encola). Colisión (>1 canónico con el mismo
-   EAN) → canal aparte (alimenta el badge de duplicado de F5).
-7. **R5** — `list_uncovered` filtra solo canónicos EAN-alcanzables.
+### Fase 1 — Backend de los 2 procesos (sin UI) — ✅ COMPLETA 2026-07-16
+5. ✅ **R1** — Descubrimiento registry/capability-driven. Murió `SOURCE_KEYS` y con él TODO el
+   "bridge F1" (`sources.py::build_sources` con las base_url y el `store_code` de Jumbo en código).
+   **Bravo entra solo**; `enabled`/`paused_at` por fin sacan una tienda de la ingesta.
+6. ✅ **R4** — Cobertura barcode puro: 0-match **descarta**. Murió el fallback por nombre de
+   `select_best_candidate` (→ `select_ean_match`) y con él `trigram_similarity`.
+7. ✅ **R5** — `list_uncovered` filtra EAN-alcanzables (medido: 41/50 canónicos).
+
+> [!warning] Tres cosas que el spec de R1 no decía, y sin las cuales R1 rompía la ingesta
+> 1. **`store_registry` solo tenía sembrado a Bravo.** Sirena y Nacional existían en dev porque
+>    alguien las creó A MANO desde la consola admin (una hora de diferencia entre ellas); **Jumbo no
+>    existía**. En un DB fresco, R1 habría dejado el descubrimiento con UNA tienda y las otras tres
+>    habrían desaparecido **sin un solo error**. Se siembran las cuatro (seed + migración idempotente
+>    que respeta lo editado desde el admin). Jumbo lleva `Store: jumbo`: sin ese header, jumbo.com.do
+>    sirve el catálogo de NACIONAL — no falla, guarda precios de Nacional etiquetados como Jumbo.
+> 2. **El patrón de `rest_catalog_prices` no transplanta limpio.** Ese asset es MANUAL, nunca tuvo
+>    que vivir en el job diario. Los assets por-query SÍ. Particionarlos los saca del job
+>    unpartitioned (Dagster no mezcla ambos), rompiendo la cadena embed → descubrimiento → drops.
+> 3. **La cadena se reconstruyó con automatización declarativa** (`AutomationCondition`), no con tres
+>    schedules encadenados por reloj. Ver abajo.
+
+> [!important] Decisión: el orden lo da la DEPENDENCIA, no el reloj (2026-07-16)
+> `embed_canonicals` tiene el ÚNICO cron (06:00) y el resto lo arrastran sus condiciones. La
+> alternativa —05:00 embed / 06:00 query / 07:00 drops— se descartó: si embed tardaba de más, el
+> descubrimiento corría igual sobre un índice viejo **y nadie se enteraba**. Es la forma exacta de
+> los bugs que la Fase 0 destapó (no rompen, mienten en verde).
+>
+> **Gotcha que cuesta caro:** `price_drops`/`alert_matching` NO pueden usar `eager()` — *"will not
+> execute targets that have any **missing** dependencies"*, y dependen también del browse MANUAL de
+> Bravo. En un deploy nuevo sus particiones nunca se materializaron ⇒ eager los bloquearía PARA
+> SIEMPRE y las alertas de bajada no saldrían nunca. Usan `eager` **menos** la guarda
+> `~any_deps_missing`, conservando `~any_deps_in_progress`.
+
+> **Bravo queda con las DOS vías de descubrimiento** (decisión del usuario): la canasta trae su
+> versión de lo que se compara (diario, ~4 min); el browse por sección descubre los **exclusivos**
+> que la canasta nunca pediría (manual, ~11 min). No se pisan: la ingesta es idempotente por
+> (provider, external_id).
 
 ### Fase 2 — Activación medida (**el unlock**)
 8. Endpoint BGE-M3 → `SAVE_BGE_M3_ENDPOINT_URL` → `SAVE_MATCHING_CASCADE_ENABLED=true` → corrida E2E
@@ -189,7 +217,7 @@ F3 antes que F4/F5 (todos mutan — sin auditoría común, cada uno inventaría 
 
 | Al implementar… | BORRA (no dejes conviviendo) |
 |---|---|
-| R1 (F1) | `SOURCE_KEYS` (`assets.py:43`) y su iteración hardcoded |
+| ~~R1 (F1)~~ ✅ | ~~`SOURCE_KEYS` y su iteración hardcoded~~ — hecho: murió también `build_sources` (todo el bridge F1) y `trigram_similarity` (R4) |
 | F0 #4 | `BASKET_QUERIES` (`sources.py:298`) y el parámetro `queries=` que lo default-ea |
 | F3 #11 (DTO admin de providers) | El consumo de `listProviders` (público) desde el admin |
 | F6 (`GetMatchingMetrics`) | `review-queue-kpis.ts` (fixtures demo) — **completo**, no comentado |

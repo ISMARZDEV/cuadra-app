@@ -144,6 +144,20 @@ by_ean, asset `coverage` en Dagster). ✅
 
 > No las resuelvo aquí — son tuyas. Las dejo planteadas para cuando validemos el encuadre.
 
+> [!success] Decisiones A y B — CERRADAS e implementadas (R4, 2026-07-16)
+> Ambas se resolvieron como recomendaba abajo: **Cobertura = barcode puro / Descubrimiento = texto**,
+> y 0-match descarta.
+>
+> ⚠️ **Pero la evidencia de la Decisión B era falsa.** Decía *"medido: 2 productos de Bravo cayeron a
+> la cola"* — verificado 2026-07-16: son los MISMOS 2 que resultaron ser el **bug del EAN sin
+> normalizar** (ver §4). Nunca hubo evidencia medida de que la cobertura encolara.
+>
+> El diseño se sostiene igual, pero por un motivo MEJOR que el que se le atribuía: `select_best_candidate`
+> caía a similitud de NOMBRE cuando no había EAN exacto, y en una consulta *por barcode* eso es una
+> adivinanza disfrazada de lookup. Si una tienda ignorara `filterByEan` y devolviera su catálogo,
+> parecería estar cubriendo canónicos y nadie lo notaría. **Lección: el diseño era correcto y la
+> medición que lo justificaba, no. Verificá las dos por separado.**
+
 ### Decisión A — ¿`by_text` en Cobertura, o solo en Descubrimiento?
 
 Al habilitar `by_text=True` en Bravo, el job de **Cobertura (Loop B)** empieza a hacer **búsquedas por
@@ -222,11 +236,11 @@ by_ean, 0-match ⇒ **descartar**, no encolar.
 
 | # | Proceso | Recomendación | Prioridad |
 |---|---|---|---|
-| **R1** | Descubrimiento | Hacerlo **registry-driven** (no hardcoded) → Bravo entra solo + respeta tiendas activas | **ALTA · crítico** |
+| **R1** | Descubrimiento | ✅ **HECHO** — registry-driven → Bravo entra solo + respeta tiendas activas | **ALTA · crítico** |
 | R2 | Descubrimiento | **Piso de relevancia** antes de la cola (baja el ruido humano) | MEDIA |
 | R3 | Descubrimiento | **Enriquecer la cola** con la señal "¿nuevo/exclusivo?" | MEDIA |
-| **R4** | Matcheo EAN | **EAN-only + sin cola** (Decisiones A y B); colisión = canal aparte | **ALTA · crítico** |
-| R5 | Matcheo EAN | Correr **solo para canónicos EAN-alcanzables** | MEDIA |
+| **R4** | Matcheo EAN | ✅ **HECHO** — barcode puro + sin cola. Colisión = canal aparte → PENDIENTE (F5) | **ALTA · crítico** |
+| R5 | Matcheo EAN | ✅ **HECHO** — solo canónicos EAN-alcanzables (41/50 medidos) | MEDIA |
 | R6 | Matcheo EAN | **Normalizar EAN en ambos lados + backfill** (cierra falso-negativo invisible) | MEDIA |
 | **R7** | Transversal | **Descubrir es flexible; sembrar-EAN es jerárquico** (orden real) | ALTA |
 
@@ -426,11 +440,14 @@ Transversales P0 (menos el cutover, ya hecho; queda el fallback legacy)
 
    Rama: `fix/save-fase0-higiene`. 739 tests verdes · ruff limpio · lint-imports 2 kept/0 broken.
 
-**Fase 1 — Backend de los DOS procesos (sin UI):**
-5. R1 backend: fuentes por-query derivadas de `store_registry` + `directed_capability` (muere
-   `SOURCE_KEYS`). Mecanismo: **dynamic partitions + sensor**, el MISMO patrón de `rest_catalog_prices`.
-6. R4: cobertura EAN-only, 0-match descarta (sin cola).
-7. R5: `list_uncovered` filtra EAN-alcanzables.
+**Fase 1 — Backend de los DOS procesos (sin UI):** ✅ **COMPLETA 2026-07-16** (`feat/save-fase1-dos-procesos`)
+5. ✅ R1: fuentes por-query derivadas de `store_registry` + `directed_capability`. Murió `SOURCE_KEYS`
+   y todo el bridge F1 (`build_sources`). **Bravo entra solo**; `enabled`/`paused_at` funcionan.
+   Prerequisito que faltaba: sembrar el registry (**Jumbo no existía**; Sirena/Nacional se habían
+   creado a mano desde el admin) — sin eso R1 dejaba la ingesta con UNA tienda, sin error.
+   La cadena diaria pasó a **automatización declarativa**: el orden lo da la dependencia, no el reloj.
+6. ✅ R4: cobertura barcode puro, 0-match descarta. Murió el fallback por nombre.
+7. ✅ R5: `list_uncovered` filtra EAN-alcanzables (41/50 canónicos medidos).
 
 **Fase 2 — Activación medida (EL unlock):**
 8. Endpoint BGE-M3 + `SAVE_MATCHING_CASCADE_ENABLED=true` + corrida E2E → medir la cola real con

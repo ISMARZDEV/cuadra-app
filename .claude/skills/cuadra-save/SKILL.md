@@ -172,15 +172,19 @@ creates canonicals. Lives in `apps/api/ingestion/save/` (Dagster assets `coverag
   its remaining pairs). The httpx classifier lives ONLY in infra; the use-case decides from the flags.
 - **Loop B DIRECTED coverage** (`application/cover_canonicals.py`, `domain/candidate_selection.py`): for each
   uncovered (canonical×store), it builds an EAN-first query (`build_directed_query`) and **takes the BEST
-  candidate FOR that canonical** (`select_best_candidate`: exact EAN → else highest name trigram) — it does
+  candidate FOR that canonical** (`select_ean_match`: the one carrying the target barcode, or NONE — the
+  name-trigram fallback died with R4) — it does
   NOT ingest all ~65 search results. That single candidate goes through the SAME cascade (deterministic
   auto-link if strong, NO LLM). **Gate (CORRECTED 2026-07-15 — it used to say "only VTEX/Magento/Shopify"):**
   capability is per-SOURCE with TWO independent axes, `DirectedCapability{by_ean, by_text}`, computed by INFRA
   (`factory.directed_capability`) because it can depend on the REST profile — a platform cannot answer for all
   its profiles. Bravo finds by barcode (`filterByEan`) AND by text (`/articulo/search?showOrder=score`,
-  unblocked 2026-07-16 → the ONLY store with both), so it covers even no-EAN canonicals. The gate still
-  matters for any FUTURE barcode-only source: a canonical with no EAN on a text-blind store is SKIPPED
-  (otherwise it browses the whole catalog per canonical — the very disaster the gate prevents). Measured
+  unblocked 2026-07-16 → the ONLY store with both). **R4 (2026-07-16) split them by PROCESS:** Loop B
+  is **barcode-pure** (`by_ean` only; a no-`by_ean` store is skipped, and so is a canonical with no
+  known barcode — `list_uncovered` filters to EAN-reachable ones, R5), while `by_text` powers the
+  per-query DISCOVERY (R1), which is where no-EAN canonicals get found by NAME with a review queue
+  behind them. Loop B takes ONLY the candidate carrying the target barcode (`select_ean_match`) and
+  DISCARDS otherwise — never queues, never falls back to the closest name. Measured
   matrix + per-store playbook: skill **`cuadra-save-ingestion`**. (Learned live: without top-candidate it
   covered 1/23; with it, 21/50.)
 - **F3.2a freshness** (`application/refresh_covered_prices.py`): keeps covered prices fresh.
@@ -219,8 +223,20 @@ search — but that is not the same as "ignores search": Bravo does expose an ex
 
 **Dagster orchestration** (`apps/api/ingestion/`, UI :3070 via `scripts/dagster-dev.sh`; shares its wiring with
 the `seeds.save_refresh` CLI — one source of truth in `ingestion/save/composition.py`).
-- Query-based supers = one asset each (`sirena_prices`/`nacional_prices`/`jumbo_prices`), iterate the basket
-  (`on_progress` logs `[sirena] query i/N`). REST supers = ONE **partitioned** asset `rest_catalog_prices`,
+- Query-based supers = ONE **partitioned** asset `query_catalog_prices`, **one partition per PROVIDER**
+  (R1, 2026-07-16 — the hardcoded `SOURCE_KEYS`/`build_sources` "F1 bridge" is DEAD). The set is derived
+  from `store_registry` (active × `directed_capability(...).by_text`) and a sensor
+  (`sync_query_catalog_providers`) keeps the partitions in sync → **adding a súper is a ROW, not a deploy**,
+  and `enabled`/`paused_at` finally take a store out of ingestion. **Seed the registry for every chain**
+  (`save_seed.STORE_SOURCES` + migration `a5b6c7d8e9f0`): before R1 only Bravo was seeded, so a fresh DB
+  would have silently ingested ONE store.
+- **The daily chain is DECLARATIVE, not clock-driven** (2026-07-16): `embed_canonicals` holds the only cron
+  (`AutomationCondition.on_cron("0 6 * * *")`); the rest is pulled by dependency. Partitioning kicks the
+  discovery out of the unpartitioned daily job (Dagster won't mix), and chaining by clock would let the
+  discovery run on a stale index if embed ran long — silently. **Gotcha:** `price_drops`/`alert_matching`
+  must NOT use `eager()` ("will not execute targets that have any MISSING dependencies") — they also dep on
+  the MANUAL REST browse, whose partitions may never have been materialized ⇒ eager blocks them FOREVER and
+  price-drop alerts never fire. Use eager MINUS `~any_deps_missing`, keeping `~any_deps_in_progress`. REST supers = ONE **partitioned** asset `rest_catalog_prices`,
   **one partition per (provider, section)** — `DynamicPartitionsDefinition` key `{provider_id}:{section}`
   (`composition.py::rest_catalog_partition_key/parse.../build_rest_catalog_source_for`). Sensor
   `sync_rest_catalog_sections` keeps partitions in sync with `store_registry`. Trigger per-partition / backfill
@@ -276,7 +292,7 @@ the `seeds.save_refresh` CLI — one source of truth in `ingestion/save/composit
 | Confidence + human queue below threshold | Auto-merge a low-confidence match |
 | Prefer official API / receipt (legal) | Lean on aggregator scraping as the backbone |
 | Strict TDD (RED→GREEN) on domain logic | Ship price/matching logic untested |
-| Loop B: the top-candidate FOR the canonical (`select_best_candidate`) | Ingest all ~65 results of the directed search |
+| Loop B: ONLY the candidate carrying the target barcode (`select_ean_match`) | Ingest all ~65 results / fall back to the closest NAME |
 | Source credential in `store_registry.auth` (typed, masked) | Hardcode tokens/headers in the code |
 | Platform-fixed non-secret headers in the profile (`default_headers`) | Make the admin re-enter the User-Agent each time |
 | TLS via the OS trust store (`truststore`) | Disable TLS verification (`verify=false`) |

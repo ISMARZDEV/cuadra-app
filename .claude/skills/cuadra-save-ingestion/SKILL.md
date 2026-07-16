@@ -46,6 +46,14 @@ Search semantics differ per platform. **This table is the whole skill**; everyth
   IGNORES text, while `articulo/search` finds by text. A single `supported` flag CANNOT express a
   barcode-only source, and Loop B would then browse the whole catalog per canonical.
 - **✅ Bravo `by_text` is WIRED (unblocked 2026-07-16). Bravo is the ONLY store with `{by_ean, by_text}`.**
+  **Where `by_text` lives (R4, 2026-07-16): DISCOVERY, not coverage.** Loop B is **barcode-pure** — a
+  store that can't search by barcode has no place in it, and a canonical with no known barcode is not
+  its job. `by_text` is what puts Bravo in the per-query DISCOVERY (R1), which is where a no-EAN
+  canonical gets found by NAME — with a review queue behind it. Coverage asks for ONE article by its
+  code; if no candidate carries that code, it DISCARDS (never queues, never falls back to the
+  closest name — that's a guess dressed up as an exact lookup, and it's how a store that ignored
+  `filterByEan` would look like coverage working).
+
   The missing piece was the `showOrder` VALUE: **`score`** (not `importerankingArticulo asc`, the browse
   value, which `/search` REJECTS). `/public/articulo/search?model.filterByIdTienda=…&model.nombreArticulo=…
   &showOrder=score&paginationMaxItems=20` returns FULL products (same shape as `/list`; `associatedEan`
