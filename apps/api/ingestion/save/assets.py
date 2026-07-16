@@ -8,9 +8,6 @@ materialización real es manual (`dagster dev`). La sesión se abre/commitea por
 """
 from __future__ import annotations
 
-import os
-from collections.abc import Sequence
-
 import dagster as dg
 
 from src.contexts.save.application.alerts import RunAlertMatching
@@ -18,7 +15,6 @@ from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
-    SqlBasketQueryRepository,
     SqlStoreProductRepository,
 )
 from src.shared.db.base import SessionLocal
@@ -26,6 +22,7 @@ from src.shared.db.base import SessionLocal
 from src.contexts.save.infrastructure.catalog_sources.pacing import build_pace
 
 from .composition import (
+    build_basket_queries,
     build_canonical_embedder,
     build_category_embedder,
     build_classifier,
@@ -46,24 +43,6 @@ _DROPS_WINDOW_DAYS = 7
 # Particiones DINÁMICAS del browse REST_CATALOG — una por (provider, section). Dinámicas porque las
 # secciones son config de admin (store_registry), no un set fijo en código; el sensor las sincroniza.
 rest_catalog_sections = dg.DynamicPartitionsDefinition(name="rest_catalog_section")
-
-
-def _select_queries(db_queries: Sequence[str], limit_env: str | None) -> tuple[str, ...]:
-    """PURO: la canasta que ingiere = las queries de la TABLA `basket_query` (active, ya resueltas
-    por el repo). La tabla es la ÚNICA fuente de verdad — ya NO hay fallback hardcodeado (el backfill
-    vive en migración y la tabla se protege de los resets). `SAVE_REFRESH_QUERY_LIMIT` recorta a las
-    primeras N (runs cortos en dev)."""
-    queries = tuple(db_queries)
-    if limit_env and limit_env.isdigit() and int(limit_env) > 0:
-        return queries[: int(limit_env)]
-    return queries
-
-
-def _refresh_queries(session, market: str) -> tuple[str, ...]:  # type: ignore[no-untyped-def]
-    """Canasta que consume la INGESTA (F1, Gap #1): lee `basket_query WHERE active=true` del MERCADO
-    (multi-país — cada mercado ingiere SU canasta, nunca market-blind)."""
-    active = SqlBasketQueryRepository(session).list_active(market)
-    return _select_queries([q.query_text for q in active], os.getenv("SAVE_REFRESH_QUERY_LIMIT"))
 
 
 @dg.asset(
@@ -96,7 +75,7 @@ def _build_source_asset(source_key: str) -> dg.AssetsDefinition:
         with SessionLocal() as session:
             # F1 (Gap #1): la canasta sale de la TABLA `basket_query` (active) del mercado, no del
             # tuple hardcodeado. La sesión se abre antes para leerla y reusarla en el refresh.
-            queries = _refresh_queries(session, SAVE_MARKET)
+            queries = build_basket_queries(session, SAVE_MARKET)
             if not queries:
                 context.log.warning(
                     f"{source_key}: canasta VACÍA para {SAVE_MARKET} (basket_query sin filas active) "

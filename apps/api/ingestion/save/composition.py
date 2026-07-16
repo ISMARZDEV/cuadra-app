@@ -7,6 +7,9 @@ al CLI.
 """
 from __future__ import annotations
 
+import os
+from collections.abc import Sequence
+
 from sqlalchemy.orm import Session
 
 from src.config import settings
@@ -35,6 +38,7 @@ from src.contexts.save.infrastructure.catalog_sources.factory import (
 from src.contexts.save.infrastructure.catalog_sources.fetch_classifier import classify_httpx_error
 from src.contexts.save.infrastructure.catalog_sources.pacing import build_pace
 from src.contexts.save.infrastructure.repositories import (
+    SqlBasketQueryRepository,
     SqlCanonicalProductRepository,
     SqlCategoryCandidateRepository,
     SqlCategoryClassificationRepository,
@@ -44,6 +48,32 @@ from src.contexts.save.infrastructure.repositories import (
     SqlStoreRegistryRepository,
     SqlTaxonomyRepository,
 )
+
+
+def select_queries(db_queries: Sequence[str], limit_env: str | None) -> tuple[str, ...]:
+    """PURO: la canasta que ingiere = las queries de la TABLA `basket_query` (active, ya resueltas
+    por el repo). La tabla es la ÚNICA fuente de verdad — ya NO hay fallback hardcodeado (el backfill
+    vive en migración y la tabla se protege de los resets). `SAVE_REFRESH_QUERY_LIMIT` recorta a las
+    primeras N (runs cortos en dev)."""
+    queries = tuple(db_queries)
+    if limit_env and limit_env.isdigit() and int(limit_env) > 0:
+        return queries[: int(limit_env)]
+    return queries
+
+
+def build_basket_queries(session: Session, market: str) -> tuple[str, ...]:
+    """Canasta que consume la INGESTA: lee `basket_query WHERE active=true` del MERCADO (multi-país
+    — cada mercado ingiere SU canasta, nunca market-blind).
+
+    Vive acá y no en `assets.py` a propósito: los assets de Dagster y el CLI `seeds.save_refresh`
+    tienen que leer la MISMA canasta. Mientras esto vivía junto a los assets (que importan dagster),
+    el CLI no podía reusarlo y se llevaba un tuple hardcodeado en silencio — divergiendo de lo que
+    el admin creía haber configurado.
+    """
+    active = SqlBasketQueryRepository(session).list_active(market)
+    return select_queries(
+        [q.query_text for q in active], os.getenv("SAVE_REFRESH_QUERY_LIMIT")
+    )
 
 
 def build_embedding_provider() -> EmbeddingProvider:

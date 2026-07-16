@@ -26,9 +26,13 @@ def main() -> None:
     source_key = _arg("--source", "sirena")
     n_queries = int(_arg("--queries", "12"))
 
-    from ingestion.save.composition import build_category_embedder, build_classifier
+    from ingestion.save.composition import (
+        build_basket_queries,
+        build_category_embedder,
+        build_classifier,
+    )
     from ingestion.save.runner import refresh_source
-    from ingestion.save.sources import BASKET_QUERIES, SAVE_MARKET, build_sources
+    from ingestion.save.sources import SAVE_MARKET, build_sources
     from src.contexts.save.infrastructure.repositories import SqlStoreProductRepository
     from src.shared.db.base import SessionLocal
 
@@ -43,9 +47,18 @@ def main() -> None:
             n = embedder.execute(SAVE_MARKET)
             print(f"▶ Embeddings de categoría: {n} hojas embebidas (índice semántico).")
 
-        adapters = build_sources(queries=BASKET_QUERIES[:n_queries]).get(source_key)
+        # La canasta sale de la TABLA (antes: `BASKET_QUERIES[:n]`, un tuple hardcodeado). Medir
+        # sobre una canasta distinta de la que ingiere producción daría números que no significan
+        # lo que uno cree.
+        queries = build_basket_queries(session, SAVE_MARKET)[:n_queries]
+        if not queries:
+            print(f"✖ Canasta VACÍA para {SAVE_MARKET} (basket_query sin filas active).")
+            return
+
+        sources = build_sources(queries=queries)
+        adapters = sources.get(source_key)
         if not adapters:
-            print(f"✖ Fuente «{source_key}» desconocida. Opciones: {', '.join(build_sources())}.")
+            print(f"✖ Fuente «{source_key}» desconocida. Opciones: {', '.join(sources)}.")
             return
 
         repo = SqlStoreProductRepository(session)
