@@ -394,3 +394,68 @@ def test_circuit_breaker_stops_calling_after_repeated_failures() -> None:
     # 3ra vez: breaker ABIERTO → degrada SIN tocar el modelo
     assert judge.judge(store_product=sp, canonical_product=cp).decision == "uncertain"
     assert model.call_count == 2  # NO subió
+
+
+# ── El veredicto degradado se DECLARA degradado (bug del breaker mentiroso, 2026-07-16) ────────
+# `method="llm"` en la cola debe significar UNA cosa: el juez emitió un veredicto válido y actuamos
+# sobre él. Cuando el juez degrada a `uncertain` sin llegar a eso, el use-case tiene que poder
+# distinguirlo — si no, se registra como `method="llm"` y la cola MIENTE.
+#
+# Medido 2026-07-15: de 11 `pending_review/llm`, el LLM nunca vio 8. Leerías la cola y "afinarías el
+# juez" sobre una señal que el juez jamás emitió. El flag lo cuelga del veredicto (no del use-case)
+# porque solo el adapter sabe si la API llegó a hablar.
+
+
+def test_a_real_uncertain_verdict_is_not_marked_degraded() -> None:
+    # El juez SÍ corrió y SÍ dudó: eso es una señal legítima suya. `method="llm"` es correcto acá —
+    # esta es la distinción que todo lo demás protege.
+    model = _FakeModel(
+        _response(
+            {"decision": "uncertain", "confidence": 0.5, "cited_fields": ["size"]},
+            usage={"input_tokens": 120, "output_tokens": 20},
+        )
+    )
+    verdict = LlmJudge(model=model).judge(
+        store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT
+    )
+    assert verdict.decision == "uncertain"
+    assert verdict.degraded is False
+
+
+def test_an_open_breaker_degrades_without_calling_and_says_so() -> None:
+    # EL bug: con el breaker abierto no se llama la API, pero el veredicto era indistinguible de uno
+    # real. El LLM no vio este par: el veredicto tiene que declararlo.
+    from src.contexts.save.infrastructure.llm_circuit_breaker import LlmCircuitBreaker
+
+    model = _FakeModel(raises=RuntimeError("429 insufficient_quota"))
+    judge = LlmJudge(model=model, circuit_breaker=LlmCircuitBreaker(threshold=1))
+    sp, cp = {"name": "arroz"}, {"name": "arroz canonico"}
+
+    judge.judge(store_product=sp, canonical_product=cp)  # fallo 1 → abre
+    verdict = judge.judge(store_product=sp, canonical_product=cp)  # breaker abierto
+
+    assert model.call_count == 1  # no se volvió a llamar
+    assert verdict.degraded is True
+
+
+def test_a_client_failure_degrades_and_says_so() -> None:
+    # La API se llamó pero reventó (timeout/429): no hay veredicto del juez, solo nuestro fail-safe.
+    model = _FakeModel(raises=RuntimeError("timeout"))
+    verdict = LlmJudge(model=model).judge(
+        store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT
+    )
+    assert verdict.degraded is True
+
+
+def test_an_unparseable_output_degrades_and_says_so_while_keeping_the_token_cost() -> None:
+    # El modelo respondió (se gastaron tokens → el costo se registra igual), pero no pudimos confiar
+    # en lo que dijo. Tampoco es un veredicto: no emitió una duda, emitió ruido.
+    model = _FakeModel(
+        _response(None, usage={"input_tokens": 100, "output_tokens": 10},
+                  parsing_error=ValueError("boom"))
+    )
+    verdict = LlmJudge(model=model).judge(
+        store_product=_STORE_PRODUCT, canonical_product=_CANONICAL_PRODUCT
+    )
+    assert verdict.degraded is True
+    assert verdict.input_tokens == 100  # el costo se paga y se ve

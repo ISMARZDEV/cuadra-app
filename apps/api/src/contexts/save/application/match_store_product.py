@@ -82,6 +82,9 @@ class _JudgeVerdictLike(Protocol):
     input_tokens: int | None
     output_tokens: int | None
     model: str | None
+    # ¿El juez emitió este veredicto, o es el fail-safe del adapter? (breaker abierto / API caída /
+    # salida ilegible). Distingue "el juez dudó" de "el juez no estuvo" — ver `execute`.
+    degraded: bool
 
 
 class MatchStoreProduct:
@@ -226,8 +229,14 @@ class MatchStoreProduct:
                     judge_output_tokens=verdict.output_tokens,
                     judge_model=verdict.model,
                 )
+            # Un veredicto DEGRADADO (breaker abierto / API caída / salida ilegible) no es señal del
+            # juez: es el fail-safe del adapter ocupando su lugar. Registrarlo como "llm" mentiría
+            # exactamente igual que el camino de arriba, pero al revés — leerías la cola creyendo
+            # que el juez dudó de N productos que nunca vio (medido 2026-07-15: 8 de 11). Cae a la
+            # red humana con la MISMA semántica que el camino "juez apagado".
+            method = "human" if verdict.degraded else "llm"
             return self._to_review(
-                product, method="llm", confidence=verdict.confidence,
+                product, method=method, confidence=verdict.confidence,
                 candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
                 judge_input_tokens=verdict.input_tokens,
                 judge_output_tokens=verdict.output_tokens,
