@@ -166,16 +166,21 @@ with a **freshness SLA** (`captured_at`), never through RAG. Faithfulness ≠ co
 creates canonicals. Lives in `apps/api/ingestion/save/` (Dagster assets `coverage` + `freshness`, own schedules).
 
 - **F3.3 resilience** (`domain/{coverage.py,fetch_outcome.py}`, `catalog_sources/fetch_classifier.py`):
-  `round_robin_by_store` (spreads load), typed `FetchOutcome` (`retryable`/`hide`) + `classify_httpx_error`
+  `round_robin_by_store` (spreads load — but it does NOT rate-limit: with ONE store it is a no-op, so every
+  network loop ALSO needs `pace`, see `cuadra-save-ingestion`), typed `FetchOutcome` (`retryable`/`hide`) + `classify_httpx_error`
   (401/403→AUTH_FAILED · 5xx/429/timeout→BACKEND_DOWN · 404→NOT_FOUND), abort-on-down (a downed store skips
   its remaining pairs). The httpx classifier lives ONLY in infra; the use-case decides from the flags.
 - **Loop B DIRECTED coverage** (`application/cover_canonicals.py`, `domain/candidate_selection.py`): for each
   uncovered (canonical×store), it builds an EAN-first query (`build_directed_query`) and **takes the BEST
   candidate FOR that canonical** (`select_best_candidate`: exact EAN → else highest name trigram) — it does
   NOT ingest all ~65 search results. That single candidate goes through the SAME cascade (deterministic
-  auto-link if strong, NO LLM). Gate: only query-capable platforms (`supports_directed_query`:
-  VTEX/Magento/Shopify); browse-only ones belong to Loop A. (Learned live: without top-candidate it covered
-  1/23; with it, 21/50.)
+  auto-link if strong, NO LLM). **Gate (CORRECTED 2026-07-15 — it used to say "only VTEX/Magento/Shopify"):**
+  capability is per-SOURCE with TWO independent axes, `DirectedCapability{by_ean, by_text}`, computed by INFRA
+  (`factory.directed_capability`) because it can depend on the REST profile — a platform cannot answer for all
+  its profiles. Bravo finds by barcode (`filterByEan`) but is BLIND to text, so it IS a Loop B target; a
+  canonical with no EAN on a text-blind store is SKIPPED (otherwise it browses the whole catalog per canonical
+  — the very disaster the old gate prevented). Measured matrix + per-store playbook: skill
+  **`cuadra-save-ingestion`**. (Learned live: without top-candidate it covered 1/23; with it, 21/50.)
 - **F3.2a freshness** (`application/refresh_covered_prices.py`): keeps covered prices fresh.
   `list_stale_covered` (TTL 18h visible / 3d hidden, SRD §3.1 pattern) → **path A**: DIRECT re-fetch by
   id/url (`ProductDetailSource.fetch_by_external_id`, VTEX productId / Magento SKU / REST `/get`) →
@@ -183,7 +188,10 @@ creates canonicals. Lives in `apps/api/ingestion/save/` (Dagster assets `coverag
   history row). NO matcher (the link is already known). **A→C fallback**: detail not usable (no token/403
   AUTH_FAILED, no locator `DetailUnavailable`, or platform has no detail) → does NOT mark unavailable →
   refreshes by BROWSE once per provider (`build_browse_source`, REST only). `is_available=false` ONLY if A
-  found-nothing WITH valid access. F3.2b (recovery B: A-fails→search→repair the locator) is still pending.
+  found-nothing WITH valid access. **F3.2b recovery (phase 1) is BUILT**: A-finds-nothing → ask the store
+  for the CANONICAL's barcode → auto-repair `repair_locator` ONLY on an exact single-EAN hit; different EAN,
+  ambiguous (>1) or no known EAN → hide, never auto-apply. Name-based proposals = phase 2 (deferred; needs a
+  `recovery_proposal` table). SRD cannot recover Bravo at all (`RecoverableShopId=1|2|3|4`, Bravo=6).
 
 **Authenticated Sources (§15 of the SDD)** — the credential lives in the DB (`store_registry.auth/headers`
 JSONB), editable in the admin UI (skill `cuadra-save-admin`), applied by ALL adapters. Zero hardcoding.
@@ -196,8 +204,10 @@ JSONB), editable in the admin UI (skill `cuadra-save-admin`), applied by ALL ada
   `{"id_articulo": …}` (its `/get` uses idArticulo, not the idexterno that IS the external_id). The REST
   profile declares detail (`CatalogProfile.detail_path/param/ref_key/item_path` → `RestCatalogDetailAdapter`).
 
-**REST_CATALOG (own-API supers, e.g. Bravo) — browse-by-section, NOT query-based.** VTEX/Magento query the
-Curated Basket; a REST súper browses its FULL catalog per section (its API ignores text search).
+**REST_CATALOG (own-API supers, e.g. Bravo) — browse-by-section for DISCOVERY.** VTEX/Magento query the
+Curated Basket; a REST súper browses its FULL catalog per section for Loop A because its API ignores TEXT
+search — but that is not the same as "ignores search": Bravo does expose an exact **barcode** lookup
+(`model.filterByEan`, global, 1 request), which is what makes Loop B and recovery work on it.
 - **Add/extend a REST súper = data, not code**: one `*_profile.py` (`CatalogProfile`) registered in
   `factory.py::_REST_CATALOG_PROFILES` + a `store_registry` row (`platform=REST_CATALOG`,
   `endpoints={profile, sections:[...], store_id}`, `auth`). `RestCatalogAdapter` is generic — do NOT write a
