@@ -135,3 +135,48 @@ def test_profile_declares_the_ean_lookup_param() -> None:
     Bravo — algo que SupermercadosRD no tiene (su `RecoverableShopId` es 1|2|3|4; Bravo es el 6).
     """
     assert BRAVOVA_PROFILE.ean_param == "model.filterByEan"
+
+
+# ── Cosecha de EAN desde el detalle (§15.5) ───────────────────────────────────────────────────
+# `articulo/list` trae `associatedEan` SIEMPRE vacío (0/200 verificado); `articulo/get` lo trae
+# poblado. Como AMBOS pasan por este mapper, cosechar acá hace que `price_refresh` —que ya llama a
+# /get por cada producto conocido— persista el barcode SIN una sola request extra.
+
+
+def test_harvests_the_global_ean_from_the_detail_payload() -> None:
+    # Estructura REAL de `/get` (sondeo 2026-07-15, "LA GARZA ARROZ 10 LB"): lista mezclada, con un
+    # PLU corto primero y el EAN global después.
+    item = {
+        "idexternoArticulo": "4536",
+        "nombreArticulo": "LA GARZA ARROZ 10 LB",
+        "associatedPvp": 480,
+        "associatedEan": [
+            {"idEan": "33334", "idArticuloEan": 4536},
+            {"idEan": "7460083780146", "idArticuloEan": 4536},
+        ],
+    }
+
+    entry = map_bravova_item(item, "p1", "DO")
+
+    assert entry.ean == "7460083780146"
+
+
+def test_never_harvests_a_store_internal_barcode() -> None:
+    # Solo códigos internos 2x (peso variable) → NO hay EAN. Persistirlo alimentaría la etapa que
+    # auto-enlaza sin revisión humana con un código que solo significa algo dentro de Bravo.
+    item = {
+        "idexternoArticulo": "31475",
+        "nombreArticulo": "BRAVO HABICHUELAS YACOMELO 1 KG",
+        "associatedPvp": 150,
+        "associatedEan": [{"idEan": "2050001508980", "idArticuloEan": 31475}],
+    }
+
+    assert map_bravova_item(item, "p1", "DO").ean is None
+
+
+def test_list_payload_without_eans_maps_to_no_ean() -> None:
+    # El browse (Loop A) no trae `associatedEan` → ean None, sin romper. La cosecha llega después,
+    # cuando price_refresh pida el detalle.
+    item = {"idexternoArticulo": "9", "nombreArticulo": "X", "associatedPvp": 100}
+
+    assert map_bravova_item(item, "p1", "DO").ean is None

@@ -515,6 +515,11 @@ class SqlStoreProductRepository:
                 sp.source_category = source_category
             if source_ref is not None:  # §15.3: se refresca el localizador de detalle cuando llega
                 sp.source_ref = source_ref
+            if ean is not None:
+                # §15.5: hay fuentes cuyo BROWSE no trae barcode y cuyo DETALLE sí (Bravo). Como
+                # `price_refresh` ya pide el detalle de todo lo conocido, el EAN se rellena solo, sin
+                # requests extra. Misma regla que arriba: un browse posterior (ean=None) NO lo borra.
+                sp.ean = ean
             if sp.current_price_minor != price.amount_minor or sp.currency != price.currency.code:
                 sp.current_price_minor = price.amount_minor
                 sp.currency = price.currency.code
