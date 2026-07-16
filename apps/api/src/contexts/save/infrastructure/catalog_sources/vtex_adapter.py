@@ -16,6 +16,7 @@ from src.shared.money import Currency, Money, primary_currency_for_market
 
 from ...domain.entities import PriceType
 from ...domain.ports import RawCatalogEntry
+from ...domain.value_objects import pick_global_ean
 from .size_from_name import extract_size
 
 _PAGE_SIZE = 50
@@ -58,7 +59,10 @@ def map_vtex_product(item: dict, provider_id: str, market_id: str) -> RawCatalog
         price_type=PriceType.ONLINE,
         source="vtex",
         category_path=_parse_category_path(categories[0]) if categories else (),
-        ean=first.get("ean"),
+        # El barcode pasa por el filtro del dominio, igual que en Bravo: VTEX mezcla EAN globales con
+        # códigos INTERNOS de la tienda (peso variable) y publica UPC-A con el cero inicial comido.
+        # Escribirlo crudo alimentaba la etapa que auto-enlaza a 1.0 sin revisión humana.
+        ean=pick_global_ean([first.get("ean")]),
         url=item.get("link"),
         image_url=images[0].get("imageUrl") if images else None,
     )

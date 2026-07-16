@@ -55,7 +55,9 @@ def test_map_vtex_product_full_fields() -> None:
         price_type=PriceType.ONLINE,
         source="vtex",
         category_path=("Supermercado", "Despensa", "Arroz, Habichuelas y otros granos", "Arroz"),
-        ean="2100003063755",
+        # `2100003063755` (prefijo 210) es un código INTERNO de Sirena → no hay barcode. Este test
+        # afirmaba `ean="2100003063755"`: consagraba el bug. Ver el bloque de abajo.
+        ean=None,
         url="https://www.sirena.do/wala-arroz-selecto-5lb-2010029/p",
         image_url="https://gruporamos.vteximg.com.br/arquivos/ids/172051/1-und.webp",
     )
@@ -100,3 +102,53 @@ def test_fetch_paginates_and_yields_entries() -> None:
     assert entries[0].external_id == "18365"
     assert "/api/catalog_system/pub/products/search" in calls[0]
     assert "ft=arroz" in calls[0] and "_from=0" in calls[0]
+
+
+# ── El barcode pasa por el filtro del dominio (R6, 2026-07-16) ────────────────────────────────
+# Sirena es EL SEMBRADOR de barcodes (100% de cobertura, R7): es la tienda que hace efectivo el
+# Proceso 2 (el job por EAN de Bravo) sobre los canónicos. Y sin embargo escribía `ean` CRUDO —
+# `first.get("ean")`, sin normalizar ni filtrar. Bravo (`bravova_profile`) sí pasaba por
+# `pick_global_ean`; VTEX no.
+#
+# Medido contra el DB de dev (2026-07-16): 33 de 63 filas con EAN (52%) violaban el invariante
+# "GTIN-14 global normalizado, o NULL", y TODAS eran de Sirena. Un backfill sin arreglar esto se
+# deshace en la próxima corrida.
+
+
+def _sirena_item_with_ean(ean: str | None) -> dict:
+    item = {**SIRENA_ITEM, "items": [{**SIRENA_ITEM["items"][0], "ean": ean}]}
+    return item
+
+
+def test_normalises_the_barcode_to_gtin14() -> None:
+    # Sirena publica EAN-13; sale en la forma canónica para que converja con lo que escriba Bravo.
+    entry = map_vtex_product(_sirena_item_with_ean("7460083780146"), "p", "DO")
+    assert entry.ean == "07460083780146"
+
+
+def test_rescues_the_upc_a_whose_leading_zero_was_eaten() -> None:
+    # Caso REAL: 11 filas de Sirena con 11 dígitos. `41331026123` = "Arroz Goya Integral 2 Lb."
+    # (41331 = prefijo UPC de Goya). Sin esto, esos canónicos quedan fuera del alcance del job por
+    # EAN de Bravo — que es justamente lo que el sembrador existe para habilitar.
+    entry = map_vtex_product(_sirena_item_with_ean("41331026123"), "p", "DO")
+    assert entry.ean == "00041331026123"
+
+
+def test_drops_the_stores_internal_barcode() -> None:
+    # Caso REAL: `2100003063755` (prefijo 210, peso variable) llegaba intacto a la columna `ean`,
+    # donde la etapa EAN auto-enlaza a 1.0 SIN revisión humana. Es el false merge que la doctrina
+    # nombra como el peor caso posible.
+    entry = map_vtex_product(_sirena_item_with_ean("2100003063755"), "p", "DO")
+    assert entry.ean is None
+
+
+def test_drops_the_stores_internal_gtin8() -> None:
+    # Caso REAL: `21061684` = "Arroz Super Selecto Bisono 10 Lb". Es un GTIN-8 VÁLIDO, pero con
+    # prefijo 2 → circulación restringida: un código propio de Sirena, inútil cross-tienda.
+    entry = map_vtex_product(_sirena_item_with_ean("21061684"), "p", "DO")
+    assert entry.ean is None
+
+
+def test_tolerates_a_product_without_a_barcode() -> None:
+    # `None` es un resultado sano: la cascada sigue por nombre/vector, que sí tiene red humana.
+    assert map_vtex_product(_sirena_item_with_ean(None), "p", "DO").ean is None
