@@ -172,7 +172,9 @@ def test_harvests_the_global_ean_from_the_detail_payload() -> None:
 
     entry = map_bravova_item(item, "p1", "DO")
 
-    assert entry.ean == "7460083780146"
+    # Sale NORMALIZADO a GTIN-14 (2026-07-16): es la forma canónica en la que convergen las cuatro
+    # escrituras posibles del mismo código, para que la etapa EAN pueda comparar strings.
+    assert entry.ean == "07460083780146"
 
 
 def test_never_harvests_a_store_internal_barcode() -> None:

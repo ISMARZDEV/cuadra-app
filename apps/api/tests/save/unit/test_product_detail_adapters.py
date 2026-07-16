@@ -48,7 +48,7 @@ def test_vtex_detail_fetches_by_product_id() -> None:
     assert "fq=productId:12345" in captured["url"]
     assert entry is not None
     assert entry.external_id == "12345"
-    assert entry.ean == "7460083780023"
+    assert entry.ean == "07460083780023"  # normalizado a GTIN-14 (R6, 2026-07-16)
     assert entry.price.amount_minor == 12400  # 124.00 DOP en unidades menores
 
 
