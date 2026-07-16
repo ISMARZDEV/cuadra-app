@@ -36,8 +36,12 @@ def test_rejects_codes_with_a_broken_checksum() -> None:
     assert is_global_ean("7460083780145") is False
 
 
-def test_rejects_anything_that_is_not_13_digits() -> None:
-    for code in ("33334", "16095", "123456789012", "", "746008378014X", "  "):
+def test_rejects_anything_that_is_not_a_well_formed_barcode() -> None:
+    # OJO: este test antes se llamaba "rechaza lo que no tenga 13 dígitos" y listaba `123456789012`
+    # como basura. Esa premisa era FALSA y encodeaba el bug: 12 dígitos = UPC-A, y ese en particular
+    # tiene checksum válido → es un barcode legítimo. Los largos que NO son ni EAN-13 ni UPC-A sí se
+    # rechazan (son PLU / ids internos), igual que lo no numérico.
+    for code in ("33334", "16095", "1234567890", "12345678901234", "", "746008378014X", "  "):
         assert is_global_ean(code) is False, code
 
 
@@ -66,3 +70,44 @@ def test_tolerates_whitespace_and_non_string_input() -> None:
     # Los payloads reales traen los códigos como str, pero un JSON podría mandar números.
     assert pick_global_ean(["  7460083780146  "]) == "7460083780146"
     assert pick_global_ean([None, 7460083780146]) == "7460083780146"  # type: ignore[list-item]
+
+
+# ── UPC-A: el bug que la corrida E2E destapó (2026-07-15) ─────────────────────────────────────
+# `is_valid_ean13` exigía 13 dígitos y descartaba en SILENCIO todo UPC-A (12 dígitos), el código
+# norteamericano — abundante en un súper dominicano lleno de importados. Síntoma: Loop B encontró 10
+# productos de Bravo PREGUNTANDO por su barcode, y la cosecha después decía que 8 "no tenían EAN".
+# Imposible por construcción: si `filterByEan` los halló, tienen ese código. Tirando de ese hilo:
+# `760593023182` (12 díg) es un UPC-A válido → como EAN-13 es `0760593023182`, checksum OK, prefijo
+# 076 = USA/Canadá. En mi propio spike los había contado como basura ("no-EAN13 (12 díg.): 22").
+#
+# NORMALIZAR no es cosmética: si Bravo dice `760593023182` y Sirena dice `0760593023182`, son el
+# MISMO producto. Sin normalizar, la etapa EAN nunca los enlaza — el bug se vuelve invisible y se
+# manifiesta como "no matchea", que es lo peor: un falso negativo silencioso.
+
+
+def test_accepts_upc_a_normalising_it_to_ean13() -> None:
+    # UPC-A de 12 dígitos ≡ EAN-13 con un 0 adelante (regla GS1).
+    assert pick_global_ean(["760593023182"]) == "0760593023182"
+
+
+def test_upc_a_and_its_ean13_form_are_the_same_barcode() -> None:
+    # LA prueba de por qué se normaliza: dos tiendas pueden escribir el mismo código distinto.
+    # Si no convergen a la misma cadena, la etapa EAN no los enlaza y el producto se duplica.
+    assert pick_global_ean(["760593023182"]) == pick_global_ean(["0760593023182"])
+
+
+def test_rejects_upc_a_reserved_for_in_store_use() -> None:
+    # Número de sistema 2 = peso variable (el barcode codifica el peso, no el producto); 4 = uso
+    # local. Normalizados quedan `02…` / `04…` → caen en los rangos GS1 020-029 / 040-049, que el
+    # filtro de "2x" NO cubría. Arreglar solo lo de 12 dígitos habría COLADO estos.
+    assert is_global_ean("020123456789") is False  # sistema 2 → peso variable
+    assert is_global_ean("040123456784") is False  # sistema 4 → uso local
+
+
+def test_rejects_upc_a_with_a_broken_checksum() -> None:
+    assert is_global_ean("760593023183") is False  # último dígito cambiado
+
+
+def test_still_rejects_the_ean13_internal_range() -> None:
+    # No se rompe lo que ya andaba: 200-299 sigue fuera.
+    assert is_global_ean("2050001175465") is False
