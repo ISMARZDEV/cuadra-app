@@ -446,6 +446,7 @@ class _SourceSeed:
     base_url: str
     endpoints: dict | None = None
     headers: dict | None = None
+    enabled: bool = True  # False = sembrada pero fuera de la ingesta (scaffold; ver Merca Jumbo)
 
 
 # Las fuentes de extracción de las cadenas que se ingieren. NO llevan credencial: el seed siembra
@@ -465,6 +466,16 @@ STORE_SOURCES: tuple[_SourceSeed, ...] = (
     # Jumbo (hallazgo doc 09). El factory lo traduce a `store_code` (`headers["Store"]`).
     _SourceSeed("Jumbo", SourcePlatform.MAGENTO, "https://jumbo.com.do", headers={"Store": "jumbo"}),
     _SourceSeed("Bravo", SourcePlatform.REST_CATALOG, BRAVO_BASE_URL, endpoints=BRAVO_SOURCE_ENDPOINTS),
+    # Merca Jumbo = 3er banner del grupo CCN (shopId=7 en SupermercadosRD): un store-view PRIVADO del
+    # MISMO Magento de Nacional, con PRECIOS propios (mayorista). Se diferencia por el `store code`,
+    # que es un SECRETO (en la referencia, un GitHub Actions secret; su repo público lo omite). No lo
+    # tenemos → se deja SCAFFOLDED pero DESHABILITADA (`enabled=False`), a un secreto de andar: cuando
+    # se consiga el código, el admin llena `headers.Store` y la habilita (nuestro adapter Magento ya
+    # manda el header). Base = el Magento de Nacional; si el endpoint privado difiere, se ajusta ahí.
+    _SourceSeed(
+        "Merca Jumbo", SourcePlatform.MAGENTO, "https://supermercadosnacional.com",
+        headers={"Store": ""}, enabled=False,
+    ),
 )
 
 
@@ -487,6 +498,7 @@ def _seed_sources(session: Session) -> None:
                 base_url=source.base_url,
                 endpoints=source.endpoints,
                 headers=source.headers,
+                enabled=source.enabled,
             )
         )
 
