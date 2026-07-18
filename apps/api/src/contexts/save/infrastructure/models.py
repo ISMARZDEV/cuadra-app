@@ -62,6 +62,11 @@ class TaxonomyNodeModel(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     level: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
     market_id: Mapped[str] = mapped_column(Text, nullable=False)  # cross-context, sin FK
+    # Descriptores del dominio de la hoja para la receta de embedding del clasificador
+    # ("arroz, habichuelas, guandules") — data curable (generada offline + revisada), editable
+    # desde el admin. Sembrar/editar esto DEBE poner `embedding=NULL` (re-embed). NULL = fallback
+    # a la receta padre+nombre. Solo tiene sentido en hojas (level=1). Ver category_embedding_text.
+    classification_terms: Mapped[str | None] = mapped_column(Text)
     # BGE-M3 (mismo modelo que canonical_product.embedding) — índice semántico de categorías
     # (save-category-classification). NULL hasta que EmbedCategories lo puebla. Solo hojas (level=1).
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))

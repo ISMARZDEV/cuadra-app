@@ -181,12 +181,23 @@ class CategoryIndexRepository(Protocol):
 
     def leaves_without_embedding(
         self, market_id: str, limit: int
-    ) -> list[tuple[str, str, str | None]]:
-        """(node_id, name, parent_name) de las hojas nivel-1 aún sin embedding."""
+    ) -> list[tuple[str, str, str | None, str | None]]:
+        """(node_id, name, parent_name, classification_terms) de las hojas nivel-1 sin embedding."""
         ...
 
     def set_embedding(self, node_id: str, embedding: list[float]) -> None:
         """Persiste el embedding BGE-M3 de una hoja."""
+        ...
+
+    def leaves_without_terms(
+        self, market_id: str, limit: int
+    ) -> list[tuple[str, str, str | None]]:
+        """(node_id, name, parent_name) de las hojas nivel-1 aún sin `classification_terms`."""
+        ...
+
+    def set_terms(self, node_id: str, terms: str) -> None:
+        """Persiste `classification_terms` de una hoja E INVALIDA su embedding (=NULL): el input del
+        vector cambió, así que EmbedCategories debe re-embeberla con la receta nueva."""
         ...
 
 
@@ -195,6 +206,15 @@ class CategoryJudgePort(Protocol):
 
     def judge(self, product: ClassifiableProduct, candidate_name: str) -> CategoryVerdict:
         """Veredicto validado. Ante cualquier error/duda → `uncertain` (nunca inventa `match`)."""
+        ...
+
+
+class CategoryTermsGenerator(Protocol):
+    """Generador OFFLINE de descriptores del dominio de una hoja de taxonomía (para la receta de
+    embedding del clasificador). Provider-agnóstico. Ante error/duda devuelve "" (no inventa)."""
+
+    def generate(self, leaf_name: str, parent_name: str | None) -> str:
+        """Términos de ejemplo ("arroz, habichuelas, guandules") o "" si no pudo producir nada útil."""
         ...
 
 

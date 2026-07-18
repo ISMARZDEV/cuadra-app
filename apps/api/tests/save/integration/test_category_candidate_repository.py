@@ -46,7 +46,7 @@ def test_find_leaves_vector_ranks_by_cosine(db_session) -> None:  # type: ignore
     # embeddings ortogonales manuales por hoja
     leaves = index.leaves_without_embedding(market, limit=50)
     target_id = None
-    for i, (node_id, name, _parent) in enumerate(leaves):
+    for i, (node_id, name, _parent, _terms) in enumerate(leaves):
         vec = [0.0] * 1024
         vec[i] = 1.0
         index.set_embedding(node_id, vec)
@@ -62,6 +62,31 @@ def test_find_leaves_vector_ranks_by_cosine(db_session) -> None:  # type: ignore
     assert cands
     assert cands[0].taxonomy_node_id == target_id
     assert all(c.source == "vector" for c in cands)
+
+
+def test_set_terms_persists_and_invalidates_embedding(db_session) -> None:  # type: ignore[no-untyped-def]
+    from src.contexts.save.infrastructure.models import TaxonomyNodeModel
+
+    market = f"T{uuid.uuid4().hex[:6]}"
+    _seed(db_session, market)
+    index = SqlCategoryIndexRepository(db_session)
+
+    # arranque: todas las hojas sin términos, y le damos un embedding a una para probar que se borra.
+    pending = index.leaves_without_terms(market, limit=50)
+    assert len(pending) == 3  # las 3 hojas del _seed
+    node_id, name, parent = pending[0]
+    index.set_embedding(node_id, [0.1] * 1024)
+    db_session.flush()
+
+    index.set_terms(node_id, "arroz, habichuelas, guandules")
+    db_session.flush()
+
+    node = db_session.get(TaxonomyNodeModel, uuid.UUID(node_id))
+    assert node.classification_terms == "arroz, habichuelas, guandules"
+    assert node.embedding is None  # invalidado → EmbedCategories la re-embebe
+    # ya no aparece como "sin términos", pero SÍ como "sin embedding" (re-embed pendiente)
+    assert node_id not in {n for n, _, _ in index.leaves_without_terms(market, limit=50)}
+    assert node_id in {n for n, _, _, _ in index.leaves_without_embedding(market, limit=50)}
 
 
 def _names(db_session, node_ids: list[str]) -> list[str]:  # type: ignore[no-untyped-def]

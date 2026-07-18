@@ -1265,10 +1265,15 @@ class SqlCategoryIndexRepository:
 
     def leaves_without_embedding(
         self, market_id: str, limit: int
-    ) -> list[tuple[str, str, str | None]]:
+    ) -> list[tuple[str, str, str | None, str | None]]:
         parent = aliased(TaxonomyNodeModel)
         rows = self._s.execute(
-            select(TaxonomyNodeModel.id, TaxonomyNodeModel.name, parent.name)
+            select(
+                TaxonomyNodeModel.id,
+                TaxonomyNodeModel.name,
+                parent.name,
+                TaxonomyNodeModel.classification_terms,
+            )
             .outerjoin(parent, parent.id == TaxonomyNodeModel.parent_id)
             .where(
                 TaxonomyNodeModel.market_id == market_id,
@@ -1277,12 +1282,35 @@ class SqlCategoryIndexRepository:
             )
             .limit(limit)
         ).all()
-        return [(str(r[0]), r[1], r[2]) for r in rows]
+        return [(str(r[0]), r[1], r[2], r[3]) for r in rows]
 
     def set_embedding(self, node_id: str, embedding: list[float]) -> None:
         node = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
         assert node is not None
         node.embedding = embedding
+        self._s.flush()
+
+    def leaves_without_terms(
+        self, market_id: str, limit: int
+    ) -> list[tuple[str, str, str | None]]:
+        parent = aliased(TaxonomyNodeModel)
+        rows = self._s.execute(
+            select(TaxonomyNodeModel.id, TaxonomyNodeModel.name, parent.name)
+            .outerjoin(parent, parent.id == TaxonomyNodeModel.parent_id)
+            .where(
+                TaxonomyNodeModel.market_id == market_id,
+                TaxonomyNodeModel.level == 1,
+                TaxonomyNodeModel.classification_terms.is_(None),
+            )
+            .limit(limit)
+        ).all()
+        return [(str(r[0]), r[1], r[2]) for r in rows]
+
+    def set_terms(self, node_id: str, terms: str) -> None:
+        node = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
+        assert node is not None
+        node.classification_terms = terms
+        node.embedding = None  # el input del embedding cambió → invalidar para re-embed
         self._s.flush()
 
 
