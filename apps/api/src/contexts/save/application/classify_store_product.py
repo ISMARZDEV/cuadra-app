@@ -106,6 +106,12 @@ class ClassifyStoreProduct:
             self._persist(product, result.taxonomy_node_id, result.confidence, result.method)
         return result
 
+    def decide(self, product: ClassifiableProduct, market_id: str) -> ClassificationResult:
+        """Decisión de categoría PURA — sin idempotencia ni persistencia. Para consumidores que
+        solo necesitan la categoría sin registrar la clasificación: el relevance gate R2 decide
+        descartar ANTES de materializar el store_product, cuando todavía no hay `ref_id`."""
+        return self._decide(product, market_id)
+
     def _decide(self, product: ClassifiableProduct, market_id: str) -> ClassificationResult:
         """Etapa B — cruza DOS señales independientes: la categoría de ORIGEN (fuente) y el NOMBRE.
 

@@ -116,8 +116,20 @@ def build_relevance_gate(session: Session) -> TaxonomyRelevanceGate | None:
     )
     if not footprint:
         return None
+    # Clasifica el producto a NUESTRA taxonomía por nombre+categoría (robusto al vocabulario de cada
+    # tienda). Juez SIEMPRE off: la banda grey nunca descarta (conservador), así R2 no paga LLM.
+    classifier = ClassifyStoreProduct(
+        SqlCategoryClassificationRepository(session),
+        SqlCategoryCandidateRepository(session),
+        build_embedding_provider(),
+        None,
+        lexicon,
+    )
     return TaxonomyRelevanceGate(
-        lexicon=lexicon, leaf_to_root=leaf_to_root, footprint=footprint
+        classifier=classifier,
+        leaf_to_root=leaf_to_root,
+        footprint=footprint,
+        market_id=SAVE_MARKET,
     )
 
 

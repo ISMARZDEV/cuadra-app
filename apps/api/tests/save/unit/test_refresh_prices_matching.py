@@ -43,9 +43,9 @@ class FakeRelevanceGate:
         self._off = off_scope or set()
         self.calls: list[str] = []
 
-    def is_off_scope(self, source_category: str) -> bool:
-        self.calls.append(source_category)
-        return source_category in self._off
+    def is_off_scope(self, product) -> bool:  # type: ignore[no-untyped-def]
+        self.calls.append(product.source_category)  # clasifica por el producto (nombre + categoría)
+        return product.source_category in self._off
 
 
 class FakeStoreRepo:
