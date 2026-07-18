@@ -83,6 +83,18 @@ def test_lexicon_hit_persists_without_embedder_or_judge() -> None:
     assert emb.called is False and jdg.called is False
 
 
+def test_decide_returns_the_decision_without_persisting() -> None:
+    # `decide` = decisión pura (para el relevance gate R2, que decide ANTES de materializar).
+    cls = _FakeClassifications()
+    uc = _make(cls, _FakeCandidates(), _FakeEmbedder(), _FakeJudge(), lexicon={"arroz": "n-arroz"})
+
+    result = uc.decide(_PRODUCT, "DO")
+
+    assert result.taxonomy_node_id == "n-arroz"
+    assert result.band == "auto_link"
+    assert cls.saved == []  # a diferencia de execute(), decide() NO persiste
+
+
 def test_auto_band_persists_hybrid() -> None:
     cls = _FakeClassifications()
     cand = _FakeCandidates(trgm=[_cand("n1", 0.9, "trgm")], vector=[_cand("n1", 0.88, "vector")])

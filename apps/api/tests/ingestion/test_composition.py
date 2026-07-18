@@ -335,12 +335,13 @@ def test_relevance_gate_derives_footprint_from_canonical_roots(
         composition, "SqlCanonicalProductRepository",
         lambda s: SimpleNamespace(list_by_market=lambda m: [canon]),
     )
+    monkeypatch.setattr(composition, "build_embedding_provider", lambda: MagicMock())
 
     gate = composition.build_relevance_gate(MagicMock())
 
     assert gate is not None
     assert gate._footprint == frozenset({"root-despensa"})
-    assert gate.is_off_scope("Despensa > Arroz") is False  # in-scope: raíz en el footprint
+    assert gate._market_id == "DO"  # el gate clasifica contra el mercado del catálogo
 
 
 # ── R1: qué fuentes entran al DESCUBRIMIENTO por-query (Fase 1, 2026-07-16) ────────────────────

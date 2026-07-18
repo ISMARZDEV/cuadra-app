@@ -25,14 +25,14 @@ from .match_store_product import IncomingStoreProduct, MatchStoreProduct
 
 
 class RelevanceGate(Protocol):
-    """R2: ¿la categoría de origen de un producto DESCUBIERTO cae fuera del scope del catálogo?
+    """R2: ¿un producto DESCUBIERTO cae fuera del scope del catálogo?
 
     Definido aquí (no en domain/ports) para no acoplar la aplicación a la infra — duck-typing
     estructural, mismo patrón que `GreyBandJudge` en el matcher. La impl (`TaxonomyRelevanceGate`)
-    resuelve el `source_category` a un top-level de taxonomía y lo contrasta con el footprint del
-    catálogo. Conservador: solo `True` ante señal POSITIVA de fuera-de-footprint."""
+    CLASIFICA el producto a nuestra taxonomía (por nombre + categoría de origen) y contrasta la raíz
+    con el footprint del catálogo. Conservador: solo `True` ante clasificación CONFIADA fuera de él."""
 
-    def is_off_scope(self, source_category: str) -> bool: ...
+    def is_off_scope(self, product: ClassifiableProduct) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +87,14 @@ class RefreshCatalogPrices:
                 # tokens y trae comida de perro por "arroz") ANTES de materializar/matchear. Solo
                 # aplica a desconocidos; los conocidos ya ingeridos no se re-evalúan.
                 if self._relevance is not None and self._relevance.is_off_scope(
-                    " > ".join(entry.category_path)
+                    ClassifiableProduct(
+                        ref_id="",
+                        is_canonical=False,
+                        name=entry.name or "",
+                        brand=entry.brand or "",
+                        size_text=entry.size_text or "",
+                        source_category=" > ".join(entry.category_path),
+                    )
                 ):
                     discarded += 1
                     continue
