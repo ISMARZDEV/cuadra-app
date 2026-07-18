@@ -14,6 +14,7 @@ from ingestion.save.composition import (
     build_classifier,
     build_matcher,
     build_query_catalog_sources_for,
+    build_relevance_gate,
     query_catalog_partition_keys,
 )
 from ingestion.save.runner import refresh_source
@@ -42,6 +43,7 @@ def main() -> None:
             print(f"save-refresh embeddings: {cat_embedded} categorías embebidas (índice semántico)")
         matcher = build_matcher(session)  # None salvo SAVE_MATCHING_CASCADE_ENABLED=true
         classifier = build_classifier(session)  # None salvo SAVE_CLASSIFICATION_ENABLED=true
+        relevance_gate = build_relevance_gate(session)  # None salvo SAVE_RELEVANCE_GATE_ENABLED=true (R2)
         # La canasta sale de la TABLA, igual que en los assets de Dagster. Hasta 2026-07-16 esto
         # era `build_sources()` a secas y se llevaba un tuple hardcodeado de 213 términos: el CLI
         # ingería una canasta DISTINTA de la que el admin había configurado, y ninguno avisaba.
@@ -74,12 +76,13 @@ def main() -> None:
             provider = provider_repo.get_by_id(provider_id)
             name = provider.name if provider else provider_id
             result = refresh_source(
-                repo, adapters, matcher=matcher, classifier=classifier, pace=build_pace()
+                repo, adapters, matcher=matcher, classifier=classifier,
+                relevance_gate=relevance_gate, pace=build_pace(),
             )
             print(
                 f"save-refresh {name}: seen={result.seen} "
                 f"refreshed={result.refreshed} unmatched={result.unmatched} "
-                f"matched={result.matched}"
+                f"matched={result.matched} discarded={result.discarded}"
             )
         session.commit()
     print("save-refresh: OK (change-only; desconocidos → cascada F2 si el flag está activo).")

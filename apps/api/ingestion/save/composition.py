@@ -36,6 +36,7 @@ from src.contexts.save.infrastructure.catalog_sources.factory import (
     directed_capability,
 )
 from src.contexts.save.infrastructure.catalog_sources.fetch_classifier import classify_httpx_error
+from src.contexts.save.infrastructure.classification.relevance_gate import TaxonomyRelevanceGate
 from src.contexts.save.infrastructure.catalog_sources.pacing import build_pace
 from src.contexts.save.infrastructure.repositories import (
     SqlBasketQueryRepository,
@@ -94,6 +95,30 @@ def _build_category_index(
     lexicon = build_lexicon_index(leaves)
     leaf_to_parent = {child.id: root.id for root in tree for child in root.children}
     return lexicon, leaf_to_parent
+
+
+def build_relevance_gate(session: Session) -> TaxonomyRelevanceGate | None:
+    """R2 (ship-dark): devuelve el relevance gate solo con `save_relevance_gate_enabled=true`.
+
+    Deriva el FOOTPRINT del catálogo — las raíces top-level que ocupan los canónicos (`leaf_to_root`
+    resuelve el nodo de cada canónico a su raíz; si ya es raíz, se usa tal cual). Sin canónicos
+    clasificados no hay footprint → devuelve None (no-op): nunca descartar sin un scope conocido."""
+    if not settings.save_relevance_gate_enabled:
+        return None
+    from ingestion.save.sources import SAVE_MARKET
+
+    lexicon, leaf_to_root = _build_category_index(session, SAVE_MARKET)
+    canonicals = SqlCanonicalProductRepository(session).list_by_market(SAVE_MARKET)
+    footprint = frozenset(
+        leaf_to_root.get(c.taxonomy_node_id, c.taxonomy_node_id)
+        for c in canonicals
+        if c.taxonomy_node_id
+    )
+    if not footprint:
+        return None
+    return TaxonomyRelevanceGate(
+        lexicon=lexicon, leaf_to_root=leaf_to_root, footprint=footprint
+    )
 
 
 def build_directed_adapter(source, provider, query):  # type: ignore[no-untyped-def]

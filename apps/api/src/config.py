@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     # Reusa `save_bge_m3_endpoint_url` (mismo BGE-M3) y `llm_provider` (juez).
     save_classification_enabled: bool = False
 
+    # Save · relevance gate (R2). Ship-dark: descarta EN DESCUBRIMIENTO el ruido fuera del scope del
+    # catálogo (Magento hace OR de tokens → comida de perro por "arroz"). Reusa el lexicon de la
+    # taxonomía y el footprint de categorías que ocupan los canónicos. Conservador: solo descarta
+    # ante señal positiva de fuera-de-footprint. Requiere la taxonomía sembrada + canónicos clasificados.
+    save_relevance_gate_enabled: bool = False
+
     # Save · el LLM en las corridas de ingesta (juez de matching + juez de categoría).
     #
     # OFF por decisión explícita (2026-07-15): la cuota está agotada y el juez se habilita a mano

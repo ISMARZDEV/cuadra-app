@@ -31,6 +31,7 @@ from .composition import (
     build_query_catalog_sources_for,
     build_refresh_covered_prices,
     build_refresh_known_prices,
+    build_relevance_gate,
     build_rest_catalog_source_for,
     parse_rest_catalog_partition_key,
     query_catalog_partition_keys,
@@ -137,6 +138,7 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
         result = refresh_source(
             SqlStoreProductRepository(session), adapters,
             matcher=build_matcher(session), classifier=build_classifier(session),
+            relevance_gate=build_relevance_gate(session),
             on_progress=lambda i, n, r: context.log.info(
                 f"[{provider_id}] query {i}/{n} · acumulado: "
                 f"seen={r.seen} matched={r.matched} unmatched={r.unmatched}"
@@ -209,6 +211,7 @@ def rest_catalog_prices(context) -> dg.MaterializeResult:
         result = refresh_source(
             SqlStoreProductRepository(session), [source],
             matcher=build_matcher(session), classifier=build_classifier(session),
+            relevance_gate=build_relevance_gate(session),
         )
         session.commit()
     context.log.info(
