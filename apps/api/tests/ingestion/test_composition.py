@@ -10,6 +10,7 @@ seteada, ambos usan el endpoint HTTP. Los dos providers usan el MISMO modelo (`B
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -299,6 +300,47 @@ def test_classifier_gets_a_real_judge_when_the_switch_is_on(monkeypatch: pytest.
     classifier = composition.build_classifier(MagicMock())
 
     assert classifier._judge == "JUEZ-CATEGORIA"
+
+
+# ── R2 relevance gate: ship-dark + footprint derivado del catálogo ────────────────────────────
+
+
+def test_relevance_gate_is_none_when_flag_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "save_relevance_gate_enabled", False)
+    assert composition.build_relevance_gate(MagicMock()) is None
+
+
+def test_relevance_gate_is_none_without_a_catalog_footprint(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Flag ON pero ningún canónico clasificado → sin footprint → None (nunca descartar sin scope).
+    monkeypatch.setattr(settings, "save_relevance_gate_enabled", True)
+    monkeypatch.setattr(composition, "_build_category_index", lambda s, m: ({}, {}))
+    monkeypatch.setattr(
+        composition, "SqlCanonicalProductRepository",
+        lambda s: SimpleNamespace(list_by_market=lambda m: []),
+    )
+    assert composition.build_relevance_gate(MagicMock()) is None
+
+
+def test_relevance_gate_derives_footprint_from_canonical_roots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "save_relevance_gate_enabled", True)
+    monkeypatch.setattr(
+        composition, "_build_category_index",
+        lambda s, m: ({"arroz": "leaf-arroz"}, {"leaf-arroz": "root-despensa"}),
+    )
+    # el canónico apunta a la hoja → el footprint es su RAÍZ (root-despensa)
+    canon = SimpleNamespace(taxonomy_node_id="leaf-arroz")
+    monkeypatch.setattr(
+        composition, "SqlCanonicalProductRepository",
+        lambda s: SimpleNamespace(list_by_market=lambda m: [canon]),
+    )
+
+    gate = composition.build_relevance_gate(MagicMock())
+
+    assert gate is not None
+    assert gate._footprint == frozenset({"root-despensa"})
+    assert gate.is_off_scope("Despensa > Arroz") is False  # in-scope: raíz en el footprint
 
 
 # ── R1: qué fuentes entran al DESCUBRIMIENTO por-query (Fase 1, 2026-07-16) ────────────────────

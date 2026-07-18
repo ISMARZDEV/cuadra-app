@@ -18,7 +18,9 @@ from src.shared.money import Currency, Money
 DOP = Currency("DOP")
 
 
-def _entry(external_id: str, minor: int = 47500) -> RawCatalogEntry:
+def _entry(
+    external_id: str, minor: int = 47500, category: tuple[str, ...] = ()
+) -> RawCatalogEntry:
     return RawCatalogEntry(
         provider_id="p-sirena",
         market_id="DO",
@@ -30,7 +32,20 @@ def _entry(external_id: str, minor: int = 47500) -> RawCatalogEntry:
         price_type=PriceType.ONLINE,
         source="vtex",
         ean="123",
+        category_path=category,
     )
+
+
+class FakeRelevanceGate:
+    """`is_off_scope(source_category) -> bool` — R2. Descarta lo obviamente fuera del catálogo."""
+
+    def __init__(self, off_scope: set[str] | None = None) -> None:
+        self._off = off_scope or set()
+        self.calls: list[str] = []
+
+    def is_off_scope(self, source_category: str) -> bool:
+        self.calls.append(source_category)
+        return source_category in self._off
 
 
 class FakeStoreRepo:
@@ -107,6 +122,64 @@ def test_matcher_does_not_touch_known_products() -> None:
 
     assert result == RefreshResult(seen=1, refreshed=1, unmatched=0, matched=0)
     assert matcher.calls == []  # los conocidos NO pasan por la cascada
+
+
+# ---------------------------------------------------------------- R2: relevance gate (descarte) --
+# Medido 2026-07-16: aun con la canasta acotada a arroz+legumbre, Magento hace OR de tokens y trae
+# comida de perro/velas/pañitos por queries de "arroz"/"verdes" → 45% de la cola era ruido. El gate
+# descarta EN DESCUBRIMIENTO lo que la categoría de origen resuelve a un top-level fuera del catálogo.
+
+
+def test_relevance_gate_discards_off_scope_before_materialize_and_match() -> None:
+    repo = FakeStoreRepo(known=set())  # desconocido
+    matcher = FakeMatcher()
+    gate = FakeRelevanceGate(off_scope={"Mascotas > Alimento para Perros"})
+    source = FakeSource([_entry("dogfood", category=("Mascotas", "Alimento para Perros"))])
+
+    result = RefreshCatalogPrices(repo, matcher=matcher, relevance_gate=gate).execute(source)
+
+    assert result == RefreshResult(seen=1, refreshed=0, unmatched=0, matched=0, discarded=1)
+    assert repo.observations == []  # NO se materializa el ruido
+    assert matcher.calls == []      # NO entra a la cascada
+    assert gate.calls == ["Mascotas > Alimento para Perros"]  # se consultó con el path unido
+
+
+def test_relevance_gate_keeps_in_scope_and_routes_to_cascade() -> None:
+    repo = FakeStoreRepo(known=set())
+    matcher = FakeMatcher()
+    gate = FakeRelevanceGate(off_scope={"Mascotas > Alimento para Perros"})
+    source = FakeSource([_entry("arroz", category=("Despensa", "Arroz"))])
+
+    result = RefreshCatalogPrices(repo, matcher=matcher, relevance_gate=gate).execute(source)
+
+    assert result == RefreshResult(seen=1, refreshed=0, unmatched=0, matched=1, discarded=0)
+    assert len(repo.observations) == 1  # in-scope → se materializa y matchea normal
+    assert len(matcher.calls) == 1
+
+
+def test_relevance_gate_only_applies_to_unknown_products() -> None:
+    repo = FakeStoreRepo(known={("p-sirena", "known")})
+    matcher = FakeMatcher()
+    gate = FakeRelevanceGate(off_scope={"Mascotas"})
+    source = FakeSource([_entry("known", category=("Mascotas",))])
+
+    result = RefreshCatalogPrices(repo, matcher=matcher, relevance_gate=gate).execute(source)
+
+    # un producto CONOCIDO se refresca aunque su categoría sea off-scope: el gate es de
+    # DESCUBRIMIENTO, no re-evalúa lo ya ingerido. Y no se consulta.
+    assert result == RefreshResult(seen=1, refreshed=1, unmatched=0, matched=0, discarded=0)
+    assert gate.calls == []
+
+
+def test_no_relevance_gate_is_noop() -> None:
+    repo = FakeStoreRepo(known=set())
+    matcher = FakeMatcher()
+    source = FakeSource([_entry("x", category=("Mascotas",))])
+
+    result = RefreshCatalogPrices(repo, matcher=matcher).execute(source)
+
+    # sin gate → comportamiento legacy: el desconocido entra a la cascada, nada se descarta.
+    assert result == RefreshResult(seen=1, refreshed=0, unmatched=0, matched=1, discarded=0)
 
 
 def test_matcher_routes_multiple_and_leaves_known_alone() -> None:

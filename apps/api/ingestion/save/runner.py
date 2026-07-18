@@ -12,7 +12,11 @@ from datetime import datetime
 
 from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.match_store_product import MatchStoreProduct
-from src.contexts.save.application.refresh_prices import RefreshCatalogPrices, RefreshResult
+from src.contexts.save.application.refresh_prices import (
+    RefreshCatalogPrices,
+    RefreshResult,
+    RelevanceGate,
+)
 from src.contexts.save.domain.ports import CatalogSource, StoreProductRepository
 
 
@@ -24,6 +28,7 @@ def refresh_source(
     classifier: ClassifyStoreProduct | None = None,
     on_progress: Callable[[int, int, RefreshResult], None] | None = None,
     pace: Callable[[], None] | None = None,
+    relevance_gate: RelevanceGate | None = None,
 ) -> RefreshResult:
     """Corre el refresh sobre cada adapter de la fuente y agrega los conteos.
 
@@ -38,8 +43,10 @@ def refresh_source(
     martilleo — el mismo bug que en price_refresh/Loop B/browse. Acá el round-robin ni participa.
     `None` = sin espera (tests); prod wirea `build_pace()`.
     """
-    use_case = RefreshCatalogPrices(store_repo, matcher=matcher, classifier=classifier)
-    seen = refreshed = unmatched = matched = 0
+    use_case = RefreshCatalogPrices(
+        store_repo, matcher=matcher, classifier=classifier, relevance_gate=relevance_gate
+    )
+    seen = refreshed = unmatched = matched = discarded = 0
     total = len(adapters)
     for index, adapter in enumerate(adapters, start=1):
         if index > 1 and pace is not None:
@@ -49,10 +56,16 @@ def refresh_source(
         refreshed += result.refreshed
         unmatched += result.unmatched
         matched += result.matched
+        discarded += result.discarded
         if on_progress is not None:
             on_progress(
                 index,
                 total,
-                RefreshResult(seen=seen, refreshed=refreshed, unmatched=unmatched, matched=matched),
+                RefreshResult(
+                    seen=seen, refreshed=refreshed, unmatched=unmatched,
+                    matched=matched, discarded=discarded,
+                ),
             )
-    return RefreshResult(seen=seen, refreshed=refreshed, unmatched=unmatched, matched=matched)
+    return RefreshResult(
+        seen=seen, refreshed=refreshed, unmatched=unmatched, matched=matched, discarded=discarded
+    )
