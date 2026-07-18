@@ -9,11 +9,13 @@ from src.contexts.save.application.embed_categories import EmbedCategories
 
 
 class _FakeIndexRepo:
-    def __init__(self, leaves: list[tuple[str, str, str | None]]) -> None:
+    def __init__(self, leaves: list[tuple[str, str, str | None, str | None]]) -> None:
         self._leaves = list(leaves)
         self.embeddings: dict[str, list[float]] = {}
 
-    def leaves_without_embedding(self, market_id: str, limit: int) -> list[tuple[str, str, str | None]]:
+    def leaves_without_embedding(
+        self, market_id: str, limit: int
+    ) -> list[tuple[str, str, str | None, str | None]]:
         pending = [lf for lf in self._leaves if lf[0] not in self.embeddings]
         return pending[:limit]
 
@@ -32,20 +34,33 @@ class _FakeEmbedder:
 
 def test_embeds_all_leaves_using_recipe() -> None:
     repo = _FakeIndexRepo([
-        ("n1", "Arroz, Granos & Legumbres", "Despensa & Abarrotes"),
-        ("n2", "Frutas", "Frutas & Verduras"),
+        ("n1", "Arroz, Granos & Legumbres", "Despensa & Abarrotes", None),
+        ("n2", "Frutas", "Frutas & Verduras", None),
     ])
     embedder = _FakeEmbedder()
     count = EmbedCategories(repo, embedder).execute("DO", batch_size=10)
 
     assert count == 2
     assert set(repo.embeddings) == {"n1", "n2"}
-    # usó la receta parent+name (contexto)
+    # sin términos → receta fallback parent+name (contexto)
     assert "Despensa & Abarrotes Arroz, Granos & Legumbres" in embedder.seen_texts
 
 
+def test_uses_descriptive_terms_when_leaf_has_them() -> None:
+    repo = _FakeIndexRepo([
+        ("n1", "Arroz, Granos & Legumbres", "Despensa & Abarrotes", "arroz, habichuelas, guandules"),
+    ])
+    embedder = _FakeEmbedder()
+    EmbedCategories(repo, embedder).execute("DO", batch_size=10)
+
+    assert (
+        "Despensa & Abarrotes > Arroz, Granos & Legumbres. Ejemplos: arroz, habichuelas, guandules"
+        in embedder.seen_texts
+    )
+
+
 def test_idempotent_second_run_embeds_zero() -> None:
-    repo = _FakeIndexRepo([("n1", "Frutas", "Frutas & Verduras")])
+    repo = _FakeIndexRepo([("n1", "Frutas", "Frutas & Verduras", None)])
     embedder = _FakeEmbedder()
     EmbedCategories(repo, embedder).execute("DO", batch_size=10)
     count2 = EmbedCategories(repo, embedder).execute("DO", batch_size=10)
