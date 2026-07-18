@@ -1,10 +1,11 @@
 """Unit — ClassifyStoreProduct (save-category-classification, Batch 7). Fakes, sin DB.
 
-Cascada: léxico → (trgm+vector) → RRF (consenso) → banding(score crudo del ganador) → juez(grey).
+Cascada por nombre: léxico → vector-con-MARGEN → juez(grey). Sin trgm/RRF (el trgm de categorías
+contamina; medido — ver `category_banding`).
 - léxico-hit → persist(lexicon), sin tocar embedder ni juez.
-- auto → persist(hybrid/trgm/vector).
-- grey + match ≥ piso → persist(llm); grey + uncertain → NO persist (sin clasificar).
-- human / sin candidatos → NO persist.
+- vector con margen claro → persist(vector).
+- margen fino (grey) + match ≥ piso → persist(llm); grey + uncertain/sin juez → NO persist.
+- sin candidatos (human) → NO persist.
 """
 from __future__ import annotations
 
@@ -95,23 +96,32 @@ def test_decide_returns_the_decision_without_persisting() -> None:
     assert cls.saved == []  # a diferencia de execute(), decide() NO persiste
 
 
-def test_auto_band_persists_hybrid() -> None:
+def test_clear_vector_margin_persists_vector() -> None:
     cls = _FakeClassifications()
-    cand = _FakeCandidates(trgm=[_cand("n1", 0.9, "trgm")], vector=[_cand("n1", 0.88, "vector")])
+    # margen 0.55−0.40 = 0.15 ≥ umbral → auto-link por vector (el trgm ya no participa)
+    cand = _FakeCandidates(vector=[_cand("n1", 0.55, "vector"), _cand("n2", 0.40, "vector")])
     uc = _make(cls, cand, _FakeEmbedder(), _FakeJudge())
 
     result = uc.execute(_PRODUCT, "DO")
 
     assert result.taxonomy_node_id == "n1"
-    assert result.method == "hybrid"  # en ambas listas
-    assert cls.saved[0].method == "hybrid"
+    assert result.method == "vector"
+    assert cls.saved[0].method == "vector"
 
 
-def test_grey_band_match_above_floor_persists_llm() -> None:
+def _thin() -> "_FakeCandidates":  # margen 0.50−0.49 = 0.01 < umbral → banda grey
+    return _FakeCandidates(
+        vector=[
+            _cand("n1", 0.50, "vector", name="Arroz, Granos & Legumbres"),
+            _cand("n2", 0.49, "vector"),
+        ]
+    )
+
+
+def test_thin_margin_match_above_floor_persists_llm() -> None:
     cls = _FakeClassifications()
-    cand = _FakeCandidates(trgm=[_cand("n1", 0.6, "trgm", name="Arroz, Granos & Legumbres")])
     judge = _FakeJudge(CategoryVerdict(decision="match", confidence=0.85, cited_fields=[]))
-    uc = _make(cls, cand, _FakeEmbedder(), judge)
+    uc = _make(cls, _thin(), _FakeEmbedder(), judge)
 
     result = uc.execute(_PRODUCT, "DO")
 
@@ -120,32 +130,28 @@ def test_grey_band_match_above_floor_persists_llm() -> None:
     assert cls.saved[0].method == "llm"
 
 
-def test_grey_band_uncertain_does_not_persist() -> None:
+def test_thin_margin_uncertain_does_not_persist() -> None:
     cls = _FakeClassifications()
-    cand = _FakeCandidates(trgm=[_cand("n1", 0.6, "trgm")])
     judge = _FakeJudge(CategoryVerdict(decision="uncertain", confidence=0.0, cited_fields=[]))
-    uc = _make(cls, cand, _FakeEmbedder(), judge)
-
-    result = uc.execute(_PRODUCT, "DO")
-
-    assert result.taxonomy_node_id is None
-    assert cls.saved == []
-
-
-def test_grey_band_match_below_floor_does_not_persist() -> None:
-    cls = _FakeClassifications()
-    cand = _FakeCandidates(trgm=[_cand("n1", 0.6, "trgm")])
-    judge = _FakeJudge(CategoryVerdict(decision="match", confidence=0.5, cited_fields=[]))  # < 0.70
-    uc = _make(cls, cand, _FakeEmbedder(), judge)
+    uc = _make(cls, _thin(), _FakeEmbedder(), judge)
 
     assert uc.execute(_PRODUCT, "DO").taxonomy_node_id is None
     assert cls.saved == []
 
 
-def test_human_band_does_not_persist() -> None:
+def test_thin_margin_match_below_floor_does_not_persist() -> None:
     cls = _FakeClassifications()
-    cand = _FakeCandidates(trgm=[_cand("n1", 0.3, "trgm")])  # < 0.55 → human
-    uc = _make(cls, cand, _FakeEmbedder(), _FakeJudge())
+    judge = _FakeJudge(CategoryVerdict(decision="match", confidence=0.5, cited_fields=[]))  # < 0.70
+    uc = _make(cls, _thin(), _FakeEmbedder(), judge)
+
+    assert uc.execute(_PRODUCT, "DO").taxonomy_node_id is None
+    assert cls.saved == []
+
+
+def test_thin_margin_without_judge_does_not_persist() -> None:
+    # Juez apagado (decisión de producto): margen fino → sin clasificar (no inventa).
+    cls = _FakeClassifications()
+    uc = _make(cls, _thin(), _FakeEmbedder(), None)
 
     assert uc.execute(_PRODUCT, "DO").taxonomy_node_id is None
     assert cls.saved == []
