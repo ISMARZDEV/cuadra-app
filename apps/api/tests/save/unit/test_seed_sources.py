@@ -25,8 +25,25 @@ def _by_name(name: str):  # type: ignore[no-untyped-def]
 
 
 def test_every_ingested_chain_has_a_source_row() -> None:
-    # Las cuatro que ingieren hoy. Si alguna falta, el descubrimiento la pierde EN SILENCIO.
-    assert {s.provider_name for s in STORE_SOURCES} == {"Sirena", "Nacional", "Jumbo", "Bravo"}
+    # Las cuatro que ingieren hoy + Merca Jumbo (scaffolded, DESHABILITADA). Si una ENABLED falta,
+    # el descubrimiento la pierde EN SILENCIO.
+    assert {s.provider_name for s in STORE_SOURCES} == {
+        "Sirena", "Nacional", "Jumbo", "Bravo", "Merca Jumbo"
+    }
+    enabled = {s.provider_name for s in STORE_SOURCES if s.enabled}
+    assert enabled == {"Sirena", "Nacional", "Jumbo", "Bravo"}  # Merca queda fuera hasta su secreto
+
+
+def test_merca_jumbo_is_scaffolded_but_disabled_pending_its_secret_store_code() -> None:
+    # Merca Jumbo = 3er banner del grupo CCN (shopId=7 en SupermercadosRD): un store-view PRIVADO del
+    # Magento de Nacional. Su store code es un SECRETO (en la referencia, un GitHub Actions secret que
+    # el repo público omite a propósito) que NO tenemos. Se deja CONFIGURADA pero DESHABILITADA — a un
+    # secreto de andar: el admin llena `headers.Store` y la habilita cuando se consiga el código.
+    merca = _by_name("Merca Jumbo")
+    assert merca.platform is SourcePlatform.MAGENTO
+    assert merca.base_url == "https://supermercadosnacional.com"  # store-view del Magento de Nacional
+    assert merca.enabled is False
+    assert not (merca.headers or {}).get("Store")  # placeholder vacío: el store code es secreto
 
 
 def test_jumbo_carries_the_store_view_header_that_makes_it_jumbo() -> None:
