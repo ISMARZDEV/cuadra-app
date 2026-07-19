@@ -49,3 +49,8 @@ class CapabilityKey(StrEnum):
     ADMIN_DB = "admin_db"
     ADMIN_SAVE_MATCHING_REVIEW = "admin_save_matching_review"  # F2·B1: cola de revisión de matching
     ADMIN_SAVE_INGESTION_OPS = "admin_save_ingestion_ops"      # F2·B1/B3: providers/sources/basket/metrics
+    # F4: consola de Orquestación. Capability PROPIA y NO reuso de `ingestion_ops` a propósito —
+    # lanzar/cancelar/reintentar corridas y cambiar su programación es más sensible que editar un
+    # provider, y Dagster OSS no tiene auth propia: esta capability es el ÚNICO control de acceso
+    # real sobre el runner (SDD §7).
+    ADMIN_SAVE_ORCHESTRATION_OPS = "admin_save_orchestration_ops"

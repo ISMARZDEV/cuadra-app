@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Database, ListChecks, ListPlus, Store } from "lucide-react";
+import { Database, ListChecks, ListPlus, Store, Workflow } from "lucide-react";
 
 // Seam de extensibilidad de la OFV (back-office único): cada módulo admin futuro (News,
 // accesos/RBAC, financieros...) se registra acá — F2·B1 habilita SOLO la cola de revisión de
@@ -45,5 +45,14 @@ export const ADMIN_RESOURCES: AdminResource[] = [
     path: "/admin/basket-queries",
     capability: "admin_save_ingestion_ops", // = CapabilityKey.ADMIN_SAVE_INGESTION_OPS
     navIcon: ListPlus,
+  },
+  {
+    key: "save-orchestration",
+    label: "Orquestación (Save)",
+    path: "/admin/orchestration",
+    // F4: capability PROPIA, no `ingestion_ops` — lanzar/cancelar/reintentar corridas es más
+    // sensible que editar un provider. = CapabilityKey.ADMIN_SAVE_ORCHESTRATION_OPS
+    capability: "admin_save_orchestration_ops",
+    navIcon: Workflow,
   },
 ];

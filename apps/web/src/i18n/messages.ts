@@ -152,6 +152,10 @@ type MessageKey =
   | "admin.nav.save.providers"
   | "admin.nav.save.sources"
   | "admin.nav.save.basket"
+  | "admin.nav.save.orchestration"
+  | "admin.orchestration.title"
+  | "admin.orchestration.subtitle"
+  | "admin.orchestration.pending"
   | "admin.nav.save.financialProducts"
   | "admin.nav.wip"
   | "admin.nav.footer.feedback"
@@ -537,6 +541,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.save.providers": "Proveedores",
     "admin.nav.save.sources": "Fuentes",
     "admin.nav.save.basket": "Canasta curada",
+    "admin.nav.save.orchestration": "Orquestación",
+    "admin.orchestration.title": "Orquestación (Save)",
+    "admin.orchestration.subtitle": "Opera el descubrimiento y el matcheo por código de barras sin salir del admin.",
+    "admin.orchestration.pending":
+      "Módulo en construcción. El acceso ya está habilitado; las corridas, la programación y los indicadores llegan en las próximas entregas.",
     "admin.nav.save.financialProducts": "Productos Financieros",
     "admin.nav.wip": "🚧 En construcción — aún no disponible",
     "admin.nav.footer.feedback": "Feedback",
@@ -918,6 +927,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.save.providers": "Providers",
     "admin.nav.save.sources": "Sources",
     "admin.nav.save.basket": "Curated basket",
+    "admin.nav.save.orchestration": "Orchestration",
+    "admin.orchestration.title": "Orchestration (Save)",
+    "admin.orchestration.subtitle": "Operate discovery and barcode matching without leaving the admin.",
+    "admin.orchestration.pending":
+      "Module under construction. Access is enabled; runs, scheduling and indicators arrive in upcoming deliveries.",
     "admin.nav.save.financialProducts": "Financial products",
     "admin.nav.wip": "🚧 Under construction — not available yet",
     "admin.nav.footer.feedback": "Feedback",
@@ -1299,6 +1313,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.save.providers": "Fornecedores",
     "admin.nav.save.sources": "Fontes",
     "admin.nav.save.basket": "Cesta curada",
+    "admin.nav.save.orchestration": "Orquestração",
+    "admin.orchestration.title": "Orquestração (Save)",
+    "admin.orchestration.subtitle": "Opere a descoberta e a correspondência por código de barras sem sair do admin.",
+    "admin.orchestration.pending":
+      "Módulo em construção. O acesso já está habilitado; as execuções, o agendamento e os indicadores chegam nas próximas entregas.",
     "admin.nav.save.financialProducts": "Produtos Financeiros",
     "admin.nav.wip": "🚧 Em construção — ainda não disponível",
     "admin.nav.footer.feedback": "Feedback",
