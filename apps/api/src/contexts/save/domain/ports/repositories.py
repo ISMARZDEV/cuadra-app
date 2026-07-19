@@ -11,6 +11,7 @@ from typing import Protocol
 
 from src.shared.money import Money
 
+from ..admin_audit import AdminAuditEntry
 from ..alerts import Alert, AlertNotification, AlertSubscription
 from ..classification import (
     CategoryCandidate,
@@ -37,6 +38,23 @@ from ..history import PricePoint
 from ..listing import OfferingRow
 from ..review_queue import ReviewCandidateView, ReviewQueueRow, StoreProductRawAttrs
 from ..taxonomy import CategoryNode
+
+
+class AdminAuditRepository(Protocol):
+    """Registro append-only de mutaciones del admin (T2). Escrito en la MISMA transacción que la
+    mutación que audita — es I/O puro (ADR 31): inserta, no decide."""
+
+    def record(self, entry: AdminAuditEntry) -> None:
+        """Persiste una fila de auditoría (nunca update/delete: append-only, sagrado)."""
+        ...
+
+    def list_recent(
+        self, *, market_id: str, limit: int = 50, target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> list[AdminAuditEntry]:
+        """Actividad reciente (más nueva primero), opcionalmente filtrada por entidad — para las
+        vistas de "actividad" por recurso (SDD §7.x). Lectura."""
+        ...
 
 
 class ProviderRepository(Protocol):

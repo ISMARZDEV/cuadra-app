@@ -48,7 +48,9 @@ from .mappers import (
     store_product_to_entity,
     store_registry_to_entity,
 )
+from ..domain.admin_audit import AdminAuditEntry
 from .models import (
+    AdminAuditLogModel,
     AlertNotificationModel,
     BasketQueryModel,
     BrandModel,
@@ -1354,4 +1356,50 @@ class SqlCategoryCandidateRepository:
                 taxonomy_node_id=str(r[0]), name=r[1], score=1.0 - float(r[2]), source="vector"
             )
             for r in rows
+        ]
+
+
+class SqlAdminAuditRepository:
+    """Persistencia del audit log del admin (T2). Append-only: solo insert + lectura."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def record(self, entry: AdminAuditEntry) -> None:
+        self._s.add(
+            AdminAuditLogModel(
+                id=uuid.UUID(entry.id),
+                actor_user_id=entry.actor_user_id,
+                action=entry.action,
+                target_type=entry.target_type,
+                target_id=entry.target_id,
+                payload_summary=entry.payload_summary,
+                market_id=entry.market_id,
+                created_at=entry.created_at,
+            )
+        )
+        self._s.flush()
+
+    def list_recent(
+        self, *, market_id: str, limit: int = 50, target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> list[AdminAuditEntry]:
+        stmt = select(AdminAuditLogModel).where(AdminAuditLogModel.market_id == market_id)
+        if target_type is not None:
+            stmt = stmt.where(AdminAuditLogModel.target_type == target_type)
+        if target_id is not None:
+            stmt = stmt.where(AdminAuditLogModel.target_id == target_id)
+        stmt = stmt.order_by(AdminAuditLogModel.created_at.desc()).limit(limit)
+        return [
+            AdminAuditEntry(
+                id=str(m.id),
+                actor_user_id=m.actor_user_id,
+                action=m.action,
+                target_type=m.target_type,
+                target_id=m.target_id,
+                payload_summary=m.payload_summary or {},
+                market_id=m.market_id,
+                created_at=m.created_at,
+            )
+            for m in self._s.execute(stmt).scalars()
         ]

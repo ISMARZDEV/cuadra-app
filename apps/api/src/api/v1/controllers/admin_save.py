@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.api.composition_root import (
+    get_admin_audit_repo,
     get_bulk_resolve_review,
     get_create_basket_query,
     get_create_canonical_and_link,
@@ -38,8 +39,10 @@ from src.api.composition_root import (
     get_update_provider,
     get_update_source,
 )
-from src.api.extensions.security import require_capability
+from src.api.extensions.security import get_current_user_id, require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
+from src.contexts.save.application.admin_audit_recorder import AdminAuditRecorder
+from src.contexts.save.domain.ports import AdminAuditRepository
 from src.contexts.save.application.basket_query import (
     CreateBasketQuery,
     ListBasketQueries,
@@ -95,6 +98,15 @@ ingestion_router = APIRouter(
     tags=["admin-save-ingestion"],
     dependencies=[Depends(require_capability(CapabilityKey.ADMIN_SAVE_INGESTION_OPS))],
 )
+
+
+def get_admin_audit(
+    audit_repo: AdminAuditRepository = Depends(get_admin_audit_repo),
+    actor_user_id: str = Depends(get_current_user_id),
+) -> AdminAuditRecorder:
+    """Recorder de auditoría del request (T2): el repo (misma Session/UoW) + el actor autenticado.
+    Los handlers de mutación lo reciben por `Depends` y auditan en el borde, en la misma transacción."""
+    return AdminAuditRecorder(audit_repo, actor_user_id)
 
 
 @router.get("/review-queue")
@@ -155,6 +167,7 @@ def resolve_review(
     match_id: str,
     body: ResolveReviewRequest,
     use_case: ResolveReview = Depends(get_resolve_review),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> dict[str, str]:
     try:
         use_case.execute(
@@ -166,6 +179,12 @@ def resolve_review(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    audit.record(
+        "review.resolve" if body.canonical_product_id else "review.reject",
+        "product_match",
+        match_id,
+        {"canonical_product_id": body.canonical_product_id, "reason_code": body.reason_code},
+    )
     return {
         "match_id": match_id,
         "status": "auto_linked" if body.canonical_product_id else "rejected",
@@ -190,6 +209,7 @@ class CreateCanonicalRequest(BaseModel):
 def create_canonical_and_link(
     body: CreateCanonicalRequest,
     use_case: CreateCanonicalAndLink = Depends(get_create_canonical_and_link),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> dict[str, str]:
     canonical_id = use_case.execute(
         match_id=body.match_id,
@@ -204,6 +224,13 @@ def create_canonical_and_link(
             image_url=body.image_url,
         ),
         decided_by=body.decided_by,
+    )
+    audit.record(
+        "review.create_canonical",
+        "canonical_product",
+        canonical_id,
+        {"match_id": body.match_id, "name": body.name, "brand": body.brand},
+        market_id=body.market_id,
     )
     return {"canonical_product_id": canonical_id}
 
@@ -224,6 +251,7 @@ class BulkResolveRequest(BaseModel):
 def bulk_resolve_review(
     body: BulkResolveRequest,
     use_case: BulkResolveReview = Depends(get_bulk_resolve_review),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> BulkResolveResultDto:
     result = use_case.execute(
         [
@@ -236,6 +264,13 @@ def bulk_resolve_review(
             )
             for r in body.rows
         ]
+    )
+    # Una entrada agregada para la operación en lote (evita inundar el log con N filas).
+    audit.record(
+        "review.bulk_resolve",
+        "product_match",
+        "bulk",
+        {"count": len(body.rows), "match_ids": [r.match_id for r in body.rows]},
     )
     return BulkResolveResultDto.from_result(result)
 
@@ -274,6 +309,7 @@ class CreateProviderRequest(BaseModel):
 def create_provider(
     body: CreateProviderRequest,
     use_case: CreateProvider = Depends(get_create_provider),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> ProviderDto:
     try:
         provider = use_case.execute(
@@ -285,6 +321,13 @@ def create_provider(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    audit.record(
+        "provider.create",
+        "provider",
+        provider.id,
+        {"name": provider.name, "type": provider.type.value, "platform": provider.platform.value},
+        market_id=provider.market_id,
+    )
     return ProviderDto.from_entity(provider)
 
 
@@ -300,6 +343,7 @@ def update_provider(
     provider_id: str,
     body: UpdateProviderRequest,
     use_case: UpdateProvider = Depends(get_update_provider),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> ProviderDto:
     try:
         provider = use_case.execute(
@@ -311,6 +355,13 @@ def update_provider(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    audit.record(
+        "provider.update",
+        "provider",
+        provider.id,
+        body.model_dump(exclude_none=True),
+        market_id=provider.market_id,
+    )
     return ProviderDto.from_entity(provider)
 
 
@@ -323,11 +374,16 @@ def set_provider_logo(
     provider_id: str,
     body: SetProviderLogoRequest,
     use_case: SetProviderLogo = Depends(get_set_provider_logo),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> ProviderDto:
     try:
         provider = use_case.execute(provider_id, body.logo_url)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    audit.record(
+        "provider.set_logo", "provider", provider.id,
+        {"logo_url": body.logo_url}, market_id=provider.market_id,
+    )
     return ProviderDto.from_entity(provider)
 
 
@@ -374,6 +430,7 @@ class CreateSourceRequest(BaseModel):
 def create_source(
     body: CreateSourceRequest,
     use_case: CreateSource = Depends(get_create_source),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> SourceDto:
     try:
         source = use_case.execute(
@@ -386,6 +443,14 @@ def create_source(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    # auth ENMASCARADO en el payload — el secreto nunca entra al log (write-only, cuadra-save-admin).
+    audit.record(
+        "source.create",
+        "source",
+        source.id,
+        {"provider_id": source.provider_id, "platform": source.platform.value,
+         "base_url": source.base_url, "auth": mask_auth(source.auth)},
+    )
     return SourceDto.from_entity(source)
 
 
@@ -402,6 +467,7 @@ def update_source(
     source_id: str,
     body: UpdateSourceRequest,
     use_case: UpdateSource = Depends(get_update_source),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> SourceDto:
     try:
         source = use_case.execute(
@@ -414,6 +480,11 @@ def update_source(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    # `auth: null` = "sin cambio" (write-only); si vino, se registra ENMASCARADO, nunca el secreto.
+    changed = body.model_dump(exclude_none=True)
+    if "auth" in changed:
+        changed["auth"] = mask_auth(body.auth)
+    audit.record("source.update", "source", source.id, changed)
     return SourceDto.from_entity(source)
 
 
@@ -421,11 +492,13 @@ def update_source(
 def pause_source(
     source_id: str,
     use_case: PauseSource = Depends(get_pause_source),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> SourceDto:
     try:
         source = use_case.execute(source_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    audit.record("source.pause", "source", source.id)
     return SourceDto.from_entity(source)
 
 
@@ -433,11 +506,13 @@ def pause_source(
 def resume_source(
     source_id: str,
     use_case: ResumeSource = Depends(get_resume_source),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> SourceDto:
     try:
         source = use_case.execute(source_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    audit.record("source.resume", "source", source.id)
     return SourceDto.from_entity(source)
 
 
@@ -514,6 +589,7 @@ def test_source(
     source_id: str,
     body: TestSourceRequest,
     use_case: TestSource = Depends(get_test_source),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> list[SampleEntryDto]:
     try:
         sample = use_case.execute(source_id, body.query)
@@ -523,6 +599,8 @@ def test_source(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except TestSourceUpstreamError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    # Dry-run (no persiste datos) pero SÍ es una acción del operador → se audita (SDD §6.2 "test").
+    audit.record("source.test", "source", source_id, {"query": body.query, "results": len(sample)})
     return [
         SampleEntryDto(
             external_id=entry.external_id,
@@ -626,6 +704,7 @@ class CreateBasketQueryRequest(BaseModel):
 def create_basket_query(
     body: CreateBasketQueryRequest,
     use_case: CreateBasketQuery = Depends(get_create_basket_query),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> BasketQueryDto:
     try:
         query = use_case.execute(
@@ -637,6 +716,10 @@ def create_basket_query(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    audit.record(
+        "basket.create", "basket_query", query.id,
+        {"query_text": query.query_text, "active": query.active}, market_id=query.market_id,
+    )
     return BasketQueryDto.from_entity(query)
 
 
@@ -652,6 +735,7 @@ def update_basket_query(
     query_id: str,
     body: UpdateBasketQueryRequest,
     use_case: UpdateBasketQuery = Depends(get_update_basket_query),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> BasketQueryDto:
     try:
         query = use_case.execute(
@@ -663,6 +747,10 @@ def update_basket_query(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    audit.record(
+        "basket.update", "basket_query", query.id,
+        body.model_dump(exclude_none=True), market_id=query.market_id,
+    )
     return BasketQueryDto.from_entity(query)
 
 
@@ -670,8 +758,10 @@ def update_basket_query(
 def remove_basket_query(
     query_id: str,
     use_case: RemoveBasketQuery = Depends(get_remove_basket_query),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> None:
     try:
         use_case.execute(query_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    audit.record("basket.delete", "basket_query", query_id)
