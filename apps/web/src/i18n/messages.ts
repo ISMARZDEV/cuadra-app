@@ -298,7 +298,101 @@ type MessageKey =
   | "admin.basket.modal.resultSing"
   | "admin.basket.modal.resultPlur"
   | "admin.basket.modal.noResults"
-  | "admin.basket.modal.viewAria";
+  | "admin.basket.modal.viewAria"
+  | "admin.providers.title"
+  | "admin.providers.subtitle"
+  | "admin.providers.new"
+  | "admin.providers.field.name"
+  | "admin.providers.field.market"
+  | "admin.providers.field.type"
+  | "admin.providers.field.platform"
+  | "admin.providers.field.logo"
+  | "admin.providers.create.submit"
+  | "admin.providers.create.error"
+  | "admin.providers.existing"
+  | "admin.providers.empty"
+  | "admin.providers.update.nameError"
+  | "admin.providers.update.logoError"
+  | "admin.providers.row.name"
+  | "admin.providers.row.saveName"
+  | "admin.providers.row.logo"
+  | "admin.providers.row.saveLogo"
+  | "admin.sources.title"
+  | "admin.sources.subtitle"
+  | "admin.sources.search.aria"
+  | "admin.sources.search.placeholder"
+  | "admin.sources.view.grid"
+  | "admin.sources.view.list"
+  | "admin.sources.bulk.actions"
+  | "admin.sources.bulk.pause"
+  | "admin.sources.bulk.resume"
+  | "admin.sources.add"
+  | "admin.sources.selectAll"
+  | "admin.sources.col.health"
+  | "admin.sources.col.logo"
+  | "admin.sources.col.platform"
+  | "admin.sources.col.url"
+  | "admin.sources.col.count"
+  | "admin.sources.col.lastSeen"
+  | "admin.sources.col.actions"
+  | "admin.sources.empty"
+  | "admin.sources.emptySearch"
+  | "admin.sources.pagination.show"
+  | "admin.sources.pagination.perPage"
+  | "admin.sources.pagination.of"
+  | "admin.sources.count.unit"
+  | "admin.sources.row.select"
+  | "admin.sources.health.ok"
+  | "admin.sources.health.stale"
+  | "admin.sources.health.paused"
+  | "admin.sources.actions.aria"
+  | "admin.sources.actions.edit"
+  | "admin.sources.actions.pause"
+  | "admin.sources.actions.resume"
+  | "admin.sources.actions.errPause"
+  | "admin.sources.actions.errResume"
+  | "admin.sources.modal.titleAdd"
+  | "admin.sources.modal.titleEdit"
+  | "admin.sources.modal.clear"
+  | "admin.sources.modal.saving"
+  | "admin.sources.modal.saveEdit"
+  | "admin.sources.modal.saveAdd"
+  | "admin.sources.modal.errProviderRequired"
+  | "admin.sources.modal.errUrlRequired"
+  | "admin.sources.modal.errJsonInvalid"
+  | "admin.sources.modal.errSaveEdit"
+  | "admin.sources.modal.errSaveAdd"
+  | "admin.sources.modal.fieldProvider"
+  | "admin.sources.modal.providerSearch"
+  | "admin.sources.modal.providerAll"
+  | "admin.sources.modal.fieldPlatform"
+  | "admin.sources.modal.fieldUrl"
+  | "admin.sources.modal.fieldAuth"
+  | "admin.sources.modal.fieldTokenBearer"
+  | "admin.sources.modal.phTokenBearer"
+  | "admin.sources.modal.fieldLocation"
+  | "admin.sources.modal.locationHeader"
+  | "admin.sources.modal.locationQuery"
+  | "admin.sources.modal.fieldHeaderName"
+  | "admin.sources.modal.fieldKeyValue"
+  | "admin.sources.modal.phKeyValue"
+  | "admin.sources.modal.fieldUser"
+  | "admin.sources.modal.fieldPass"
+  | "admin.sources.modal.advanced"
+  | "admin.sources.modal.fieldHeaders"
+  | "admin.sources.modal.fieldEndpoints"
+  | "admin.sources.modal.authNone"
+  | "admin.sources.modal.authBearer"
+  | "admin.sources.modal.authApiKey"
+  | "admin.sources.modal.authBasic"
+  | "admin.sources.modal.probeTitle"
+  | "admin.sources.modal.probePh"
+  | "admin.sources.modal.probeAria"
+  | "admin.sources.modal.probeLoading"
+  | "admin.sources.modal.probeBtn"
+  | "admin.sources.modal.probeErrConfig"
+  | "admin.sources.modal.probeErrUpstream"
+  | "admin.sources.modal.probeNoResults";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -586,6 +680,101 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.basket.modal.resultPlur": "resultados",
     "admin.basket.modal.noResults": "Sin resultados.",
     "admin.basket.modal.viewAria": "Ver",
+    "admin.providers.title": "Proveedores (Save)",
+    "admin.providers.subtitle": "Alta y logo por URL pegada (MVP, sin subida de archivos).",
+    "admin.providers.new": "Nuevo proveedor",
+    "admin.providers.field.name": "Nombre",
+    "admin.providers.field.market": "Mercado",
+    "admin.providers.field.type": "Tipo",
+    "admin.providers.field.platform": "Plataforma",
+    "admin.providers.field.logo": "Logo (URL, opcional)",
+    "admin.providers.create.submit": "Crear proveedor",
+    "admin.providers.create.error": "No se pudo crear el proveedor.",
+    "admin.providers.existing": "Existentes",
+    "admin.providers.empty": "Sin proveedores todavía.",
+    "admin.providers.update.nameError": "No se pudo actualizar el nombre.",
+    "admin.providers.update.logoError": "No se pudo guardar el logo.",
+    "admin.providers.row.name": "Nombre de {name}",
+    "admin.providers.row.saveName": "Guardar nombre de {name}",
+    "admin.providers.row.logo": "Logo de {name}",
+    "admin.providers.row.saveLogo": "Guardar logo de {name}",
+    "admin.sources.title": "Fuentes (Save)",
+    "admin.sources.subtitle":
+      "Configuración de extracción por proveedor. La auth (Bearer / API key) vive cifrada en la fuente y se muestra enmascarada. «Probar» es una vista previa — no guarda nada.",
+    "admin.sources.search.aria": "Buscar fuentes",
+    "admin.sources.search.placeholder": "Buscar por plataforma o URL…",
+    "admin.sources.view.grid": "Ver en cards",
+    "admin.sources.view.list": "Ver en lista",
+    "admin.sources.bulk.actions": "Acciones",
+    "admin.sources.bulk.pause": "Pausar seleccionadas ({count})",
+    "admin.sources.bulk.resume": "Reanudar seleccionadas ({count})",
+    "admin.sources.add": "Agregar proveedor",
+    "admin.sources.selectAll": "Seleccionar todo",
+    "admin.sources.col.health": "Salud",
+    "admin.sources.col.logo": "Logo",
+    "admin.sources.col.platform": "Plataforma",
+    "admin.sources.col.url": "Base URL",
+    "admin.sources.col.count": "Productos",
+    "admin.sources.col.lastSeen": "Última actualización",
+    "admin.sources.col.actions": "Acciones",
+    "admin.sources.empty": "Sin fuentes todavía.",
+    "admin.sources.emptySearch": "Sin resultados para esa búsqueda.",
+    "admin.sources.pagination.show": "Mostrar",
+    "admin.sources.pagination.perPage": "por página",
+    "admin.sources.pagination.of": "{from}–{to} de {total}",
+    "admin.sources.count.unit": "productos",
+    "admin.sources.row.select": "Seleccionar {name}",
+    "admin.sources.health.ok": "OK",
+    "admin.sources.health.stale": "Desactualizada",
+    "admin.sources.health.paused": "Pausada",
+    "admin.sources.actions.aria": "Acciones de {name}",
+    "admin.sources.actions.edit": "Editar",
+    "admin.sources.actions.pause": "Pausar",
+    "admin.sources.actions.resume": "Reanudar",
+    "admin.sources.actions.errPause": "No se pudo pausar.",
+    "admin.sources.actions.errResume": "No se pudo reanudar.",
+    "admin.sources.modal.titleAdd": "Agregar proveedor",
+    "admin.sources.modal.titleEdit": "Editar fuente",
+    "admin.sources.modal.clear": "Limpiar",
+    "admin.sources.modal.saving": "Guardando…",
+    "admin.sources.modal.saveEdit": "Guardar cambios",
+    "admin.sources.modal.saveAdd": "Crear fuente",
+    "admin.sources.modal.errProviderRequired": "El id del proveedor es obligatorio.",
+    "admin.sources.modal.errUrlRequired": "La Base URL es obligatoria.",
+    "admin.sources.modal.errJsonInvalid": "JSON inválido en {label}",
+    "admin.sources.modal.errSaveEdit": "No se pudo guardar la fuente.",
+    "admin.sources.modal.errSaveAdd": "No se pudo crear la fuente.",
+    "admin.sources.modal.fieldProvider": "Proveedor",
+    "admin.sources.modal.providerSearch": "Buscar proveedor…",
+    "admin.sources.modal.providerAll": "Selecciona un proveedor…",
+    "admin.sources.modal.fieldPlatform": "Plataforma",
+    "admin.sources.modal.fieldUrl": "Base URL",
+    "admin.sources.modal.fieldAuth": "Autenticación",
+    "admin.sources.modal.fieldTokenBearer": "Token (Bearer)",
+    "admin.sources.modal.phTokenBearer": "Authorization: Bearer …",
+    "admin.sources.modal.fieldLocation": "Ubicación",
+    "admin.sources.modal.locationHeader": "Header",
+    "admin.sources.modal.locationQuery": "Query",
+    "admin.sources.modal.fieldHeaderName": "Nombre del header",
+    "admin.sources.modal.fieldKeyValue": "Token / valor (el secreto)",
+    "admin.sources.modal.phKeyValue": "pega aquí el token de la API",
+    "admin.sources.modal.fieldUser": "Usuario",
+    "admin.sources.modal.fieldPass": "Contraseña",
+    "admin.sources.modal.advanced": "Avanzado (Headers / Endpoints)",
+    "admin.sources.modal.fieldHeaders": "Headers (JSON)",
+    "admin.sources.modal.fieldEndpoints": "Endpoints (JSON)",
+    "admin.sources.modal.authNone": "Ninguna",
+    "admin.sources.modal.authBearer": "Bearer token",
+    "admin.sources.modal.authApiKey": "API key",
+    "admin.sources.modal.authBasic": "Usuario y contraseña",
+    "admin.sources.modal.probeTitle": "Probar (vista previa) — no guarda nada.",
+    "admin.sources.modal.probePh": "Query de búsqueda…",
+    "admin.sources.modal.probeAria": "Query de prueba",
+    "admin.sources.modal.probeLoading": "Probando…",
+    "admin.sources.modal.probeBtn": "Probar",
+    "admin.sources.modal.probeErrConfig": "Configuración inválida: {message}",
+    "admin.sources.modal.probeErrUpstream": "La tienda no respondió: {message}",
+    "admin.sources.modal.probeNoResults": "Sin resultados para esa query.",
   },
   en: {
     "nav.save": "Save",
@@ -871,6 +1060,101 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.basket.modal.resultPlur": "results",
     "admin.basket.modal.noResults": "No results.",
     "admin.basket.modal.viewAria": "View",
+    "admin.providers.title": "Providers (Save)",
+    "admin.providers.subtitle": "Create providers and set a logo by pasted URL (MVP, no file upload).",
+    "admin.providers.new": "New provider",
+    "admin.providers.field.name": "Name",
+    "admin.providers.field.market": "Market",
+    "admin.providers.field.type": "Type",
+    "admin.providers.field.platform": "Platform",
+    "admin.providers.field.logo": "Logo (URL, optional)",
+    "admin.providers.create.submit": "Create provider",
+    "admin.providers.create.error": "Could not create the provider.",
+    "admin.providers.existing": "Existing",
+    "admin.providers.empty": "No providers yet.",
+    "admin.providers.update.nameError": "Could not update the name.",
+    "admin.providers.update.logoError": "Could not save the logo.",
+    "admin.providers.row.name": "Name of {name}",
+    "admin.providers.row.saveName": "Save name of {name}",
+    "admin.providers.row.logo": "Logo of {name}",
+    "admin.providers.row.saveLogo": "Save logo of {name}",
+    "admin.sources.title": "Sources (Save)",
+    "admin.sources.subtitle":
+      "Extraction config per provider. Auth (Bearer / API key) is stored encrypted in the source and shown masked. “Test” is a preview — it saves nothing.",
+    "admin.sources.search.aria": "Search sources",
+    "admin.sources.search.placeholder": "Search by platform or URL…",
+    "admin.sources.view.grid": "Card view",
+    "admin.sources.view.list": "List view",
+    "admin.sources.bulk.actions": "Actions",
+    "admin.sources.bulk.pause": "Pause selected ({count})",
+    "admin.sources.bulk.resume": "Resume selected ({count})",
+    "admin.sources.add": "Add provider",
+    "admin.sources.selectAll": "Select all",
+    "admin.sources.col.health": "Health",
+    "admin.sources.col.logo": "Logo",
+    "admin.sources.col.platform": "Platform",
+    "admin.sources.col.url": "Base URL",
+    "admin.sources.col.count": "Products",
+    "admin.sources.col.lastSeen": "Last updated",
+    "admin.sources.col.actions": "Actions",
+    "admin.sources.empty": "No sources yet.",
+    "admin.sources.emptySearch": "No results for that search.",
+    "admin.sources.pagination.show": "Show",
+    "admin.sources.pagination.perPage": "per page",
+    "admin.sources.pagination.of": "{from}–{to} of {total}",
+    "admin.sources.count.unit": "products",
+    "admin.sources.row.select": "Select {name}",
+    "admin.sources.health.ok": "OK",
+    "admin.sources.health.stale": "Stale",
+    "admin.sources.health.paused": "Paused",
+    "admin.sources.actions.aria": "Actions for {name}",
+    "admin.sources.actions.edit": "Edit",
+    "admin.sources.actions.pause": "Pause",
+    "admin.sources.actions.resume": "Resume",
+    "admin.sources.actions.errPause": "Could not pause.",
+    "admin.sources.actions.errResume": "Could not resume.",
+    "admin.sources.modal.titleAdd": "Add provider",
+    "admin.sources.modal.titleEdit": "Edit source",
+    "admin.sources.modal.clear": "Clear",
+    "admin.sources.modal.saving": "Saving…",
+    "admin.sources.modal.saveEdit": "Save changes",
+    "admin.sources.modal.saveAdd": "Create source",
+    "admin.sources.modal.errProviderRequired": "The provider id is required.",
+    "admin.sources.modal.errUrlRequired": "The Base URL is required.",
+    "admin.sources.modal.errJsonInvalid": "Invalid JSON in {label}",
+    "admin.sources.modal.errSaveEdit": "Could not save the source.",
+    "admin.sources.modal.errSaveAdd": "Could not create the source.",
+    "admin.sources.modal.fieldProvider": "Provider",
+    "admin.sources.modal.providerSearch": "Search provider…",
+    "admin.sources.modal.providerAll": "Select a provider…",
+    "admin.sources.modal.fieldPlatform": "Platform",
+    "admin.sources.modal.fieldUrl": "Base URL",
+    "admin.sources.modal.fieldAuth": "Authentication",
+    "admin.sources.modal.fieldTokenBearer": "Token (Bearer)",
+    "admin.sources.modal.phTokenBearer": "Authorization: Bearer …",
+    "admin.sources.modal.fieldLocation": "Location",
+    "admin.sources.modal.locationHeader": "Header",
+    "admin.sources.modal.locationQuery": "Query",
+    "admin.sources.modal.fieldHeaderName": "Header name",
+    "admin.sources.modal.fieldKeyValue": "Token / value (the secret)",
+    "admin.sources.modal.phKeyValue": "paste the API token here",
+    "admin.sources.modal.fieldUser": "Username",
+    "admin.sources.modal.fieldPass": "Password",
+    "admin.sources.modal.advanced": "Advanced (Headers / Endpoints)",
+    "admin.sources.modal.fieldHeaders": "Headers (JSON)",
+    "admin.sources.modal.fieldEndpoints": "Endpoints (JSON)",
+    "admin.sources.modal.authNone": "None",
+    "admin.sources.modal.authBearer": "Bearer token",
+    "admin.sources.modal.authApiKey": "API key",
+    "admin.sources.modal.authBasic": "Username and password",
+    "admin.sources.modal.probeTitle": "Test (preview) — saves nothing.",
+    "admin.sources.modal.probePh": "Search query…",
+    "admin.sources.modal.probeAria": "Test query",
+    "admin.sources.modal.probeLoading": "Testing…",
+    "admin.sources.modal.probeBtn": "Test",
+    "admin.sources.modal.probeErrConfig": "Invalid configuration: {message}",
+    "admin.sources.modal.probeErrUpstream": "The store did not respond: {message}",
+    "admin.sources.modal.probeNoResults": "No results for that query.",
   },
   pt: {
     "nav.save": "Save",
@@ -1156,6 +1440,101 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.basket.modal.resultPlur": "resultados",
     "admin.basket.modal.noResults": "Sem resultados.",
     "admin.basket.modal.viewAria": "Ver",
+    "admin.providers.title": "Fornecedores (Save)",
+    "admin.providers.subtitle": "Cadastro e logo por URL colada (MVP, sem upload de arquivos).",
+    "admin.providers.new": "Novo fornecedor",
+    "admin.providers.field.name": "Nome",
+    "admin.providers.field.market": "Mercado",
+    "admin.providers.field.type": "Tipo",
+    "admin.providers.field.platform": "Plataforma",
+    "admin.providers.field.logo": "Logo (URL, opcional)",
+    "admin.providers.create.submit": "Criar fornecedor",
+    "admin.providers.create.error": "Não foi possível criar o fornecedor.",
+    "admin.providers.existing": "Existentes",
+    "admin.providers.empty": "Nenhum fornecedor ainda.",
+    "admin.providers.update.nameError": "Não foi possível atualizar o nome.",
+    "admin.providers.update.logoError": "Não foi possível salvar o logo.",
+    "admin.providers.row.name": "Nome de {name}",
+    "admin.providers.row.saveName": "Salvar nome de {name}",
+    "admin.providers.row.logo": "Logo de {name}",
+    "admin.providers.row.saveLogo": "Salvar logo de {name}",
+    "admin.sources.title": "Fontes (Save)",
+    "admin.sources.subtitle":
+      "Configuração de extração por fornecedor. A auth (Bearer / API key) fica cifrada na fonte e é exibida mascarada. «Testar» é uma prévia — não salva nada.",
+    "admin.sources.search.aria": "Buscar fontes",
+    "admin.sources.search.placeholder": "Buscar por plataforma ou URL…",
+    "admin.sources.view.grid": "Ver em cards",
+    "admin.sources.view.list": "Ver em lista",
+    "admin.sources.bulk.actions": "Ações",
+    "admin.sources.bulk.pause": "Pausar selecionadas ({count})",
+    "admin.sources.bulk.resume": "Retomar selecionadas ({count})",
+    "admin.sources.add": "Adicionar fornecedor",
+    "admin.sources.selectAll": "Selecionar tudo",
+    "admin.sources.col.health": "Saúde",
+    "admin.sources.col.logo": "Logo",
+    "admin.sources.col.platform": "Plataforma",
+    "admin.sources.col.url": "Base URL",
+    "admin.sources.col.count": "Produtos",
+    "admin.sources.col.lastSeen": "Última atualização",
+    "admin.sources.col.actions": "Ações",
+    "admin.sources.empty": "Nenhuma fonte ainda.",
+    "admin.sources.emptySearch": "Sem resultados para essa busca.",
+    "admin.sources.pagination.show": "Mostrar",
+    "admin.sources.pagination.perPage": "por página",
+    "admin.sources.pagination.of": "{from}–{to} de {total}",
+    "admin.sources.count.unit": "produtos",
+    "admin.sources.row.select": "Selecionar {name}",
+    "admin.sources.health.ok": "OK",
+    "admin.sources.health.stale": "Desatualizada",
+    "admin.sources.health.paused": "Pausada",
+    "admin.sources.actions.aria": "Ações de {name}",
+    "admin.sources.actions.edit": "Editar",
+    "admin.sources.actions.pause": "Pausar",
+    "admin.sources.actions.resume": "Retomar",
+    "admin.sources.actions.errPause": "Não foi possível pausar.",
+    "admin.sources.actions.errResume": "Não foi possível retomar.",
+    "admin.sources.modal.titleAdd": "Adicionar fornecedor",
+    "admin.sources.modal.titleEdit": "Editar fonte",
+    "admin.sources.modal.clear": "Limpar",
+    "admin.sources.modal.saving": "Salvando…",
+    "admin.sources.modal.saveEdit": "Salvar alterações",
+    "admin.sources.modal.saveAdd": "Criar fonte",
+    "admin.sources.modal.errProviderRequired": "O id do fornecedor é obrigatório.",
+    "admin.sources.modal.errUrlRequired": "A Base URL é obrigatória.",
+    "admin.sources.modal.errJsonInvalid": "JSON inválido em {label}",
+    "admin.sources.modal.errSaveEdit": "Não foi possível salvar a fonte.",
+    "admin.sources.modal.errSaveAdd": "Não foi possível criar a fonte.",
+    "admin.sources.modal.fieldProvider": "Fornecedor",
+    "admin.sources.modal.providerSearch": "Buscar fornecedor…",
+    "admin.sources.modal.providerAll": "Selecione um fornecedor…",
+    "admin.sources.modal.fieldPlatform": "Plataforma",
+    "admin.sources.modal.fieldUrl": "Base URL",
+    "admin.sources.modal.fieldAuth": "Autenticação",
+    "admin.sources.modal.fieldTokenBearer": "Token (Bearer)",
+    "admin.sources.modal.phTokenBearer": "Authorization: Bearer …",
+    "admin.sources.modal.fieldLocation": "Localização",
+    "admin.sources.modal.locationHeader": "Header",
+    "admin.sources.modal.locationQuery": "Query",
+    "admin.sources.modal.fieldHeaderName": "Nome do header",
+    "admin.sources.modal.fieldKeyValue": "Token / valor (o segredo)",
+    "admin.sources.modal.phKeyValue": "cole aqui o token da API",
+    "admin.sources.modal.fieldUser": "Usuário",
+    "admin.sources.modal.fieldPass": "Senha",
+    "admin.sources.modal.advanced": "Avançado (Headers / Endpoints)",
+    "admin.sources.modal.fieldHeaders": "Headers (JSON)",
+    "admin.sources.modal.fieldEndpoints": "Endpoints (JSON)",
+    "admin.sources.modal.authNone": "Nenhuma",
+    "admin.sources.modal.authBearer": "Bearer token",
+    "admin.sources.modal.authApiKey": "API key",
+    "admin.sources.modal.authBasic": "Usuário e senha",
+    "admin.sources.modal.probeTitle": "Testar (prévia) — não salva nada.",
+    "admin.sources.modal.probePh": "Query de busca…",
+    "admin.sources.modal.probeAria": "Query de teste",
+    "admin.sources.modal.probeLoading": "Testando…",
+    "admin.sources.modal.probeBtn": "Testar",
+    "admin.sources.modal.probeErrConfig": "Configuração inválida: {message}",
+    "admin.sources.modal.probeErrUpstream": "A loja não respondeu: {message}",
+    "admin.sources.modal.probeNoResults": "Sem resultados para essa query.",
   },
 };
 

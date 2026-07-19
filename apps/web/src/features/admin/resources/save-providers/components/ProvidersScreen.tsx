@@ -8,10 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProviderBadge } from "@/features/save/components/provider-badge";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
+import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
+import { format, type MessageKey } from "@/i18n/messages";
 
 import { createProvider, listProvidersEntries, setProviderLogo, updateProvider } from "../api";
 import type { ProvidersData } from "../interfaces";
 import { PROVIDER_TYPE_OPTIONS, SOURCE_PLATFORM_OPTIONS } from "../types";
+
+type T = (key: MessageKey) => string;
 
 const DEFAULT_MARKET = "DO";
 
@@ -19,29 +24,31 @@ const DEFAULT_MARKET = "DO";
 // ADMIN `listAdminProviders` (SSR `+data.ts`, DTO completo type/platform/market). El rediseño de la
 // UI para editar tipo/plataforma es P1 (§7.2); por ahora se editan name + logo. Tras cualquier
 // mutación exitosa, `useAdminList` refresca la lista client-side (reemplaza
-// `window.location.reload()`) — sin TanStack Query en web.
+// `window.location.reload()`) — sin TanStack Query en web. i18n (10.A): strings vía `useAdminI18n`,
+// locale threadeado por SSR (`AdminShellData.locale`); interpolados por-fila vía `format`.
 export function ProvidersScreen() {
-  const { providers: initialProviders } = useData<ProvidersData>();
+  const { providers: initialProviders, locale = DEFAULT_LOCALE } = useData<
+    ProvidersData & { locale?: Locale }
+  >();
+  const { t } = useAdminI18n(locale);
   const { items: providers, refresh } = useAdminList(initialProviders, () =>
     listProvidersEntries(DEFAULT_MARKET),
   );
 
   return (
     <div className="p-6">
-      <h1 className="mb-1 text-xl font-bold">Proveedores (Save)</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Alta y logo por URL pegada (MVP, sin subida de archivos).
-      </p>
+      <h1 className="mb-1 text-xl font-bold">{t("admin.providers.title")}</h1>
+      <p className="mb-6 text-sm text-muted-foreground">{t("admin.providers.subtitle")}</p>
 
-      <CreateProviderForm refresh={refresh} />
+      <CreateProviderForm refresh={refresh} t={t} />
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">Existentes</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{t("admin.providers.existing")}</h2>
       {providers.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Sin proveedores todavía.</p>
+        <p className="text-sm text-muted-foreground">{t("admin.providers.empty")}</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {providers.map((p) => (
-            <ProviderRow key={p.id} provider={p} refresh={refresh} />
+            <ProviderRow key={p.id} provider={p} refresh={refresh} t={t} locale={locale} />
           ))}
         </ul>
       )}
@@ -49,7 +56,7 @@ export function ProvidersScreen() {
   );
 }
 
-function CreateProviderForm({ refresh }: { refresh: () => Promise<void> }) {
+function CreateProviderForm({ refresh, t }: { refresh: () => Promise<void>; t: T }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<ProviderType>("supermarket");
   const [platform, setPlatform] = useState<SourcePlatform>("vtex");
@@ -71,7 +78,7 @@ function CreateProviderForm({ refresh }: { refresh: () => Promise<void> }) {
     });
     setBusy(false);
     if (res.error) {
-      setError("No se pudo crear el proveedor.");
+      setError(t("admin.providers.create.error"));
       return;
     }
     await refresh();
@@ -82,29 +89,29 @@ function CreateProviderForm({ refresh }: { refresh: () => Promise<void> }) {
       onSubmit={(e) => void onSubmit(e)}
       className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:max-w-md"
     >
-      <h2 className="text-sm font-semibold">Nuevo proveedor</h2>
+      <h2 className="text-sm font-semibold">{t("admin.providers.new")}</h2>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <label className="flex flex-col gap-1 text-sm">
-        Nombre
+        {t("admin.providers.field.name")}
         <Input value={name} onChange={(e) => setName(e.target.value)} required />
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        Mercado
+        {t("admin.providers.field.market")}
         <Input value={marketId} onChange={(e) => setMarketId(e.target.value)} required />
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        Tipo
+        {t("admin.providers.field.type")}
         <Select value={type} onValueChange={(v) => setType(v as ProviderType)}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {PROVIDER_TYPE_OPTIONS.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t}
+            {PROVIDER_TYPE_OPTIONS.map((t2) => (
+              <SelectItem key={t2} value={t2}>
+                {t2}
               </SelectItem>
             ))}
           </SelectContent>
@@ -112,7 +119,7 @@ function CreateProviderForm({ refresh }: { refresh: () => Promise<void> }) {
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        Plataforma
+        {t("admin.providers.field.platform")}
         <Select value={platform} onValueChange={(v) => setPlatform(v as SourcePlatform)}>
           <SelectTrigger>
             <SelectValue />
@@ -128,7 +135,7 @@ function CreateProviderForm({ refresh }: { refresh: () => Promise<void> }) {
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        Logo (URL, opcional)
+        {t("admin.providers.field.logo")}
         <Input
           value={logoUrl}
           onChange={(e) => setLogoUrl(e.target.value)}
@@ -137,7 +144,7 @@ function CreateProviderForm({ refresh }: { refresh: () => Promise<void> }) {
       </label>
 
       <Button type="submit" disabled={busy}>
-        Crear proveedor
+        {t("admin.providers.create.submit")}
       </Button>
     </form>
   );
@@ -146,9 +153,13 @@ function CreateProviderForm({ refresh }: { refresh: () => Promise<void> }) {
 function ProviderRow({
   provider,
   refresh,
+  t,
+  locale,
 }: {
   provider: ProviderDto;
   refresh: () => Promise<void>;
+  t: T;
+  locale: Locale;
 }) {
   const [name, setName] = useState(provider.name);
   const [logoUrl, setLogoUrl] = useState(provider.logo_url ?? "");
@@ -161,7 +172,7 @@ function ProviderRow({
     setError(null);
     const res = await updateProvider({ providerId: provider.id, name });
     setBusyName(false);
-    if (res.error) setError("No se pudo actualizar el nombre.");
+    if (res.error) setError(t("admin.providers.update.nameError"));
   };
 
   const onSaveLogo = async () => {
@@ -173,7 +184,7 @@ function ProviderRow({
     });
     setBusyLogo(false);
     if (res.error) {
-      setError("No se pudo guardar el logo.");
+      setError(t("admin.providers.update.logoError"));
       return;
     }
     await refresh();
@@ -186,15 +197,15 @@ function ProviderRow({
       {error ? <p className="w-full text-sm text-destructive">{error}</p> : null}
 
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {`Nombre de ${provider.name}`}
+        {format(locale, "admin.providers.row.name", { name: provider.name })}
         <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-40" />
       </label>
       <Button size="sm" variant="outline" disabled={busyName} onClick={() => void onSaveName()}>
-        {`Guardar nombre de ${provider.name}`}
+        {format(locale, "admin.providers.row.saveName", { name: provider.name })}
       </Button>
 
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {`Logo de ${provider.name}`}
+        {format(locale, "admin.providers.row.logo", { name: provider.name })}
         <Input
           value={logoUrl}
           onChange={(e) => setLogoUrl(e.target.value)}
@@ -203,7 +214,7 @@ function ProviderRow({
         />
       </label>
       <Button size="sm" disabled={busyLogo} onClick={() => void onSaveLogo()}>
-        {`Guardar logo de ${provider.name}`}
+        {format(locale, "admin.providers.row.saveLogo", { name: provider.name })}
       </Button>
     </li>
   );

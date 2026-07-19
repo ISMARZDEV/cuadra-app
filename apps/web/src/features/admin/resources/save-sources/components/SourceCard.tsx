@@ -1,6 +1,8 @@
 import type { SourceHealthDto } from "@cuadra/api-client";
 
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
+import type { Locale } from "@/i18n/config";
+import { format, type MessageKey } from "@/i18n/messages";
 
 import { formatLastSeen, formatRelativeAge, SOURCES_LOCALE } from "../lib/format-freshness";
 import { platformLabel } from "../types";
@@ -15,12 +17,16 @@ export function SourceCard({
   onToggleSelect,
   onEdit,
   refresh,
+  t,
+  locale,
 }: {
   source: SourceHealthDto;
   selected: boolean;
   onToggleSelect: () => void;
   onEdit: () => void;
   refresh: () => Promise<void>;
+  t: (key: MessageKey) => string;
+  locale: Locale;
 }) {
   return (
     <div
@@ -31,7 +37,9 @@ export function SourceCard({
         <SelectCheckbox
           checked={selected}
           onChange={onToggleSelect}
-          aria-label={`Seleccionar ${source.provider_name || platformLabel(source.platform)}`}
+          aria-label={format(locale, "admin.sources.row.select", {
+            name: source.provider_name || platformLabel(source.platform),
+          })}
         />
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-foreground">
@@ -39,7 +47,7 @@ export function SourceCard({
           </p>
           <p className="text-xs text-muted-foreground">{platformLabel(source.platform)}</p>
         </div>
-        <SourceActionsMenu source={source} onEdit={onEdit} refresh={refresh} />
+        <SourceActionsMenu source={source} onEdit={onEdit} refresh={refresh} t={t} locale={locale} />
       </div>
 
       <a
@@ -54,7 +62,8 @@ export function SourceCard({
       {/* Frescura: nº de productos + antigüedad (contexto del badge de salud) */}
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          <span className="tabular-nums font-medium text-foreground">{source.product_count ?? 0}</span> productos
+          <span className="tabular-nums font-medium text-foreground">{source.product_count ?? 0}</span>{" "}
+          {t("admin.sources.count.unit")}
         </span>
         <span title={formatLastSeen(source.last_seen_at, SOURCES_LOCALE)}>
           {formatRelativeAge(source.last_seen_at, SOURCES_LOCALE)}
@@ -63,7 +72,7 @@ export function SourceCard({
 
       {/* Pie: badge de salud (izq) + logo del proveedor en la esquina (der) */}
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-        <HealthBadge health={source.health} />
+        <HealthBadge health={source.health} t={t} />
         <SourceLogo source={source} size={60} />
       </div>
     </div>

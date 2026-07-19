@@ -24,6 +24,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
+import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
+import { format, type MessageKey } from "@/i18n/messages";
 
 import { listSourcesHealthEntries, pauseSourceConfig, resumeSourceConfig } from "../api";
 import type { SourcesData } from "../interfaces";
@@ -43,8 +46,13 @@ const VIEW_CHIP_OFF = "bg-[#d9d9d9] text-[#1e2129] dark:bg-white/20 dark:text-wh
 // Consola de Fuentes (rediseño fiel a la Canasta curada): contenedor `rounded-[32px]`, buscador-pill,
 // botón Acciones (pausar/reanudar en bloque) + Agregar proveedor (modal alta/edición con auth tipado),
 // tabla con headers ordenables + paginación. Sin TanStack Query — `useAdminList` refresca tras mutar.
+type T = (key: MessageKey) => string;
+
 export function SourcesScreen() {
-  const { sources: initialSources, providers } = useData<SourcesData>();
+  const { sources: initialSources, providers, locale = DEFAULT_LOCALE } = useData<
+    SourcesData & { locale?: Locale }
+  >();
+  const { t } = useAdminI18n(locale);
   const { items: sources, refresh } = useAdminList(initialSources, () => listSourcesHealthEntries());
 
   const [search, setSearch] = useState("");
@@ -119,15 +127,15 @@ export function SourcesScreen() {
 
   const emptyStateEl =
     sources.length === 0 ? (
-      <p className="px-4 py-6 text-sm text-muted-foreground">Sin fuentes todavía.</p>
+      <p className="px-4 py-6 text-sm text-muted-foreground">{t("admin.sources.empty")}</p>
     ) : total === 0 ? (
-      <p className="px-4 py-6 text-sm text-muted-foreground">Sin resultados para esa búsqueda.</p>
+      <p className="px-4 py-6 text-sm text-muted-foreground">{t("admin.sources.emptySearch")}</p>
     ) : null;
 
   const footerEl = (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
       <div className="flex items-center gap-2">
-        <span>Mostrar</span>
+        <span>{t("admin.sources.pagination.show")}</span>
         <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
           <SelectTrigger size="sm" className="w-16">
             <SelectValue />
@@ -140,11 +148,15 @@ export function SourcesScreen() {
             ))}
           </SelectContent>
         </Select>
-        <span>por página</span>
+        <span>{t("admin.sources.pagination.perPage")}</span>
       </div>
 
       <span>
-        {from}–{to} de {total}
+        {format(locale, "admin.sources.pagination.of", {
+          from: String(from),
+          to: String(to),
+          total: String(total),
+        })}
       </span>
 
       <Pagination className="mx-0 w-auto justify-end">
@@ -180,13 +192,10 @@ export function SourcesScreen() {
       <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">Fuentes (Save)</h1>
+          <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">{t("admin.sources.title")}</h1>
           <span className="text-base font-semibold text-brand-forest dark:text-brand-lime">({sources.length})</span>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Configuración de extracción por proveedor. La auth (Bearer / API key) vive cifrada en la fuente y
-          se muestra enmascarada. "Probar" es una vista previa — no guarda nada.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("admin.sources.subtitle")}</p>
 
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -197,8 +206,8 @@ export function SourcesScreen() {
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                aria-label="Buscar fuentes"
-                placeholder="Buscar por plataforma o URL…"
+                aria-label={t("admin.sources.search.aria")}
+                placeholder={t("admin.sources.search.placeholder")}
                 className="h-full flex-1 border-none bg-transparent px-0 text-sm shadow-none placeholder:text-[#4f585d]/60 focus-visible:ring-0 dark:placeholder:text-white/40"
               />
             </div>
@@ -209,7 +218,7 @@ export function SourcesScreen() {
                 type="button"
                 role="radio"
                 aria-checked={viewMode === "grid"}
-                aria-label="Ver en cards"
+                aria-label={t("admin.sources.view.grid")}
                 onClick={() => setViewMode("grid")}
                 className={cn(VIEW_CHIP_BASE, viewMode === "grid" ? VIEW_CHIP_ON : VIEW_CHIP_OFF)}
               >
@@ -219,7 +228,7 @@ export function SourcesScreen() {
                 type="button"
                 role="radio"
                 aria-checked={viewMode === "list"}
-                aria-label="Ver en lista"
+                aria-label={t("admin.sources.view.list")}
                 onClick={() => setViewMode("list")}
                 className={cn(VIEW_CHIP_BASE, viewMode === "list" ? VIEW_CHIP_ON : VIEW_CHIP_OFF)}
               >
@@ -235,17 +244,17 @@ export function SourcesScreen() {
                 className="flex h-9 items-center gap-1.5 rounded-full bg-brand-forest px-4 text-sm font-semibold text-brand-lime disabled:opacity-50"
               >
                 <ListChecks className="size-[18px]" />
-                Acciones
+                {t("admin.sources.bulk.actions")}
                 <ChevronDown className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 <DropdownMenuItem onClick={() => void onBulk("pause")}>
                   <Power />
-                  Pausar seleccionadas ({selected.size})
+                  {format(locale, "admin.sources.bulk.pause", { count: String(selected.size) })}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void onBulk("resume")}>
                   <Play />
-                  Reanudar seleccionadas ({selected.size})
+                  {format(locale, "admin.sources.bulk.resume", { count: String(selected.size) })}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -256,7 +265,7 @@ export function SourcesScreen() {
               className="inline-flex h-9 items-center gap-2 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest shadow-sm hover:bg-brand-lime/90"
             >
               <Plus className="size-4" aria-hidden="true" />
-              Agregar proveedor
+              {t("admin.sources.add")}
             </button>
           </div>
         </div>
@@ -274,6 +283,8 @@ export function SourcesScreen() {
                     onToggleSelect={() => toggleSelect(row.id)}
                     onEdit={() => setModal({ mode: "edit", source: row })}
                     refresh={refresh}
+                    t={t}
+                    locale={locale}
                   />
                 ))}
               </div>
@@ -291,19 +302,19 @@ export function SourcesScreen() {
                   <TableHead className="w-10">
                     <SelectCheckbox
                       data-testid="select-all"
-                      aria-label="Seleccionar todo"
+                      aria-label={t("admin.sources.selectAll")}
                       checked={allPageSelected}
                       disabled={pageIds.length === 0}
                       onChange={toggleSelectAll}
                     />
                   </TableHead>
-                  <SortableHeader label="Salud" state={sortStateFor("health")} onToggle={() => toggleSort("health")} />
-                  <TableHead className="w-16">Logo</TableHead>
-                  <SortableHeader label="Plataforma" state={sortStateFor("platform")} onToggle={() => toggleSort("platform")} />
-                  <SortableHeader label="Base URL" state={sortStateFor("url")} onToggle={() => toggleSort("url")} />
-                  <SortableHeader label="Productos" state={sortStateFor("count")} onToggle={() => toggleSort("count")} />
-                  <SortableHeader label="Última actualización" state={sortStateFor("last_seen")} onToggle={() => toggleSort("last_seen")} />
-                  <TableHead>Acciones</TableHead>
+                  <SortableHeader label={t("admin.sources.col.health")} state={sortStateFor("health")} onToggle={() => toggleSort("health")} />
+                  <TableHead className="w-16">{t("admin.sources.col.logo")}</TableHead>
+                  <SortableHeader label={t("admin.sources.col.platform")} state={sortStateFor("platform")} onToggle={() => toggleSort("platform")} />
+                  <SortableHeader label={t("admin.sources.col.url")} state={sortStateFor("url")} onToggle={() => toggleSort("url")} />
+                  <SortableHeader label={t("admin.sources.col.count")} state={sortStateFor("count")} onToggle={() => toggleSort("count")} />
+                  <SortableHeader label={t("admin.sources.col.lastSeen")} state={sortStateFor("last_seen")} onToggle={() => toggleSort("last_seen")} />
+                  <TableHead>{t("admin.sources.col.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -315,6 +326,8 @@ export function SourcesScreen() {
                     onToggleSelect={() => toggleSelect(row.id)}
                     onEdit={() => setModal({ mode: "edit", source: row })}
                     refresh={refresh}
+                    t={t}
+                    locale={locale}
                   />
                 ))}
               </TableBody>
@@ -326,7 +339,14 @@ export function SourcesScreen() {
       </div>
 
       {modal ? (
-        <SourceModal state={modal} providers={providers} onClose={() => setModal(null)} refresh={refresh} />
+        <SourceModal
+          state={modal}
+          providers={providers}
+          onClose={() => setModal(null)}
+          refresh={refresh}
+          t={t}
+          locale={locale}
+        />
       ) : null}
     </div>
   );

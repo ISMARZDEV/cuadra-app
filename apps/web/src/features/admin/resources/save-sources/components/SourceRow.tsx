@@ -3,6 +3,9 @@ import type { SourceHealthDto } from "@cuadra/api-client";
 import { TableCell, TableRow } from "@/components/ui-base/table";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 
+import type { Locale } from "@/i18n/config";
+import { format, type MessageKey } from "@/i18n/messages";
+
 import { formatLastSeen, formatRelativeAge, SOURCES_LOCALE } from "../lib/format-freshness";
 import { platformLabel } from "../types";
 import { HealthBadge } from "./HealthBadge";
@@ -16,12 +19,16 @@ export function SourceRow({
   onToggleSelect,
   onEdit,
   refresh,
+  t,
+  locale,
 }: {
   source: SourceHealthDto;
   selected: boolean;
   onToggleSelect: () => void;
   onEdit: () => void;
   refresh: () => Promise<void>;
+  t: (key: MessageKey) => string;
+  locale: Locale;
 }) {
   return (
     <TableRow
@@ -29,11 +36,15 @@ export function SourceRow({
       className="border-border/60 data-[state=selected]:bg-brand-lime/10"
     >
       <TableCell>
-        <SelectCheckbox checked={selected} onChange={onToggleSelect} aria-label={`Seleccionar ${source.platform}`} />
+        <SelectCheckbox
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={format(locale, "admin.sources.row.select", { name: source.platform })}
+        />
       </TableCell>
 
       <TableCell>
-        <HealthBadge health={source.health} />
+        <HealthBadge health={source.health} t={t} />
       </TableCell>
 
       <TableCell>
@@ -65,7 +76,7 @@ export function SourceRow({
       </TableCell>
 
       <TableCell>
-        <SourceActionsMenu source={source} onEdit={onEdit} refresh={refresh} />
+        <SourceActionsMenu source={source} onEdit={onEdit} refresh={refresh} t={t} locale={locale} />
       </TableCell>
     </TableRow>
   );
