@@ -1,7 +1,25 @@
 import { getMe } from "@cuadra/api-client";
 
 import { ADMIN_RESOURCES } from "@/features/admin/shell/admin-resource";
+import { isLocale, type Locale } from "@/i18n/config";
 import { apiClient } from "@/lib/api";
+
+const ADMIN_LOCALE_COOKIE = "admin_locale";
+
+/** Locale elegido en el switcher del admin (cookie SSR-readable), o null. El `+data.ts` del admin lo
+ * prioriza sobre `MeResponse.locale` → el switcher es admin-scoped (no cambia la cuenta global). */
+export function extractAdminLocale(
+  headers: Record<string, string> | null | undefined,
+): Locale | null {
+  const cookieHeader = headers?.cookie;
+  if (!cookieHeader) return null;
+  const match = cookieHeader
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${ADMIN_LOCALE_COOKIE}=`));
+  const value = match ? decodeURIComponent(match.slice(ADMIN_LOCALE_COOKIE.length + 1)) : undefined;
+  return isLocale(value) ? value : null;
+}
 
 // Gate SERVER-SIDE de `/admin/*` (SAGRADO, cuadra-clerk/cuadra-web): nunca confiar en un check de
 // solo-cliente. No reinventa verificación de JWT — delega en `/identity/me`, que YA resuelve rol +

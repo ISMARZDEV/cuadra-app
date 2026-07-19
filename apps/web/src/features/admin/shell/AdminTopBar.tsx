@@ -5,6 +5,7 @@ import type { Locale } from "@/i18n/config";
 import type { MessageKey } from "@/i18n/messages";
 
 import { initialsFromName } from "./initials";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useAdminI18n } from "./useAdminI18n";
 
 export interface AdminTopBarProps {
@@ -31,6 +32,7 @@ export function AdminTopBar({ name, locale }: AdminTopBarProps) {
         <Bell className="size-5" />
         <span className="absolute top-2 right-2 size-2 rounded-full bg-red-500" aria-hidden="true" />
       </button>
+      <LanguageSwitcher locale={locale} t={t} />
       <button
         type="button"
         aria-label={t("admin.topbar.settings" as MessageKey)}
