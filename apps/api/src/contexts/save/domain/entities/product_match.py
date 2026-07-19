@@ -25,6 +25,11 @@ class ProductMatch:
     confidence: float
     method: MatchMethod
     status: MatchStatus
+    # Corrida que produjo este match (F4 #4.5). `None` es legítimo, no un dato faltante: las filas
+    # anteriores a F4 no la tienen, y un match creado a mano desde el admin no nace de una corrida.
+    # Es lo que hace posible el deep-link corrida→cola y contar los canónicos nacidos de una
+    # corrida; unir por ventana de tiempo se descartó porque dos corridas solapadas se contaminan.
+    run_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.store_product_id.strip():

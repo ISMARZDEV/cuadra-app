@@ -110,6 +110,35 @@ def test_super_admin_gets_200_on_review_queue_routes(db_session) -> None:  # typ
         _clear()
 
 
+def test_review_queue_run_id_query_filters_end_to_end(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Deep-link corrida→cola (F4 #4.7) cableado de punta a punta: el query param `?run_id=` del
+    endpoint acota la cola a los matches de UNA corrida. Prueba el WIRING controller→use-case→repo,
+    no solo la unidad (el filtro existía en el repo; que el endpoint lo pase es lo que valida el
+    deep-link de la consola)."""
+    admin_id = _seed_role_user(db_session, "super_admin")
+    pid, _cid = _seed_provider_and_canonical(db_session)
+    repo = SqlProductMatchRepository(db_session)
+    m_run_a = repo.record_match(
+        store_product_id=_seed_store_product(db_session, pid), canonical_product_id=None,
+        confidence=0.4, method="llm", status="pending_review", run_id="run-aaa",
+    )
+    m_run_b = repo.record_match(
+        store_product_id=_seed_store_product(db_session, pid), canonical_product_id=None,
+        confidence=0.4, method="llm", status="pending_review", run_id="run-bbb",
+    )
+    client = _client(db_session, admin_id)
+    try:
+        res = client.get(
+            "/v1/admin/save/review-queue", params={"market": "DO", "run_id": "run-aaa"}
+        )
+        assert res.status_code == 200, res.text
+        ids = [row["match_id"] for row in res.json()["rows"]]
+        assert m_run_a in ids
+        assert m_run_b not in ids
+    finally:
+        _clear()
+
+
 def test_super_admin_gets_200_on_resolve(db_session) -> None:  # type: ignore[no-untyped-def]
     admin_id = _seed_role_user(db_session, "super_admin")
     match_id = _seed_pending_match(db_session)

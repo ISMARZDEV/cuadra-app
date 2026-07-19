@@ -8,9 +8,15 @@ Recorre una `CatalogSource` (adapter por plataforma). Para un store_product ya c
 - con `matcher` (cascada F2.0 activa, `SAVE_MATCHING_CASCADE_ENABLED=true`): materializa el
   store_product (record_observation con canonical=None) para obtener su id y lo pasa a
   `MatchStoreProduct.execute` — la cascada decide el enlace (o lo manda a revisión). Se cuenta
-  como `matched`.
+  como `matched`, y su DESENLACE (`auto_linked` / `queued_for_review`) se lee del
+  `ProductMatch.status` que devuelve la cascada.
 
 El SCD-4 change-only y la escritura del FK canónico viven en la infra/cascada, no aquí.
+
+Lo que este use-case NO puede reportar: los canónicos nuevos. Nada en la corrida los crea —
+`CreateCanonicalAndLink` solo se invoca desde el admin (un humano resolviendo la cola) o desde
+`seeds/bootstrap_canonicals`. "Canónicos de esta corrida" es, por definición, una pregunta que se
+responde DESPUÉS y por join contra lo que la corrida encoló; vive en la proyección de runs, no acá.
 """
 from __future__ import annotations
 
@@ -42,6 +48,14 @@ class RefreshResult:
     unmatched: int   # desconocidas SIN matcher → descartadas (legacy F1)
     matched: int = 0  # desconocidas enrutadas a la cascada F2.0 (matcher activo)
     discarded: int = 0  # desconocidas DESCARTADAS por el relevance gate (R2, fuera de scope)
+    # Desenlace de la cascada (F4 #4.3). `matched` sola ENGAÑA a un operador de Descubrimiento:
+    # cuenta lo enrutado e incluye a los encolados, así que una corrida que no enlazó NADA y dejó
+    # 40 productos de trabajo humano se ve igual que una que enlazó los 40. Estos dos contadores
+    # salen del `ProductMatch.status` que la cascada YA devolvía y que este use-case descartaba.
+    # Invariante: auto_linked + queued_for_review <= matched (el resto son `rejected`, raro pero
+    # posible; ver el test dedicado).
+    auto_linked: int = 0        # la cascada enlazó sola (ean/trgm/vector/hybrid/llm)
+    queued_for_review: int = 0  # quedó pendiente de decisión humana en la cola
 
 
 class RefreshCatalogPrices:
@@ -77,9 +91,19 @@ class RefreshCatalogPrices:
             entry.market_id,
         )
 
-    def execute(self, source: CatalogSource, captured_at: datetime | None = None) -> RefreshResult:
+    def execute(
+        self,
+        source: CatalogSource,
+        captured_at: datetime | None = None,
+        run_id: str | None = None,
+    ) -> RefreshResult:
+        """`run_id` = la corrida del orquestador que ejecuta este refresh (F4 #4.5). Se estampa en
+        cada `product_match` que produzca la cascada, y es lo que después permite filtrar la cola
+        por corrida y atribuirle los canónicos que salgan de ella. `None` cuando se corre fuera del
+        orquestador (p.ej. el CLI `make save-refresh`): no hay corrida a la que atribuir."""
         ts = captured_at or datetime.now(timezone.utc)
         seen = refreshed = unmatched = matched = discarded = 0
+        auto_linked = queued_for_review = 0
         for entry in source.fetch():
             seen += 1
             if not self._store_repo.exists(entry.provider_id, entry.external_id):
@@ -119,7 +143,7 @@ class RefreshCatalogPrices:
                     source_category=" > ".join(entry.category_path) or None,
                     source_ref=entry.source_ref,
                 )
-                self._matcher.execute(
+                outcome = self._matcher.execute(
                     IncomingStoreProduct(
                         store_product_id=store_product_id,
                         market_id=entry.market_id,
@@ -128,10 +152,17 @@ class RefreshCatalogPrices:
                         size=entry.size_text,
                         ean=entry.ean,
                         source_category=" > ".join(entry.category_path),  # Etapa C: señal de categoría
+                        run_id=run_id,
                     )
                 )
                 self._classify(store_product_id, entry)  # clasifica el nuevo store_product
                 matched += 1
+                # El desenlace se lee del status, NO se infiere de `canonical_product_id`: un
+                # `pending_review` puede traer un candidato sugerido sin que eso sea un enlace.
+                if outcome.status == "auto_linked":
+                    auto_linked += 1
+                elif outcome.status == "pending_review":
+                    queued_for_review += 1
                 continue
             store_product_id = self._store_repo.record_observation(
                 provider_id=entry.provider_id,
@@ -153,5 +184,11 @@ class RefreshCatalogPrices:
             self._classify(store_product_id, entry)  # clasifica (idempotente) el conocido si falta
             refreshed += 1
         return RefreshResult(
-            seen=seen, refreshed=refreshed, unmatched=unmatched, matched=matched, discarded=discarded
+            seen=seen,
+            refreshed=refreshed,
+            unmatched=unmatched,
+            matched=matched,
+            discarded=discarded,
+            auto_linked=auto_linked,
+            queued_for_review=queued_for_review,
         )

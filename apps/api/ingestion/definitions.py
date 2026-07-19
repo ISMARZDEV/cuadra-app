@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dagster as dg
 
+from ingestion.save.policy_sensor import save_orchestration_policies
 from ingestion.save.assets import (
     alert_matching,
     coverage,
@@ -60,6 +61,17 @@ save_price_refresh_job = dg.define_asset_job(
     selection=dg.AssetSelection.assets("price_refresh"),  # re-precio por id de TODO lo conocido
 )
 
+# ── Por qué estos TRES schedules siguen en código (F4 #4.2b) ──────────────────────────────────
+# El sensor `save_orchestration_policies` mueve la programación a la DB para los PROVIDER-FLOWS, y
+# ahí el cron del admin manda de verdad. Estos tres NO son provider-flows: son assets GLOBALES
+# (coverage / freshness / price_refresh), y la consola de la Fase 4 solo gestiona provider-flows.
+#
+# Moverlos ahora a la DB los dejaría en una tabla que NINGUNA pantalla expone: hoy su cadencia al
+# menos se lee acá; después sería una fila invisible que nadie puede cambiar sin SQL. Sería un
+# retroceso operativo disfrazado de limpieza.
+#
+# Se retiran cuando la consola sepa gestionar policies de scope=asset — ahí sí el sensor los
+# REEMPLAZA, y dejar las dos vías vivas sería la duplicación que §5.1 prohíbe.
 save_coverage_daily = dg.ScheduleDefinition(
     name="save_coverage_daily",
     job=save_coverage_job,
@@ -109,5 +121,8 @@ defs = dg.Definitions(
     ],
     sensors=[
         sync_rest_catalog_sections, sync_query_catalog_providers, save_automation_sensor,
+        # F4 #4.2b: dispara las policies programadas DESDE EL ADMIN. Los tres
+        # `ScheduleDefinition` de abajo SOBREVIVEN a propósito — ver la nota junto a ellos.
+        save_orchestration_policies,
     ],
 )

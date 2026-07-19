@@ -10,6 +10,7 @@ from src.contexts.save.application.refresh_prices import RefreshCatalogPrices
 from src.contexts.save.domain.entities import PriceType
 from src.contexts.save.domain.ports import RawCatalogEntry
 from src.shared.money import Currency, Money
+from src.contexts.save.domain.entities.product_match import ProductMatch
 
 DOP = Currency("DOP")
 
@@ -43,8 +44,18 @@ class _FakeSource:
 
 
 class _FakeMatcher:
-    def execute(self, incoming) -> None:  # type: ignore[no-untyped-def]
-        pass
+    def execute(self, incoming):  # type: ignore[no-untyped-def]
+        _ = incoming
+        # Devuelve un ProductMatch REAL: el `MatchStoreProduct` de verdad SIEMPRE lo hace, y #4.3
+        # lee su `status` para contar el desenlace. Un fake que devuelve None no honra el contrato
+        # del port — pasa el test y rompe en producción.
+        return ProductMatch(
+            store_product_id=incoming.store_product_id,
+            canonical_product_id="canon-1",
+            confidence=1.0,
+            method="ean",
+            status="auto_linked",
+        )
 
 
 class _FakeClassifier:

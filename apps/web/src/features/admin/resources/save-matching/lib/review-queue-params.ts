@@ -39,6 +39,7 @@ export function parseReviewQueueParams(search: Search): ReviewQueueParams {
     method: search.method || undefined,
     confidence_min: parseConfidence(search.confidence_min),
     confidence_max: parseConfidence(search.confidence_max),
+    run_id: search.run_id || undefined,
     order_by: orderBy,
     limit: search.limit ? Number(search.limit) : DEFAULT_LIMIT,
     offset: search.offset ? Number(search.offset) : DEFAULT_OFFSET,
@@ -58,6 +59,7 @@ export function serializeReviewQueueParams(params: ReviewQueueParams): URLSearch
   if (params.confidence_max !== undefined) {
     qs.set("confidence_max", String(params.confidence_max));
   }
+  if (params.run_id) qs.set("run_id", params.run_id);
   if (params.order_by && params.order_by !== DEFAULT_ORDER_BY) qs.set("order_by", params.order_by);
   if (params.limit && params.limit !== DEFAULT_LIMIT) qs.set("limit", String(params.limit));
   if (params.offset) qs.set("offset", String(params.offset));

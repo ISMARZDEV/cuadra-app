@@ -31,6 +31,7 @@ _ROLE_CAPABILITIES = {
     R.SUPER_ADMIN: [
         C.ADMIN_NEWS_PUBLISH, C.ADMIN_DB, C.NEWS_READ, C.CHAT,
         C.ADMIN_SAVE_MATCHING_REVIEW, C.ADMIN_SAVE_INGESTION_OPS,  # F2·B1: consola admin de Save
+        C.ADMIN_SAVE_ORCHESTRATION_OPS,  # F4: consola de Orquestación (capability propia)
     ],
 }
 

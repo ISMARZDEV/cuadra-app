@@ -13,6 +13,7 @@ from src.contexts.save.application.refresh_prices import RefreshCatalogPrices, R
 from src.contexts.save.domain.entities import PriceType
 from src.contexts.save.domain.ports import RawCatalogEntry
 from src.shared.money import Currency, Money
+from src.contexts.save.domain.entities.product_match import ProductMatch
 
 DOP = Currency("DOP")
 
@@ -98,8 +99,18 @@ class FakeMatcher:
     def __init__(self) -> None:
         self.calls: list = []
 
-    def execute(self, incoming) -> None:  # type: ignore[no-untyped-def]
+    def execute(self, incoming):  # type: ignore[no-untyped-def]
         self.calls.append(incoming)
+        # Devuelve un ProductMatch REAL: el `MatchStoreProduct` de verdad SIEMPRE lo hace, y #4.3
+        # lee su `status` para contar el desenlace. Un fake que devuelve None no honra el contrato
+        # del port — pasa el test y rompe en producción.
+        return ProductMatch(
+            store_product_id=incoming.store_product_id,
+            canonical_product_id="canon-1",
+            confidence=1.0,
+            method="ean",
+            status="auto_linked",
+        )
 
 
 def test_create_branch_persists_source_ref_regression() -> None:
@@ -112,6 +123,8 @@ def test_create_branch_persists_source_ref_regression() -> None:
 
     result = RefreshCatalogPrices(repo, matcher=FakeMatcher()).execute(source)
 
-    assert result == RefreshResult(seen=1, refreshed=0, unmatched=0, matched=1)
+    assert result == RefreshResult(
+        seen=1, refreshed=0, unmatched=0, matched=1, auto_linked=1
+    )
     assert len(repo.observations) == 1
     assert repo.observations[0]["source_ref"] == {"id_articulo": "29866"}

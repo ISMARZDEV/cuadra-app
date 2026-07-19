@@ -1,10 +1,17 @@
 """Assets de Dagster para el catálogo de Save (asset-centric → lineage por fuente, doc 06 §3).
 
-Un asset por fuente (`sirena_prices`/`nacional_prices`/`jumbo_prices`) que corre el refresh
-change-only sobre la canasta curada, y un asset `price_drops` aguas abajo (deps de las tres)
-que corre la detección G4. Los assets son PIEL fina sobre lógica ya testeada (`build_sources`,
-`refresh_source`, `ListPriceDrops`); su forma de grafo se valida en tests/ingestion, la
-materialización real es manual (`dagster dev`). La sesión se abre/commitea por materialización.
+UN asset PARTICIONADO por proveedor (`query_catalog_prices`) que corre el refresh change-only sobre
+la canasta curada, y un asset `price_drops` aguas abajo que corre la detección G4. El set de
+proveedores se DERIVA de `store_registry` y el sensor `sync_query_catalog_providers` mantiene las
+particiones al día (R1) — agregar un súper es una FILA, no un deploy.
+
+(Corregido 2026-07-19: este docstring describía `sirena_prices`/`nacional_prices`/`jumbo_prices` y
+`build_sources`, que R1 eliminó. Nombrar assets muertos manda a quien lee a buscar código que no
+existe.)
+
+Los assets son PIEL fina sobre lógica ya testeada (`composition.py`, `refresh_source`,
+`ListPriceDrops`); su forma de grafo se valida en tests/ingestion. La sesión se abre/commitea por
+materialización.
 """
 from __future__ import annotations
 
@@ -13,6 +20,10 @@ import dagster as dg
 from src.contexts.save.application.alerts import RunAlertMatching
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.domain.entities.orchestration_run import RunMetrics
+from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
+    SqlRunSnapshotRepository,
+)
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlStoreProductRepository,
@@ -146,11 +157,35 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             # Un adapter POR TÉRMINO de canasta contra la MISMA tienda (hoy 213) → sin pausa es un
             # martilleo. El browse REST (abajo) no la necesita acá: trae la suya del factory.
             pace=build_pace(),
+            # F4 #4.5: la corrida se estampa en cada product_match que produzca la cascada. Es lo
+            # que después permite filtrar la cola por corrida (`?run_id=`) y atribuirle los
+            # canónicos que un humano cree resolviéndola.
+            run_id=context.run_id,
+        )
+        # Métricas de ESTA corrida en NUESTRA DB (F4 #4.5). No se delega al event log de Dagster:
+        # es purgable y su API está declarada inestable, y §5.3 dice que el histórico de runs es
+        # append-only y sagrado. Va en la MISMA sesión que la ingesta: si el refresh se revierte,
+        # sus métricas no quedan huérfanas.
+        SqlRunSnapshotRepository(session).record(
+            dagster_run_id=context.run_id,
+            market_id=SAVE_MARKET,
+            metrics=RunMetrics(
+                seen=result.seen,
+                refreshed=result.refreshed,
+                unmatched=result.unmatched,
+                matched=result.matched,
+                discarded=result.discarded,
+                auto_linked=result.auto_linked,
+                queued_for_review=result.queued_for_review,
+            ),
+            provider_id=provider_id,
+            flow_key="provider_prices_refresh",
         )
         session.commit()
     context.log.info(
         f"query_catalog_prices[{provider_id}]: LISTO seen={result.seen} refreshed={result.refreshed} "
-        f"unmatched={result.unmatched} matched={result.matched}"
+        f"unmatched={result.unmatched} matched={result.matched} "
+        f"auto_linked={result.auto_linked} a_la_cola={result.queued_for_review}"
     )
     return dg.MaterializeResult(
         metadata={
@@ -158,6 +193,10 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             "refreshed": result.refreshed,
             "unmatched": result.unmatched,
             "matched": result.matched,
+            # El DESENLACE de la cascada (#4.3). `matched` incluye a los encolados, así que sola
+            # engaña: una corrida que dejó 40 de trabajo humano se veía igual que una que enlazó 40.
+            "auto_linked": result.auto_linked,
+            "queued_for_review": result.queued_for_review,
         }
     )
 

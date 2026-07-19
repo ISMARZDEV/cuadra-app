@@ -213,6 +213,7 @@ class CanonicalProductModel(Base):
     __tablename__ = "canonical_product"
     __table_args__ = (
         Index("ix_canonical_product_market", "market_id"),
+        Index("ix_canonical_product_origin_run", "origin_run_id"),
         UniqueConstraint("market_id", "slug", name="uq_canonical_product_market_slug"),
         {"schema": _SCHEMA},
     )
@@ -221,6 +222,11 @@ class CanonicalProductModel(Base):
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
     slug: Mapped[str] = mapped_column(Text, nullable=False)  # llave PÚBLICA URL-safe (SEO)
+    # Corrida de cuyo descubrimiento nació este canónico (F4 #4.5). La escribe
+    # `CreateCanonicalAndLink` desde el match que el humano resolvió. Es lo que hace contable
+    # `new_canonicals_count` sin ventanas de tiempo: `count(WHERE origin_run_id = X)`.
+    # NULL = anterior a F4, del bootstrap, o creado sin venir de una corrida.
+    origin_run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     brand_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("save.brand.id")
@@ -394,6 +400,9 @@ class ProductMatchModel(Base):
     __tablename__ = "product_match"
     __table_args__ = (
         UniqueConstraint("store_product_id", name="uq_product_match_store_product"),
+        # Deep-link corrida→cola: `/admin/review-queue?run_id=` filtra por (corrida, estado).
+        # Compuesto porque la consulta SIEMPRE lleva las dos: "lo que ESTA corrida dejó pendiente".
+        Index("ix_product_match_run_status", "run_id", "status"),
         {"schema": _SCHEMA},
     )
 
@@ -409,6 +418,10 @@ class ProductMatchModel(Base):
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
     method: Mapped[str] = mapped_column(Text, nullable=False)  # ean|trgm|vector|hybrid|llm|human
     status: Mapped[str] = mapped_column(Text, nullable=False)  # auto_linked|pending_review|rejected
+    # Corrida que produjo este match (F4 #4.5). Habilita el deep-link corrida→cola (`?run_id=`) y
+    # atribuir canónicos a la corrida que los descubrió. NULL = anterior a F4, o creado a mano.
+    # TEXT y no FK: el id lo emite el runner (Dagster), que es un sistema externo.
+    run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -531,4 +544,140 @@ class AdminAuditLogModel(Base):
     market_id: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class OrchestrationGlobalConfigModel(Base):
+    """Defaults operativos por mercado (F4). Una fila por `market_id`; el override por policy gana."""
+
+    __tablename__ = "orchestration_global_config"
+    __table_args__ = (
+        UniqueConstraint("market_id", name="uq_orchestration_config_market"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    default_query_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    default_timezone: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="America/Santo_Domingo"
+    )
+    default_sla_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    auto_runs_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class OrchestrationPolicyModel(Base):
+    """Política operativa por provider-flow (o por asset). El admin es su fuente de verdad; Dagster
+    sigue siendo el runner.
+
+    `execution_mode` distingue quién dispara: `manual` (solo Ejecutar ahora), `automatic_chain` (lo
+    arrastra una AutomationCondition) o `cron` (por reloj). El invariante "solo `cron` lleva
+    cron_expression" lo impone la ENTIDAD (`domain/entities/orchestration.py`), no un CHECK: es una
+    regla de negocio con mensaje de error propio, y el dominio es puro.
+
+    Soft-delete con `deleted_at` — NUNCA hard-delete (§5.3): retirar una policy no puede romper el
+    histórico de runs, que es append-only y sagrado. El índice único es PARCIAL (`deleted_at IS
+    NULL`) para que una policy retirada no bloquee crear su reemplazo.
+    """
+
+    __tablename__ = "orchestration_policy"
+    __table_args__ = (
+        Index(
+            "uq_orchestration_policy_active",
+            "scope",
+            "provider_id",
+            "market_id",
+            "flow_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index("ix_orchestration_policy_market", "market_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.provider.id", ondelete="CASCADE"), nullable=True
+    )
+    flow_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    asset_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    execution_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual")
+    cron_expression: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timezone: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="America/Santo_Domingo"
+    )
+    sla_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    query_limit_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class OrchestrationRunSnapshotModel(Base):
+    """Métricas de UNA corrida, medidas por nuestra ingesta (F4 #4.5).
+
+    Qué NO tiene, a propósito:
+    - **estado**: esta fila la escribe la corrida DESDE ADENTRO, así que un estado guardado sería
+      siempre "en curso" — una columna garantizada a estar mal. El estado lo da el bridge en vivo.
+    - **new_canonicals**: se DERIVA por `canonical_product.origin_run_id`. El trabajo humano sobre
+      la cola de esta corrida sigue ocurriendo días después; un número congelado al terminar diría
+      siempre cero.
+
+    `dagster_run_id` es TEXT y no FK: lo emite el runner, que es un sistema externo. Único, porque
+    un reintento de la misma corrida debe ACTUALIZAR — dos filas mostrarían la corrida duplicada y
+    los totales sumados dos veces.
+    """
+
+    __tablename__ = "orchestration_run_snapshot"
+    __table_args__ = (
+        UniqueConstraint("dagster_run_id", name="uq_run_snapshot_dagster_run"),
+        Index("ix_run_snapshot_policy", "policy_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    dagster_run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.orchestration_policy.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.provider.id", ondelete="SET NULL"), nullable=True
+    )
+    flow_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seen: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    refreshed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    unmatched: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    matched: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    discarded: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    auto_linked: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    queued_for_review: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

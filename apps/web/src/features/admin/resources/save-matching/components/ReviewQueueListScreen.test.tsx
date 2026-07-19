@@ -80,6 +80,33 @@ describe("ReviewQueueListScreen", () => {
     expect(badges[2]).toHaveTextContent("20%");
   });
 
+  it("declares which run it is filtering when run_id is present (deep-link corrida→cola, F4 #4.7)", () => {
+    mockData = {
+      rows: [row({ match_id: "m1" })],
+      total: 1,
+      params: { market: "DO", run_id: "dagster-run-xyz", order_by: "uncertainty", limit: 50, offset: 0 },
+    };
+
+    render(<ReviewQueueListScreen />);
+
+    const banner = screen.getByTestId("run-filter-banner");
+    expect(banner).toHaveTextContent("dagster-run-xyz");
+    // Y ofrece salir del filtro (volver a la cola completa).
+    expect(screen.getByTestId("run-filter-clear")).toBeInTheDocument();
+  });
+
+  it("shows no run-filter banner when run_id is absent", () => {
+    mockData = {
+      rows: [row({ match_id: "m1" })],
+      total: 1,
+      params: { market: "DO", order_by: "uncertainty", limit: 50, offset: 0 },
+    };
+
+    render(<ReviewQueueListScreen />);
+
+    expect(screen.queryByTestId("run-filter-banner")).not.toBeInTheDocument();
+  });
+
   it("links each row to its detail page", () => {
     mockData = {
       rows: [row({ match_id: "m-abc" })],

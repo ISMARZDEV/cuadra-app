@@ -64,7 +64,19 @@ from src.contexts.save.application.store_registry import (
 )
 from src.contexts.save.application.preview_basket_query import PreviewBasketQuery
 from src.contexts.save.application.test_source import TestSource
+from src.contexts.save.domain.ports.orchestrator import PipelineOrchestrator
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.application.orchestration_policies import CreateProviderFlow
+from src.contexts.save.infrastructure.catalog_sources.factory import directed_capability
+from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
+    DagsterGraphQLOrchestrator,
+)
+from src.contexts.save.infrastructure.orchestrator.policy_repository import (
+    SqlOrchestrationPolicyRepository,
+)
+from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
+    SqlRunSnapshotRepository,
+)
 from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
     SqlProductMatchRepository,
 )
@@ -357,6 +369,45 @@ def get_admin_audit_repo(session: Session = Depends(get_session)) -> SqlAdminAud
     return SqlAdminAuditRepository(session)
 
 
+def get_pipeline_orchestrator() -> PipelineOrchestrator:
+    """Adapter del runner (F4). NO toma `session`: el runner es un sistema externo, no tiene nada
+    que ver con la Unit of Work del request.
+
+    Se construye SIEMPRE, incluso con la URL vacía: en ese caso el adapter levanta
+    `OrchestratorUnavailable` en cada llamada y la consola degrada a `disconnected` — que es
+    exactamente el comportamiento que pide el SDD §8. Devolver `None` obligaría a cada consumidor a
+    chequear nulos y a inventar su propia degradación.
+    """
+    return DagsterGraphQLOrchestrator(url=settings.save_dagster_graphql_url)
+
+
+def get_provider_repo(session: Session = Depends(get_session)) -> SqlProviderRepository:
+    """Lectura de providers para la consola de Orquestación: la tabla necesita el NOMBRE, no solo
+    el id — con tres filas que dicen `provider_prices_refresh` el operador no sabe cuál es cuál."""
+    return SqlProviderRepository(session)
+
+
+def get_orchestration_policy_repo(
+    session: Session = Depends(get_session),
+) -> SqlOrchestrationPolicyRepository:
+    return SqlOrchestrationPolicyRepository(session)
+
+
+def get_run_snapshot_repo(session: Session = Depends(get_session)) -> SqlRunSnapshotRepository:
+    return SqlRunSnapshotRepository(session)
+
+
+def get_create_provider_flow(session: Session = Depends(get_session)) -> CreateProviderFlow:
+    """`capability_of` se INYECTA porque solo la capa que conoce los profiles REST puede responder
+    por una fuente concreta — y porque la compatibilidad del flow se DERIVA de ahí, nunca de una
+    allowlist de plataformas (corrección del SDD; ver el use-case)."""
+    return CreateProviderFlow(
+        policy_repo=SqlOrchestrationPolicyRepository(session),
+        registry_repo=SqlStoreRegistryRepository(session),
+        capability_of=lambda source: directed_capability(source.platform, source.endpoints),
+    )
+
+
 def get_create_provider(session: Session = Depends(get_session)) -> CreateProvider:
     return CreateProvider(SqlProviderRepository(session))
 
@@ -527,6 +578,10 @@ def get_create_canonical_and_link(
     return CreateCanonicalAndLink(
         canonical_repo=SqlCanonicalProductRepository(session),
         resolver=ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session)),
+        # F4 #4.5: para atribuir el canónico nuevo a la corrida que encoló el match que el humano
+        # está resolviendo. Sin esto la creación funciona igual, pero `new_canonicals_count`
+        # contaría siempre cero.
+        match_repo=SqlProductMatchRepository(session),
     )
 
 

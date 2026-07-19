@@ -22,13 +22,15 @@ from .test_product_match_repository import _seed_provider_and_canonical, _seed_s
 
 
 def _seed_pending_match(
-    db_session, provider_id: str, confidence: float, method: str = "human"
+    db_session, provider_id: str, confidence: float, method: str = "human",
+    run_id: str | None = None,
 ) -> tuple[str, str]:  # type: ignore[no-untyped-def]
     sp_id = _seed_store_product(db_session, provider_id)
     repo = SqlProductMatchRepository(db_session)
     match_id = repo.record_match(
         store_product_id=sp_id, canonical_product_id=None,
         confidence=confidence, method=method, status="pending_review",
+        run_id=run_id,
     )
     return sp_id, match_id
 
@@ -124,6 +126,43 @@ def test_filters_by_confidence_range(db_session) -> None:  # type: ignore[no-unt
     assert total == 2
     assert [r.match_id for r in rows] == [m_mid, m_high]
     assert m_low not in [r.match_id for r in rows]
+
+
+def test_filters_by_run_id(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Deep-link corrida→cola (F4 #4.7): `run_id` filtra los `product_match` de UNA corrida.
+    Es lo que hace que el número 'a la cola' de una fila de la consola de Orquestación enlace a
+    EXACTAMENTE esas filas — el conteo clicado iguala la cola filtrada (usa el índice compuesto
+    `ix_product_match_run_status (run_id, status)`)."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, _cid = _seed_provider_and_canonical(db_session, market_id=market)
+    _sp_a, m_run_a = _seed_pending_match(db_session, pid, confidence=0.4, run_id="run-aaa")
+    _sp_b, m_run_b = _seed_pending_match(db_session, pid, confidence=0.4, run_id="run-bbb")
+    _sp_none, m_no_run = _seed_pending_match(db_session, pid, confidence=0.4, run_id=None)
+
+    use_case = ListReviewQueue(SqlProductMatchRepository(db_session))
+    rows, total = use_case.execute(market, run_id="run-aaa", limit=50, offset=0)
+
+    assert total == 1
+    assert [r.match_id for r in rows] == [m_run_a]
+    assert m_run_b not in [r.match_id for r in rows]
+    assert m_no_run not in [r.match_id for r in rows]
+
+
+def test_run_id_filter_composes_with_other_filters(db_session) -> None:  # type: ignore[no-untyped-def]
+    """El filtro por corrida se COMPONE con los existentes (method/confidence): una corrida grande
+    sigue siendo acotable por método sin perder el `run_id`."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid, _cid = _seed_provider_and_canonical(db_session, market_id=market)
+    _sp1, m_llm = _seed_pending_match(db_session, pid, confidence=0.4, method="llm", run_id="run-x")
+    _sp2, _m_human = _seed_pending_match(
+        db_session, pid, confidence=0.4, method="human", run_id="run-x"
+    )
+
+    use_case = ListReviewQueue(SqlProductMatchRepository(db_session))
+    rows, total = use_case.execute(market, run_id="run-x", method="llm", limit=50, offset=0)
+
+    assert total == 1
+    assert [r.match_id for r in rows] == [m_llm]
 
 
 def test_pagination_respects_limit_offset_and_reports_total(db_session) -> None:  # type: ignore[no-untyped-def]

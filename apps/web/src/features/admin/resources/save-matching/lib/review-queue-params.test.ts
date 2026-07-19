@@ -12,6 +12,7 @@ describe("review-queue-params", () => {
       method: "llm",
       confidence_min: "0.55",
       confidence_max: "0.84",
+      run_id: "run-aaa",
       order_by: "created_at",
       limit: "25",
       offset: "50",
@@ -21,6 +22,14 @@ describe("review-queue-params", () => {
     const roundTripped = parseReviewQueueParams(Object.fromEntries(qs.entries()));
 
     expect(roundTripped).toEqual(params);
+  });
+
+  it("carries run_id (deep-link corrida→cola, F4 #4.7) through parse↔serialize", () => {
+    const params = parseReviewQueueParams({ run_id: "dagster-run-123" });
+    expect(params.run_id).toBe("dagster-run-123");
+
+    const qs = serializeReviewQueueParams(params);
+    expect(qs.get("run_id")).toBe("dagster-run-123");
   });
 
   it("defaults to uncertainty order + DO market + omits defaults from the URL (clean shareable link)", () => {

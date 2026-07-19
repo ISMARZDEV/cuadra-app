@@ -30,6 +30,11 @@ class CanonicalProduct:
     display_size: str | None = None  # tamaño ORIGINAL de empaque ("10 LB"), no el normalizado
     image_url: str | None = None
     slug: str | None = None          # llave PÚBLICA URL-safe (SEO); la asigna la infra al persistir
+    # Corrida de cuyo descubrimiento nació este canónico (F4 #4.5). La estampa
+    # `CreateCanonicalAndLink` desde el match que el humano resolvió — la corrida NO crea canónicos,
+    # los crea una persona, y este es el hilo que une las dos cosas. `None` = no vino de una corrida
+    # (bootstrap, alta manual, o anterior a F4); inventarle una lo contaría en un total ajeno.
+    origin_run_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip():

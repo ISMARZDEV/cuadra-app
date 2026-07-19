@@ -21,6 +21,14 @@ dependencies = [
     "langchain-anthropic>=0.2",
     "langchain-openai>=0.2",
     "lingua-language-detector>=2.2.0",
+    # Cron de la Orquestación (F4). Va en las deps del PROYECTO, no en `ingestion`, porque la
+    # evalúan los DOS lados: la API calcula `next_run_at` para la consola y el sensor de Dagster
+    # decide qué disparar. Si cada lado usara una librería distinta, la UI mostraría una próxima
+    # corrida que no coincide con el disparo real — una mentira en verde.
+    # `cronsim` sobre `croniter`: es zoneinfo-native y modela las transiciones DST como el cron de
+    # Debian. Hoy RD es UTC-4 sin DST, pero el dominio ya habla GTIN global (USA/Europa) y ahí DST
+    # es un problema de corrección. NO usamos `dagster._utils.schedules`: es módulo privado.
+    "cronsim>=2.6",
 ]
 
 [dependency-groups]

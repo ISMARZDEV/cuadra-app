@@ -71,6 +71,7 @@ class FakeCascadeMatchRepository:
         judge_input_tokens: int | None = None,
         judge_output_tokens: int | None = None,
         judge_model: str | None = None,
+        run_id: str | None = None,
     ) -> str:
         existing = self._by_store_product.get(store_product_id)
         if existing is not None:
@@ -92,6 +93,7 @@ class FakeCascadeMatchRepository:
             "confidence": confidence,
             "method": method,
             "status": status,
+            "run_id": run_id,
         }
         if judge_input_tokens is not None:
             record["judge_input_tokens"] = judge_input_tokens
@@ -211,6 +213,7 @@ def _incoming(
     size: str = "5 LB",
     ean: str | None = None,
     source_category: str = "",
+    run_id: str | None = None,
 ) -> IncomingStoreProduct:
     return IncomingStoreProduct(
         store_product_id=store_product_id,
@@ -220,6 +223,7 @@ def _incoming(
         size=size,
         ean=ean,
         source_category=source_category,
+        run_id=run_id,
     )
 
 
@@ -281,6 +285,7 @@ def test_ean_unique_auto_links_and_skips_later_stages() -> None:
             "confidence": 1.0,
             "method": "ean",
             "status": "auto_linked",
+            "run_id": None,
         }
     ]
     assert c["store_repo"].links == [("sp-1", "canon-ean-1")]
@@ -1108,3 +1113,39 @@ def test_a_degraded_verdict_still_keeps_the_candidates_for_the_human() -> None:
 
     assert result.method == "human"
     assert c["match_repo"].candidate_calls, "el humano se queda sin candidatos que revisar"
+
+
+# ------------------------------------------- F4 #4.5: la cascada estampa la corrida en el match --
+# Test de WIRING, no de unidad: que `ProductMatch.run_id` EXISTA no sirve si la cascada no lo
+# escribe. Lección que costó 429s reales — `round_robin_by_store` decía proteger de rate-limits y la
+# pausa nunca se conectó porque nadie testeó el cableado.
+
+
+def test_an_auto_linked_match_carries_the_run_that_produced_it() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        ean_candidates=[MatchCandidate(canonical_product_id="c-1", score=1.0)]
+    )
+    use_case, collab = _make_use_case(match_repo=match_repo, no_judge=True)
+
+    result = use_case.execute(_incoming(run_id="run-x", ean="00041331020053"))
+
+    assert result.status == "auto_linked"
+    assert result.run_id == "run-x"
+    assert collab["match_repo"].records[-1]["run_id"] == "run-x"  # y llegó al repo, no solo al DTO
+
+
+def test_a_queued_match_carries_the_run_so_the_queue_can_be_filtered_by_it() -> None:
+    use_case, collab = _make_use_case(no_judge=True)  # sin candidatos → cola humana
+
+    result = use_case.execute(_incoming(run_id="run-x"))
+
+    assert result.status == "pending_review"
+    assert result.run_id == "run-x"  # sin esto el deep-link `?run_id=` no tendría por dónde agarrar
+    assert collab["match_repo"].records[-1]["run_id"] == "run-x"
+
+
+def test_a_match_outside_a_run_has_no_run_id() -> None:
+    # Un match creado a mano desde el admin no nace de una corrida: `None` es legítimo.
+    use_case, _ = _make_use_case(no_judge=True)
+
+    assert use_case.execute(_incoming(run_id=None)).run_id is None

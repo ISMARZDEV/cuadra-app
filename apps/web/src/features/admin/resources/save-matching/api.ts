@@ -102,6 +102,7 @@ export async function fetchReviewQueue(
       method: params.method,
       confidence_min: params.confidence_min,
       confidence_max: params.confidence_max,
+      run_id: params.run_id,
       order_by: params.order_by,
       limit: params.limit,
       offset: params.offset,

@@ -33,8 +33,13 @@ description: >
 
 The single internal back-office. B1 ships the **Save** module only; future modules (News, RBAC,
 financials) are additive on the SAME shell — register an `AdminResource`, it appears in the nav.
-Two capability domains gate it: `ADMIN_SAVE_MATCHING_REVIEW` (the review queue) and
-`ADMIN_SAVE_INGESTION_OPS` (providers/sources/basket/health/metrics).
+THREE capability domains gate it: `ADMIN_SAVE_MATCHING_REVIEW` (the review queue),
+`ADMIN_SAVE_INGESTION_OPS` (providers/sources/basket/health/metrics) and — since F4 —
+`ADMIN_SAVE_ORCHESTRATION_OPS` (the orchestration console: launch/cancel/retry/schedule runs). The
+third is its OWN capability and not a reuse of the second on purpose: operating runs is more
+sensitive than editing a provider, and **Dagster OSS has no authentication of its own**, so that
+gate is the only real access control over pipeline execution. The orchestration module has its own
+skill: **`cuadra-save-orchestration`**.
 
 **The operating cycle it covers:** Sources (where to extract) + Basket (what to ingest) → ingestion
 → matching cascade (cuadra-save-matching) → 70% auto-linked / 30% uncertain → **Review queue** (human
@@ -199,6 +204,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3006/admin/providers -
     still edits only name+logo; editing type/platform in the form is the next step.
   - **P2 follow-ups:** `position` reorder unused downstream; provider logo not in `compare-table`
     (ComparedPriceDto); T3 destructive-state policy (soft-delete for basket).
+  - **Orchestration (F4) is BUILT** — see `cuadra-save-orchestration` and
+    `docs/pending/save-fase4-orquestacion-pendientes.md`. Open: #4.7 (deep-link run→queue + turning
+    the cascade ON). Follow-ups it leaves for the console: `scope=asset` policies (until they exist,
+    the three `ScheduleDefinition` stay in code on purpose) and the "Assets Dagster" tab.
   - **The admin's switches REACH the ingestion (R1):** the per-query discovery derives its stores from
     `store_registry` (active × `directed_capability(...).by_text`), so `enabled`/`paused_at` take a store
     out of ingestion. Adding a súper is a ROW. Note for Orchestration (F4): provider-flow compatibility

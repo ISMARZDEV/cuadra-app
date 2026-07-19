@@ -122,6 +122,13 @@ def list_review_queue(
     method: str | None = Query(None),
     confidence_min: float | None = Query(None, ge=0, le=1),
     confidence_max: float | None = Query(None, ge=0, le=1),
+    run_id: str | None = Query(
+        None,
+        description=(
+            "Deep-link corrida→cola (F4 #4.7): acota la cola a los matches producidos por esta "
+            "corrida de Dagster. Lo emite la consola de Orquestación desde el resultado de un flow."
+        ),
+    ),
     order_by: str = Query(
         "uncertainty",
         description=(
@@ -143,6 +150,7 @@ def list_review_queue(
         provider_id=provider_id,
         method=method,
         confidence_range=confidence_range,
+        run_id=run_id,
         order_by=order_by,
         limit=limit,
         offset=offset,

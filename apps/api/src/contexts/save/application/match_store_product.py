@@ -59,6 +59,10 @@ class IncomingStoreProduct:
     # Etapa C: categoría CRUDA de la fuente (path del adapter) — segunda señal para el category
     # gate/boost. "" si la fuente no la trae → sin señal de categoría (no-op).
     source_category: str = ""
+    # Corrida que observó este producto (F4 #4.5). Viaja con la OBSERVACIÓN y no en el constructor
+    # del use-case porque es propiedad de este hallazgo, no del matcher. Se estampa en el
+    # `ProductMatch` para poder filtrar la cola por corrida y atribuir los canónicos que salgan.
+    run_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.store_product_id.strip():
@@ -352,6 +356,7 @@ class MatchStoreProduct:
             judge_input_tokens=judge_input_tokens,
             judge_output_tokens=judge_output_tokens,
             judge_model=judge_model,
+            run_id=product.run_id,
         )
         # Un match auto_linked NUNCA persiste review_candidate (1.11/1.12) — nada que revisar.
         return ProductMatch(
@@ -360,6 +365,7 @@ class MatchStoreProduct:
             confidence=confidence,
             method=method,  # type: ignore[arg-type]
             status="auto_linked",
+            run_id=product.run_id,
         )
 
     def _to_review(
@@ -382,6 +388,7 @@ class MatchStoreProduct:
             judge_input_tokens=judge_input_tokens,
             judge_output_tokens=judge_output_tokens,
             judge_model=judge_model,
+            run_id=product.run_id,
         )
         if candidates:
             self._match_repo.record_candidates(match_id, candidates)
@@ -391,4 +398,5 @@ class MatchStoreProduct:
             confidence=confidence,
             method=method,  # type: ignore[arg-type]
             status="pending_review",
+            run_id=product.run_id,
         )
