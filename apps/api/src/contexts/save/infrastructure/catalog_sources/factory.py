@@ -1,7 +1,8 @@
 """`CatalogSourceFactory` (F2·B1/B3, Batch 3B, tarea 3.7): traduce la config persistida en
 `store_registry` (platform/base_url/headers/auth) al adapter concreto de ingesta (VTEX/Magento).
 
-Generaliza el wiring hoy hardcodeado en `ingestion/save/sources.py::build_sources` — en
+Generalizó el wiring que estaba hardcodeado en `ingestion/save/sources.py::build_sources` (muerto
+desde R1: el set de fuentes se deriva de `store_registry` × `directed_capability`) — en
 particular el caso Jumbo (misma instancia Magento CCN que Nacional, distinto store view via el
 header `Store: jumbo`) se traduce aquí en `headers={"Store": "jumbo"} -> store_code="jumbo"`.
 

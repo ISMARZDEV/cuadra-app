@@ -39,7 +39,7 @@ def refresh_source(
     `on_progress` opcional: callback `(indice, total, acumulado)` tras CADA adapter/query —
     observabilidad de progreso (p.ej. `context.log` de Dagster). `None` = silencioso (default).
     `pace` opcional: espera ENTRE adapters. CADA adapter es una búsqueda contra la MISMA tienda
-    (`build_sources` arma uno por término de canasta: hoy 213), así que sin pausa esto es un
+    (`composition.py` arma uno por término ACTIVO de la canasta), así que sin pausa esto es un
     martilleo — el mismo bug que en price_refresh/Loop B/browse. Acá el round-robin ni participa.
     `None` = sin espera (tests); prod wirea `build_pace()`.
     """

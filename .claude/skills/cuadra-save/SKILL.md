@@ -240,8 +240,17 @@ the `seeds.save_refresh` CLI — one source of truth in `ingestion/save/composit
   **one partition per (provider, section)** — `DynamicPartitionsDefinition` key `{provider_id}:{section}`
   (`composition.py::rest_catalog_partition_key/parse.../build_rest_catalog_source_for`). Sensor
   `sync_rest_catalog_sections` keeps partitions in sync with `store_registry`. Trigger per-partition / backfill
-  (its own `save_rest_catalog` job) — it is EXCLUDED from the unpartitioned daily `save_catalog_refresh` (a
-  partitioned asset can't live in an unpartitioned job); an automatic daily partition backfill is a follow-up.
+  (its own `save_rest_catalog` job); an automatic daily partition backfill is a follow-up.
+- **The job/schedule inventory, verified 2026-07-19** (an older version of this skill named a
+  `save_catalog_refresh` daily job — **it does not exist**; R1 replaced it with the partitioned asset +
+  the declarative chain). Real jobs, all for MANUAL trigger/backfill from the UI: `save_query_catalog` ·
+  `save_rest_catalog` · `save_coverage` · `save_freshness` · `save_price_refresh`. Real
+  `ScheduleDefinition`s — only THREE: `save_coverage_daily` (`0 4 * * *`) · `save_freshness_frequent`
+  (`0 */2 * * *`) · `save_price_refresh_frequent` (`0 */4 * * *`). Everything else is pulled by
+  `AutomationCondition` (the 06:00 cron lives on `embed_canonicals`, NOT in a schedule) and evaluated by
+  the `save_automation` sensor. Sensors: `sync_rest_catalog_sections` · `sync_query_catalog_providers` ·
+  `save_automation`. **`ingestion/definitions.py` is the source of truth — check it before quoting a job
+  name.**
 - **Instance storage = Postgres, NOT the SQLite default** (`scripts/dagster.yaml` → copied to `$DAGSTER_HOME` by
   `dagster-dev.sh`; dedicated `dagster` role/db in cuadra-db; dep `dagster-postgres`). Two Dagster processes on
   ONE SQLite `$DAGSTER_HOME` deadlock on the lock; Postgres makes a one-off safe WHILE `dagster dev` runs, and

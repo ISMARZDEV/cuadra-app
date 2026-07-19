@@ -1,10 +1,17 @@
 """Assets de Dagster para el catálogo de Save (asset-centric → lineage por fuente, doc 06 §3).
 
-Un asset por fuente (`sirena_prices`/`nacional_prices`/`jumbo_prices`) que corre el refresh
-change-only sobre la canasta curada, y un asset `price_drops` aguas abajo (deps de las tres)
-que corre la detección G4. Los assets son PIEL fina sobre lógica ya testeada (`build_sources`,
-`refresh_source`, `ListPriceDrops`); su forma de grafo se valida en tests/ingestion, la
-materialización real es manual (`dagster dev`). La sesión se abre/commitea por materialización.
+UN asset PARTICIONADO por proveedor (`query_catalog_prices`) que corre el refresh change-only sobre
+la canasta curada, y un asset `price_drops` aguas abajo que corre la detección G4. El set de
+proveedores se DERIVA de `store_registry` y el sensor `sync_query_catalog_providers` mantiene las
+particiones al día (R1) — agregar un súper es una FILA, no un deploy.
+
+(Corregido 2026-07-19: este docstring describía `sirena_prices`/`nacional_prices`/`jumbo_prices` y
+`build_sources`, que R1 eliminó. Nombrar assets muertos manda a quien lee a buscar código que no
+existe.)
+
+Los assets son PIEL fina sobre lógica ya testeada (`composition.py`, `refresh_source`,
+`ListPriceDrops`); su forma de grafo se valida en tests/ingestion. La sesión se abre/commitea por
+materialización.
 """
 from __future__ import annotations
 
