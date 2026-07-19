@@ -102,7 +102,11 @@ decides) → clean canonical catalog. Providers + health give visibility over th
    TYPE ERROR). Interpolate (`{name}`, `{count}`) with `format(locale, key, params)`, never string
    concat. Module-level label maps (`AUTH_LABEL`, `HEALTH_LABEL`) become `*_KEY: Record<…, MessageKey>`
    + `t()`. DONE: review-queue, basket, providers, sources. Verify with cuadra-ui-verify (switch
-   es→en→pt on the real SSR render).
+   es→en→pt on the real SSR render). **The topbar `LanguageSwitcher`** lets the operator change the
+   admin language: it writes an `admin_locale` cookie (SSR-readable) and reloads; `pages/admin/+data.ts`
+   reads it via `extractAdminLocale(headers)` and PRIORITIZES it over `MeResponse.locale` — so the
+   switch is admin-scoped (does NOT mutate the user's global `locale` / mobile / agent). Priority:
+   cookie → user locale → default.
 9. **Web data: SSR `+data.ts` for lists, `authHeaders()` for mutations.** NO TanStack Query. After a
    mutation, refresh via `use-admin-list.ts` (`useAdminList(initial, fetcher)` — seeded from the SSR
    prop, re-fetches into local state) — NOT `window.location.reload()`.

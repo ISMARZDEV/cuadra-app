@@ -166,6 +166,7 @@ type MessageKey =
   | "admin.method.human"
   | "admin.topbar.notifications"
   | "admin.topbar.settings"
+  | "admin.topbar.language"
   // Batch 5 — Toolbar (Cola de revisión)
   | "admin.toolbar.search.placeholder"
   | "admin.toolbar.filters"
@@ -549,6 +550,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Humano",
     "admin.topbar.notifications": "Notificaciones",
     "admin.topbar.settings": "Configuración",
+    "admin.topbar.language": "Idioma",
     "admin.toolbar.search.placeholder": "Buscar producto...",
     "admin.toolbar.filters": "Filtros",
     "admin.toolbar.filter.provider": "Proveedor",
@@ -929,6 +931,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Human",
     "admin.topbar.notifications": "Notifications",
     "admin.topbar.settings": "Settings",
+    "admin.topbar.language": "Language",
     "admin.toolbar.search.placeholder": "Search product...",
     "admin.toolbar.filters": "Filters",
     "admin.toolbar.filter.provider": "Provider",
@@ -1309,6 +1312,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.method.human": "Humano",
     "admin.topbar.notifications": "Notificações",
     "admin.topbar.settings": "Configurações",
+    "admin.topbar.language": "Idioma",
     "admin.toolbar.search.placeholder": "Buscar produto...",
     "admin.toolbar.filters": "Filtros",
     "admin.toolbar.filter.provider": "Fornecedor",

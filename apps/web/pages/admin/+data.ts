@@ -1,6 +1,6 @@
 import type { PageContextServer } from "vike/types";
 
-import { resolveAdminIdentity } from "@/features/admin/shell/require-admin";
+import { extractAdminLocale, resolveAdminIdentity } from "@/features/admin/shell/require-admin";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/config";
 
 /** Data compartida por TODO el subárbol `/admin/*` — las capabilities del usuario actual,
@@ -28,9 +28,11 @@ export interface AdminShellData {
 // pageContext con un campo custom, y el volumen de tráfico admin es bajo.
 export async function data(pageContext: PageContextServer): Promise<AdminShellData> {
   const identity = await resolveAdminIdentity(pageContext.headers);
+  // Prioridad: switcher del admin (cookie) → locale del usuario (MeResponse) → default.
+  const userLocale = isLocale(identity?.locale) ? identity.locale : DEFAULT_LOCALE;
   return {
     capabilities: identity?.capabilities ?? [],
-    locale: isLocale(identity?.locale) ? identity.locale : DEFAULT_LOCALE,
+    locale: extractAdminLocale(pageContext.headers) ?? userLocale,
     name: identity?.name ?? "",
     email: identity?.email ?? null,
   };
