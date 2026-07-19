@@ -1,5 +1,6 @@
 import { getMe } from "@cuadra/api-client";
 
+import { ADMIN_RESOURCES } from "@/features/admin/shell/admin-resource";
 import { apiClient } from "@/lib/api";
 
 // Gate SERVER-SIDE de `/admin/*` (SAGRADO, cuadra-clerk/cuadra-web): nunca confiar en un check de
@@ -12,9 +13,10 @@ import { apiClient } from "@/lib/api";
 // (Vike, https://vike.dev/headers) expone las cabeceras crudas del request; en dev el plugin de Vike
 // las puebla solo, en prod `server/index.js` debe pasar `headersOriginal: req.headers` a `renderPage`.
 //
-// Gotcha conocido (documentado, no oculto): el modo dev-login (sin Clerk) guarda el token en
-// localStorage — inalcanzable server-side. Con dev-login puro, `/admin/*` SIEMPRE 403 en SSR; el
-// gate real requiere Clerk activo (que es el modo configurado hoy, ver `apps/web/.env`).
+// Modo dev-login (sin Clerk): el token vive en localStorage, inalcanzable server-side — por eso
+// `syncSessionCookie` (use-auth, 10.D) lo ESPEJA en la cookie `__session` al hacer login, así este
+// gate SSR lo ve. Combinado con `dev-login {role:"super_admin"}` (10.B), el admin es visible
+// localmente sin Clerk. En modo Clerk, Clerk es dueño de `__session` (su JWT RS256).
 const SESSION_COOKIE = "__session";
 
 // Exportada (no solo interna): `pages/admin/review-queue/+data.ts` (batch 2·11) la reutiliza para
@@ -78,4 +80,16 @@ export async function hasAdminCapability(
 ): Promise<boolean> {
   const identity = await resolveAdminIdentity(headers);
   return identity?.capabilities.includes(capability) ?? false;
+}
+
+/** true si el request resuelve una identidad con AL MENOS una capability de algún `AdminResource`.
+ * Gate de ENTRADA robusto para `pages/admin/+guard.ts` (10.D): independiente del orden de
+ * `ADMIN_RESOURCES` (antes gateaba con `[0]`); cada subárbol re-chequea su capability específica. */
+export async function hasAnyAdminCapability(
+  headers: Record<string, string> | null | undefined,
+): Promise<boolean> {
+  const identity = await resolveAdminIdentity(headers);
+  if (!identity) return false;
+  const adminCaps = new Set(ADMIN_RESOURCES.map((r) => r.capability));
+  return identity.capabilities.some((c) => adminCaps.has(c));
 }
