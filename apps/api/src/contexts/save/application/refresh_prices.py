@@ -91,7 +91,16 @@ class RefreshCatalogPrices:
             entry.market_id,
         )
 
-    def execute(self, source: CatalogSource, captured_at: datetime | None = None) -> RefreshResult:
+    def execute(
+        self,
+        source: CatalogSource,
+        captured_at: datetime | None = None,
+        run_id: str | None = None,
+    ) -> RefreshResult:
+        """`run_id` = la corrida del orquestador que ejecuta este refresh (F4 #4.5). Se estampa en
+        cada `product_match` que produzca la cascada, y es lo que después permite filtrar la cola
+        por corrida y atribuirle los canónicos que salgan de ella. `None` cuando se corre fuera del
+        orquestador (p.ej. el CLI `make save-refresh`): no hay corrida a la que atribuir."""
         ts = captured_at or datetime.now(timezone.utc)
         seen = refreshed = unmatched = matched = discarded = 0
         auto_linked = queued_for_review = 0
@@ -143,6 +152,7 @@ class RefreshCatalogPrices:
                         size=entry.size_text,
                         ean=entry.ean,
                         source_category=" > ".join(entry.category_path),  # Etapa C: señal de categoría
+                        run_id=run_id,
                     )
                 )
                 self._classify(store_product_id, entry)  # clasifica el nuevo store_product

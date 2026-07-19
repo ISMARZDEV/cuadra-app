@@ -325,6 +325,7 @@ class SqlCanonicalProductRepository:
                 quality=product.quality,
                 display_size=display_size,
                 image_url=product.image_url,
+                origin_run_id=product.origin_run_id,
                 size_amount=product.quantity.amount,
                 size_measure=product.quantity.measure.value,
                 taxonomy_node_id=(

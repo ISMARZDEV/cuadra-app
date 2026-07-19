@@ -290,3 +290,30 @@ def test_legacy_run_without_matcher_reports_no_cascade_outcome() -> None:
 
     assert (result.auto_linked, result.queued_for_review) == (0, 0)
     assert result.unmatched == 1
+
+
+# ------------------------------------------- #4.5: la corrida llega desde Dagster a la cascada --
+
+
+def test_the_run_id_reaches_the_matcher_so_the_queue_can_be_filtered_by_run() -> None:
+    """Cableado completo: el asset de Dagster conoce su `context.run_id` y tiene que hacerlo llegar
+    hasta el `IncomingStoreProduct`. Sin este tramo, la columna `product_match.run_id` existiría
+    siempre en NULL y el deep-link `?run_id=` no encontraría nada."""
+    repo = FakeStoreRepo(known=set())
+    matcher = FakeMatcher()
+    source = FakeSource([_entry("new-a")])
+
+    RefreshCatalogPrices(repo, matcher=matcher).execute(source, run_id="dagster-run-abc")
+
+    assert matcher.calls[0].run_id == "dagster-run-abc"
+
+
+def test_a_run_without_an_id_still_works() -> None:
+    # El CLI `make save-refresh` corre fuera de Dagster: no hay corrida que atribuir.
+    repo = FakeStoreRepo(known=set())
+    matcher = FakeMatcher()
+    source = FakeSource([_entry("new-a")])
+
+    RefreshCatalogPrices(repo, matcher=matcher).execute(source)
+
+    assert matcher.calls[0].run_id is None

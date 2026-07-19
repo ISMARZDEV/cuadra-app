@@ -153,11 +153,16 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             # Un adapter POR TÉRMINO de canasta contra la MISMA tienda (hoy 213) → sin pausa es un
             # martilleo. El browse REST (abajo) no la necesita acá: trae la suya del factory.
             pace=build_pace(),
+            # F4 #4.5: la corrida se estampa en cada product_match que produzca la cascada. Es lo
+            # que después permite filtrar la cola por corrida (`?run_id=`) y atribuirle los
+            # canónicos que un humano cree resolviéndola.
+            run_id=context.run_id,
         )
         session.commit()
     context.log.info(
         f"query_catalog_prices[{provider_id}]: LISTO seen={result.seen} refreshed={result.refreshed} "
-        f"unmatched={result.unmatched} matched={result.matched}"
+        f"unmatched={result.unmatched} matched={result.matched} "
+        f"auto_linked={result.auto_linked} a_la_cola={result.queued_for_review}"
     )
     return dg.MaterializeResult(
         metadata={
@@ -165,6 +170,10 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             "refreshed": result.refreshed,
             "unmatched": result.unmatched,
             "matched": result.matched,
+            # El DESENLACE de la cascada (#4.3). `matched` incluye a los encolados, así que sola
+            # engaña: una corrida que dejó 40 de trabajo humano se veía igual que una que enlazó 40.
+            "auto_linked": result.auto_linked,
+            "queued_for_review": result.queued_for_review,
         }
     )
 

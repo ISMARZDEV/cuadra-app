@@ -29,6 +29,7 @@ def refresh_source(
     on_progress: Callable[[int, int, RefreshResult], None] | None = None,
     pace: Callable[[], None] | None = None,
     relevance_gate: RelevanceGate | None = None,
+    run_id: str | None = None,
 ) -> RefreshResult:
     """Corre el refresh sobre cada adapter de la fuente y agrega los conteos.
 
@@ -47,16 +48,19 @@ def refresh_source(
         store_repo, matcher=matcher, classifier=classifier, relevance_gate=relevance_gate
     )
     seen = refreshed = unmatched = matched = discarded = 0
+    auto_linked = queued_for_review = 0
     total = len(adapters)
     for index, adapter in enumerate(adapters, start=1):
         if index > 1 and pace is not None:
             pace()  # ENTRE búsquedas, nunca antes de la primera (SRD `scrape-many.ts`)
-        result = use_case.execute(adapter, captured_at=captured_at)
+        result = use_case.execute(adapter, captured_at=captured_at, run_id=run_id)
         seen += result.seen
         refreshed += result.refreshed
         unmatched += result.unmatched
         matched += result.matched
         discarded += result.discarded
+        auto_linked += result.auto_linked
+        queued_for_review += result.queued_for_review
         if on_progress is not None:
             on_progress(
                 index,
@@ -64,8 +68,10 @@ def refresh_source(
                 RefreshResult(
                     seen=seen, refreshed=refreshed, unmatched=unmatched,
                     matched=matched, discarded=discarded,
+                    auto_linked=auto_linked, queued_for_review=queued_for_review,
                 ),
             )
     return RefreshResult(
-        seen=seen, refreshed=refreshed, unmatched=unmatched, matched=matched, discarded=discarded
+        seen=seen, refreshed=refreshed, unmatched=unmatched, matched=matched, discarded=discarded,
+        auto_linked=auto_linked, queued_for_review=queued_for_review,
     )

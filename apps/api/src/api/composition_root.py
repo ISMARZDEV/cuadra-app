@@ -543,6 +543,10 @@ def get_create_canonical_and_link(
     return CreateCanonicalAndLink(
         canonical_repo=SqlCanonicalProductRepository(session),
         resolver=ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session)),
+        # F4 #4.5: para atribuir el canónico nuevo a la corrida que encoló el match que el humano
+        # está resolviendo. Sin esto la creación funciona igual, pero `new_canonicals_count`
+        # contaría siempre cero.
+        match_repo=SqlProductMatchRepository(session),
     )
 
 
