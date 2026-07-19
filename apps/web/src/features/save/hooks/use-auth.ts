@@ -31,9 +31,25 @@ function read(): AuthState {
   }
 }
 
+const SESSION_COOKIE = "__session";
+
+// 10.D — puente para el gate SSR del admin: el token dev-login vive en localStorage, que el SERVER
+// no puede leer, así que `/admin/*` quedaba SIEMPRE 403 con dev-login (require-admin lee la cookie
+// `__session`). Espejamos el token en esa cookie para que el SSR lo vea. Solo en modo dev-login: en
+// modo Clerk, Clerk es dueño de `__session` (su JWT RS256) y NO lo pisamos. NO es httpOnly (JS la
+// setea) — aceptable porque el token dev es HS256 DEV-ONLY (dev-login devuelve 404 en prod).
+export function syncSessionCookie(token: string | null): void {
+  if (typeof document === "undefined") return; // SSR-safe
+  if (CLERK_ENABLED) return; // Clerk gestiona __session en su modo
+  document.cookie = token
+    ? `${SESSION_COOKIE}=${encodeURIComponent(token)}; path=/; SameSite=Lax`
+    : `${SESSION_COOKIE}=; path=/; Max-Age=0; SameSite=Lax`;
+}
+
 function commit(next: AuthState): void {
   cache = next;
   if (typeof localStorage !== "undefined") localStorage.setItem(KEY, JSON.stringify(next));
+  syncSessionCookie(next.token);
   listeners.forEach((l) => l());
 }
 
