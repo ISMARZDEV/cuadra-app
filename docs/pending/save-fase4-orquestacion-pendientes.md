@@ -1,8 +1,9 @@
 # Save · Fase 4 — Orquestación: estado y pendientes
 
-> **Estado 2026-07-19** · Rama `feat/save-orchestration` (12 commits, **NUNCA pusheada**) desde
-> `developer` `8c7de48`. Sub-bloques **4.1 → 4.6 y 4.2b COMPLETOS y commiteados**. Falta **4.7**.
-> Dominio del módulo: skill `cuadra-save-orchestration`.
+> **Estado 2026-07-19** · **F4 COMPLETA y MERGEADA a `developer`** (PR #37 squash → `404618a`).
+> 4.1→4.7 + 4.2b + fix del launch particionado. Cascada ACTIVADA y medida contra las APIs reales.
+> Rama `feat/save-orchestration` borrada. Dominio del módulo: skill `cuadra-save-orchestration`.
+> Este doc queda como REGISTRO de la fase + follow-ups (§3) para las fases siguientes.
 
 ---
 

@@ -1,14 +1,16 @@
 ---
 name: cuadra-save-orchestration
 description: >-
-  The BUILT orchestration console of Save (F4, code-complete except #4.7): the admin surface that
-  operates the ingestion pipeline — provider-flows with their policy in DB, run now / retry /
-  cancel, cascade outcome metrics, and a DB-driven sensor that makes the admin's cron actually
-  rule. Owns the hard-won internals: the port is named by ROLE (`PipelineOrchestrator`) and the
-  adapter speaks RAW GraphQL because `dagster` is NOT in the API's deps, the run selector is ASKED
-  of the server (hardcoding it never launches anything), Dagster is owner of run STATE while we own
-  what a run PRODUCED, `new_canonicals` is DERIVED not stored, and exactly-once comes from
-  `RunRequest.run_key` without a cursor. Composes with cuadra-save-admin (the console shell),
+  The BUILT orchestration console of Save (F4 COMPLETE — merged to developer, PR #37): the admin
+  surface that operates the ingestion pipeline — provider-flows with their policy in DB, run now /
+  retry / cancel, cascade outcome metrics, a DB-driven sensor that makes the admin's cron actually
+  rule, and the run→queue deep-link (`?run_id=`). Owns the hard-won internals: the port is named by
+  ROLE (`PipelineOrchestrator`) and the adapter speaks RAW GraphQL because `dagster` is NOT in the
+  API's deps, the run selector is ASKED of the server (hardcoding it never launches anything), a
+  partitioned job MUST be launched WITH its partition (`partition_key_for` + the `dagster/partition`
+  tag — else the run dies at 3s), Dagster is owner of run STATE while we own what a run PRODUCED,
+  `new_canonicals` is DERIVED not stored, and exactly-once comes from `RunRequest.run_key` without a
+  cursor. Composes with cuadra-save-admin (the console shell),
   cuadra-save (domain), cuadra-save-matching (what fills the queue) and cuadra-api. Trigger:
   building, extending or DEBUGGING anything under `contexts/save/{application/orchestration*,
   application/policy_schedule,domain/entities/orchestration*,domain/ports/orchestrator,
@@ -112,13 +114,46 @@ append-only and sacred).
     by both "Run now" and the sensor. It was duplicated once; adding a flow and updating only one
     side makes the manual button work while the schedule silently never fires. A test demands every
     declared flow has a job.
+18. **A PARTITIONED job MUST be launched WITH its partition, or the run dies at 3s.**
+    `save_query_catalog` is partitioned by `provider_id`; launching it without a partition yields a
+    non-partitioned run and the asset raises `Cannot access partition_key for a non-partitioned run`.
+    It passed green for a whole phase because **`launchRun` returns a run_id (Dagster ACCEPTS the
+    launch)** and the failure only happens at asset EXECUTION — a smoke that asserts "launch returned
+    an id" never sees it. Same home as #17: the domain helper
+    `partition_key_for(flow_key, provider_id)` (+ set `PROVIDER_PARTITIONED_FLOWS`) decides; BOTH
+    `RunPolicyNow` and the sensor (`DuePolicyRun.provider_id`) pass it. The adapter appends the
+    `dagster/partition` tag — value INTROSPECTED from `PARTITION_NAME_TAG`, NEVER imported (the
+    adapter cannot import dagster, gotcha #1). A wiring test must EXECUTE a real run, not just check
+    the returned id. Guards: `test_orchestration_partition.py`, `test_run_policy_now.py`.
+
+## Operating the runner (dev) — hard-won
+
+- **Run EXACTLY ONE `dagster dev` at a time.** `dagster dev` spawns a tree (webserver + daemon +
+  code-server) that does NOT shut down cleanly when you close the terminal → orphaned instances pile
+  up across sessions on the same `DAGSTER_HOME`/Postgres → `Another … daemon is still sending
+  heartbeats… multiple daemon processes… not supported` → **runs fail**. Healthy = exactly 1
+  `dagster._daemon run` + 1 webserver, and `grep -c "still sending heartbeats"` in the log == 0.
+  Bring it down with `scripts/dagster-down.sh` (+ a `pkill -9 -f` sweep for stragglers), verify
+  `ps`/port 3070 are clear, THEN relaunch. `scripts/dagster-dev.sh` already exports
+  `SAVE_MATCHING_CASCADE_ENABLED=true` + `SAVE_REFRESH_QUERY_LIMIT=10` — the cascade runs INSIDE the
+  Dagster process (the matcher is wired in `ingestion/save/composition.py`), NOT the API.
+- **Launch/measure a run without the UI**: `POST /v1/admin/save/orchestration/policies/{id}/run`
+  (super_admin token) → poll status via GraphQL `runOrError`; the produced metrics land in
+  `orchestration_run_snapshot` (by `dagster_run_id`) and the queued matches in `product_match`
+  (by `run_id`). `save_clean` does NOT touch snapshots — clear them by hand for a true reset.
+- **Reset dev data**: `seeds.save_clean --ingestion` (keep canonicals) / `--reset` (drop canonicals →
+  true cold-start) / `--provider NAME`. Dev-guarded to localhost:5433.
+- **Measured baseline (2026-07-19, by_text live, LLM off, in-process BGE-M3, limit=10)**: auto-link
+  depends on canonicals EXISTING — Sirena against the catalog = 48/48 auto-link/0 queue (re-match);
+  Bravo = 13 auto / 68 queue (real discovery); Sirena cold-start (0 canonicals) = 0/48 queue. The old
+  "85/15" was inflated. With the LLM off the grey band goes 100% to human.
 
 ## Where it lives
 
 | Layer | Path |
 |---|---|
-| Domain | `contexts/save/domain/entities/{orchestration,orchestration_run}.py` · `domain/ports/orchestrator.py` |
-| Application | `contexts/save/application/{orchestration_policies,policy_schedule}.py` |
+| Domain | `contexts/save/domain/entities/{orchestration,orchestration_run}.py` (`JOB_BY_FLOW`, `PROVIDER_PARTITIONED_FLOWS`, `partition_key_for`) · `domain/ports/orchestrator.py` (`launch(partition_key=)`) |
+| Application | `contexts/save/application/{orchestration_policies,policy_schedule}.py` (`DuePolicyRun.provider_id`) |
 | Infrastructure | `contexts/save/infrastructure/orchestrator/{dagster_graphql,policy_repository,run_snapshot_repository}.py` |
 | API | `api/v1/controllers/admin_orchestration.py` (9 routes, capability `ADMIN_SAVE_ORCHESTRATION_OPS`) |
 | Ingestion | `ingestion/save/policy_sensor.py` (+ registered in `ingestion/definitions.py`) |
@@ -156,10 +191,15 @@ file-watch reloads on CODE changes, not on `.env`.
 
 ## Status + what's left
 
-**Built (F4 #4.1-4.6 + #4.2b)** — see the table in `docs/pending/save-fase4-orquestacion-pendientes.md`.
-**Open: #4.7** — deep-link run→queue (`?run_id=`), then turning the cascade ON (which has REAL side
-effects: it hits the supermarkets' live APIs). The pendientes doc holds the decisions the user must
-close before that run.
+**F4 COMPLETE — merged to `developer` (PR #37 squash, commit `404618a`).** #4.1-4.7 + #4.2b + the
+launch-partition fix. The cascade has been ACTIVATED and measured against the live APIs (see the
+baseline above). Full record: `docs/pending/save-fase4-orquestacion-pendientes.md`.
+
+**Left for later (none is an open bug):** provider-detail page (`/admin/orchestration/providers/{id}`)
+· the "Assets Dagster" tab (needs a `GET …/orchestration/assets` endpoint) · `scope=asset` policies
+(until they exist the three `ScheduleDefinition` stay in code on purpose) · the `provider_coverage`
+handler + R7 deps (v1.1) · re-enable the LLM judge (quota; today the grey band goes 100% to human) ·
+a dedicated BGE-M3 endpoint for prod (in-process does not scale).
 
 ## Resources
 
