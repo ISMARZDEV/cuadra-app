@@ -213,6 +213,7 @@ class CanonicalProductModel(Base):
     __tablename__ = "canonical_product"
     __table_args__ = (
         Index("ix_canonical_product_market", "market_id"),
+        Index("ix_canonical_product_origin_run", "origin_run_id"),
         UniqueConstraint("market_id", "slug", name="uq_canonical_product_market_slug"),
         {"schema": _SCHEMA},
     )
@@ -221,6 +222,11 @@ class CanonicalProductModel(Base):
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
     slug: Mapped[str] = mapped_column(Text, nullable=False)  # llave PÚBLICA URL-safe (SEO)
+    # Corrida de cuyo descubrimiento nació este canónico (F4 #4.5). La escribe
+    # `CreateCanonicalAndLink` desde el match que el humano resolvió. Es lo que hace contable
+    # `new_canonicals_count` sin ventanas de tiempo: `count(WHERE origin_run_id = X)`.
+    # NULL = anterior a F4, del bootstrap, o creado sin venir de una corrida.
+    origin_run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     brand_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("save.brand.id")
@@ -394,6 +400,9 @@ class ProductMatchModel(Base):
     __tablename__ = "product_match"
     __table_args__ = (
         UniqueConstraint("store_product_id", name="uq_product_match_store_product"),
+        # Deep-link corrida→cola: `/admin/review-queue?run_id=` filtra por (corrida, estado).
+        # Compuesto porque la consulta SIEMPRE lleva las dos: "lo que ESTA corrida dejó pendiente".
+        Index("ix_product_match_run_status", "run_id", "status"),
         {"schema": _SCHEMA},
     )
 
@@ -409,6 +418,10 @@ class ProductMatchModel(Base):
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
     method: Mapped[str] = mapped_column(Text, nullable=False)  # ean|trgm|vector|hybrid|llm|human
     status: Mapped[str] = mapped_column(Text, nullable=False)  # auto_linked|pending_review|rejected
+    # Corrida que produjo este match (F4 #4.5). Habilita el deep-link corrida→cola (`?run_id=`) y
+    # atribuir canónicos a la corrida que los descubrió. NULL = anterior a F4, o creado a mano.
+    # TEXT y no FK: el id lo emite el runner (Dagster), que es un sistema externo.
+    run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

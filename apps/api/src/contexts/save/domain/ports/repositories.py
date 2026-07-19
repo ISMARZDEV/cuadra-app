@@ -472,6 +472,7 @@ class ProductMatchRepository(Protocol):
         judge_input_tokens: int | None = None,
         judge_output_tokens: int | None = None,
         judge_model: str | None = None,
+        run_id: str | None = None,
     ) -> str:
         """Inserta/actualiza el `product_match` de `store_product_id` (UNIQUE). Devuelve el id.
 

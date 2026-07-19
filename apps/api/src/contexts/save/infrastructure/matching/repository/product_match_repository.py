@@ -73,6 +73,7 @@ class SqlProductMatchRepository:
         judge_input_tokens: int | None = None,
         judge_output_tokens: int | None = None,
         judge_model: str | None = None,
+        run_id: str | None = None,
     ) -> str:
         existing = self._s.scalars(
             select(ProductMatchModel).where(
@@ -94,6 +95,12 @@ class SqlProductMatchRepository:
                 existing.judge_output_tokens = judge_output_tokens
             if judge_model is not None:
                 existing.judge_model = judge_model
+            # La corrida se PISA en el upsert (a diferencia del costo del juez): un re-match dentro
+            # de una corrida nueva significa que ESA corrida es la que ahora lo tiene en la cola, y
+            # es la que el deep-link `?run_id=` debe encontrar. Conservar la vieja mostraría al
+            # operador una corrida que ya no explica el estado actual.
+            if run_id is not None:
+                existing.run_id = run_id
             self._s.flush()
             return str(existing.id)
 
@@ -108,6 +115,7 @@ class SqlProductMatchRepository:
             judge_input_tokens=judge_input_tokens,
             judge_output_tokens=judge_output_tokens,
             judge_model=judge_model,
+            run_id=run_id,
         )
         self._s.add(m)
         self._s.flush()
