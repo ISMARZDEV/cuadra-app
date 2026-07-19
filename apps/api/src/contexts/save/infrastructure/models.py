@@ -506,3 +506,29 @@ class ReviewCandidateModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class AdminAuditLogModel(Base):
+    """Registro APPEND-ONLY de mutaciones del admin/OFV (T2). Nunca UPDATE/DELETE. `actor_user_id`
+    es TEXT plano (ADR 33: sin FK cruzando schemas hacia `identity`). `payload_summary` = resumen
+    del cambio (JSONB). Indexado por entidad y por recencia para las vistas de actividad."""
+
+    __tablename__ = "admin_audit_log"
+    __table_args__ = (
+        Index("ix_admin_audit_target", "target_type", "target_id"),
+        Index("ix_admin_audit_market_created", "market_id", "created_at"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    actor_user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    target_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_summary: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

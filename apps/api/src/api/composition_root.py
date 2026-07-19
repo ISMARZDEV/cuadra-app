@@ -68,6 +68,7 @@ from src.contexts.save.infrastructure.matching.repository.product_match_reposito
     SqlProductMatchRepository,
 )
 from src.contexts.save.infrastructure.repositories import (
+    SqlAdminAuditRepository,
     SqlAlertRepository,
     SqlBasketQueryRepository,
     SqlCanonicalProductRepository,
@@ -343,6 +344,12 @@ def get_list_providers(session: Session = Depends(get_session)) -> ListProviders
 
 def get_provider(session: Session = Depends(get_session)) -> GetProvider:
     return GetProvider(SqlProviderRepository(session))
+
+
+def get_admin_audit_repo(session: Session = Depends(get_session)) -> SqlAdminAuditRepository:
+    """Repo del audit log del admin (T2). El controller lo compone con el actor del request en un
+    `AdminAuditRecorder` — aquí NO se resuelve el actor (evita el ciclo con extensions.security)."""
+    return SqlAdminAuditRepository(session)
 
 
 def get_create_provider(session: Session = Depends(get_session)) -> CreateProvider:
