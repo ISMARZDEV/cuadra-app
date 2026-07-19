@@ -49,24 +49,43 @@ OK · 322 web + typecheck limpio. **Sin migración nueva** (la columna + índice
 > Nota de diseño: `admin.orchestration.outcome.summary` (un solo string) se partió en 3 claves para
 > poder linkear SOLO el número "a la cola" (§5.1 limpieza: la clave vieja se retiró, no convive).
 
-### 2.B — Encender la cascada = CIERRE DE FASE 2 (**efectos reales**)
+### 2.B — Encender la cascada = CIERRE DE FASE 2 — ✅ ACTIVADA Y MEDIDA (2026-07-19)
 
-⚠️ **No es escribir código: es operar el sistema contra las APIs REALES de los súper.**
+Se disparó desde la consola nueva contra las APIs REALES. **Decisiones tomadas**: el usuario dispara
+desde la consola · `SAVE_REFRESH_QUERY_LIMIT=10` una tienda por corrida · **in-process** (BGE-M3 sin
+endpoint). `scripts/dagster-dev.sh` YA exporta `SAVE_MATCHING_CASCADE_ENABLED=true` + `LIMIT=10` por
+default, así que no hubo que tocar `.env` (el matching corre DENTRO del proceso de Dagster).
 
-- [ ] `SAVE_MATCHING_CASCADE_ENABLED=true` (hoy `false`, `config.py:57`)
-- [ ] Decidir BGE-M3: `SAVE_BGE_M3_ENDPOINT_URL` está VACÍA → hoy el embedding corre **in-process**
-      (pesado en CPU/RAM; una ingesta que "parece colgada" suele estar lenta, no trabada)
-- [ ] Corrida de descubrimiento medida
-- [ ] **Re-medir el baseline**: el "85% auto-link / 15% cola" está INFLADO (era el bug del EAN sin
-      normalizar, ver `save-modelo-descubrimiento-matcheo.md` §4). Éste sería el primer número real
-      con `by_text` vivo y EAN normalizado.
+> [!bug] Se destapó un BUG de F4 al correr de verdad (arreglado — commit `3796a80`)
+> "Ejecutar ahora" (y el sensor 4.2b) lanzaban `save_query_catalog` (particionado por provider_id)
+> **SIN partición** → la corrida moría a los 3s con `Cannot access partition_key for a non-partitioned
+> run`. Pasaba VERDE porque `launchRun` devuelve un run_id (Dagster acepta el lanzamiento) y la falla
+> ocurre al EJECUTAR el asset — el patrón F4 de siempre. Fix: helper de dominio
+> `partition_key_for(flow_key, provider_id)` (fuente única, junto a `JOB_BY_FLOW`) + el adapter agrega
+> el tag `dagster/partition` (valor introspeccionado, NO importado — el adapter no puede importar
+> dagster). Cubre AMBOS paths (RunPolicyNow + sensor). Verificado con corridas reales.
 
-**DECISIONES PENDIENTES DEL USUARIO antes de tocar nada:**
-1. **¿Quién dispara la corrida?** Recomendación: el usuario, desde la consola nueva — es el uso real
-   del módulo y sirve de aceptación.
-2. **Alcance de la primera corrida**: `SAVE_REFRESH_QUERY_LIMIT=10` y **UNA sola tienda**. La canasta
-   completa × 3 tiendas de entrada es cómo se llega a un 429 (ya pasó una vez).
-3. **¿Hay endpoint BGE-M3 levantado**, o se acepta in-process con la lentitud?
+**Números reales medidos** (`by_text` vivo, LLM off, in-process BGE-M3, limit=10):
+
+| Corrida | Canónicos previos | Auto-link | A la cola | Lectura |
+|---|---|---|---|---|
+| Sirena | 50 (catálogo) | 48/48 (hybrid) | 0 | Re-match: su canasta ya estaba en el catálogo |
+| Bravo | 50 | 13 | **68** (human) | Descubrimiento real: exclusivos que no estaban |
+| Sirena **cold-start** | 0 (`--reset`) | 0 | **48** (human) | Sin catálogo, nada matchea → todo a decisión humana |
+
+**Conclusión del baseline**: el "85/15" viejo estaba INFLADO. Con LLM off, la banda gris va a humano,
+así que la cola es mayor. El auto-link depende de que EXISTAN canónicos que matchear — sin catálogo,
+todo es cold-start a la cola. Deep-link corrida→cola verificado EN VIVO (Bravo 68, Sirena 48).
+
+> [!warning] Gotcha operativo (guardado en memoria `save/dagster-orphaned-daemons`)
+> `dagster dev` no baja limpio al cerrar la terminal → se acumulan instancias huérfanas sobre el mismo
+> `DAGSTER_HOME`/Postgres → `still sending heartbeats… multiple daemon processes not supported` → las
+> corridas fallan. Correr SOLO una a la vez; limpiar con `dagster-down.sh` + verificar
+> `grep -c "still sending heartbeats"` == 0 y `ps` en 0 antes de relanzar. Bajar siempre con el script.
+
+**Pendiente real de 2.B** (para el LLM y prod, fuera del alcance de hoy): re-encender el juez LLM
+(cuota; el breaker ya arreglado en F0) → la banda gris deja de ir 100% a humano. Endpoint BGE-M3
+dedicado para prod (in-process no escala). Ninguno bloquea: la cascada determinista ya opera.
 
 ---
 
