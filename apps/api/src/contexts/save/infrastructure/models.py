@@ -532,3 +532,91 @@ class AdminAuditLogModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class OrchestrationGlobalConfigModel(Base):
+    """Defaults operativos por mercado (F4). Una fila por `market_id`; el override por policy gana."""
+
+    __tablename__ = "orchestration_global_config"
+    __table_args__ = (
+        UniqueConstraint("market_id", name="uq_orchestration_config_market"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    default_query_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    default_timezone: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="America/Santo_Domingo"
+    )
+    default_sla_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    auto_runs_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class OrchestrationPolicyModel(Base):
+    """Política operativa por provider-flow (o por asset). El admin es su fuente de verdad; Dagster
+    sigue siendo el runner.
+
+    `execution_mode` distingue quién dispara: `manual` (solo Ejecutar ahora), `automatic_chain` (lo
+    arrastra una AutomationCondition) o `cron` (por reloj). El invariante "solo `cron` lleva
+    cron_expression" lo impone la ENTIDAD (`domain/entities/orchestration.py`), no un CHECK: es una
+    regla de negocio con mensaje de error propio, y el dominio es puro.
+
+    Soft-delete con `deleted_at` — NUNCA hard-delete (§5.3): retirar una policy no puede romper el
+    histórico de runs, que es append-only y sagrado. El índice único es PARCIAL (`deleted_at IS
+    NULL`) para que una policy retirada no bloquee crear su reemplazo.
+    """
+
+    __tablename__ = "orchestration_policy"
+    __table_args__ = (
+        Index(
+            "uq_orchestration_policy_active",
+            "scope",
+            "provider_id",
+            "market_id",
+            "flow_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index("ix_orchestration_policy_market", "market_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.provider.id", ondelete="CASCADE"), nullable=True
+    )
+    flow_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    asset_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    execution_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual")
+    cron_expression: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timezone: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="America/Santo_Domingo"
+    )
+    sla_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    query_limit_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
