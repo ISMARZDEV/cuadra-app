@@ -9,6 +9,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-base/dropdown-menu";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
+import type { Locale } from "@/i18n/config";
+import { format, type MessageKey } from "@/i18n/messages";
 
 import { pauseSourceConfig, resumeSourceConfig } from "../api";
 
@@ -19,10 +21,14 @@ export function SourceActionsMenu({
   source,
   onEdit,
   refresh,
+  t,
+  locale,
 }: {
   source: SourceHealthDto;
   onEdit: () => void;
   refresh: () => Promise<void>;
+  t: (key: MessageKey) => string;
+  locale: Locale;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +39,8 @@ export function SourceActionsMenu({
     setError(null);
     const res = isPaused ? await resumeSourceConfig(source.id) : await pauseSourceConfig(source.id);
     setBusy(false);
-    if (res.error) setError(isPaused ? "No se pudo reanudar." : "No se pudo pausar.");
+    if (res.error)
+      setError(t(isPaused ? "admin.sources.actions.errResume" : "admin.sources.actions.errPause"));
     else await refresh();
   };
 
@@ -42,7 +49,7 @@ export function SourceActionsMenu({
       <DropdownMenu>
         <DropdownMenuTrigger
           disabled={busy}
-          aria-label={`Acciones de ${source.platform}`}
+          aria-label={format(locale, "admin.sources.actions.aria", { name: source.platform })}
           className="flex size-8 items-center justify-center rounded-full border border-[#b7e36f] bg-[#daff9f] text-[#015442] hover:bg-[#cdf58a] disabled:opacity-50 dark:border-brand-lime/30 dark:bg-brand-lime/20 dark:text-brand-lime"
         >
           <MoreHorizontal className="size-4" />
@@ -53,14 +60,14 @@ export function SourceActionsMenu({
             className="focus:bg-orange-500/10 focus:text-orange-600 not-data-[variant=destructive]:focus:**:text-orange-500 dark:focus:text-orange-400 dark:not-data-[variant=destructive]:focus:**:text-orange-400"
           >
             <Pencil className="text-orange-500" />
-            Editar
+            {t("admin.sources.actions.edit")}
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => void onTogglePause()}
             className="focus:bg-blue-500/10 focus:text-blue-600 not-data-[variant=destructive]:focus:**:text-blue-600 dark:focus:text-blue-400 dark:not-data-[variant=destructive]:focus:**:text-blue-400"
           >
             <Power className="text-blue-600 dark:text-blue-400" />
-            {isPaused ? "Reanudar" : "Pausar"}
+            {t(isPaused ? "admin.sources.actions.resume" : "admin.sources.actions.pause")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

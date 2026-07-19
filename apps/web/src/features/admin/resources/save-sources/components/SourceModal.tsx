@@ -13,22 +13,31 @@ import {
 } from "@/features/admin/components/filters/FilterSearchSelect";
 import { formatMoney } from "@/features/save/lib/format";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
+import type { Locale } from "@/i18n/config";
+import { format, type MessageKey } from "@/i18n/messages";
 
 import { createSourceConfig, probeSource, updateSourceConfig, type ProbeResult } from "../api";
 import { SOURCE_AUTH_TYPES, SOURCE_PLATFORM_OPTIONS, platformLabel, type SourceAuthType } from "../types";
 
 export type SourceModalState = { mode: "add" } | { mode: "edit"; source: SourceHealthDto };
 
+type T = (key: MessageKey) => string;
+
 const MASK = "••••"; // marca del secreto enmascarado (§15.5) — si sigue presente, no se reescribe
 
 // Parsea un textarea JSON opcional: vacío → undefined; inválido → error legible que bloquea el submit.
-function parseJson(raw: string, label: string): { ok: true; value?: Record<string, unknown> } | { ok: false; error: string } {
+// `label` = etiqueta ya traducida del campo (Headers/Endpoints); el mensaje se arma vía i18n.
+function parseJson(
+  raw: string,
+  label: string,
+  errMsg: (label: string) => string,
+): { ok: true; value?: Record<string, unknown> } | { ok: false; error: string } {
   const t = raw.trim();
   if (!t) return { ok: true, value: undefined };
   try {
     return { ok: true, value: JSON.parse(t) as Record<string, unknown> };
   } catch {
-    return { ok: false, error: `JSON inválido en ${label}` };
+    return { ok: false, error: errMsg(label) };
   }
 }
 
@@ -40,11 +49,15 @@ export function SourceModal({
   providers,
   onClose,
   refresh,
+  t,
+  locale,
 }: {
   state: SourceModalState;
   providers: ProviderRefDto[];
   onClose: () => void;
   refresh: () => Promise<void>;
+  t: T;
+  locale: Locale;
 }) {
   const isEdit = state.mode === "edit";
   const src = isEdit ? state.source : null;
@@ -94,12 +107,16 @@ export function SourceModal({
     return { type: "basic", username: user, password: pass };
   };
 
+  const jsonErr = (label: string) =>
+    format(locale, "admin.sources.modal.errJsonInvalid", { label });
+
   const apply = async () => {
-    if (!isEdit && !providerId.trim()) return setError("El id del proveedor es obligatorio.");
-    if (!baseUrl.trim()) return setError("La Base URL es obligatoria.");
-    const headers = parseJson(headersRaw, "Headers");
+    if (!isEdit && !providerId.trim())
+      return setError(t("admin.sources.modal.errProviderRequired"));
+    if (!baseUrl.trim()) return setError(t("admin.sources.modal.errUrlRequired"));
+    const headers = parseJson(headersRaw, t("admin.sources.modal.fieldHeaders"), jsonErr);
     if (!headers.ok) return setError(headers.error);
-    const endpoints = parseJson(endpointsRaw, "Endpoints");
+    const endpoints = parseJson(endpointsRaw, t("admin.sources.modal.fieldEndpoints"), jsonErr);
     if (!endpoints.ok) return setError(endpoints.error);
 
     setBusy(true);
@@ -115,7 +132,7 @@ export function SourceModal({
         auth: authValue,
       });
       setBusy(false);
-      if (res.error) return setError("No se pudo guardar la fuente.");
+      if (res.error) return setError(t("admin.sources.modal.errSaveEdit"));
     } else {
       const res = await createSourceConfig({
         providerId,
@@ -126,7 +143,7 @@ export function SourceModal({
         auth: authValue,
       });
       setBusy(false);
-      if (res.error) return setError("No se pudo crear la fuente.");
+      if (res.error) return setError(t("admin.sources.modal.errSaveAdd"));
     }
     await refresh();
     onClose();
@@ -138,7 +155,7 @@ export function SourceModal({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title={isEdit ? "Editar fuente" : "Agregar proveedor"}
+      title={t(isEdit ? "admin.sources.modal.titleEdit" : "admin.sources.modal.titleAdd")}
       icon={isEdit ? <Pencil /> : <Plus />}
       onClear={() => {
         setError(null);
@@ -149,8 +166,12 @@ export function SourceModal({
         }
       }}
       onApply={() => void apply()}
-      clearLabel="Limpiar"
-      applyLabel={busy ? "Guardando…" : isEdit ? "Guardar cambios" : "Crear fuente"}
+      clearLabel={t("admin.sources.modal.clear")}
+      applyLabel={
+        busy
+          ? t("admin.sources.modal.saving")
+          : t(isEdit ? "admin.sources.modal.saveEdit" : "admin.sources.modal.saveAdd")
+      }
       applyIcon={isEdit ? <Pencil className="size-4" /> : <Plus className="size-4" />}
     >
       {error ? (
@@ -160,19 +181,19 @@ export function SourceModal({
       ) : null}
 
       {!isEdit ? (
-        <FilterField icon={<Store />} label="Proveedor" htmlFor="source-provider">
+        <FilterField icon={<Store />} label={t("admin.sources.modal.fieldProvider")} htmlFor="source-provider">
           <FilterSearchSelect
             id="source-provider"
             value={providerId || undefined}
             onChange={(v) => setProviderId(v ?? "")}
             options={providerOptions}
-            placeholder="Buscar proveedor…"
-            allLabel="Selecciona un proveedor…"
+            placeholder={t("admin.sources.modal.providerSearch")}
+            allLabel={t("admin.sources.modal.providerAll")}
           />
         </FilterField>
       ) : null}
 
-      <FilterField icon={<Server />} label="Plataforma" htmlFor="source-platform">
+      <FilterField icon={<Server />} label={t("admin.sources.modal.fieldPlatform")} htmlFor="source-platform">
         <Select value={platform} onValueChange={(v) => setPlatform(v as SourcePlatform)}>
           <SelectTrigger id="source-platform" className="h-11! rounded-xl">
             <SelectValue />
@@ -187,12 +208,12 @@ export function SourceModal({
         </Select>
       </FilterField>
 
-      <FilterField icon={<Link2 />} label="Base URL" htmlFor="source-url">
+      <FilterField icon={<Link2 />} label={t("admin.sources.modal.fieldUrl")} htmlFor="source-url">
         <Input id="source-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://…" className="h-11! rounded-xl" />
       </FilterField>
 
       {/* Auth TIPADO (§15.2): el select decide los campos; el secreto es write-only (enmascarado). */}
-      <FilterField icon={<KeyRound />} label="Autenticación" htmlFor="source-auth-type">
+      <FilterField icon={<KeyRound />} label={t("admin.sources.modal.fieldAuth")} htmlFor="source-auth-type">
         <Select value={authType} onValueChange={(v) => setAuthType(v as SourceAuthType)}>
           <SelectTrigger id="source-auth-type" className="h-11! rounded-xl">
             <SelectValue />
@@ -200,7 +221,7 @@ export function SourceModal({
           <SelectContent>
             {SOURCE_AUTH_TYPES.map((a) => (
               <SelectItem key={a} value={a}>
-                {AUTH_LABEL[a]}
+                {t(AUTH_KEY[a])}
               </SelectItem>
             ))}
           </SelectContent>
@@ -208,30 +229,30 @@ export function SourceModal({
       </FilterField>
 
       {authType === "bearer" ? (
-        <FilterField label="Token (Bearer)" htmlFor="source-token">
-          <Input id="source-token" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Authorization: Bearer …" className="h-11! rounded-xl" />
+        <FilterField label={t("admin.sources.modal.fieldTokenBearer")} htmlFor="source-token">
+          <Input id="source-token" value={token} onChange={(e) => setToken(e.target.value)} placeholder={t("admin.sources.modal.phTokenBearer")} className="h-11! rounded-xl" />
         </FilterField>
       ) : null}
 
       {authType === "api_key" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[120px_1fr]">
-          <FilterField label="Ubicación" htmlFor="source-key-in">
+          <FilterField label={t("admin.sources.modal.fieldLocation")} htmlFor="source-key-in">
             <Select value={keyIn} onValueChange={(v) => setKeyIn(v as "header" | "query")}>
               <SelectTrigger id="source-key-in" className="h-11! rounded-xl">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="header">Header</SelectItem>
-                <SelectItem value="query">Query</SelectItem>
+                <SelectItem value="header">{t("admin.sources.modal.locationHeader")}</SelectItem>
+                <SelectItem value="query">{t("admin.sources.modal.locationQuery")}</SelectItem>
               </SelectContent>
             </Select>
           </FilterField>
-          <FilterField label="Nombre del header" htmlFor="source-key-name">
+          <FilterField label={t("admin.sources.modal.fieldHeaderName")} htmlFor="source-key-name">
             <Input id="source-key-name" value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="X-Auth-Token" className="h-11! rounded-xl" />
           </FilterField>
           <div className="sm:col-span-2">
-            <FilterField label="Token / valor (el secreto)" htmlFor="source-key-value">
-              <Input id="source-key-value" value={keyValue} onChange={(e) => setKeyValue(e.target.value)} placeholder="pega aquí el token de la API" className="h-11! rounded-xl" />
+            <FilterField label={t("admin.sources.modal.fieldKeyValue")} htmlFor="source-key-value">
+              <Input id="source-key-value" value={keyValue} onChange={(e) => setKeyValue(e.target.value)} placeholder={t("admin.sources.modal.phKeyValue")} className="h-11! rounded-xl" />
             </FilterField>
           </div>
         </div>
@@ -239,41 +260,41 @@ export function SourceModal({
 
       {authType === "basic" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <FilterField label="Usuario" htmlFor="source-user">
+          <FilterField label={t("admin.sources.modal.fieldUser")} htmlFor="source-user">
             <Input id="source-user" value={user} onChange={(e) => setUser(e.target.value)} className="h-11! rounded-xl" />
           </FilterField>
-          <FilterField label="Contraseña" htmlFor="source-pass">
+          <FilterField label={t("admin.sources.modal.fieldPass")} htmlFor="source-pass">
             <Input id="source-pass" value={pass} onChange={(e) => setPass(e.target.value)} className="h-11! rounded-xl" />
           </FilterField>
         </div>
       ) : null}
 
       <details className="rounded-xl border border-border px-3 py-2 text-sm">
-        <summary className="cursor-pointer font-semibold text-foreground">Avanzado (Headers / Endpoints)</summary>
+        <summary className="cursor-pointer font-semibold text-foreground">{t("admin.sources.modal.advanced")}</summary>
         <div className="mt-3 space-y-3">
-          <FilterField label="Headers (JSON)" htmlFor="source-headers">
+          <FilterField label={t("admin.sources.modal.fieldHeaders")} htmlFor="source-headers">
             <Textarea id="source-headers" value={headersRaw} onChange={(e) => setHeadersRaw(e.target.value)} placeholder={'{"Store": "jumbo", "User-Agent": "…"}'} className="rounded-xl font-mono text-xs" />
           </FilterField>
-          <FilterField label="Endpoints (JSON)" htmlFor="source-endpoints">
+          <FilterField label={t("admin.sources.modal.fieldEndpoints")} htmlFor="source-endpoints">
             <Textarea id="source-endpoints" value={endpointsRaw} onChange={(e) => setEndpointsRaw(e.target.value)} placeholder={'{"profile": "bravova", "sections": ["3"], "store_id": "1000"}'} className="rounded-xl font-mono text-xs" />
           </FilterField>
         </div>
       </details>
 
-      {isEdit ? <ProbePanel sourceId={src!.id} /> : null}
+      {isEdit ? <ProbePanel sourceId={src!.id} t={t} locale={locale} /> : null}
     </FilterModal>
   );
 }
 
-const AUTH_LABEL: Record<SourceAuthType, string> = {
-  none: "Ninguna",
-  bearer: "Bearer token",
-  api_key: "API key",
-  basic: "Usuario y contraseña",
+const AUTH_KEY: Record<SourceAuthType, MessageKey> = {
+  none: "admin.sources.modal.authNone",
+  bearer: "admin.sources.modal.authBearer",
+  api_key: "admin.sources.modal.authApiKey",
+  basic: "admin.sources.modal.authBasic",
 };
 
 // Probar (dry-run, §admin) — solo en edición (la fuente ya existe). NO guarda nada.
-function ProbePanel({ sourceId }: { sourceId: string }) {
+function ProbePanel({ sourceId, t, locale }: { sourceId: string; t: T; locale: Locale }) {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ProbeResult | null>(null);
@@ -288,29 +309,31 @@ function ProbePanel({ sourceId }: { sourceId: string }) {
 
   return (
     <div className="space-y-2 rounded-2xl border border-dashed border-border p-3">
-      <p className="text-xs font-medium text-muted-foreground">Probar (vista previa) — no guarda nada.</p>
+      <p className="text-xs font-medium text-muted-foreground">{t("admin.sources.modal.probeTitle")}</p>
       <form onSubmit={(e) => void onSubmit(e)} className="flex gap-2">
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Query de búsqueda…" aria-label="Query de prueba" className="h-10 rounded-xl" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.sources.modal.probePh")} aria-label={t("admin.sources.modal.probeAria")} className="h-10 rounded-xl" />
         <button type="submit" disabled={busy} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-brand-forest px-4 text-sm font-semibold text-brand-lime disabled:opacity-50">
           <Search className="size-4" />
-          {busy ? "Probando…" : "Probar"}
+          {busy ? t("admin.sources.modal.probeLoading") : t("admin.sources.modal.probeBtn")}
         </button>
       </form>
-      {result ? <ProbeResultView result={result} /> : null}
+      {result ? <ProbeResultView result={result} t={t} locale={locale} /> : null}
     </div>
   );
 }
 
-function ProbeResultView({ result }: { result: ProbeResult }) {
+function ProbeResultView({ result, t, locale }: { result: ProbeResult; t: T; locale: Locale }) {
   if (!result.ok) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        {result.kind === "config" ? `Configuración inválida: ${result.message}` : `La tienda no respondió: ${result.message}`}
+        {result.kind === "config"
+          ? format(locale, "admin.sources.modal.probeErrConfig", { message: result.message })
+          : format(locale, "admin.sources.modal.probeErrUpstream", { message: result.message })}
       </p>
     );
   }
   if (result.samples.length === 0) {
-    return <p className="text-sm text-muted-foreground">Sin resultados para esa query.</p>;
+    return <p className="text-sm text-muted-foreground">{t("admin.sources.modal.probeNoResults")}</p>;
   }
   return (
     <ul className="space-y-1.5">
