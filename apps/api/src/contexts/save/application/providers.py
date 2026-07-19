@@ -24,6 +24,18 @@ class ListProviders:
         ]
 
 
+class ListAdminProviders:
+    """Listado ADMIN de providers (T1/#11): devuelve la ENTIDAD completa (type/platform/market),
+    no el `ProviderRefDto` público — la consola necesita esos campos para edición segura. El admin
+    dejó de depender de `listProviders` (público, parcial). Ordena por nombre para la tabla."""
+
+    def __init__(self, provider_repo: ProviderRepository) -> None:
+        self._repo = provider_repo
+
+    def execute(self, market_id: str) -> list[Provider]:
+        return sorted(self._repo.list_by_market(market_id), key=lambda p: p.name.lower())
+
+
 class GetProvider:
     """Resuelve el nombre de la tienda para la cabecera de su página propia (A9)."""
 

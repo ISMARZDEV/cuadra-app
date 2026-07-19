@@ -1,23 +1,27 @@
 import {
   createProvider as createProviderRequest,
-  listProviders as listProvidersRequest,
+  listAdminProviders as listAdminProvidersRequest,
   setProviderLogo as setProviderLogoRequest,
   updateProvider as updateProviderRequest,
 } from "@cuadra/api-client";
-import type { ProviderRefDto, ProviderType, SourcePlatform } from "@cuadra/api-client";
+import type { ProviderDto, ProviderType, SourcePlatform } from "@cuadra/api-client";
 
 import { authHeaders } from "@/features/save/hooks/use-auth";
 import { apiClient } from "@/lib/api";
 
-// Mutaciones client-side de la consola de Providers (3.5) — MISMO mecanismo de auth que
-// save-matching/api.ts (`authHeaders()`, token async de Clerk: cuadra-clerk "short-lived-token /
-// async token-getter rule"). No hay endpoint admin de LISTADO todavía (solo alta/edición) — la
-// pantalla lista vía el público `listProviders` (`+data.ts` para SSR, `listProvidersEntries` para
-// refrescar client-side tras mutar, gap F3: reemplaza `window.location.reload()`).
+// Consola de Providers (3.5 / #11) — MISMO mecanismo de auth que save-matching/api.ts
+// (`authHeaders()`, token async de Clerk: cuadra-clerk "async token-getter rule"). El listado usa el
+// endpoint ADMIN gateado `listAdminProviders` (DTO completo type/platform/market), NO el público
+// `listProviders` — la consola dejó de depender del contrato parcial (plan §5.1). Refresca
+// client-side tras mutar (reemplaza `window.location.reload()`).
 const DEFAULT_MARKET = "DO";
 
-export async function listProvidersEntries(market: string = DEFAULT_MARKET): Promise<ProviderRefDto[]> {
-  const res = await listProvidersRequest({ client: apiClient, query: { market } });
+export async function listProvidersEntries(market: string = DEFAULT_MARKET): Promise<ProviderDto[]> {
+  const res = await listAdminProvidersRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    query: { market },
+  });
   return res.data ?? [];
 }
 
@@ -41,15 +45,26 @@ export async function createProvider(params: {
   });
 }
 
-// PATCH semántica: solo reenvía `name` — esta consola no expone (todavía) reasignar tipo/
-// plataforma/mercado de un proveedor existente porque el público `listProviders` (única fuente de
-// la lista) no trae esos campos para prellenar el form sin arriesgar un PATCH-a-ciegas.
-export async function updateProvider(params: { providerId: string; name: string }) {
+// PATCH: con el DTO admin la consola ya puede prellenar y reasignar type/platform/market con
+// seguridad (antes solo `name`, porque el público no traía esos campos). Solo se envían los campos
+// presentes (PATCH parcial).
+export async function updateProvider(params: {
+  providerId: string;
+  name?: string;
+  type?: ProviderType;
+  platform?: SourcePlatform;
+  marketId?: string;
+}) {
   return updateProviderRequest({
     client: apiClient,
     headers: await authHeaders(),
     path: { provider_id: params.providerId },
-    body: { name: params.name },
+    body: {
+      name: params.name,
+      type: params.type,
+      platform: params.platform,
+      market_id: params.marketId,
+    },
   });
 }
 
