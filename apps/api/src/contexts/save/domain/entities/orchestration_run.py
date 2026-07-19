@@ -16,6 +16,7 @@ un upgrade del runner no puede tumbar la consola.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 
@@ -74,3 +75,39 @@ _RUNNER_STATES: dict[str, RunState] = {
 def run_state_from_runner(runner_status: str) -> RunState:
     """Traduce el estado crudo del runner. Desconocido → `UNKNOWN`, nunca excepción."""
     return _RUNNER_STATES.get(runner_status.strip().upper(), RunState.UNKNOWN)
+
+
+@dataclass(frozen=True, slots=True)
+class RunMetrics:
+    """Lo que produjo una corrida, medido por NUESTRA ingesta.
+
+    Dagster no conoce estos números (son de nuestro dominio) y su event log es purgable, así que
+    viven en nuestra DB: §5.3 — el histórico de runs es append-only y sagrado.
+
+    NO incluye el estado de la corrida: esta medición se toma DESDE ADENTRO, así que el estado que
+    pudiera registrar sería siempre "en curso". El estado lo da el bridge, en vivo.
+    """
+
+    seen: int = 0
+    refreshed: int = 0
+    unmatched: int = 0
+    matched: int = 0
+    discarded: int = 0
+    auto_linked: int = 0
+    queued_for_review: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class RunSnapshot:
+    """Proyección admin de una corrida: nuestras métricas + lo derivado."""
+
+    dagster_run_id: str
+    market_id: str
+    metrics: RunMetrics
+    provider_id: str | None = None
+    policy_id: str | None = None
+    flow_key: str | None = None
+    # DERIVADO por atribución (`canonical_product.origin_run_id`), no almacenado: el trabajo humano
+    # sobre la cola de esta corrida sigue ocurriendo días después, y un número congelado al terminar
+    # la corrida diría siempre cero.
+    new_canonicals: int = 0

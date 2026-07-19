@@ -20,6 +20,10 @@ import dagster as dg
 from src.contexts.save.application.alerts import RunAlertMatching
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.domain.entities.orchestration_run import RunMetrics
+from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
+    SqlRunSnapshotRepository,
+)
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlStoreProductRepository,
@@ -157,6 +161,25 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             # que después permite filtrar la cola por corrida (`?run_id=`) y atribuirle los
             # canónicos que un humano cree resolviéndola.
             run_id=context.run_id,
+        )
+        # Métricas de ESTA corrida en NUESTRA DB (F4 #4.5). No se delega al event log de Dagster:
+        # es purgable y su API está declarada inestable, y §5.3 dice que el histórico de runs es
+        # append-only y sagrado. Va en la MISMA sesión que la ingesta: si el refresh se revierte,
+        # sus métricas no quedan huérfanas.
+        SqlRunSnapshotRepository(session).record(
+            dagster_run_id=context.run_id,
+            market_id=SAVE_MARKET,
+            metrics=RunMetrics(
+                seen=result.seen,
+                refreshed=result.refreshed,
+                unmatched=result.unmatched,
+                matched=result.matched,
+                discarded=result.discarded,
+                auto_linked=result.auto_linked,
+                queued_for_review=result.queued_for_review,
+            ),
+            provider_id=provider_id,
+            flow_key="provider_prices_refresh",
         )
         session.commit()
     context.log.info(

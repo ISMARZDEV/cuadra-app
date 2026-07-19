@@ -633,3 +633,51 @@ class OrchestrationPolicyModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class OrchestrationRunSnapshotModel(Base):
+    """Métricas de UNA corrida, medidas por nuestra ingesta (F4 #4.5).
+
+    Qué NO tiene, a propósito:
+    - **estado**: esta fila la escribe la corrida DESDE ADENTRO, así que un estado guardado sería
+      siempre "en curso" — una columna garantizada a estar mal. El estado lo da el bridge en vivo.
+    - **new_canonicals**: se DERIVA por `canonical_product.origin_run_id`. El trabajo humano sobre
+      la cola de esta corrida sigue ocurriendo días después; un número congelado al terminar diría
+      siempre cero.
+
+    `dagster_run_id` es TEXT y no FK: lo emite el runner, que es un sistema externo. Único, porque
+    un reintento de la misma corrida debe ACTUALIZAR — dos filas mostrarían la corrida duplicada y
+    los totales sumados dos veces.
+    """
+
+    __tablename__ = "orchestration_run_snapshot"
+    __table_args__ = (
+        UniqueConstraint("dagster_run_id", name="uq_run_snapshot_dagster_run"),
+        Index("ix_run_snapshot_policy", "policy_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    dagster_run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.orchestration_policy.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.provider.id", ondelete="SET NULL"), nullable=True
+    )
+    flow_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seen: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    refreshed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    unmatched: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    matched: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    discarded: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    auto_linked: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    queued_for_review: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
