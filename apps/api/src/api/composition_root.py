@@ -66,8 +66,16 @@ from src.contexts.save.application.preview_basket_query import PreviewBasketQuer
 from src.contexts.save.application.test_source import TestSource
 from src.contexts.save.domain.ports.orchestrator import PipelineOrchestrator
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.application.orchestration_policies import CreateProviderFlow
+from src.contexts.save.infrastructure.catalog_sources.factory import directed_capability
 from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
     DagsterGraphQLOrchestrator,
+)
+from src.contexts.save.infrastructure.orchestrator.policy_repository import (
+    SqlOrchestrationPolicyRepository,
+)
+from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
+    SqlRunSnapshotRepository,
 )
 from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
     SqlProductMatchRepository,
@@ -371,6 +379,27 @@ def get_pipeline_orchestrator() -> PipelineOrchestrator:
     chequear nulos y a inventar su propia degradación.
     """
     return DagsterGraphQLOrchestrator(url=settings.save_dagster_graphql_url)
+
+
+def get_orchestration_policy_repo(
+    session: Session = Depends(get_session),
+) -> SqlOrchestrationPolicyRepository:
+    return SqlOrchestrationPolicyRepository(session)
+
+
+def get_run_snapshot_repo(session: Session = Depends(get_session)) -> SqlRunSnapshotRepository:
+    return SqlRunSnapshotRepository(session)
+
+
+def get_create_provider_flow(session: Session = Depends(get_session)) -> CreateProviderFlow:
+    """`capability_of` se INYECTA porque solo la capa que conoce los profiles REST puede responder
+    por una fuente concreta — y porque la compatibilidad del flow se DERIVA de ahí, nunca de una
+    allowlist de plataformas (corrección del SDD; ver el use-case)."""
+    return CreateProviderFlow(
+        policy_repo=SqlOrchestrationPolicyRepository(session),
+        registry_repo=SqlStoreRegistryRepository(session),
+        capability_of=lambda source: directed_capability(source.platform, source.endpoints),
+    )
 
 
 def get_create_provider(session: Session = Depends(get_session)) -> CreateProvider:
