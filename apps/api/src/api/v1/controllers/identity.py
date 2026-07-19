@@ -16,7 +16,7 @@ from src.config import settings
 from src.contexts.identity.application.dtos import MeResponse
 from src.contexts.identity.application.queries import GetMe
 from src.contexts.identity.infrastructure.auth import encode_token
-from src.contexts.identity.infrastructure.models import UserModel, UserRoleModel
+from src.contexts.identity.infrastructure.models import RoleModel, UserModel, UserRoleModel
 from src.contexts.identity.infrastructure.repositories import SqlUserRepository
 
 router = APIRouter(prefix="/identity", tags=["identity"])
@@ -44,6 +44,9 @@ def get_me(
 
 class DevLoginRequest(BaseModel):
     email: str
+    # Solo-dev: pedir un rol para el usuario (p.ej. "super_admin" para VER el admin localmente sin
+    # sembrar uno a mano). None = solo el normal_user base. Un rol inexistente → 422 (nunca 500).
+    role: str | None = None
 
 
 class DevLoginResponse(BaseModel):
@@ -68,6 +71,23 @@ def _get_or_create_dev_user(session: Session, email: str) -> str:
     return str(user.id)
 
 
+def _grant_role(session: Session, user_id: str, role_key: str) -> None:
+    """Asigna un rol al usuario dev (idempotente). Valida contra los roles existentes → 422 si el
+    rol no existe (nunca un 500 por FK). SOLO dev."""
+    if session.get(RoleModel, role_key) is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Rol desconocido: {role_key!r}"
+        )
+    exists = (
+        session.query(UserRoleModel)
+        .filter_by(user_id=user_id, role_key=role_key)
+        .first()
+    )
+    if exists is None:
+        session.add(UserRoleModel(user_id=user_id, role_key=role_key))
+        session.flush()
+
+
 @router.post(
     "/dev-login",
     response_model=DevLoginResponse,
@@ -81,5 +101,13 @@ def dev_login(
 ) -> DevLoginResponse:
     if settings.app_env != "dev":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    # 10.C: sembrar la data de referencia (roles/capabilities) es IDEMPOTENTE y barato. Garantiza
+    # que asignar role_key='normal_user' no viole el FK en un entorno FRESCO — la causa del 500
+    # histórico. dev-login "desbloquea el cliente sin IdP", así que debe funcionar sin un paso manual.
+    from seeds.identity_seed import seed_identity
+
+    seed_identity(session)
     user_id = _get_or_create_dev_user(session, body.email)
+    if body.role is not None:
+        _grant_role(session, user_id, body.role)  # 10.B: acceso admin local (p.ej. super_admin)
     return DevLoginResponse(access_token=encode_token({"sub": user_id}), user_id=user_id)
