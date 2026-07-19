@@ -64,7 +64,11 @@ from src.contexts.save.application.store_registry import (
 )
 from src.contexts.save.application.preview_basket_query import PreviewBasketQuery
 from src.contexts.save.application.test_source import TestSource
+from src.contexts.save.domain.ports.orchestrator import PipelineOrchestrator
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
+    DagsterGraphQLOrchestrator,
+)
 from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
     SqlProductMatchRepository,
 )
@@ -355,6 +359,18 @@ def get_admin_audit_repo(session: Session = Depends(get_session)) -> SqlAdminAud
     """Repo del audit log del admin (T2). El controller lo compone con el actor del request en un
     `AdminAuditRecorder` — aquí NO se resuelve el actor (evita el ciclo con extensions.security)."""
     return SqlAdminAuditRepository(session)
+
+
+def get_pipeline_orchestrator() -> PipelineOrchestrator:
+    """Adapter del runner (F4). NO toma `session`: el runner es un sistema externo, no tiene nada
+    que ver con la Unit of Work del request.
+
+    Se construye SIEMPRE, incluso con la URL vacía: en ese caso el adapter levanta
+    `OrchestratorUnavailable` en cada llamada y la consola degrada a `disconnected` — que es
+    exactamente el comportamiento que pide el SDD §8. Devolver `None` obligaría a cada consumidor a
+    chequear nulos y a inventar su propia degradación.
+    """
+    return DagsterGraphQLOrchestrator(url=settings.save_dagster_graphql_url)
 
 
 def get_create_provider(session: Session = Depends(get_session)) -> CreateProvider:

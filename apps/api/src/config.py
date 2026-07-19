@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     # cuando el LLM está ON y se cae a mitad de batch. Se complementan, no se reemplazan.
     save_llm_judge_enabled: bool = False
 
+    # Orquestación (F4): endpoint GraphQL del runner (Dagster). Vacío = la consola opera en modo
+    # DEGRADADO: la política sigue viéndose y editándose (vive en NUESTRA DB), pero las secciones
+    # que dependen del runner se marcan `disconnected` en vez de romper.
+    #
+    # SEGURIDAD: Dagster OSS no tiene autenticación — quien alcance el webserver controla el runner
+    # (lanzar, cancelar, borrar). Este host NO puede quedar expuesto públicamente: la API lo alcanza
+    # por red privada. En dev, `scripts/dagster-dev.sh` lo levanta en :3070.
+    save_dagster_graphql_url: str = ""
+
     # CORS (§12·E E.1) — coma-separado (evita el parseo JSON de listas de pydantic-settings).
     # La web de Cuadra corre SIEMPRE en :3006 (dev). Prod se agrega vía CORS_ORIGINS en el entorno.
     cors_origins: str = "http://localhost:3006"
