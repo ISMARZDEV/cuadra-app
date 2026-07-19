@@ -78,9 +78,14 @@ class PipelineOrchestrator(Protocol):
         policy_id: str,
         trigger: RunTrigger = RunTrigger.MANUAL,
         actor_user_id: str | None = None,
+        partition_key: str | None = None,
     ) -> str:
         """Lanza una corrida y devuelve su id. Se TAGUEA con `policy_id` para poder recuperarla
-        después sin adivinar por nombre + ventana de tiempo."""
+        después sin adivinar por nombre + ventana de tiempo.
+
+        `partition_key` es OBLIGATORIO cuando el job está particionado (`save_query_catalog` particiona
+        por provider_id): sin él la corrida es no-particionada y el asset revienta al leer
+        `context.partition_key`. Quién decide si un flow lo necesita es `partition_key_for` (dominio)."""
         ...
 
     def retry(self, run_id: str) -> str:

@@ -32,6 +32,9 @@ from ..domain.entities.orchestration import ExecutionMode
 class DuePolicyRun:
     policy_id: str
     flow_key: str
+    # El provider viaja para que el sensor lance CON partición (el job está particionado por
+    # provider_id; sin ella la corrida muere igual que "Ejecutar ahora" sin el fix).
+    provider_id: str | None
     # Identidad del DISPARO, no del instante en que lo miramos: dos evaluaciones dentro del mismo
     # tick producen el mismo key y Dagster lanza una sola corrida.
     run_key: str
@@ -75,6 +78,7 @@ def due_policy_runs(policies: Iterable[object], *, now: datetime) -> list[DuePol
             DuePolicyRun(
                 policy_id=policy.id,  # type: ignore[attr-defined]
                 flow_key=flow_key.value if flow_key is not None else "",
+                provider_id=getattr(policy, "provider_id", None),
                 run_key=f"{policy.id}:{tick.isoformat()}",  # type: ignore[attr-defined]
             )
         )

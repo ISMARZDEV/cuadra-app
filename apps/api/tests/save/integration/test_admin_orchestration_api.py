@@ -130,6 +130,13 @@ def test_the_audit_table_is_reachable_and_append_only(db_session) -> None:  # ty
     ))
     db_session.flush()
 
-    rows = db_session.query(AdminAuditLogModel).filter_by(action="orchestration.run.launch").all()
+    # Aislado por el actor/target de ESTE test (no un conteo de toda la tabla): la auditoría es
+    # append-only y sagrada (§5.3), así que la tabla puede tener filas reales de otras corridas
+    # (p.ej. lanzamientos hechos desde la consola) — el smoke solo verifica que SU fila aterrizó.
+    rows = (
+        db_session.query(AdminAuditLogModel)
+        .filter_by(action="orchestration.run.launch", actor_user_id="u-1", target_id="p-1")
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].payload_summary == {"run_id": "r-1"}

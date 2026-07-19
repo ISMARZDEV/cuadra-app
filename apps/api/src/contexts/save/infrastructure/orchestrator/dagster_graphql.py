@@ -40,6 +40,12 @@ from ...domain.ports.orchestrator import (
 
 HttpPost = Callable[[str, dict, dict[str, str]], dict]
 
+# Tag canónico de Dagster para fijar la partición de una corrida — `context.partition_key` se resuelve
+# de acá. Valor INTROSPECCIONADO de `dagster._core.storage.tags.PARTITION_NAME_TAG` (dagster 1.13.x),
+# NO importado: el adapter no puede importar `dagster` (vive fuera del grupo `ingestion`; importarlo
+# reventaría la API al boot — gotcha #1, guardado por el test AST de conformidad).
+_PARTITION_TAG = "dagster/partition"
+
 _TIMEOUT_SECONDS = 10.0
 
 _RUN_FIELDS = "runId jobName status startTime endTime tags { key value }"
@@ -216,6 +222,7 @@ class DagsterGraphQLOrchestrator:
         policy_id: str,
         trigger: RunTrigger = RunTrigger.MANUAL,
         actor_user_id: str | None = None,
+        partition_key: str | None = None,
     ) -> str:
         # Los tags son la CORRELACIÓN policy↔corrida. `RunsFilter.tags` permite recuperarlas
         # después de forma exacta; sin esto habría que adivinar por nombre de job + timestamp.
@@ -225,6 +232,11 @@ class DagsterGraphQLOrchestrator:
         ]
         if actor_user_id:
             tags.append({"key": TAG_ACTOR, "value": actor_user_id})
+        # Partición: Dagster resuelve `context.partition_key` de este tag. Sin él, un job particionado
+        # (`save_query_catalog`) corre no-particionado y el asset revienta. `launchRun` ya manda los
+        # tags por `executionMetadata.tags`, así que basta AGREGARLO — no cambia la forma del GraphQL.
+        if partition_key:
+            tags.append({"key": _PARTITION_TAG, "value": partition_key})
 
         selector = {**self._repository_selector(), "jobName": job_name}
         data = self._execute(_LAUNCH, {"selector": selector, "tags": tags})

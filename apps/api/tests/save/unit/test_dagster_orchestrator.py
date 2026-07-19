@@ -78,6 +78,39 @@ class TestLaunch:
         assert tags["cuadra/trigger"] == "manual"
         assert tags["cuadra/actor_user_id"] == "u-9"
 
+    def test_a_partitioned_job_launches_with_the_dagster_partition_tag(self) -> None:
+        """`save_query_catalog` está PARTICIONADO por provider_id: sin la partición, el run es
+        no-particionado y el asset revienta con `Cannot access partition_key for a non-partitioned
+        run` (verde en el borde —`launchRun` devuelve run_id— y roto 3s después en la corrida real).
+        Dagster resuelve `context.partition_key` del tag `dagster/partition` (introspeccionado:
+        `PARTITION_NAME_TAG`). El tag NO se importa de dagster (el adapter no puede, gotcha #1)."""
+        transport = FakeTransport([
+            {"data": {"repositoriesOrError": {"__typename": "RepositoryConnection", "nodes": [
+                {"name": "__repository__", "location": {"name": "ingestion.definitions"}}]}}},
+            {"data": {"launchRun": {"__typename": "LaunchRunSuccess", "run": {"runId": "r-1"}}}},
+        ])
+
+        _orchestrator(transport).launch(
+            job_name="save_query_catalog", policy_id="pol-1", partition_key="prov-123",
+        )
+
+        tags = {t["key"]: t["value"] for t in transport.last_variables["tags"]}
+        assert tags["dagster/partition"] == "prov-123"
+
+    def test_an_unpartitioned_launch_sends_no_partition_tag(self) -> None:
+        """Sin `partition_key` (job no particionado) NO se manda el tag — pasárselo a un job sin
+        particiones rompería del lado opuesto ("job is not partitioned")."""
+        transport = FakeTransport([
+            {"data": {"repositoriesOrError": {"__typename": "RepositoryConnection", "nodes": [
+                {"name": "__repository__", "location": {"name": "ingestion.definitions"}}]}}},
+            {"data": {"launchRun": {"__typename": "LaunchRunSuccess", "run": {"runId": "r-1"}}}},
+        ])
+
+        _orchestrator(transport).launch(job_name="save_coverage", policy_id="pol-1")
+
+        keys = {t["key"] for t in transport.last_variables["tags"]}
+        assert "dagster/partition" not in keys
+
     def test_a_launch_rejected_by_the_runner_is_not_reported_as_success(self) -> None:
         """`launchRun` devuelve una UNION: el error viaja en `__typename` con HTTP 200. Leer
         `run.runId` a ciegas daría un KeyError críptico o, peor, un id vacío que la consola

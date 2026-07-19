@@ -65,6 +65,25 @@ JOB_BY_FLOW: dict[str, str] = {
 }
 
 
+# Flows cuyo job está PARTICIONADO por provider_id (`save_query_catalog` = una tienda por partición).
+# Lanzarlos SIN partición produce un run no-particionado y el asset revienta al leer
+# `context.partition_key` (`Cannot access partition_key for a non-partitioned run`) — falla que pasa
+# VERDE en el borde (`launchRun` devuelve run_id) y muere 3s después en la corrida real. Fuente ÚNICA,
+# igual que JOB_BY_FLOW: la consumen "Ejecutar ahora" (`RunPolicyNow`) y el sensor programado.
+PROVIDER_PARTITIONED_FLOWS: frozenset[str] = frozenset({
+    FlowKey.PROVIDER_PRICES_REFRESH.value,
+})
+
+
+def partition_key_for(flow_key: str, provider_id: str | None) -> str | None:
+    """La partición con que lanzar un flow: el `provider_id` si su job está particionado por provider,
+    `None` si no. Pasar una partición a un job no particionado rompe del lado opuesto
+    (`job is not partitioned`), así que la decisión vive acá y no en cada caller."""
+    if flow_key in PROVIDER_PARTITIONED_FLOWS:
+        return provider_id
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class OrchestrationGlobalConfig:
     """Defaults por mercado. El override por policy gana sobre esto (SDD §8)."""

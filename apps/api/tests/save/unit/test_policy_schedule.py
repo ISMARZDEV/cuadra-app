@@ -52,6 +52,9 @@ class TestWhatFires:
 
         assert len(due) == 1
         assert due[0].policy_id == "pol-1"
+        # El provider viaja para que el sensor lance con partición (mismo fix que "Ejecutar ahora":
+        # el job está particionado por provider_id, o revienta con "non-partitioned run").
+        assert due[0].provider_id == "prov-1"
         # El run_key lleva el TICK, no el instante del sensor: dos evaluaciones dentro del mismo
         # tick producen el MISMO key y Dagster dispara una sola vez.
         assert due[0].run_key == "pol-1:2026-07-19T12:00:00-04:00"

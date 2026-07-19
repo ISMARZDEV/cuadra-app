@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 import dagster as dg
 
 from src.contexts.save.application.policy_schedule import due_policy_runs
-from src.contexts.save.domain.entities.orchestration import JOB_BY_FLOW
+from src.contexts.save.domain.entities.orchestration import JOB_BY_FLOW, partition_key_for
 from src.contexts.save.domain.ports.orchestrator import TAG_POLICY_ID, TAG_TRIGGER
 from src.contexts.save.infrastructure.orchestrator.policy_repository import (
     SqlOrchestrationPolicyRepository,
@@ -58,6 +58,9 @@ def save_orchestration_policies(context) -> dg.SensorResult:  # type: ignore[no-
             dg.RunRequest(
                 run_key=item.run_key,  # ← exactly-once por tick
                 job_name=job_name,
+                # Partición = provider (mismo fix que "Ejecutar ahora"): `save_query_catalog`
+                # particiona por provider_id; sin ella la corrida muere al leer `context.partition_key`.
+                partition_key=partition_key_for(item.flow_key, item.provider_id),
                 tags={TAG_POLICY_ID: item.policy_id, TAG_TRIGGER: "automatic"},
             )
         )

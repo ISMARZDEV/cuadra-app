@@ -17,6 +17,7 @@ from ..domain.entities.orchestration import (
     ExecutionMode,
     FlowKey,
     OrchestrationPolicy,
+    partition_key_for,
     PolicyScope,
 )
 from ..domain.ports.orchestrator import PipelineOrchestrator, RunTrigger
@@ -140,7 +141,8 @@ class RunPolicyNow:
                 "La policy está pausada o retirada. Reactivala antes de lanzar una corrida — "
                 "ejecutar algo que el operador pausó a propósito es peor que no hacer nada."
             )
-        job_name = JOB_BY_FLOW.get((policy.flow_key or "").value if policy.flow_key else "")
+        flow_key = (policy.flow_key or "").value if policy.flow_key else ""
+        job_name = JOB_BY_FLOW.get(flow_key)
         if job_name is None:
             raise ProviderFlowNotSupported(
                 f"No hay un job soportado para el flow {policy.flow_key!r}."
@@ -150,6 +152,9 @@ class RunPolicyNow:
             policy_id=policy.id,
             trigger=RunTrigger.MANUAL,
             actor_user_id=actor_user_id,
+            # `save_query_catalog` particiona por provider_id: sin la partición la corrida muere al
+            # leer `context.partition_key`. La decisión de si el flow la necesita vive en el dominio.
+            partition_key=partition_key_for(flow_key, policy.provider_id),
         )
 
 
