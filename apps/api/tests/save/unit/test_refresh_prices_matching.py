@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from src.contexts.save.application.match_store_product import IncomingStoreProduct
 from src.contexts.save.application.refresh_prices import RefreshCatalogPrices, RefreshResult
 from src.contexts.save.domain.entities import PriceType
+from src.contexts.save.domain.entities.product_match import MatchStatus, ProductMatch
 from src.contexts.save.domain.ports import RawCatalogEntry
 from src.shared.money import Currency, Money
 
@@ -72,12 +73,28 @@ class FakeSource:
 
 
 class FakeMatcher:
-    def __init__(self) -> None:
-        self.calls: list[IncomingStoreProduct] = []
+    """Fake del port de matching. Devuelve un `ProductMatch` REAL, como el `MatchStoreProduct` de
+    verdad — antes devolvía `None` y eso lo volvía un fake mentiroso: no honraba el contrato del
+    port, así que un consumidor que leyera el resultado (lo que hace #4.3) pasaba los tests y
+    reventaba en producción.
 
-    def execute(self, product: IncomingStoreProduct):  # type: ignore[no-untyped-def]
+    `statuses` permite guionar el desenlace de cada llamada; el último se repite si se agotan.
+    """
+
+    def __init__(self, statuses: list[MatchStatus] | None = None) -> None:
+        self.calls: list[IncomingStoreProduct] = []
+        self._statuses: list[MatchStatus] = statuses or ["auto_linked"]
+
+    def execute(self, product: IncomingStoreProduct) -> ProductMatch:
+        status = self._statuses[min(len(self.calls), len(self._statuses) - 1)]
         self.calls.append(product)
-        return None
+        return ProductMatch(
+            store_product_id=product.store_product_id,
+            canonical_product_id="canon-1" if status == "auto_linked" else None,
+            confidence=1.0 if status == "auto_linked" else 0.0,
+            method="ean" if status == "auto_linked" else "human",
+            status=status,
+        )
 
 
 def test_matcher_none_keeps_legacy_drop_behavior() -> None:
@@ -97,7 +114,9 @@ def test_matcher_routes_previously_dropped_row_to_cascade() -> None:
 
     result = RefreshCatalogPrices(repo, matcher=matcher).execute(source)
 
-    assert result == RefreshResult(seen=1, refreshed=0, unmatched=0, matched=1)
+    assert result == RefreshResult(
+        seen=1, refreshed=0, unmatched=0, matched=1, auto_linked=1
+    )
     # se materializó el store_product (canonical=None) ANTES de matchear
     assert len(repo.observations) == 1
     assert repo.observations[0]["canonical_product_id"] is None
@@ -152,7 +171,9 @@ def test_relevance_gate_keeps_in_scope_and_routes_to_cascade() -> None:
 
     result = RefreshCatalogPrices(repo, matcher=matcher, relevance_gate=gate).execute(source)
 
-    assert result == RefreshResult(seen=1, refreshed=0, unmatched=0, matched=1, discarded=0)
+    assert result == RefreshResult(
+        seen=1, refreshed=0, unmatched=0, matched=1, discarded=0, auto_linked=1
+    )
     assert len(repo.observations) == 1  # in-scope → se materializa y matchea normal
     assert len(matcher.calls) == 1
 
@@ -179,7 +200,9 @@ def test_no_relevance_gate_is_noop() -> None:
     result = RefreshCatalogPrices(repo, matcher=matcher).execute(source)
 
     # sin gate → comportamiento legacy: el desconocido entra a la cascada, nada se descarta.
-    assert result == RefreshResult(seen=1, refreshed=0, unmatched=0, matched=1, discarded=0)
+    assert result == RefreshResult(
+        seen=1, refreshed=0, unmatched=0, matched=1, discarded=0, auto_linked=1
+    )
 
 
 def test_matcher_routes_multiple_and_leaves_known_alone() -> None:
@@ -191,8 +214,79 @@ def test_matcher_routes_multiple_and_leaves_known_alone() -> None:
         2026, 7, 5, tzinfo=timezone.utc
     ))
 
-    assert result == RefreshResult(seen=3, refreshed=1, unmatched=0, matched=2)
+    assert result == RefreshResult(
+        seen=3, refreshed=1, unmatched=0, matched=2, auto_linked=2
+    )
     # dos desconocidos enrutados en orden; el id lo devuelve record_observation. El conocido
     # también llama record_observation (sp-1, ignorado), así que los enrutados son sp-2, sp-3.
     assert len(matcher.calls) == 2
     assert [c.store_product_id for c in matcher.calls] == ["sp-2", "sp-3"]
+
+
+# ------------------------------------------------- #4.3: desenlace de la cascada, no solo el ruteo --
+# `matched` cuenta lo ENRUTADO a la cascada e INCLUYE a los encolados — para un operador de
+# Descubrimiento eso es engañoso: la pregunta real es cuántos auto-enlazaron y cuántos le quedaron
+# por resolver a mano. Estos dos contadores salen del `ProductMatch.status` que el matcher YA
+# devolvía y que este use-case tiraba a la basura.
+
+
+def test_counts_auto_linked_separately_from_routed() -> None:
+    repo = FakeStoreRepo(known=set())
+    matcher = FakeMatcher(statuses=["auto_linked"])
+    source = FakeSource([_entry("new-a")])
+
+    result = RefreshCatalogPrices(repo, matcher=matcher).execute(source)
+
+    assert result.matched == 1
+    assert result.auto_linked == 1
+    assert result.queued_for_review == 0
+
+
+def test_counts_queued_for_review_when_the_cascade_defers_to_a_human() -> None:
+    repo = FakeStoreRepo(known=set())
+    matcher = FakeMatcher(statuses=["pending_review"])
+    source = FakeSource([_entry("new-a")])
+
+    result = RefreshCatalogPrices(repo, matcher=matcher).execute(source)
+
+    assert result.matched == 1  # se enrutó igual…
+    assert result.auto_linked == 0
+    assert result.queued_for_review == 1  # …pero NO se enlazó: hay trabajo humano pendiente
+
+
+def test_a_rejected_match_is_neither_auto_linked_nor_queued() -> None:
+    # `rejected` existe en MatchStatus (lo escribe la resolución humana). Si apareciera en una
+    # corrida, contarlo como encolado inflaría la cola y mandaría al operador a buscar trabajo
+    # que no existe.
+    repo = FakeStoreRepo(known=set())
+    matcher = FakeMatcher(statuses=["rejected"])
+    source = FakeSource([_entry("new-a")])
+
+    result = RefreshCatalogPrices(repo, matcher=matcher).execute(source)
+
+    assert result.matched == 1
+    assert (result.auto_linked, result.queued_for_review) == (0, 0)
+
+
+def test_a_mixed_batch_splits_the_outcome() -> None:
+    repo = FakeStoreRepo(known={("p-sirena", "known")})
+    matcher = FakeMatcher(statuses=["auto_linked", "pending_review", "auto_linked"])
+    source = FakeSource([_entry("known"), _entry("a"), _entry("b"), _entry("c")])
+
+    result = RefreshCatalogPrices(repo, matcher=matcher).execute(source)
+
+    assert result == RefreshResult(
+        seen=4, refreshed=1, unmatched=0, matched=3, auto_linked=2, queued_for_review=1
+    )
+
+
+def test_legacy_run_without_matcher_reports_no_cascade_outcome() -> None:
+    # Sin cascada no hay desenlace que reportar: los contadores quedan en 0 y `unmatched` sigue
+    # siendo la señal (el desconocido se descarta). Cero regresión con el flag apagado.
+    repo = FakeStoreRepo(known=set())
+    source = FakeSource([_entry("new-a")])
+
+    result = RefreshCatalogPrices(repo).execute(source)
+
+    assert (result.auto_linked, result.queued_for_review) == (0, 0)
+    assert result.unmatched == 1

@@ -13,6 +13,7 @@ from src.contexts.save.application.refresh_prices import RefreshResult
 from src.contexts.save.domain.entities import PriceType
 from src.contexts.save.domain.ports import RawCatalogEntry
 from src.shared.money import Currency, Money
+from src.contexts.save.domain.entities.product_match import ProductMatch
 
 DOP = Currency("DOP")
 
@@ -73,7 +74,14 @@ def test_forwards_matcher_and_aggregates_matched_across_adapters() -> None:
 
         def execute(self, product):  # type: ignore[no-untyped-def]
             self.calls += 1
-            return None
+            # ProductMatch real (ver #4.3): el port devuelve siempre un veredicto.
+            return ProductMatch(
+                store_product_id=product.store_product_id,
+                canonical_product_id="canon-1",
+                confidence=1.0,
+                method="ean",
+                status="auto_linked",
+            )
 
     repo = FakeStoreRepo(known=set())  # todo desconocido → todo se enruta al matcher
     matcher = FakeMatcher()
