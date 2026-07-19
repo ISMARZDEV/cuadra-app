@@ -8,9 +8,10 @@ description: >
   use-cases; web feature-resources on a Vike admin shell) AND the hard-won gotchas: Vike guards do
   NOT compose (one +guard.ts per admin route), ClerkProvider mounts EXACTLY ONCE in pages/+Wrapper.tsx
   (a provider in a layout = double-mount crash), admin uses +Layout.clear.tsx to shed the marketing
-  chrome, the SSR gate needs a real Clerk cookie (dev-login localStorage is unreachable SSR → always
-  403), source health is DERIVED (manual-pause + freshness, no auto-detection), TestSource is an
-  SSRF-guarded dry-run that never persists, and the capability seed must be RE-RUN after Phase 1.
+  chrome, the SSR gate reads the __session cookie (dev-login mirrors its token there so /admin works
+  locally, fixed 10.B-D), every admin mutation is AUDITED at the controller edge (T2), admin i18n
+  (es/en/pt) is derived from the authenticated user's locale, source health is DERIVED (manual-pause +
+  freshness, no auto-detection), and TestSource is an SSRF-guarded dry-run that never persists.
   Composes with cuadra-save (domain) + cuadra-save-matching (the queue's producer) + cuadra-web
   (shell/SSR) + cuadra-api (backend) + cuadra-clerk (auth). Trigger: building, extending, or
   debugging ANY part of the Save admin console / OFV — a new admin resource or screen, the
@@ -59,21 +60,28 @@ decides) → clean canonical catalog. Providers + health give visibility over th
    double-mounts, because in vike-react **Layouts NEST, they do NOT replace**. Two `<ClerkShell>`
    (LayoutDefault + admin +Layout) crashed `/admin/*` to a blank page ("multiple <ClerkProvider>").
    NEVER put a context provider in a `+Layout`/`LayoutDefault`; hoist it to the root `+Wrapper`.
-2. **Vike guards do NOT compose** — only the most-specific `+guard.ts` runs per route. The parent
-   `pages/admin/+guard.ts` only checks `ADMIN_RESOURCES[0]`. So EVERY admin route subtree whose
-   capability differs needs its OWN `pages/admin/<resource>/+guard.ts` re-checking its capability
+2. **Vike guards do NOT compose** — only the most-specific `+guard.ts` runs per route. So EVERY admin
+   route subtree needs its OWN `pages/admin/<resource>/+guard.ts` re-checking its capability
    (`hasAdminCapability(pageContext.headers, "<cap>")` → `throw render(403)`). Copy an existing one.
+   The parent `pages/admin/+guard.ts` is only the ENTRY gate — since 10.D it checks
+   `hasAnyAdminCapability(headers)` (any admin cap, order-independent), NOT `ADMIN_RESOURCES[0]` (the
+   old fragile version that worked only because review-queue was first). All FOUR resources
+   (review-queue/providers/sources/basket) have their own `+guard.ts` now.
 3. **Admin sheds the marketing chrome via `+Layout.clear.tsx`.** The `.clear` suffix resets the
    inherited config chain so `/admin/*` does NOT get LayoutDefault's SiteHeader/SiteFooter. The
    `Wrapper` is a SEPARATE config, unaffected by `.clear` — so ClerkProvider still applies.
-4. **The SSR gate needs a real Clerk COOKIE.** `require-admin.ts` reads the `__session` cookie (or
-   Authorization header) server-side → calls `/identity/me`. **dev-login stores its token in
-   localStorage → unreachable SSR → `/admin/*` ALWAYS 403 with pure dev-login.** To view locally:
-   log in via Clerk, OR set a dev HS256 token (`encode_token({"sub": user_id})`) as the `__session`
-   cookie. The user needs `super_admin` (no admin is seeded — JIT provisions as normal_user).
-5. **Capabilities seed must be RE-RUN after Phase 1.** `seed_identity` uses `on_conflict_do_nothing`;
-   a DB seeded before B1 is MISSING `admin_save_*` capability + role_capability rows → super_admin
-   still gets 403. Fix: re-run `seed_identity` (idempotent) + INSERT into `identity.user_role`.
+4. **The SSR gate reads the `__session` cookie** (or Authorization header) server-side → calls
+   `/identity/me`. **Local dev-login now WORKS on `/admin/*` (fixed 10.B-D):** `syncSessionCookie`
+   (`use-auth.ts`) mirrors the dev-login token into the `__session` cookie so SSR sees it (only in
+   dev-login mode; in Clerk mode Clerk owns `__session`), and `POST /identity/dev-login {email,
+   role:"super_admin"}` grants admin access + re-seeds identity idempotently (no more 500 on a fresh
+   DB). To view the admin locally: dev-login with `role:"super_admin"`. VERIFIED live: `/admin/*` is
+   403 without the cookie, 200 (rendered) with it. (Clerk mode still works too — Clerk sets the cookie.)
+5. **`seed_identity` seeds the capabilities/roles (idempotent, `on_conflict_do_nothing`).** A DB
+   seeded before B1 was MISSING `admin_save_*` rows → super_admin got 403. Since 10.C, `POST
+   /identity/dev-login` CALLS `seed_identity` itself, so a dev-login now self-heals the reference
+   data. For real users, grant the role via `dev-login {role:"super_admin"}` (dev) or INSERT into
+   `identity.user_role`.
 6. **Source health is DERIVED at read-time, not stored/detected.** `derive_source_health(paused,
    max_last_seen_at, now)` → `paused | stale | ok` from TWO real signals only: manual pause
    (`paused_at`) + freshness (`store_product.last_seen_at`). NO schema-break/error-rate/auto-pause —
@@ -83,13 +91,18 @@ decides) → clean canonical catalog. Providers + health give visibility over th
    `follow_redirects=False`, size/timeout caps. It NEVER calls a repo. The route returns 200
    (sample) / 422 (config or SSRF-blocked) / 502 (upstream failed) — the web MUST distinguish them.
    Residual DNS-rebinding TOCTOU is documented, not closed (admin-only, low-volume).
-8. **i18n in the admin is now REQUIRED (decision reversed 2026-07-06).** It shipped WITHOUT i18n
-   ("internal tool", see AdminLayout) but the user reversed that — admin must support es/en/pt.
-   Gotcha: `/admin/*` is EXEMPT from the `/{locale}/{country}/` URL prefix, so `usePageI18n()` (URL-
-   sourced) won't work — derive the locale from the AUTHENTICATED USER instead (`MeResponse.locale`,
-   already returned by `/identity/me`; thread it through `pages/admin/+data.ts`). Full plan +
-   approach: `docs/pending/save-admin-review-pendientes.md` (P0). Until done, admin strings are
-   hardcoded Spanish.
+8. **i18n in the admin is REQUIRED and BUILT (es/en/pt).** `/admin/*` is EXEMPT from the
+   `/{locale}/{country}/` URL prefix, so `usePageI18n()` (URL-sourced) does NOT work — the locale is
+   derived from the AUTHENTICATED USER (`MeResponse.locale` → `AdminShellData.locale`, threaded
+   through `pages/admin/+data.ts`). The PATTERN (follow it for any new admin screen): the screen
+   reads `const { locale = DEFAULT_LOCALE } = useData<XData & { locale?: Locale }>()`, calls
+   `const { t } = useAdminI18n(locale)`, and passes `t`/`locale` down to sub-components by prop.
+   Strings live in `src/i18n/messages.ts` — add the key to the `MessageKey` union AND all three
+   locale blocks (the `Record<Locale, Record<MessageKey, string>>` type makes a missing translation a
+   TYPE ERROR). Interpolate (`{name}`, `{count}`) with `format(locale, key, params)`, never string
+   concat. Module-level label maps (`AUTH_LABEL`, `HEALTH_LABEL`) become `*_KEY: Record<…, MessageKey>`
+   + `t()`. DONE: review-queue, basket, providers, sources. Verify with cuadra-ui-verify (switch
+   es→en→pt on the real SSR render).
 9. **Web data: SSR `+data.ts` for lists, `authHeaders()` for mutations.** NO TanStack Query. After a
    mutation, refresh via `use-admin-list.ts` (`useAdminList(initial, fetcher)` — seeded from the SSR
    prop, re-fetches into local state) — NOT `window.location.reload()`.
@@ -120,11 +133,23 @@ decides) → clean canonical catalog. Providers + health give visibility over th
     `UpdateSource` keeps the existing one; the token goes in the **value** field, not the header name.
     `SourceLogo`: backend `logo_url` → bundled logo by name (`features/save/lib/provider-logos.ts`) →
     initial placeholder.
+13. **Admin mutations are AUDITED at the CONTROLLER edge (T2), not in the use-case.** Every sensitive
+    mutation writes one append-only row to `save.admin_audit_log` (`actor_user_id, action, target_type,
+    target_id, payload_summary jsonb, market_id, created_at`) in the SAME request transaction. The
+    handler takes `audit: AdminAuditRecorder = Depends(get_admin_audit)` and calls
+    `audit.record(action, target_type, target_id, payload)` AFTER the mutation succeeds. Why the edge,
+    not the use-case: "who did this HTTP action" is a cross-cutting concern (actor = the request);
+    atomic anyway because `get_session` is a per-request UoW (commits at the end). **When you add a new
+    admin mutation, audit it** — copy an existing handler. **NEVER log a secret**: source `auth` goes
+    through `mask_auth` before it enters the payload. Wiring is split to avoid an import cycle:
+    `composition_root.get_admin_audit_repo` gives the repo (no `security` import); the controller's
+    `get_admin_audit` composes it with `Depends(get_current_user_id)`. Entity/port: `domain/admin_audit.py`
+    + `AdminAuditRepository`; recorder: `application/admin_audit_recorder.py`.
 
 ## Endpoint map (all under `/v1/admin/save/*`, gated)
 
 - Review (MATCHING_REVIEW): `GET /review-queue`, `GET /review-queue/{id}`, `POST /review-queue/{id}/resolve`, `POST /review-queue/create-canonical`, `POST /review-queue/bulk-resolve`
-- Ingestion (INGESTION_OPS): `POST /providers`, `PATCH /providers/{id}`, `PATCH /providers/{id}/logo`; `POST /sources`, `PATCH /sources/{id}`, `POST /sources/{id}/pause|resume`, `POST /sources/{id}/test`, `GET /sources/health`; `GET|POST /basket-queries`, `PATCH|DELETE /basket-queries/{id}`
+- Ingestion (INGESTION_OPS): `GET /providers` (admin DTO — full type/platform/market, replaced the public `listProviders`, #11), `POST /providers`, `PATCH /providers/{id}`, `PATCH /providers/{id}/logo`; `POST /sources`, `PATCH /sources/{id}`, `POST /sources/{id}/pause|resume`, `POST /sources/{id}/test`, `GET /sources/health`; `GET|POST /basket-queries`, `PATCH|DELETE /basket-queries/{id}`
 
 ## How to add a new admin resource (the recipe)
 
@@ -134,7 +159,9 @@ decides) → clean canonical catalog. Providers + health give visibility over th
 3. Route trio `pages/admin/<r>/{+Page.tsx (thin re-export), +data.ts (SSR list), +guard.ts (COPY an
    existing one, its capability)}`.
 4. Register in `ADMIN_RESOURCES[]` (`admin-resource.ts`) — append, don't reorder. Nav filters by capability.
-5. Do NOT add a ClerkProvider anywhere. Do NOT add i18n. Mirror the existing resources' structure.
+5. **i18n from the start** (gotcha #8): thread `locale` through `+data.ts`, use `useAdminI18n(locale)`,
+   add keys to `messages.ts` (all 3 locales). **Audit every mutation** at the controller (gotcha #13).
+   Do NOT add a ClerkProvider anywhere. Mirror the existing resources' structure.
 
 ## Commands
 
@@ -146,32 +173,32 @@ make openapi                                         # after any DTO/endpoint ch
 # web
 pnpm --filter @cuadra/web typecheck                  # the contract test
 pnpm --filter @cuadra/web test
-# see it locally (dev): api:8005 · web:3006 · db:5433
-uv run python -c "from src.shared.db.base import SessionLocal; from seeds.identity_seed import seed_identity; s=SessionLocal(); seed_identity(s); s.commit()"  # refresh capabilities
-# then grant super_admin: INSERT INTO identity.user_role(user_id, role_key) VALUES ('<uuid>','super_admin') ON CONFLICT DO NOTHING;
+# see it locally (dev): api:8005 · web:3006 · db:5433 — one call grants admin access + re-seeds identity:
+curl -s -X POST http://localhost:8005/v1/identity/dev-login -H 'Content-Type: application/json' \
+  -d '{"email":"you@cuadra.do","role":"super_admin"}'   # → token; the web mirrors it into the __session cookie
+# smoke the SSR gate: 403 without the cookie, 200 (rendered) with it:
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3006/admin/providers -H "Cookie: __session=<token>"
 # routes: /admin/review-queue · /admin/providers · /admin/sources · /admin/basket-queries  (no bare /admin index)
 ```
 
 ## Status + what's left
 
-- **Built (F2·B1):** all of Phase 1-3 above. Backend 675 tests + web 125 tests green.
+- **Built (F2·B1 + Fase 3 P0):** all of Phase 1-3 above. **Fase 3 P0 DONE** (branch
+  `feat/save-fase3-fundaciones`): T2 reusable audit (gotcha #13); `GET /admin/save/providers` admin DTO
+  (#11 — the public `listProviders` is gone from the admin); dev-login re-seeds + `role` for local admin
+  access (10.C/10.B); SSR gate closed with the dev-login cookie bridge + robust parent guard (10.D);
+  i18n providers+sources es/en/pt (10.A). Smoke-verified live (10.E).
 - **Full pending list:** `docs/pending/save-admin-review-pendientes.md` — the source of truth. Highlights:
-  - **P0 i18n in the admin** (decision reversed — see gotcha #8).
   - **P1 Phase 4 (Observability):** `GetMatchingMetrics` (auto-link rate, %-to-judge, judge cost/latency
     p50/p95/p99, NEVER average-only) + `MatchingMetricsScreen` (tasks 4.1-4.6).
-  - **P2 follow-ups:** ~~ingestion cutover to read `basket_query`~~ ✅ **DONE** (the hardcoded
-    `BASKET_QUERIES` is gone, 2026-07-16 — it was not dead code but DIVERGENCE: `make save-refresh`
-    kept ingesting the 213-term tuple while Dagster read the table, so deactivating a query in the
-    admin did nothing to the CLI. They matched at 213, which is why it was invisible); no admin
-    provider/source LIST endpoint; `position` reorder unused downstream; provider logo not in
-    `compare-table` (ComparedPriceDto); no manual browser E2E of the authed panel.
-  - **The admin's switches now REACH the ingestion (R1, 2026-07-16):** the per-query discovery derives
-    its stores from `store_registry` (active × `directed_capability(...).by_text`), so `enabled` /
-    `paused_at` finally take a store out of ingestion — before, the set was a hardcoded tuple and the
-    toggles were decoration for it. Adding a súper is a ROW. Note for the Orchestration module (F4):
-    provider-flow compatibility must derive from `directed_capability`, never an allowlist.
-  - **OPS:** re-run `seed_identity` post-Phase-1; no seeded super_admin; `dev-login` returns 500;
-    SSR gate needs a Clerk cookie.
+  - **P1 Providers redesign (§7.2):** the list now has the admin DTO (type/platform/market) but the UI
+    still edits only name+logo; editing type/platform in the form is the next step.
+  - **P2 follow-ups:** `position` reorder unused downstream; provider logo not in `compare-table`
+    (ComparedPriceDto); T3 destructive-state policy (soft-delete for basket).
+  - **The admin's switches REACH the ingestion (R1):** the per-query discovery derives its stores from
+    `store_registry` (active × `directed_capability(...).by_text`), so `enabled`/`paused_at` take a store
+    out of ingestion. Adding a súper is a ROW. Note for Orchestration (F4): provider-flow compatibility
+    must derive from `directed_capability`, never an allowlist.
 
 ## Resources
 
