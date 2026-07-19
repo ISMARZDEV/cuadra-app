@@ -1,4 +1,4 @@
-import type { ProviderRefDto } from "@cuadra/api-client";
+import type { ProviderDto } from "@cuadra/api-client";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,8 +22,16 @@ vi.mock("../api", () => ({
 
 import { ProvidersScreen } from "./ProvidersScreen";
 
-function provider(overrides: Partial<ProviderRefDto>): ProviderRefDto {
-  return { id: "p1", name: "Sirena", logo_url: null, ...overrides };
+function provider(overrides: Partial<ProviderDto>): ProviderDto {
+  return {
+    id: "p1",
+    name: "Sirena",
+    type: "supermarket",
+    platform: "vtex",
+    market_id: "DO",
+    logo_url: null,
+    ...overrides,
+  };
 }
 
 describe("ProvidersScreen", () => {

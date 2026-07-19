@@ -43,6 +43,7 @@ def test_non_admin_gets_403_on_every_provider_route(db_session) -> None:  # type
     user_id = _seed_role_user(db_session, "normal_user")
     client = _client(db_session, user_id)
     try:
+        assert client.get("/v1/admin/save/providers").status_code == 403
         assert (
             client.post(
                 "/v1/admin/save/providers",
@@ -96,6 +97,27 @@ def test_super_admin_can_create_update_and_set_logo(db_session) -> None:  # type
         assert r_logo.status_code == 200, r_logo.text
         assert r_logo.json()["logo_url"] == "https://cdn.example.com/jumbo-2.png"
         assert r_logo.json()["name"] == "Jumbo RD"  # sin tocar
+    finally:
+        _clear()
+
+
+def test_admin_list_returns_full_dto(db_session) -> None:  # type: ignore[no-untyped-def]
+    """El GET admin trae type/platform/market (lo que el endpoint público `listProviders` NO da)."""
+    admin_id = _seed_role_user(db_session, "super_admin")
+    client = _client(db_session, admin_id)
+    try:
+        client.post(
+            "/v1/admin/save/providers",
+            json={"name": "Bravo", "type": "supermarket", "platform": "rest_catalog",
+                  "market_id": "DO"},
+        )
+        r = client.get("/v1/admin/save/providers?market=DO")
+        assert r.status_code == 200, r.text
+        rows = r.json()
+        bravo = next(p for p in rows if p["name"] == "Bravo")
+        assert bravo["type"] == "supermarket"
+        assert bravo["platform"] == "rest_catalog"
+        assert bravo["market_id"] == "DO"
     finally:
         _clear()
 

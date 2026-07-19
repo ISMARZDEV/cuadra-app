@@ -21,6 +21,7 @@ from src.api.composition_root import (
     get_admin_audit_repo,
     get_bulk_resolve_review,
     get_create_basket_query,
+    get_list_admin_providers,
     get_create_canonical_and_link,
     get_create_provider,
     get_create_source,
@@ -61,7 +62,12 @@ from src.contexts.save.application.dtos import (
 )
 from src.contexts.save.application.get_review_detail import GetReviewDetail
 from src.contexts.save.application.list_review_queue import ListReviewQueue
-from src.contexts.save.application.providers import CreateProvider, SetProviderLogo, UpdateProvider
+from src.contexts.save.application.providers import (
+    CreateProvider,
+    ListAdminProviders,
+    SetProviderLogo,
+    UpdateProvider,
+)
 from src.contexts.save.application.resolve_review import ResolveReview
 from src.contexts.save.application.store_registry import (
     CreateSource,
@@ -303,6 +309,16 @@ class CreateProviderRequest(BaseModel):
     platform: SourcePlatform
     market_id: str
     logo_url: str | None = None
+
+
+@ingestion_router.get("/providers")
+def list_admin_providers(
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: ListAdminProviders = Depends(get_list_admin_providers),
+) -> list[ProviderDto]:
+    """Listado ADMIN de providers con DTO completo (type/platform/market) — reemplaza el consumo
+    del endpoint PÚBLICO `listProviders` (parcial) desde la consola (T1/#11)."""
+    return [ProviderDto.from_entity(p) for p in use_case.execute(market)]
 
 
 @ingestion_router.post("/providers", status_code=status.HTTP_201_CREATED)

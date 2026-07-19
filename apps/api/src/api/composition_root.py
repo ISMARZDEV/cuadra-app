@@ -48,6 +48,7 @@ from src.contexts.save.application.collections import GetCollection, ListCollect
 from src.contexts.save.application.providers import (
     CreateProvider,
     GetProvider,
+    ListAdminProviders,
     ListProviders,
     SetProviderLogo,
     UpdateProvider,
@@ -340,6 +341,10 @@ def get_category(session: Session = Depends(get_session)) -> GetCategory:
 
 def get_list_providers(session: Session = Depends(get_session)) -> ListProviders:
     return ListProviders(SqlProviderRepository(session))
+
+
+def get_list_admin_providers(session: Session = Depends(get_session)) -> ListAdminProviders:
+    return ListAdminProviders(SqlProviderRepository(session))
 
 
 def get_provider(session: Session = Depends(get_session)) -> GetProvider:

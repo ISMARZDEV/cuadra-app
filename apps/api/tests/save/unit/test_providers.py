@@ -1,7 +1,11 @@
 """Unit — ListProviders/GetProvider (A9: "Ofertas por supermercado"). Fake repo, sin DB."""
 from __future__ import annotations
 
-from src.contexts.save.application.providers import GetProvider, ListProviders
+from src.contexts.save.application.providers import (
+    GetProvider,
+    ListAdminProviders,
+    ListProviders,
+)
 from src.contexts.save.domain.entities import Provider, ProviderType, SourcePlatform
 
 
@@ -53,3 +57,28 @@ def test_get_provider_returns_ref_with_logo_url() -> None:
 
 def test_get_provider_returns_none_when_not_found() -> None:
     assert GetProvider(FakeProviderRepo([])).execute("missing") is None
+
+
+# --- ListAdminProviders (T1/#11): listado admin con la ENTIDAD completa, no el ref público -------
+
+
+def test_admin_list_returns_full_entities_of_the_market() -> None:
+    providers = [
+        Provider("p1", "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, "DO"),
+        Provider("p2", "Fuera", ProviderType.SUPERMARKET, SourcePlatform.VTEX, "US"),
+    ]
+    result = ListAdminProviders(FakeProviderRepo(providers)).execute("DO")
+    assert [p.id for p in result] == ["p1"]
+    # trae type/platform/market (lo que el ref público NO da) para edición segura
+    assert result[0].type == ProviderType.SUPERMARKET
+    assert result[0].platform == SourcePlatform.VTEX
+    assert result[0].market_id == "DO"
+
+
+def test_admin_list_sorted_by_name() -> None:
+    providers = [
+        Provider("p2", "Zumo", ProviderType.SUPERMARKET, SourcePlatform.VTEX, "DO"),
+        Provider("p1", "Bravo", ProviderType.SUPERMARKET, SourcePlatform.REST_CATALOG, "DO"),
+    ]
+    result = ListAdminProviders(FakeProviderRepo(providers)).execute("DO")
+    assert [p.name for p in result] == ["Bravo", "Zumo"]

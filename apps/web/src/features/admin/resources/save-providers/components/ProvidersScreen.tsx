@@ -1,4 +1,4 @@
-import type { ProviderRefDto, ProviderType, SourcePlatform } from "@cuadra/api-client";
+import type { ProviderDto, ProviderType, SourcePlatform } from "@cuadra/api-client";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useData } from "vike-react/useData";
@@ -15,11 +15,11 @@ import { PROVIDER_TYPE_OPTIONS, SOURCE_PLATFORM_OPTIONS } from "../types";
 
 const DEFAULT_MARKET = "DO";
 
-// Consola de Providers (3.5): alta + edición de supermercados. No hay endpoint admin de LISTADO
-// todavía (ver `api.ts`) — la lista viene del público `listProviders` (SSR, `+data.ts`), así que
-// solo prellenamos/editamos lo que ese DTO trae (name, logo_url); tipo/plataforma/mercado se fijan
-// solo al CREAR. Tras cualquier mutación exitosa, `useAdminList` refresca la lista client-side
-// (gap F3: reemplaza `window.location.reload()`) — sin TanStack Query en web.
+// Consola de Providers (3.5 / #11): alta + edición de supermercados. La lista viene del endpoint
+// ADMIN `listAdminProviders` (SSR `+data.ts`, DTO completo type/platform/market). El rediseño de la
+// UI para editar tipo/plataforma es P1 (§7.2); por ahora se editan name + logo. Tras cualquier
+// mutación exitosa, `useAdminList` refresca la lista client-side (reemplaza
+// `window.location.reload()`) — sin TanStack Query en web.
 export function ProvidersScreen() {
   const { providers: initialProviders } = useData<ProvidersData>();
   const { items: providers, refresh } = useAdminList(initialProviders, () =>
@@ -147,7 +147,7 @@ function ProviderRow({
   provider,
   refresh,
 }: {
-  provider: ProviderRefDto;
+  provider: ProviderDto;
   refresh: () => Promise<void>;
 }) {
   const [name, setName] = useState(provider.name);
