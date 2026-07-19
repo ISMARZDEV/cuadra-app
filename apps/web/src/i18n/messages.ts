@@ -156,6 +156,39 @@ type MessageKey =
   | "admin.orchestration.title"
   | "admin.orchestration.subtitle"
   | "admin.orchestration.pending"
+  | "admin.orchestration.runnerDown"
+  | "admin.orchestration.empty"
+  | "admin.orchestration.col.flow"
+  | "admin.orchestration.col.provider"
+  | "admin.orchestration.col.mode"
+  | "admin.orchestration.col.nextRun"
+  | "admin.orchestration.col.lastRun"
+  | "admin.orchestration.col.outcome"
+  | "admin.orchestration.col.actions"
+  | "admin.orchestration.outcome.summary"
+  | "admin.orchestration.mode.manual"
+  | "admin.orchestration.mode.automatic_chain"
+  | "admin.orchestration.mode.cron"
+  | "admin.orchestration.state.never"
+  | "admin.orchestration.state.queued"
+  | "admin.orchestration.state.running"
+  | "admin.orchestration.state.canceling"
+  | "admin.orchestration.state.succeeded"
+  | "admin.orchestration.state.failed"
+  | "admin.orchestration.state.canceled"
+  | "admin.orchestration.state.unknown"
+  | "admin.orchestration.action.run"
+  | "admin.orchestration.action.pause"
+  | "admin.orchestration.action.resume"
+  | "admin.orchestration.action.cancel"
+  | "admin.orchestration.kpi.activeFlows"
+  | "admin.orchestration.kpi.activeFlows.hint"
+  | "admin.orchestration.kpi.autoLinked"
+  | "admin.orchestration.kpi.autoLinked.hint"
+  | "admin.orchestration.kpi.queued"
+  | "admin.orchestration.kpi.queued.hint"
+  | "admin.orchestration.kpi.newCanonicals"
+  | "admin.orchestration.kpi.newCanonicals.hint"
   | "admin.nav.save.financialProducts"
   | "admin.nav.wip"
   | "admin.nav.footer.feedback"
@@ -546,6 +579,39 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.subtitle": "Opera el descubrimiento y el matcheo por código de barras sin salir del admin.",
     "admin.orchestration.pending":
       "Módulo en construcción. El acceso ya está habilitado; las corridas, la programación y los indicadores llegan en las próximas entregas.",
+    "admin.orchestration.runnerDown": "El orquestador no responde. La configuración se puede ver y editar; las métricas de corrida no están disponibles.",
+    "admin.orchestration.empty": "Todavía no hay flujos configurados. Creá uno para empezar a operar el descubrimiento.",
+    "admin.orchestration.col.flow": "Flujo",
+    "admin.orchestration.col.provider": "Proveedor",
+    "admin.orchestration.col.mode": "Modo",
+    "admin.orchestration.col.nextRun": "Próxima corrida",
+    "admin.orchestration.col.lastRun": "Última corrida",
+    "admin.orchestration.col.outcome": "Resultado",
+    "admin.orchestration.col.actions": "Acciones",
+    "admin.orchestration.outcome.summary": "{autoLinked} enlazados · {queued} a la cola · {canonicals} nuevos",
+    "admin.orchestration.mode.manual": "Manual",
+    "admin.orchestration.mode.automatic_chain": "Automático (por dependencia)",
+    "admin.orchestration.mode.cron": "Programado",
+    "admin.orchestration.state.never": "Sin corridas",
+    "admin.orchestration.state.queued": "En cola",
+    "admin.orchestration.state.running": "Corriendo",
+    "admin.orchestration.state.canceling": "Cancelando",
+    "admin.orchestration.state.succeeded": "Exitosa",
+    "admin.orchestration.state.failed": "Fallida",
+    "admin.orchestration.state.canceled": "Cancelada",
+    "admin.orchestration.state.unknown": "Desconocido",
+    "admin.orchestration.action.run": "Ejecutar ahora",
+    "admin.orchestration.action.pause": "Pausar",
+    "admin.orchestration.action.resume": "Activar",
+    "admin.orchestration.action.cancel": "Cancelar corrida",
+    "admin.orchestration.kpi.activeFlows": "Flujos activos",
+    "admin.orchestration.kpi.activeFlows.hint": "Activos sobre el total configurado",
+    "admin.orchestration.kpi.autoLinked": "Auto-enlazados",
+    "admin.orchestration.kpi.autoLinked.hint": "La cascada los resolvió sola en la última corrida",
+    "admin.orchestration.kpi.queued": "A la cola",
+    "admin.orchestration.kpi.queued.hint": "Quedaron esperando decisión humana",
+    "admin.orchestration.kpi.newCanonicals": "Canónicos nuevos",
+    "admin.orchestration.kpi.newCanonicals.hint": "Nacieron de lo que estas corridas descubrieron",
     "admin.nav.save.financialProducts": "Productos Financieros",
     "admin.nav.wip": "🚧 En construcción — aún no disponible",
     "admin.nav.footer.feedback": "Feedback",
@@ -932,6 +998,39 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.subtitle": "Operate discovery and barcode matching without leaving the admin.",
     "admin.orchestration.pending":
       "Module under construction. Access is enabled; runs, scheduling and indicators arrive in upcoming deliveries.",
+    "admin.orchestration.runnerDown": "The orchestrator is not responding. Configuration can be viewed and edited; run metrics are unavailable.",
+    "admin.orchestration.empty": "No flows configured yet. Create one to start operating discovery.",
+    "admin.orchestration.col.flow": "Flow",
+    "admin.orchestration.col.provider": "Provider",
+    "admin.orchestration.col.mode": "Mode",
+    "admin.orchestration.col.nextRun": "Next run",
+    "admin.orchestration.col.lastRun": "Last run",
+    "admin.orchestration.col.outcome": "Outcome",
+    "admin.orchestration.col.actions": "Actions",
+    "admin.orchestration.outcome.summary": "{autoLinked} linked · {queued} queued · {canonicals} new",
+    "admin.orchestration.mode.manual": "Manual",
+    "admin.orchestration.mode.automatic_chain": "Automatic (by dependency)",
+    "admin.orchestration.mode.cron": "Scheduled",
+    "admin.orchestration.state.never": "Never ran",
+    "admin.orchestration.state.queued": "Queued",
+    "admin.orchestration.state.running": "Running",
+    "admin.orchestration.state.canceling": "Canceling",
+    "admin.orchestration.state.succeeded": "Succeeded",
+    "admin.orchestration.state.failed": "Failed",
+    "admin.orchestration.state.canceled": "Canceled",
+    "admin.orchestration.state.unknown": "Unknown",
+    "admin.orchestration.action.run": "Run now",
+    "admin.orchestration.action.pause": "Pause",
+    "admin.orchestration.action.resume": "Resume",
+    "admin.orchestration.action.cancel": "Cancel run",
+    "admin.orchestration.kpi.activeFlows": "Active flows",
+    "admin.orchestration.kpi.activeFlows.hint": "Active out of total configured",
+    "admin.orchestration.kpi.autoLinked": "Auto-linked",
+    "admin.orchestration.kpi.autoLinked.hint": "The cascade resolved these on its own in the last run",
+    "admin.orchestration.kpi.queued": "Queued for review",
+    "admin.orchestration.kpi.queued.hint": "Left waiting for a human decision",
+    "admin.orchestration.kpi.newCanonicals": "New canonicals",
+    "admin.orchestration.kpi.newCanonicals.hint": "Born from what these runs discovered",
     "admin.nav.save.financialProducts": "Financial products",
     "admin.nav.wip": "🚧 Under construction — not available yet",
     "admin.nav.footer.feedback": "Feedback",
@@ -1318,6 +1417,39 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.subtitle": "Opere a descoberta e a correspondência por código de barras sem sair do admin.",
     "admin.orchestration.pending":
       "Módulo em construção. O acesso já está habilitado; as execuções, o agendamento e os indicadores chegam nas próximas entregas.",
+    "admin.orchestration.runnerDown": "O orquestrador não responde. A configuração pode ser vista e editada; as métricas de execução não estão disponíveis.",
+    "admin.orchestration.empty": "Ainda não há fluxos configurados. Crie um para começar a operar a descoberta.",
+    "admin.orchestration.col.flow": "Fluxo",
+    "admin.orchestration.col.provider": "Fornecedor",
+    "admin.orchestration.col.mode": "Modo",
+    "admin.orchestration.col.nextRun": "Próxima execução",
+    "admin.orchestration.col.lastRun": "Última execução",
+    "admin.orchestration.col.outcome": "Resultado",
+    "admin.orchestration.col.actions": "Ações",
+    "admin.orchestration.outcome.summary": "{autoLinked} vinculados · {queued} na fila · {canonicals} novos",
+    "admin.orchestration.mode.manual": "Manual",
+    "admin.orchestration.mode.automatic_chain": "Automático (por dependência)",
+    "admin.orchestration.mode.cron": "Agendado",
+    "admin.orchestration.state.never": "Sem execuções",
+    "admin.orchestration.state.queued": "Na fila",
+    "admin.orchestration.state.running": "Executando",
+    "admin.orchestration.state.canceling": "Cancelando",
+    "admin.orchestration.state.succeeded": "Bem-sucedida",
+    "admin.orchestration.state.failed": "Falhou",
+    "admin.orchestration.state.canceled": "Cancelada",
+    "admin.orchestration.state.unknown": "Desconhecido",
+    "admin.orchestration.action.run": "Executar agora",
+    "admin.orchestration.action.pause": "Pausar",
+    "admin.orchestration.action.resume": "Ativar",
+    "admin.orchestration.action.cancel": "Cancelar execução",
+    "admin.orchestration.kpi.activeFlows": "Fluxos ativos",
+    "admin.orchestration.kpi.activeFlows.hint": "Ativos sobre o total configurado",
+    "admin.orchestration.kpi.autoLinked": "Autovinculados",
+    "admin.orchestration.kpi.autoLinked.hint": "A cascata resolveu sozinha na última execução",
+    "admin.orchestration.kpi.queued": "Na fila",
+    "admin.orchestration.kpi.queued.hint": "Ficaram aguardando decisão humana",
+    "admin.orchestration.kpi.newCanonicals": "Canônicos novos",
+    "admin.orchestration.kpi.newCanonicals.hint": "Nasceram do que estas execuções descobriram",
     "admin.nav.save.financialProducts": "Produtos Financeiros",
     "admin.nav.wip": "🚧 Em construção — ainda não disponível",
     "admin.nav.footer.feedback": "Feedback",

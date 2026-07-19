@@ -381,6 +381,12 @@ def get_pipeline_orchestrator() -> PipelineOrchestrator:
     return DagsterGraphQLOrchestrator(url=settings.save_dagster_graphql_url)
 
 
+def get_provider_repo(session: Session = Depends(get_session)) -> SqlProviderRepository:
+    """Lectura de providers para la consola de Orquestación: la tabla necesita el NOMBRE, no solo
+    el id — con tres filas que dicen `provider_prices_refresh` el operador no sabe cuál es cuál."""
+    return SqlProviderRepository(session)
+
+
 def get_orchestration_policy_repo(
     session: Session = Depends(get_session),
 ) -> SqlOrchestrationPolicyRepository:

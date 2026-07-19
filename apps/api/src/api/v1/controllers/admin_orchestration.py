@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from src.api.composition_root import (
     get_create_provider_flow,
+    get_provider_repo,
     get_orchestration_policy_repo,
     get_pipeline_orchestrator,
     get_run_snapshot_repo,
@@ -78,8 +79,31 @@ class RunMetricsDto(BaseModel):
 
 
 class ProviderFlowDto(BaseModel):
+    # Identidad VISIBLE del flujo. Sin el nombre, la tabla muestra tres filas idénticas que dicen
+    # `provider_prices_refresh` y el operador no sabe cuál es cuál — detectado mirando el render
+    # real, no por los tests.
+    provider_name: str | None
+    provider_logo_url: str | None
     policy: PolicyDto
     last_run_metrics: RunMetricsDto | None
+    # Estado de la última corrida SEGÚN EL RUNNER (queued|running|canceling|succeeded|failed|
+    # canceled|unknown). `None` = el runner no respondió o no hay corridas: la UI muestra
+    # `desconectado`/`sin corridas`, nunca un estado inventado.
+    last_run_state: str | None = None
+    last_run_id: str | None = None
+
+
+class ProviderFlowListDto(BaseModel):
+    """Envelope con la salud del RUNNER declarada explícitamente.
+
+    Antes esto era una lista pelada y el front infería "runner caído" de que ninguna fila trajera
+    métricas. Es una inferencia FALSA: un flujo que nunca corrió se ve idéntico a un runner muerto,
+    así que la consola anunciaba "el orquestador no responde" con el orquestador perfectamente vivo.
+    Quien sabe si el runner respondió es el backend — que lo diga, en vez de que el front adivine.
+    """
+
+    runner_available: bool
+    flows: list[ProviderFlowDto]
 
 
 class CreateProviderFlowRequest(BaseModel):
@@ -137,12 +161,13 @@ def _unavailable(exc: OrchestratorUnavailable) -> HTTPException:
 
 # -------------------------------------------------------------------------------------- rutas --
 
-@orchestration_router.get("/provider-flows", response_model=list[ProviderFlowDto])
+@orchestration_router.get("/provider-flows", response_model=ProviderFlowListDto)
 def list_provider_flows(
     policy_repo=Depends(get_orchestration_policy_repo),  # type: ignore[no-untyped-def]
     snapshot_repo=Depends(get_run_snapshot_repo),  # type: ignore[no-untyped-def]
+    provider_repo=Depends(get_provider_repo),  # type: ignore[no-untyped-def]
     orchestrator: PipelineOrchestrator = Depends(get_pipeline_orchestrator),
-) -> list[ProviderFlowDto]:
+) -> ProviderFlowListDto:
     """Lista los provider-flows con las métricas de su última corrida.
 
     Si el runner está caído, NO rompe: devuelve las policies con `last_run_metrics=None`. La
@@ -150,11 +175,16 @@ def list_provider_flows(
     (SDD §8) — es justamente cuando el operador más necesita mirarla.
     """
     flows: list[ProviderFlowDto] = []
+    runner_available = True
     for policy in policy_repo.list_by_market(MARKET):
         metrics = None
+        last_state: str | None = None
+        last_run_id: str | None = None
         try:
             runs = orchestrator.list_runs(policy_id=policy.id, limit=1)
             if runs:
+                last_state = runs[0].state.value
+                last_run_id = runs[0].run_id
                 snapshot = snapshot_repo.get(runs[0].run_id)
                 if snapshot is not None:
                     metrics = RunMetricsDto(
@@ -168,8 +198,17 @@ def list_provider_flows(
                     )
         except OrchestratorUnavailable:
             metrics = None  # degradado, no roto
-        flows.append(ProviderFlowDto(policy=_to_dto(policy), last_run_metrics=metrics))
-    return flows
+            runner_available = False
+        provider = provider_repo.get_by_id(policy.provider_id) if policy.provider_id else None
+        flows.append(ProviderFlowDto(
+            provider_name=provider.name if provider else None,
+            provider_logo_url=getattr(provider, "logo_url", None) if provider else None,
+            policy=_to_dto(policy),
+            last_run_metrics=metrics,
+            last_run_state=last_state,
+            last_run_id=last_run_id,
+        ))
+    return ProviderFlowListDto(runner_available=runner_available, flows=flows)
 
 
 @orchestration_router.post(

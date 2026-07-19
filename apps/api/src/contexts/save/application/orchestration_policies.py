@@ -39,7 +39,7 @@ class PolicyRepository(Protocol):
 
 
 class SourceRegistryReader(Protocol):
-    def get_by_provider(self, provider_id: str) -> Any: ...
+    def get_by_provider_id(self, provider_id: str) -> Any: ...
 
 
 class CreateProviderFlow:
@@ -74,7 +74,7 @@ class CreateProviderFlow:
         flow_key: FlowKey,
         timezone: str = "America/Santo_Domingo",
     ) -> OrchestrationPolicy:
-        source = self._registry.get_by_provider(provider_id)
+        source = self._registry.get_by_provider_id(provider_id)
         if source is None:
             raise ProviderFlowNotSupported(
                 "El proveedor no tiene una fuente de extracción configurada; sin fuente no hay nada "

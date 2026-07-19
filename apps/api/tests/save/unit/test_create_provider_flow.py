@@ -36,7 +36,7 @@ class FakeRegistryRepo:
     def __init__(self, sources: dict | None = None) -> None:
         self._sources = sources or {}
 
-    def get_by_provider(self, provider_id: str):  # type: ignore[no-untyped-def]
+    def get_by_provider_id(self, provider_id: str):  # type: ignore[no-untyped-def]
         return self._sources.get(provider_id)
 
 
