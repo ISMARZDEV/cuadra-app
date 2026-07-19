@@ -39,6 +39,9 @@ export interface ReviewQueueParams {
   method?: string;
   confidence_min?: number;
   confidence_max?: number;
+  /** Deep-link corrida→cola (F4 #4.7): acota la cola a los matches de UNA corrida de Dagster. Lo
+   * emite la consola de Orquestación desde el resultado de un flow (`?run_id={last_run_id}`). */
+  run_id?: string;
   order_by: string;
   limit: number;
   offset: number;

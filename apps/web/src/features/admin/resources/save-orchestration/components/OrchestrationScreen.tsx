@@ -18,6 +18,7 @@ import { format, type MessageKey } from "@/i18n/messages";
 
 import { cancelRun, listProviderFlowEntries, pausePolicy, resumePolicy, runPolicy } from "../api";
 import type { OrchestrationData } from "../interfaces";
+import { runQueueHref } from "../lib/run-queue-href";
 import { FlowStatusBadge } from "./FlowStatusBadge";
 import { OrchestrationKpis } from "./OrchestrationKpis";
 
@@ -135,6 +136,9 @@ function FlowRow({
   onCancel?: () => void;
 }) {
   const { policy, last_run_metrics: metrics } = flow;
+  // Deep-link corrida→cola (F4 #4.7): el número "a la cola" enlaza a la cola de revisión filtrada
+  // por ESTA corrida. `null` cuando no procede (sin corrida o 0 a la cola) — ver `runQueueHref`.
+  const queueHref = runQueueHref(flow);
   return (
     <TableRow className={policy.enabled ? undefined : "opacity-60"}>
       {/* El PROVEEDOR es la identidad de la fila. Con el flow_key primero, tres filas de
@@ -156,9 +160,29 @@ function FlowRow({
       <TableCell className="text-right text-xs tabular-nums">
         {metrics ? (
           <span title={t("admin.orchestration.col.outcome")}>
-            {format(locale, "admin.orchestration.outcome.summary", {
+            {format(locale, "admin.orchestration.outcome.linkedPart", {
               autoLinked: String(metrics.auto_linked),
-              queued: String(metrics.queued_for_review),
+            })}
+            {" · "}
+            {/* El número "a la cola" es el deep-link a la cola de ESTA corrida (F4 #4.7) cuando
+                dejó algo pendiente; si no, es texto plano (un 0 clicable llevaría a una cola vacía). */}
+            {queueHref ? (
+              <a
+                href={queueHref}
+                title={t("admin.orchestration.outcome.queuedLinkTitle")}
+                className="text-primary underline underline-offset-2 hover:no-underline"
+              >
+                {format(locale, "admin.orchestration.outcome.queuedPart", {
+                  queued: String(metrics.queued_for_review),
+                })}
+              </a>
+            ) : (
+              format(locale, "admin.orchestration.outcome.queuedPart", {
+                queued: String(metrics.queued_for_review),
+              })
+            )}
+            {" · "}
+            {format(locale, "admin.orchestration.outcome.newPart", {
               canonicals: String(metrics.new_canonicals),
             })}
           </span>

@@ -510,6 +510,7 @@ class ProductMatchRepository(Protocol):
         method: str | None = None,
         confidence_min: float | None = None,
         confidence_max: float | None = None,
+        run_id: str | None = None,
         order_by: str = "uncertainty",
         limit: int = 50,
         offset: int = 0,
@@ -519,7 +520,10 @@ class ProductMatchRepository(Protocol):
         Orden por defecto = incertidumbre primero (distancia al umbral HIGH/MID más cercano de
         `banding.py` — los casos más difíciles de decidir aparecen primero); `order_by="created_at"`
         es el override FIFO explícito. Filtros y paginación se resuelven EN SQL (no en memoria)
-        para que `total` (segundo elemento de la tupla) sea correcto con `limit`/`offset` reales."""
+        para que `total` (segundo elemento de la tupla) sea correcto con `limit`/`offset` reales.
+
+        `run_id` es el deep-link corrida→cola (F4 #4.7): acota la cola a los matches que produjo
+        UNA corrida — usa el índice compuesto `ix_product_match_run_status (run_id, status)`."""
         ...
 
     def list_candidates(self, match_id: str) -> list[ReviewCandidateView]:

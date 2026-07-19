@@ -28,17 +28,26 @@
 
 ## 2. LO QUE FALTA — #4.7 (el único bloque abierto)
 
-### 2.A — Deep-link corrida → cola (código, riesgo bajo)
+### 2.A — Deep-link corrida → cola (código, riesgo bajo) — ✅ COMPLETA (sin commit)
 
 El operador ve "esta corrida dejó 40 a la cola" y hoy tiene que buscarlos a mano.
 
-- [ ] `run_id` como filtro en `ListReviewQueue` (use-case + endpoint)
-- [ ] El KPI "A la cola" se vuelve enlace a `/admin/review-queue?run_id=…`
-- [ ] La cola lee el query param y declara qué corrida está filtrando
-- [ ] Verificación visual (`cuadra-ui-verify`) + i18n es/en/pt
+- [x] `run_id` como filtro en `ListReviewQueue` (puerto + repo SQL + use-case + endpoint `?run_id=`)
+- [x] **Ancla corregida (decisión del usuario 2026-07-19):** NO el KPI agregado (suma varias corridas
+      → no tiene un `run_id` único; un link ahí mentiría). El **número "a la cola" de CADA fila** de la
+      consola enlaza a `/admin/review-queue?run_id={su last_run_id}` — preciso: el número clicado iguala
+      la cola filtrada. Helper puro `runQueueHref` (solo enlaza si hay corrida Y `queued>0`).
+- [x] La cola lee el query param y **declara** qué corrida filtra (banner + "Quitar filtro")
+- [x] Verificación visual (`cuadra-ui-verify`): banner en vivo dark+light × es/en/pt + caso sin-run;
+      consola de Orquestación en vivo (rama sin-métricas). La **rama linkeada** del número (requiere
+      una corrida real de Dagster = 2.B) se cubre con test de render + unit de `runQueueHref`.
+- [x] i18n es/en/pt (`admin.reviewQueue.runFilter.*` + `admin.orchestration.outcome.{linked,queued,new}Part`)
 
-**Lo pesado ya está**: `product_match.run_id` existe desde 4.5, con índice compuesto
-`ix_product_match_run_status (run_id, status)`. Esto es cablear.
+**Verificación:** 877 save + 62 ingestion · ruff limpio · lint-imports 2 kept/0 broken · `make openapi`
+OK · 322 web + typecheck limpio. **Sin migración nueva** (la columna + índice existían desde 4.5).
+
+> Nota de diseño: `admin.orchestration.outcome.summary` (un solo string) se partió en 3 claves para
+> poder linkear SOLO el número "a la cola" (§5.1 limpieza: la clave vieja se retiró, no convive).
 
 ### 2.B — Encender la cascada = CIERRE DE FASE 2 (**efectos reales**)
 

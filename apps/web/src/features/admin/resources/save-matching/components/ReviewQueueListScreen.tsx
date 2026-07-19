@@ -1,5 +1,5 @@
 import type { AdminReviewQueueRowDto, BulkResolveResultDto } from "@cuadra/api-client";
-import { Info, RefreshCw } from "lucide-react";
+import { Info, RefreshCw, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { usePageContext } from "vike-react/usePageContext";
 import { useData } from "vike-react/useData";
@@ -237,6 +237,30 @@ export function ReviewQueueListScreen() {
           {t("admin.reviewQueue.sync")}
         </button>
       </div>
+
+      {/* Deep-link corrida→cola (F4 #4.7): cuando la cola llega filtrada por una corrida (`?run_id=`),
+          lo DECLARA explícitamente + ofrece salir del filtro. Sin esto el operador ve una cola
+          recortada sin saber por qué. */}
+      {params.run_id ? (
+        <div
+          data-testid="run-filter-banner"
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-forest/20 bg-brand-lime/10 px-3 py-2 text-sm dark:border-brand-lime/20 dark:bg-brand-forest/25"
+        >
+          <span className="text-muted-foreground">{t("admin.reviewQueue.runFilter.label")}</span>
+          <code className="rounded bg-black/5 px-1.5 py-0.5 font-mono text-xs text-brand-forest dark:bg-white/10 dark:text-brand-lime">
+            {params.run_id}
+          </code>
+          <button
+            type="button"
+            data-testid="run-filter-clear"
+            onClick={() => navigateWith({ run_id: undefined, offset: 0 })}
+            className="ml-auto inline-flex items-center gap-1 font-medium text-brand-forest underline underline-offset-2 hover:no-underline dark:text-brand-lime"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+            {t("admin.reviewQueue.runFilter.clear")}
+          </button>
+        </div>
+      ) : null}
 
       <ReviewQueueKpis locale={locale} />
 

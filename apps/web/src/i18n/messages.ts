@@ -165,7 +165,10 @@ type MessageKey =
   | "admin.orchestration.col.lastRun"
   | "admin.orchestration.col.outcome"
   | "admin.orchestration.col.actions"
-  | "admin.orchestration.outcome.summary"
+  | "admin.orchestration.outcome.linkedPart"
+  | "admin.orchestration.outcome.queuedPart"
+  | "admin.orchestration.outcome.newPart"
+  | "admin.orchestration.outcome.queuedLinkTitle"
   | "admin.orchestration.mode.manual"
   | "admin.orchestration.mode.automatic_chain"
   | "admin.orchestration.mode.cron"
@@ -234,6 +237,8 @@ type MessageKey =
   // Batch 6 — Restyle de la tabla (Cola de revisión)
   | "admin.reviewQueue.title"
   | "admin.reviewQueue.info"
+  | "admin.reviewQueue.runFilter.label"
+  | "admin.reviewQueue.runFilter.clear"
   | "admin.reviewQueue.selectAll"
   | "admin.reviewQueue.selectedSuffix"
   | "admin.reviewQueue.selectRow"
@@ -588,7 +593,10 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.lastRun": "Última corrida",
     "admin.orchestration.col.outcome": "Resultado",
     "admin.orchestration.col.actions": "Acciones",
-    "admin.orchestration.outcome.summary": "{autoLinked} enlazados · {queued} a la cola · {canonicals} nuevos",
+    "admin.orchestration.outcome.linkedPart": "{autoLinked} enlazados",
+    "admin.orchestration.outcome.queuedPart": "{queued} a la cola",
+    "admin.orchestration.outcome.newPart": "{canonicals} nuevos",
+    "admin.orchestration.outcome.queuedLinkTitle": "Ver en la cola de revisión lo que dejó esta corrida",
     "admin.orchestration.mode.manual": "Manual",
     "admin.orchestration.mode.automatic_chain": "Automático (por dependencia)",
     "admin.orchestration.mode.cron": "Programado",
@@ -654,6 +662,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions.reject": "Rechazar seleccionados",
     "admin.reviewQueue.title": "Cola de revisión",
     "admin.reviewQueue.info": "Información",
+    "admin.reviewQueue.runFilter.label": "Filtrando por corrida",
+    "admin.reviewQueue.runFilter.clear": "Quitar filtro",
     "admin.reviewQueue.selectAll": "Seleccionar todos",
     "admin.reviewQueue.selectedSuffix": "seleccionado(s)",
     "admin.reviewQueue.selectRow": "Seleccionar",
@@ -1007,7 +1017,10 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.lastRun": "Last run",
     "admin.orchestration.col.outcome": "Outcome",
     "admin.orchestration.col.actions": "Actions",
-    "admin.orchestration.outcome.summary": "{autoLinked} linked · {queued} queued · {canonicals} new",
+    "admin.orchestration.outcome.linkedPart": "{autoLinked} linked",
+    "admin.orchestration.outcome.queuedPart": "{queued} queued",
+    "admin.orchestration.outcome.newPart": "{canonicals} new",
+    "admin.orchestration.outcome.queuedLinkTitle": "See what this run left in the review queue",
     "admin.orchestration.mode.manual": "Manual",
     "admin.orchestration.mode.automatic_chain": "Automatic (by dependency)",
     "admin.orchestration.mode.cron": "Scheduled",
@@ -1073,6 +1086,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions.reject": "Reject selected",
     "admin.reviewQueue.title": "Review queue",
     "admin.reviewQueue.info": "Information",
+    "admin.reviewQueue.runFilter.label": "Filtering by run",
+    "admin.reviewQueue.runFilter.clear": "Clear filter",
     "admin.reviewQueue.selectAll": "Select all",
     "admin.reviewQueue.selectedSuffix": "selected",
     "admin.reviewQueue.selectRow": "Select",
@@ -1426,7 +1441,10 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.lastRun": "Última execução",
     "admin.orchestration.col.outcome": "Resultado",
     "admin.orchestration.col.actions": "Ações",
-    "admin.orchestration.outcome.summary": "{autoLinked} vinculados · {queued} na fila · {canonicals} novos",
+    "admin.orchestration.outcome.linkedPart": "{autoLinked} vinculados",
+    "admin.orchestration.outcome.queuedPart": "{queued} na fila",
+    "admin.orchestration.outcome.newPart": "{canonicals} novos",
+    "admin.orchestration.outcome.queuedLinkTitle": "Ver na fila de revisão o que esta execução deixou",
     "admin.orchestration.mode.manual": "Manual",
     "admin.orchestration.mode.automatic_chain": "Automático (por dependência)",
     "admin.orchestration.mode.cron": "Agendado",
@@ -1492,6 +1510,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions.reject": "Rejeitar selecionados",
     "admin.reviewQueue.title": "Fila de revisão",
     "admin.reviewQueue.info": "Informação",
+    "admin.reviewQueue.runFilter.label": "Filtrando pela execução",
+    "admin.reviewQueue.runFilter.clear": "Remover filtro",
     "admin.reviewQueue.selectAll": "Selecionar todos",
     "admin.reviewQueue.selectedSuffix": "selecionado(s)",
     "admin.reviewQueue.selectRow": "Selecionar",

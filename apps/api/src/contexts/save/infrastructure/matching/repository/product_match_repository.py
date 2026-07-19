@@ -216,6 +216,7 @@ class SqlProductMatchRepository:
         method: str | None = None,
         confidence_min: float | None = None,
         confidence_max: float | None = None,
+        run_id: str | None = None,
         order_by: str = "uncertainty",
         limit: int = 50,
         offset: int = 0,
@@ -233,6 +234,10 @@ class SqlProductMatchRepository:
             conditions.append(ProductMatchModel.confidence >= confidence_min)
         if confidence_max is not None:
             conditions.append(ProductMatchModel.confidence <= confidence_max)
+        # Deep-link corrida→cola (F4 #4.7): junto con `status == "pending_review"` de arriba, este
+        # filtro usa el índice compuesto `ix_product_match_run_status (run_id, status)`.
+        if run_id:
+            conditions.append(ProductMatchModel.run_id == run_id)
 
         count_stmt = (
             select(func.count(ProductMatchModel.id))
