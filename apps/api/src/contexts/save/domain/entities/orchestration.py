@@ -53,6 +53,18 @@ class FlowKey(StrEnum):
     PROVIDER_PRICES_REFRESH = "provider_prices_refresh"
 
 
+# Job del runner que ejecuta cada flow. FUENTE ÚNICA: la consumen tanto "Ejecutar ahora"
+# (`RunPolicyNow`) como el sensor programado (`ingestion/save/policy_sensor.py`).
+#
+# Estuvo duplicada en los dos lugares durante un rato y era una trampa: al sumar un flow nuevo
+# (p.ej. `provider_coverage`, v1.1) alguien actualizaría uno y olvidaría el otro, y el resultado
+# sería que el botón manual funciona mientras la programación NO dispara — sin un solo error.
+# Mapa explícito y cerrado: v1 no materializa assets Python arbitrarios desde la UI (SDD §4).
+JOB_BY_FLOW: dict[str, str] = {
+    FlowKey.PROVIDER_PRICES_REFRESH.value: "save_query_catalog",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class OrchestrationGlobalConfig:
     """Defaults por mercado. El override por policy gana sobre esto (SDD §8)."""

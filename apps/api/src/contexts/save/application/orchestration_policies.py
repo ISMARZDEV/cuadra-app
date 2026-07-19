@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from ..domain.directed_query import DirectedCapability
 from ..domain.entities.orchestration import (
+    JOB_BY_FLOW,
     ExecutionMode,
     FlowKey,
     OrchestrationPolicy,
@@ -128,8 +129,6 @@ class RunPolicyNow:
     Python arbitrarios desde la UI (SDD §4).
     """
 
-    _JOBS: dict[str, str] = {FlowKey.PROVIDER_PRICES_REFRESH.value: "save_query_catalog"}
-
     def __init__(self, *, orchestrator: PipelineOrchestrator) -> None:
         self._orchestrator = orchestrator
 
@@ -141,7 +140,7 @@ class RunPolicyNow:
                 "La policy está pausada o retirada. Reactivala antes de lanzar una corrida — "
                 "ejecutar algo que el operador pausó a propósito es peor que no hacer nada."
             )
-        job_name = self._JOBS.get((policy.flow_key or "").value if policy.flow_key else "")
+        job_name = JOB_BY_FLOW.get((policy.flow_key or "").value if policy.flow_key else "")
         if job_name is None:
             raise ProviderFlowNotSupported(
                 f"No hay un job soportado para el flow {policy.flow_key!r}."
