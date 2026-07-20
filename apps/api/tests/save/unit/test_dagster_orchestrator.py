@@ -217,6 +217,7 @@ def test_the_adapter_does_not_import_dagster() -> None:
     """
     import ast
     import pathlib
+    import subprocess
     import sys
 
     from src.contexts.save.infrastructure.orchestrator import dagster_graphql
@@ -233,8 +234,29 @@ def test_the_adapter_does_not_import_dagster() -> None:
 
     offenders = {m for m in imported if m == "dagster" or m.startswith("dagster")}
     assert not offenders, f"el adapter debe hablar GraphQL crudo, no usar el SDK: {offenders}"
-    # y que no se haya colado transitivamente al importarlo:
-    assert not any(m == "dagster" or m.startswith("dagster.") for m in sys.modules)
+
+    # Y que no se cuele TRANSITIVAMENTE al importarlo. Esto se mide en un intérprete LIMPIO, no
+    # sobre el `sys.modules` de la suite: ese es global del proceso, y `tests/ingestion` importa
+    # dagster por definición. Preguntarle a él daba una guarda que pasaba SOLA y fallaba
+    # ACOMPAÑADA — verde por aislamiento, roja por un motivo ajeno al adapter, y en ningún caso
+    # midiendo la cadena de imports que dice defender.
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys;"
+            " import src.contexts.save.infrastructure.orchestrator.dagster_graphql;"
+            " leaked = sorted(m for m in sys.modules"
+            "                 if m == 'dagster' or m.startswith('dagster.'));"
+            " print(','.join(leaked))",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=pathlib.Path(__file__).resolve().parents[3],
+    )
+    assert probe.returncode == 0, f"el adapter no importa en un intérprete limpio: {probe.stderr}"
+    leaked = probe.stdout.strip()
+    assert not leaked, f"dagster entró transitivamente al importar el adapter: {leaked}"
 
 
 class TestSelectorResolution:
