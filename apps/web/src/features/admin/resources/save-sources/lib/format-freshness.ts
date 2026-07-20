@@ -1,4 +1,5 @@
 import type { Locale } from "@/i18n/config";
+import { formatAdminDateTime } from "@/features/admin/lib/format-datetime";
 
 // Frescura de una fuente para la tabla de Fuentes (contexto del badge de salud): la Antigüedad
 // RELATIVA ("hace 1 día") + la marca absoluta ("12 jul, 21:02"). El backend expone `last_seen_at`
@@ -29,21 +30,9 @@ export function formatRelativeAge(iso: string | null | undefined, locale: Locale
   return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(0, "second");
 }
 
-/** Marca absoluta corta y localizada ("12 jul 2026, 21:02"), fijada a UTC para ser determinística
- * (el backend emite `last_seen_at` en UTC). `null` → "—". */
+/** Marca absoluta corta y localizada. DELEGA en `formatAdminDateTime` (`admin/lib`): el formato es
+ * el mismo en todo el admin y dos implementaciones se desincronizan en cuanto alguien toca una.
+ * Se conserva el nombre porque acá la semántica es "última vez que se vio el producto". */
 export function formatLastSeen(iso: string | null | undefined, locale: Locale): string {
-  if (!iso) return "—";
-  const seen = new Date(iso);
-  if (Number.isNaN(seen.getTime())) return "—";
-  return new Intl.DateTimeFormat(locale, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    // AM/PM (12h) como la columna "Fecha del match" de la cola de revisión (`formatMatchTime`),
-    // no 24h — misma fuente UTC determinística.
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "UTC",
-  }).format(seen);
+  return formatAdminDateTime(iso, locale);
 }
