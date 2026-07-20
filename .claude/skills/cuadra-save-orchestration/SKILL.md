@@ -153,15 +153,43 @@ append-only and sacred).
     select popup portals OUTSIDE the menu and counts as "outside"). `@base-ui/react/popover` with
     `align="end"` opens leftward so the panel does not cover the table it is filtering.
 
+23. **Two timestamp conventions in the SAME Dagster schema.** `Run.startTime` is a **float in
+    SECONDS**; `MaterializationEvent.timestamp` is a **`String!` in MILLISECONDS** (its sibling arg
+    is literally `beforeTimestampMillis`). Dividing the string crashes; treating it like a run
+    timestamp yields dates around the year **57000** — absurd to an operator, perfectly plausible to
+    a parser. The conversion lives in its own helper (`_materialization_ts`) and must NOT share
+    `_epoch_to_dt`. Also: `AssetKey` is `{path: [segments]}`, not a string (joined with `/`, and the
+    route needs `{key:path}`), and **`assetNodes` is a bare LIST while `assetNodeOrError` is a
+    UNION** — a uniform `_unwrap` turns *"that asset does not exist"* (404) into *"the orchestrator
+    is down"* (503).
+24. **A field the API accepts for WRITE must be readable, or it is a trap.** `UpdatePolicyRequest`
+    accepted `priority` and `PolicyDto` did not return it: the form read it through a cast, always
+    got `undefined`, rendered empty, and **every save wiped it to `null`**. It never failed — it
+    lied coherently, because an empty field looks like the truth. The PATCH uses
+    `model_dump(exclude_unset=True)`, so the fix is that the key must NOT travel. Guard:
+    `tests/save/unit/test_admin_dto_symmetry.py` compares each write/read DTO pair. Before adding a
+    control to any admin form, check the field is in the **read** DTO, not just the `*Request`.
+25. **CI was green for the reason that made it blind.** It ran `uv sync` WITHOUT
+    `--group ingestion`, so `dagster` was absent, the 18 tests in `test_definitions.py` skipped via
+    `importorskip`, and `sys.modules` stayed clean — which is precisely why the broken adapter guard
+    passed there and failed locally. CI now installs the group AND runs `pytest tests/save
+    tests/ingestion` as its own step. **If the backend verification is TWO numbers, the combined
+    suite was never run.**
+
 ## Operating the runner (dev) — hard-won
 
-- **Run EXACTLY ONE `dagster dev` at a time.** `dagster dev` spawns a tree (webserver + daemon +
-  code-server) that does NOT shut down cleanly when you close the terminal → orphaned instances pile
-  up across sessions on the same `DAGSTER_HOME`/Postgres → `Another … daemon is still sending
-  heartbeats… multiple daemon processes… not supported` → **runs fail**. Healthy = exactly 1
-  `dagster._daemon run` + 1 webserver, and `grep -c "still sending heartbeats"` in the log == 0.
-  Bring it down with `scripts/dagster-down.sh` (+ a `pkill -9 -f` sweep for stragglers), verify
-  `ps`/port 3070 are clear, THEN relaunch. `scripts/dagster-dev.sh` already exports
+- **Run EXACTLY ONE `dagster dev` at a time.** It spawns a tree (wrapper `uv run` → `dagster dev` →
+  webserver + daemon + code-server + its `dagster api grpc`). Orphans piling up on the same
+  `DAGSTER_HOME`/Postgres give `Another … daemon is still sending heartbeats… multiple daemon
+  processes… not supported` → **runs fail**. Healthy = exactly 1 `dagster._daemon run` + 1
+  webserver, and `grep -c "still sending heartbeats"` in the log == 0.
+  **`scripts/dagster-down.sh` now takes the whole tree down and VERIFIES it** (fixed 2026-07-20 — no
+  manual `pkill` sweep needed; it exits non-zero and lists survivors if anything resists). It had
+  two bugs worth remembering: its pattern was `dagster.daemon` while the real process is
+  `dagster._daemon` — the regex `.` eats the literal dot and then `daemon` cannot match `_daemon`,
+  so it failed by ONE character and never killed the daemon; and it verified **port 3070** instead
+  of the tree, so the webserver died, the port freed, and it printed `✓ Dagster apagado` with five
+  processes alive. **A `✓` that checks a proxy instead of the thing itself is not evidence.** `scripts/dagster-dev.sh` already exports
   `SAVE_MATCHING_CASCADE_ENABLED=true` + `SAVE_REFRESH_QUERY_LIMIT=10` — the cascade runs INSIDE the
   Dagster process (the matcher is wired in `ingestion/save/composition.py`), NOT the API.
 - **Launch/measure a run without the UI**: `POST /v1/admin/save/orchestration/policies/{id}/run`

@@ -80,8 +80,8 @@ Numeración del §14 del SDD (`Sub-modulo List - Orquestacion Save - SDD Refinad
 
 | # | Ítem | Qué lo desbloquea | Alcance |
 |---|---|---|---|
-| **9** | Tab **Assets Dagster** | `GET /admin/save/orchestration/assets` + `GET …/assets/{key}` + `list_assets()`/`get_asset()`/`get_lineage()` en `PipelineOrchestrator` + `AssetAdminRowDto`/`LineageNodeDto` | Backend + front. **Entra completa o no entra**: una tab vacía sugiere que el pipeline no tiene assets cuando lo que pasa es que no los estamos preguntando |
-| **10** | Barra de tabs | Solo tiene sentido CON #9 — una tab sola es decorado | Front trivial |
+| ~~**9**~~ | ~~Tab **Assets Dagster**~~ | ✅ **HECHA 2026-07-20** — ver abajo | — |
+| ~~**10**~~ | ~~Barra de tabs~~ | ✅ **HECHA 2026-07-20**, junto con #9 | — |
 | **11** | **Detalle por proveedor** `/admin/orchestration/providers/{id}` | Es el SDD hermano (`Orquestacion Save List - Details by Provider`). Ya tiene su §11 con el plan por batches reordenado y sus 3 bloqueos anotados | **Rama propia** |
 | **13** | KPIs `Corridas exitosas/fallidas hoy` | Listado GLOBAL de runs por día en el port (hoy solo `list_runs(policy_id)`) | Backend |
 | **14** | Progreso `queries_processed / queries_total` | **Un contador de queries real.** `seen` cuenta productos DEVUELTOS, no búsquedas ejecutadas. Hay que instrumentarlo en la ingesta y propagarlo al snapshot | Ingesta + backend + front |
@@ -108,6 +108,47 @@ Numeración del §14 del SDD (`Sub-modulo List - Orquestacion Save - SDD Refinad
 > Fijado por test: *"NEVER sends `priority`"* en `PolicyModal.test.tsx`.
 | **18** | Policies `scope=asset` | Recién ahí el sensor reemplaza a los 3 `ScheduleDefinition` que **siguen en código a propósito** (`save_coverage_daily`, `save_freshness_frequent`, `save_price_refresh_frequent`) | Dominio + sensor |
 | **19** | "Ejecutar ahora" con **overrides de una vez** (p. ej. `limit=10`) | Un parámetro en `POST /policies/{id}/run` que no mute la policy. Idea tomada de SupermercadosRD | Backend + front |
+
+### #9 + #10 — Tab "Assets Dagster" (HECHO 2026-07-20)
+
+El hueco más grande del módulo: hasta hoy **el browse REST de Bravo no era operable desde el admin**.
+
+| Capa | Qué entró |
+|---|---|
+| Dominio | `PipelineAsset` · `AssetPartitionStats` (con `coverage_ratio`) · `AssetHealth` · `list_assets()`/`get_asset()` en el puerto |
+| Adapter | `assetNodes` + `assetNodeOrError` sobre GraphQL crudo · `_materialization_ts` |
+| API | `GET /assets` (503 si el runner no responde) · `GET /assets/{key:path}` (404 si no existe) · `AssetAdminRowDto`/`AssetListDto`/`LineageNodeDto`/`AssetDetailDto` |
+| Web | `AssetsTab` (carga al abrir la pestaña) · `OrchestrationTabs` · i18n es/en/pt |
+
+**Cuatro cosas que la INTROSPECCIÓN del schema salvó** (gotcha #4 pagando de nuevo):
+
+1. **`MaterializationEvent.timestamp` es `String!` en MILISEGUNDOS**, mientras que `Run.startTime` es
+   `float` en SEGUNDOS. Dos tipos y dos unidades en el mismo schema. El primer intento hacía
+   `timestamp / 1000` sobre un string (`TypeError`), y tratarlo como los runs habría dado fechas del
+   **año ~57000**: absurdas para el operador, perfectamente plausibles para un parser. Por eso la
+   conversión vive en `_materialization_ts` y NO se comparte con `_epoch_to_dt`.
+2. **`AssetKey` es `{path: [segmentos]}`**, no un string → la clave se une con `/` y la ruta usa
+   `{key:path}`. Con el converter por defecto, todo asset multi-segmento sería inalcanzable.
+3. **`assetNodes` es una lista PELADA; `assetNodeOrError` es una UNIÓN.** Caminos de error distintos:
+   un `_unwrap` uniforme habría convertido *"ese asset no existe"* (404) en *"el orquestador no
+   responde"* (503) — el error exacto que F4 ya cometió una vez.
+4. **`dependencyKeys`/`dependedByKeys` son CAMPOS del nodo, no una query.** Por eso el puerto tiene
+   **dos** métodos y no los tres que proponía el §14: `get_lineage()` habría sido un segundo
+   round-trip para recomponer lo que `list_assets()` ya trajo (devuelve el grafo COMPLETO).
+
+**Dos decisiones de honestidad:**
+
+- **Los assets NO viajan por SSR.** Las policies viven en NUESTRA DB (por eso la lista degrada con el
+  runner caído), pero los assets viven SOLO en Dagster y su endpoint da 503. Por SSR, un runner
+  muerto habría tumbado la consola ENTERA — justo cuando el operador más necesita ver su
+  configuración. Se piden al ABRIR la pestaña, así el fallo queda contenido ahí.
+- **Tres estados distintos y ninguno confundible**: `loading` · `unavailable` (**se declara**, nunca
+  una tabla vacía) · `ready` (que sí puede estar legítimamente vacío). Una lista vacía diría "el
+  pipeline no tiene assets" cuando la verdad es "no pudimos preguntar".
+
+> [!warning] Verificación visual de la tab — PENDIENTE
+> La tab tiene cobertura de tests (render + cableado), pero **no se miró el render real**. Sigue sin
+> haber tooling de screenshot en el repo. `cuadra-ui-verify` lo exigiría antes de decir "listo".
 
 ### Decisiones de NO construir (no son olvidos)
 

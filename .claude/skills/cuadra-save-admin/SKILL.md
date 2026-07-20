@@ -100,6 +100,19 @@ for tone and ergonomics. Looking at only one is how the wrong answer gets shippe
 > lone arc in a wide card looks unbalanced — and a bare `<svg>` takes the container width and
 > **stretches until it overflows the card**. Always wrap it in a centred flex container.
 
+> [!warning] `max-width` on a `<td>` is IGNORED — constrain an inner element
+> With `table-layout: auto` (the default) the browser sizes columns by CONTENT and discards a
+> `max-width` set on the `<td>` itself. Put it on a `<div>`/`<a>` **inside** the cell — that is what
+> `ReviewRow` does (`line-clamp-2 max-w-[13rem]` on the `<a>`).
+> Getting this wrong is silent and looks like three unrelated bugs at once: the column stretches
+> until the text fits on ONE line, so `line-clamp` never truncates (no `…`), and a truncation-based
+> tooltip never fires because `scrollHeight === clientHeight`.
+> Related: a long cell also needs `overflow-x-auto` on a wrapper INSIDE the `overflow-hidden` card,
+> or the right-hand columns are clipped away with no way to scroll to them.
+> For long text use `TruncatedText` (`features/admin/components/`) — it clamps to N lines and reveals
+> the rest in a tooltip **only when it actually overflows** (measured with `ResizeObserver`, because
+> the admin sidebar collapses and changes column width without a window resize).
+
 > [!warning] Do NOT use `Skeleton` for "no data"
 > `components/ui-base/skeleton.tsx` has `animate-pulse`, which promises *"wait, it's loading"*. When
 > the data is **unavailable** (a dependency is down), a pulsing skeleton is the same lie-in-green
