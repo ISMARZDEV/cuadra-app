@@ -89,12 +89,22 @@ Base: `/Users/ismartz/Library/Mobile Documents/iCloud~md~obsidian/Documents/dev-
 | `Orquestacion Save List - Details by Provider - SDD Refinado.md` | **F4** | `/admin/orchestration/providers/{id}` — detalle operativo |
 | `Sub-modulo List - Productos Canonicos - SDD Refinado.md` | **F5** | `/admin/canonical-products` — listado + bulk categorías (L10) |
 | `Productos Canonicos List - Details by Id - SDD Refinado.md` | **F5** | `/admin/canonical-products/{id}` — curación + categorías (D2c) |
-| `Sub-modulo List - Productos - SDD Refinado.md` | **F5** | `/admin/products` — alias semántico sobre `canonical_product` |
-| `Productos List - Details by Id - SDD Refinado.md` | **F5** | `/admin/products/{id}` — analítica (faseada) |
+| `Sub-modulo List - Productos - SDD Refinado.md` | ~~F5~~ **DIFERIDO** | `/admin/products` — se solapa ~80% con Canónicos; su valor diferencial es analítica inexistente |
+| `Productos List - Details by Id - SDD Refinado.md` | ~~F5~~ **DIFERIDO** | `/admin/products/{id}` — diferido junto con su listado |
 
-> **Los 7 están corregidos al 2026-07-16** contra el código real (cutover de basket, assets REST
-> faltantes, capability-driven, badges EAN, categorías). Las notas fechadas `2026-07-16` son
-> correcciones verificadas — **respétalas por encima del texto original**.
+> **Los 7 están RECONCILIADOS al 2026-07-19** contra el código real. Las notas fechadas `2026-07-16`
+> y `2026-07-19` son correcciones verificadas — **respétalas por encima del texto original**.
+>
+> Lo que cambió en la pasada del 2026-07-19 (leer antes de tomar cualquiera como spec):
+> - **Orquestación List** pasó a `v1-parcial-implementado`: F4 shippeó un **v1 delgado**, no la
+>   consola completa. Cada US quedó marcada ✅/⚠️/🔁/❌ y el backlog real vive en su §14.
+> - **Mejoras Transversales** pasó a `P0-completo-P1-pendiente`: los 5 bloqueantes ya están hechos.
+> - **Los 4 SDD de Productos/Canónicos tenían mal el esquema**: los campos de tamaño son
+>   `size_amount`/`size_measure` (no `quantity_*`), y **no existen** `description`, `created_at`,
+>   `archived_at` ni `internal_note` → archivar y notas internas arrancan bloqueados por migración.
+>   Sí existe `origin_run_id` (F4), que da "de qué corrida nació" sin migración.
+> - **La skill `brainstorming` NO EXISTE** y estaba listada como obligatoria en los 7. Retirada.
+> - **Los 2 SDD de Productos quedaron DIFERIDOS** (ver §4, Fase 5).
 
 ---
 
@@ -188,8 +198,27 @@ Base: `/Users/ismartz/Library/Mobile Documents/iCloud~md~obsidian/Documents/dev-
 
 ### Fase 5 — Catálogo (superficies de curación)
 14. Canónicos **List → Details** (badge EAN-alcanzable, duplicado-por-EAN, evidencia, categorías D2c)
-    → bulk de categorías (L10).
-15. Productos **List → Details** (la analítica de visitas/clicks va al FINAL, como ya fasean sus SDD).
+    → bulk de categorías (L10). **Es la ÚNICA superficie de catálogo de F5** (ver decisión abajo).
+15. ~~Productos **List → Details**~~ → **DIFERIDO** (decisión del usuario 2026-07-19).
+
+> [!important] Decisión 2026-07-19 — `Productos` se difiere hasta que exista la analítica
+> Al reconciliar los 7 SDD del vault se detectó que **`/admin/products` y `/admin/canonical-products`
+> se solapan ~80%**: misma entidad (`canonical_product`), y ambos especifican listado, modal de
+> proveedores, alta manual, import CSV, archivado y quality badges.
+>
+> **Todo lo que hace distinto a `Productos` es analítica que NO EXISTE** — visitas web/mobile, clicks
+> a proveedor, volatilidad, señales B2B. Verificado: no hay eventos de page view ni de click en el
+> repo, y sus propios SDD las fasean como `v1.1`/`v1.2`. Quitá eso y `Productos` es `Canónicos` con
+> otro nombre.
+>
+> Construir ambos hoy sería **construir el mismo módulo dos veces**: dos importadores CSV, dos altas
+> manuales y dos flujos de archivado sobre la misma tabla — y el archivado ni siquiera existe aún
+> (`archived_at` requiere migración). Duplicar una política de borrado seguro antes de tenerla viola
+> §5 de este plan.
+>
+> **F5 construye SOLO Canónicos.** Su alta manual, su import y su archivado son la implementación
+> OFICIAL, la que después se reusa. Cuando exista el tracking se decidirá si `Productos` es tab,
+> preset o ruta propia **sobre esa base**. No está descartado: está **diferido**.
 
 ### Fase 6 — P1 / pulido
 16. Marcas (§7.5) · señal "¿nuevo o exclusivo?" + filtro `run_id` · canasta scope/yield · **R2** (piso
