@@ -137,6 +137,26 @@ describe("PolicyModal — guardado", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
+  it("NEVER sends `priority` — the DTO does not expose it, so any value it sent would be a wipe", async () => {
+    // `PolicyDto` (lectura) no trae `priority`: el form lo leía con un cast y SIEMPRE obtenía
+    // `undefined` → el input nacía vacío → `toNullableInt("")` → `null` → cada guardado BORRABA la
+    // prioridad de la policy, con la UI mostrando el vacío como si fuera el estado real.
+    //
+    // El PATCH usa `model_dump(exclude_unset=True)`: un campo AUSENTE no se toca. Por eso la regla es
+    // que la clave no viaje, no que viaje con el valor viejo.
+    //
+    // No se re-expone el campo a propósito: nada en el dominio LEE `priority` (solo se persiste), y
+    // el §14 #17 ya dictaminó que el orden real necesita `depends_on_flow` porque `priority` no
+    // alcanza. Un control que guarda un número que nadie lee es una promesa falsa al operador.
+    setup({ execution_mode: "cron", cron_expression: "0 6 * * *" });
+
+    fireEvent.click(save());
+
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    expect(api.updatePolicy.mock.calls[0][1]).not.toHaveProperty("priority");
+    expect(screen.queryByTestId("policy-priority")).not.toBeInTheDocument();
+  });
+
   it("sends null (not 0) when a numeric override is cleared", async () => {
     // `0` y "sin override" NO son lo mismo: 0 sería un límite de cero queries. Vaciar el campo debe
     // devolver la precedencia al default global, no fijar un cero.

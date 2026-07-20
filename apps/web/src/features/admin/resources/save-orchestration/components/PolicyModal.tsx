@@ -57,9 +57,6 @@ export function PolicyModal({
   const [timezone, setTimezone] = useState(policy.timezone ?? "");
   const [sla, setSla] = useState(policy.sla_minutes?.toString() ?? "");
   const [queryLimit, setQueryLimit] = useState(policy.query_limit_override?.toString() ?? "");
-  const [priority, setPriority] = useState(
-    (policy as { priority?: number | null }).priority?.toString() ?? "",
-  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,8 +77,14 @@ export function PolicyModal({
       timezone: timezone.trim() || null,
       sla_minutes: toNullableInt(sla),
       query_limit_override: toNullableInt(queryLimit),
-      priority: toNullableInt(priority),
-    } as UpdatePolicyRequest;
+      // `priority` NO viaja, a propósito. `PolicyDto` (lectura) no lo expone, así que el form no
+      // puede conocer su valor actual: mandarlo siempre lo pisaría con `null`. El PATCH usa
+      // `model_dump(exclude_unset=True)` — ausente es "no lo toques", que es justo lo que queremos.
+      //
+      // Tampoco se re-expone: nada en el dominio LEE `priority` (solo se persiste), y el §14 #17 ya
+      // decidió que el orden real necesita `depends_on_flow` porque `priority` no alcanza. Un
+      // control que guarda un número que nadie lee le promete al operador un efecto inexistente.
+    };
 
     const res = await updatePolicy(policy.policy_id, body);
     setBusy(false);
@@ -202,21 +205,6 @@ export function PolicyModal({
           </p>
         </FilterField>
       </div>
-
-      <FilterField
-        icon={<ListOrdered />}
-        label={t("admin.orchestration.modal.fieldPriority")}
-        htmlFor="policy-priority"
-      >
-        <Input
-          id="policy-priority"
-          data-testid="policy-priority"
-          type="number"
-          value={priority}
-          onChange={(e) => setPriority(e.target.value)}
-          className="h-11! w-full rounded-xl"
-        />
-      </FilterField>
 
       {/* US-OR-L5: la UI declara qué política NO vive acá.
           Sin esto el operador no puede distinguir "esta palanca no existe" de "existe pero está en

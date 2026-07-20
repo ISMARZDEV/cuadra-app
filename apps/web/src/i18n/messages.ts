@@ -214,7 +214,6 @@ type MessageKey =
   | "admin.orchestration.modal.fieldTimezone"
   | "admin.orchestration.modal.fieldSla"
   | "admin.orchestration.modal.fieldQueryLimit"
-  | "admin.orchestration.modal.fieldPriority"
   | "admin.orchestration.modal.hintCron"
   | "admin.orchestration.modal.hintQueryLimit"
   | "admin.orchestration.modal.hintSla"
@@ -716,7 +715,6 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.modal.fieldTimezone": "Zona horaria",
     "admin.orchestration.modal.fieldSla": "SLA (minutos)",
     "admin.orchestration.modal.fieldQueryLimit": "Límite de queries",
-    "admin.orchestration.modal.fieldPriority": "Prioridad",
     "admin.orchestration.modal.hintCron":
       "Cinco campos (minuto hora día mes día-semana). Se evalúa en la zona horaria de abajo, no en la del servidor.",
     "admin.orchestration.modal.hintQueryLimit": "Vacío = usa el límite global del mercado. Un 0 sería un límite de cero queries.",
@@ -1217,7 +1215,6 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.modal.fieldTimezone": "Time zone",
     "admin.orchestration.modal.fieldSla": "SLA (minutes)",
     "admin.orchestration.modal.fieldQueryLimit": "Query limit",
-    "admin.orchestration.modal.fieldPriority": "Priority",
     "admin.orchestration.modal.hintCron":
       "Five fields (minute hour day month weekday). Evaluated in the time zone below, not the server's.",
     "admin.orchestration.modal.hintQueryLimit": "Empty = use the market-wide limit. A 0 would mean a limit of zero queries.",
@@ -1718,7 +1715,6 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.modal.fieldTimezone": "Fuso horário",
     "admin.orchestration.modal.fieldSla": "SLA (minutos)",
     "admin.orchestration.modal.fieldQueryLimit": "Limite de consultas",
-    "admin.orchestration.modal.fieldPriority": "Prioridade",
     "admin.orchestration.modal.hintCron":
       "Cinco campos (minuto hora dia mês dia-semana). Avaliado no fuso horário abaixo, não no do servidor.",
     "admin.orchestration.modal.hintQueryLimit": "Vazio = usa o limite global do mercado. Um 0 seria um limite de zero consultas.",

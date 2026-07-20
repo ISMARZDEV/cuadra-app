@@ -87,7 +87,25 @@ Numeración del §14 del SDD (`Sub-modulo List - Orquestacion Save - SDD Refinad
 | **14** | Progreso `queries_processed / queries_total` | **Un contador de queries real.** `seen` cuenta productos DEVUELTOS, no búsquedas ejecutadas. Hay que instrumentarlo en la ingesta y propagarlo al snapshot | Ingesta + backend + front |
 | **15** | `log_excerpt` / eventos de corrida | `get_run_events()` en el port + `RunEventSnippetDto` | Backend + front |
 | **16** | Handler **`provider_coverage`** (v1.1) | Le da a la consola su segunda acción natural: **Matchear por EAN**. Al sumarlo a `FlowKey`, el test `test_every_supported_flow_has_exactly_one_job_mapping` exige mapearlo en `JOB_BY_FLOW` | Dominio + ingesta |
-| **17** | **`depends_on_flow`** en la policy (R7) | La regla "Sirena siembra los EAN antes de que el job EAN de Bravo sea efectivo" **no se puede expresar con `priority`** | Dominio + migración |
+| **17** | **`depends_on_flow`** en la policy (R7) | La regla "Sirena siembra los EAN antes de que el job EAN de Bravo sea efectivo" **no se puede expresar con `priority`**. Ver la nota de abajo: el control de `priority` se RETIRÓ del form | Dominio + migración |
+
+> [!bug] `priority` borraba la prioridad en cada guardado — corregido 2026-07-20
+> `PolicyDto` (lectura) **no expone `priority`**, pero `PolicyModal` lo editaba leyéndolo con un cast
+> (`policy as { priority?: number | null }`). El cast devolvía SIEMPRE `undefined` → el input nacía
+> vacío → `toNullableInt("")` → `null` → **cada guardado del modal pisaba la prioridad con `null`**.
+> La UI no fallaba en un punto: mentía coherentemente, porque el campo vacío parecía el estado real.
+>
+> **Arreglo:** se retiró el control (input + estado + la clave del body + la clave i18n
+> `fieldPriority`) y murieron los DOS casts que silenciaban a TypeScript, que tenía razón. El PATCH
+> usa `model_dump(exclude_unset=True)`, así que un campo ausente **no se toca**: la prioridad
+> guardada queda intacta. **No se tocó la columna, la entidad ni `UpdatePolicyRequest`** (§5.3).
+>
+> **No se re-expuso a propósito.** Nada en el dominio LEE `priority` — solo se persiste
+> (`models.py:625`, `orchestration.py:129`, round-trip en `policy_repository.py`). Exponerlo habría
+> hecho que el formulario funcionara *correctamente* guardando un número que nadie consume: eso no
+> arregla la mentira, la vuelve consistente. El orden real llega con **#17**.
+>
+> Fijado por test: *"NEVER sends `priority`"* en `PolicyModal.test.tsx`.
 | **18** | Policies `scope=asset` | Recién ahí el sensor reemplaza a los 3 `ScheduleDefinition` que **siguen en código a propósito** (`save_coverage_daily`, `save_freshness_frequent`, `save_price_refresh_frequent`) | Dominio + sensor |
 | **19** | "Ejecutar ahora" con **overrides de una vez** (p. ej. `limit=10`) | Un parámetro en `POST /policies/{id}/run` que no mute la policy. Idea tomada de SupermercadosRD | Backend + front |
 
