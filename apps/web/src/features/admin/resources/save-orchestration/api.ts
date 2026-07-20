@@ -2,6 +2,7 @@ import {
   cancelRun as cancelRunRequest,
   createProviderFlow as createProviderFlowRequest,
   deletePolicy as deletePolicyRequest,
+  listAssets as listAssetsRequest,
   listProviderFlows as listProviderFlowsRequest,
   pausePolicy as pausePolicyRequest,
   resumePolicy as resumePolicyRequest,
@@ -10,6 +11,7 @@ import {
   updatePolicy as updatePolicyRequest,
 } from "@cuadra/api-client";
 import type {
+  AssetAdminRowDto,
   CreateProviderFlowRequest,
   ProviderFlowDto,
   UpdatePolicyRequest,
@@ -80,4 +82,22 @@ export async function updatePolicy(policyId: string, body: UpdatePolicyRequest) 
 
 export async function createProviderFlow(body: CreateProviderFlowRequest) {
   return createProviderFlowRequest({ client: apiClient, headers: await authHeaders(), body });
+}
+
+/** Assets del pipeline (§14 #9).
+ *
+ * NO se carga por SSR en `+data.ts` a propósito: los assets viven SOLO en Dagster, así que un runner
+ * caído responde 503 y eso tumbaría la consola ENTERA — incluidas las policies, que viven en nuestra
+ * DB y tienen que seguir visibles justo cuando el runner falla (SDD §8). Cargándolo al abrir la tab,
+ * un runner muerto degrada SOLO esta pestaña.
+ *
+ * Lanza `AssetsUnavailable` en vez de devolver `[]`: una lista vacía diría "el pipeline no tiene
+ * assets" cuando la verdad es "no pudimos preguntar".
+ */
+export class AssetsUnavailable extends Error {}
+
+export async function listPipelineAssets(): Promise<AssetAdminRowDto[]> {
+  const res = await listAssetsRequest({ client: apiClient, headers: await authHeaders() });
+  if (res.error || !res.data) throw new AssetsUnavailable("el orquestador no respondió");
+  return res.data.assets;
 }

@@ -20,6 +20,8 @@ const api = vi.hoisted(() => ({
   cancelRun: vi.fn(),
   retryRun: vi.fn(),
   deletePolicy: vi.fn(),
+  listPipelineAssets: vi.fn(),
+  AssetsUnavailable: class extends Error {},
 }));
 vi.mock("../api", () => api);
 
@@ -69,7 +71,13 @@ function openRowMenu() {
 }
 
 beforeEach(() => {
-  Object.values(api).forEach((fn) => fn.mockReset());
+  // Solo los MOCKS se resetean: el módulo `../api` también exporta la clase `AssetsUnavailable`, y
+  // un `Object.values(...).forEach(fn => fn.mockReset())` a ciegas revienta con ella.
+  Object.values(api).forEach((fn) => {
+    if (typeof (fn as { mockReset?: unknown }).mockReset === "function") {
+      (fn as { mockReset: () => void }).mockReset();
+    }
+  });
   api.listProviderFlowEntries.mockImplementation(async () => mockData.flows);
   api.runPolicy.mockResolvedValue({});
   api.pausePolicy.mockResolvedValue({});
@@ -77,6 +85,7 @@ beforeEach(() => {
   api.cancelRun.mockResolvedValue({});
   api.retryRun.mockResolvedValue({});
   api.deletePolicy.mockResolvedValue({});
+  api.listPipelineAssets.mockResolvedValue([]);
 });
 
 describe("OrchestrationScreen — deep-link corrida→cola (F4 #4.7)", () => {
@@ -342,5 +351,44 @@ describe("OrchestrationScreen — refresco en vivo", () => {
     });
 
     expect(api.listProviderFlowEntries).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("OrchestrationScreen — la barra de tabs (§14 #10)", () => {
+  it("does NOT ask the runner for assets while the Providers tab is open", async () => {
+    // El costo de la tab tiene que pagarse solo cuando se usa. Pedirlos al montar haría que cada
+    // visita a la consola golpeara al runner por datos que nadie está mirando.
+    mockData = { flows: [flow()], runnerDisconnected: false, providers: [] };
+    render(<OrchestrationScreen />);
+
+    await screen.findByText("Sirena");
+    expect(api.listPipelineAssets).not.toHaveBeenCalled();
+  });
+
+  it("switches to the Assets tab and asks the runner ONLY then", async () => {
+    // El test de CABLEADO: `AssetsTab` puede estar perfecta y no abrirse nunca. Sin esto, la tab
+    // podría no estar conectada y toda su suite seguiría verde.
+    mockData = { flows: [flow()], runnerDisconnected: false, providers: [] };
+    render(<OrchestrationScreen />);
+
+    fireEvent.click(screen.getByTestId("orchestration-tab-assets"));
+
+    await waitFor(() => expect(api.listPipelineAssets).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("orchestration-tab-assets")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps the policies reachable when the runner is down — they live in OUR DB", async () => {
+    // La degradación que el SDD §8 exige: el operador vuelve a Proveedores y sigue viendo (y
+    // pudiendo editar) su configuración aunque los assets no se hayan podido pedir.
+    mockData = { flows: [flow()], runnerDisconnected: true, providers: [] };
+    api.listPipelineAssets.mockRejectedValue(new Error("503"));
+    render(<OrchestrationScreen />);
+
+    fireEvent.click(screen.getByTestId("orchestration-tab-assets"));
+    expect(await screen.findByTestId("assets-unavailable")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("orchestration-tab-flows"));
+    expect(screen.getByText("Sirena")).toBeInTheDocument();
   });
 });

@@ -36,9 +36,11 @@ import {
 import type { OrchestrationData } from "../interfaces";
 import { filterFlows, type FlowFilters } from "../lib/filter-flows";
 import { isInFlight } from "../lib/run-state";
+import { AssetsTab } from "./AssetsTab";
 import { CreateFlowModal } from "./CreateFlowModal";
 import { OrchestrationKpis } from "./OrchestrationKpis";
 import { OrchestrationRow } from "./OrchestrationRow";
+import { OrchestrationTabs, type OrchestrationTab } from "./OrchestrationTabs";
 import { OrchestrationToolbar } from "./OrchestrationToolbar";
 import { PolicyModal } from "./PolicyModal";
 
@@ -70,10 +72,13 @@ type Pending =
 
 // Consola de Orquestación (F4 + rediseño v2). Opera el Descubrimiento sin salir del admin.
 //
-// v1 trae SOLO la vista Proveedores. La tab "Assets Dagster" que pide el spec necesita un endpoint
-// de assets que todavía no existe: pintarla vacía o con datos de ejemplo sería una pestaña que
-// miente. Cuando exista el endpoint, entra acá como segunda tab (y recién entonces la barra de tabs
-// tiene sentido — una tab sola es decorado).
+// DOS tabs (§14 #9+#10): "Proveedores" (policies, por SSR) y "Assets Dagster" (el pipeline completo,
+// pedido al abrir la pestaña). La barra de tabs nació junto con la segunda: una tab sola es decorado.
+//
+// Por qué los assets NO viajan en el `+data.ts`: las policies viven en NUESTRA DB y por eso la lista
+// degrada con el runner caído, pero los assets viven SOLO en Dagster y su endpoint responde 503. Si
+// entraran por SSR, un runner muerto tumbaría la consola ENTERA — justo cuando el operador más
+// necesita mirar la configuración.
 export function OrchestrationScreen() {
   const {
     flows: initialFlows,
@@ -86,6 +91,7 @@ export function OrchestrationScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [editing, setEditing] = useState<ProviderFlowDto["policy"] | null>(null);
+  const [tab, setTab] = useState<OrchestrationTab>("flows");
   const [creating, setCreating] = useState(false);
   const [filters, setFilters] = useState<FlowFilters>({ search: "" });
 
@@ -157,6 +163,16 @@ export function OrchestrationScreen() {
         </div>
         <p className="text-sm text-muted-foreground">{t("admin.orchestration.subtitle")}</p>
 
+        {/* §14 #10. La barra nace JUNTO con la tab de Assets: una pestaña sola no es una elección. */}
+        <OrchestrationTabs active={tab} onChange={setTab} t={t} />
+
+        {tab === "assets" ? (
+          // Los assets se piden al ABRIR la tab, no por SSR: viven solo en Dagster, así que un 503
+          // del runner tumbaría la consola entera — incluidas las policies, que viven en nuestra DB
+          // y tienen que seguir visibles justo cuando el runner falla (SDD §8).
+          <AssetsTab t={t} locale={locale} />
+        ) : (
+          <>
         {runnerDisconnected && (
           // Estado DEGRADADO explícito, no un error. La política sigue visible y editable porque
           // vive en NUESTRA DB — es justo cuando el operador más necesita mirarla. Y lo declara el
@@ -297,6 +313,8 @@ export function OrchestrationScreen() {
               </Pagination>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
 

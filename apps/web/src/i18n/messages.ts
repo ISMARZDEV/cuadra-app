@@ -205,6 +205,29 @@ type MessageKey =
   | "admin.orchestration.confirm.delete.title"
   | "admin.orchestration.confirm.delete.body"
   | "admin.orchestration.confirm.delete.accept"
+  | "admin.orchestration.tabs.flows"
+  | "admin.orchestration.tabs.assets"
+  | "admin.orchestration.assets.loading"
+  | "admin.orchestration.assets.empty"
+  | "admin.orchestration.assets.unavailableTitle"
+  | "admin.orchestration.assets.unavailableHint"
+  | "admin.orchestration.assets.partsProvider"
+  | "admin.orchestration.assets.partsSection"
+  | "admin.orchestration.assets.partsOther"
+  | "admin.orchestration.assets.partitionsHelp"
+  | "admin.orchestration.assets.partitionsDetail"
+  | "admin.orchestration.assets.partitionsNone"
+  | "admin.orchestration.assets.colAsset"
+  | "admin.orchestration.assets.colGroup"
+  | "admin.orchestration.assets.colJobs"
+  | "admin.orchestration.assets.colPartitions"
+  | "admin.orchestration.assets.colLastRun"
+  | "admin.orchestration.assets.colHealth"
+  | "admin.orchestration.assets.failedCount"
+  | "admin.orchestration.assets.health.never_materialized"
+  | "admin.orchestration.assets.health.healthy"
+  | "admin.orchestration.assets.health.degraded"
+  | "admin.orchestration.assets.health.failed"
   | "admin.orchestration.modal.title"
   | "admin.orchestration.modal.save"
   | "admin.orchestration.modal.saving"
@@ -706,6 +729,29 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.confirm.delete.body":
       "El flujo deja de aparecer en la consola y no volverá a ejecutarse. El histórico de sus corridas se conserva intacto: es un retiro reversible, no un borrado.",
     "admin.orchestration.confirm.delete.accept": "Sí, eliminar el flujo",
+    "admin.orchestration.tabs.flows": "Proveedores",
+    "admin.orchestration.tabs.assets": "Assets Dagster",
+    "admin.orchestration.assets.loading": "Consultando el orquestador…",
+    "admin.orchestration.assets.empty": "El orquestador respondió, pero no declara ningún asset.",
+    "admin.orchestration.assets.unavailableTitle": "No pudimos consultar el orquestador",
+    "admin.orchestration.assets.unavailableHint": "Los assets viven solo en Dagster, así que no hay nada que mostrar hasta que responda. Las políticas de la pestaña Proveedores siguen disponibles.",
+    "admin.orchestration.assets.partsProvider": "supermercados",
+    "admin.orchestration.assets.partsSection": "secciones del catálogo",
+    "admin.orchestration.assets.partsOther": "partes",
+    "admin.orchestration.assets.partitionsHelp": "Algunos procesos se ejecutan por partes independientes: una por supermercado, o una por sección del catálogo. Cada parte se lanza y se reintenta sola, así que si una falla las demás siguen. El número indica cuántas partes ya terminaron bien. (En Dagster a esto se le llama «materializar».)",
+    "admin.orchestration.assets.partitionsDetail": "{materialized} de {total} {noun} ya se procesaron bien.",
+    "admin.orchestration.assets.partitionsNone": "Este proceso no se divide en partes: se ejecuta entero, de una sola vez.",
+    "admin.orchestration.assets.colAsset": "Asset",
+    "admin.orchestration.assets.colGroup": "Grupo",
+    "admin.orchestration.assets.colJobs": "Jobs",
+    "admin.orchestration.assets.colPartitions": "Particiones",
+    "admin.orchestration.assets.colLastRun": "Última ejecución",
+    "admin.orchestration.assets.colHealth": "Estado",
+    "admin.orchestration.assets.failedCount": "({count} con fallo)",
+    "admin.orchestration.assets.health.never_materialized": "Nunca se ejecutó",
+    "admin.orchestration.assets.health.healthy": "Sano",
+    "admin.orchestration.assets.health.degraded": "Degradado",
+    "admin.orchestration.assets.health.failed": "Con fallo",
     "admin.orchestration.modal.title": "Editar política",
     "admin.orchestration.modal.save": "Guardar política",
     "admin.orchestration.modal.saving": "Guardando…",
@@ -1206,6 +1252,29 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.confirm.delete.body":
       "The flow disappears from the console and will not run again. Its run history is kept intact: this is a reversible retirement, not a deletion.",
     "admin.orchestration.confirm.delete.accept": "Yes, delete the flow",
+    "admin.orchestration.tabs.flows": "Providers",
+    "admin.orchestration.tabs.assets": "Dagster assets",
+    "admin.orchestration.assets.loading": "Asking the orchestrator…",
+    "admin.orchestration.assets.empty": "The orchestrator answered, but declares no assets.",
+    "admin.orchestration.assets.unavailableTitle": "We could not reach the orchestrator",
+    "admin.orchestration.assets.unavailableHint": "Assets live only in Dagster, so there is nothing to show until it answers. The policies in the Providers tab are still available.",
+    "admin.orchestration.assets.partsProvider": "supermarkets",
+    "admin.orchestration.assets.partsSection": "catalog sections",
+    "admin.orchestration.assets.partsOther": "parts",
+    "admin.orchestration.assets.partitionsHelp": "Some processes run in independent parts: one per supermarket, or one per catalog section. Each part is launched and retried on its own, so if one fails the others carry on. The number shows how many parts have finished successfully. (Dagster calls this \"materializing\".)",
+    "admin.orchestration.assets.partitionsDetail": "{materialized} of {total} {noun} processed successfully.",
+    "admin.orchestration.assets.partitionsNone": "This process is not split into parts: it runs as a whole, in one go.",
+    "admin.orchestration.assets.colAsset": "Asset",
+    "admin.orchestration.assets.colGroup": "Group",
+    "admin.orchestration.assets.colJobs": "Jobs",
+    "admin.orchestration.assets.colPartitions": "Partitions",
+    "admin.orchestration.assets.colLastRun": "Last run",
+    "admin.orchestration.assets.colHealth": "Health",
+    "admin.orchestration.assets.failedCount": "({count} failed)",
+    "admin.orchestration.assets.health.never_materialized": "Never run",
+    "admin.orchestration.assets.health.healthy": "Healthy",
+    "admin.orchestration.assets.health.degraded": "Degraded",
+    "admin.orchestration.assets.health.failed": "Failed",
     "admin.orchestration.modal.title": "Edit policy",
     "admin.orchestration.modal.save": "Save policy",
     "admin.orchestration.modal.saving": "Saving…",
@@ -1706,6 +1775,29 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.confirm.delete.body":
       "O fluxo deixa de aparecer na consola e não voltará a ser executado. O histórico das suas execuções é mantido intacto: é uma retirada reversível, não uma exclusão.",
     "admin.orchestration.confirm.delete.accept": "Sim, excluir o fluxo",
+    "admin.orchestration.tabs.flows": "Fornecedores",
+    "admin.orchestration.tabs.assets": "Assets Dagster",
+    "admin.orchestration.assets.loading": "Consultando o orquestrador…",
+    "admin.orchestration.assets.empty": "O orquestrador respondeu, mas não declara nenhum asset.",
+    "admin.orchestration.assets.unavailableTitle": "Não foi possível consultar o orquestrador",
+    "admin.orchestration.assets.unavailableHint": "Os assets vivem apenas no Dagster, portanto não há o que mostrar até que ele responda. As políticas da aba Fornecedores continuam disponíveis.",
+    "admin.orchestration.assets.partsProvider": "supermercados",
+    "admin.orchestration.assets.partsSection": "seções do catálogo",
+    "admin.orchestration.assets.partsOther": "partes",
+    "admin.orchestration.assets.partitionsHelp": "Alguns processos são executados em partes independentes: uma por supermercado, ou uma por seção do catálogo. Cada parte é lançada e repetida sozinha, então se uma falha as demais continuam. O número indica quantas partes já terminaram bem. (No Dagster isso se chama «materializar».)",
+    "admin.orchestration.assets.partitionsDetail": "{materialized} de {total} {noun} já foram processados bem.",
+    "admin.orchestration.assets.partitionsNone": "Este processo não se divide em partes: é executado inteiro, de uma só vez.",
+    "admin.orchestration.assets.colAsset": "Asset",
+    "admin.orchestration.assets.colGroup": "Grupo",
+    "admin.orchestration.assets.colJobs": "Jobs",
+    "admin.orchestration.assets.colPartitions": "Partições",
+    "admin.orchestration.assets.colLastRun": "Última execução",
+    "admin.orchestration.assets.colHealth": "Estado",
+    "admin.orchestration.assets.failedCount": "({count} com falha)",
+    "admin.orchestration.assets.health.never_materialized": "Nunca executado",
+    "admin.orchestration.assets.health.healthy": "Saudável",
+    "admin.orchestration.assets.health.degraded": "Degradado",
+    "admin.orchestration.assets.health.failed": "Com falha",
     "admin.orchestration.modal.title": "Editar política",
     "admin.orchestration.modal.save": "Salvar política",
     "admin.orchestration.modal.saving": "Salvando…",
