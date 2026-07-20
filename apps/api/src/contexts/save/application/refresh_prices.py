@@ -56,6 +56,15 @@ class RefreshResult:
     # posible; ver el test dedicado).
     auto_linked: int = 0        # la cascada enlazó sola (ean/trgm/vector/hybrid/llm)
     queued_for_review: int = 0  # quedó pendiente de decisión humana en la cola
+    # §14 #14 — el contador de QUERIES, distinto de `seen`: `seen` cuenta productos DEVUELTOS, esto
+    # cuenta BÚSQUEDAS ejecutadas, que es lo único que responde "¿por dónde va la corrida?".
+    #
+    # Los rellena el RUNNER, no este use-case, y la distinción importa: `execute()` recibe UNA
+    # `CatalogSource` y no sabe qué representa — en el descubrimiento por-query es un término de la
+    # canasta, pero en el browse REST de Bravo es una SECCIÓN. Contarlas acá mentiría en el segundo
+    # caso. Quien sabe que está iterando queries es `refresh_source`.
+    queries_total: int = 0      # cuántas se PENSABAN ejecutar
+    queries_processed: int = 0  # cuántas terminaron
 
 
 class RefreshCatalogPrices:

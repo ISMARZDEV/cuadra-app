@@ -86,3 +86,27 @@ class TestSlaStatus:
         # de pintar todo en rojo para siempre.
         policy = _policy(sla_minutes=minutes)
         assert policy.sla_status(NOW, NOW) is SlaStatus.NOT_APPLICABLE
+
+
+class TestQueryProgress:
+    """§14 #14 — el progreso vive en el DOMINIO, no en el front: el detalle por proveedor (#11) va a
+    leer la MISMA señal, y dos derivaciones de la misma regla divergen en silencio (gotcha #19)."""
+
+    def test_no_plan_means_no_progress_not_zero_percent(self) -> None:
+        """`0.0` afirmaría "0% hecho" de una corrida que no tiene progreso definido. Es el mismo
+        criterio que el gauge sin datos: un cero es una AFIRMACIÓN."""
+        from src.contexts.save.domain.entities.orchestration_run import RunMetrics
+
+        assert RunMetrics().query_progress is None
+
+    def test_progress_is_processed_over_planned(self) -> None:
+        from src.contexts.save.domain.entities.orchestration_run import RunMetrics
+
+        assert RunMetrics(queries_total=4, queries_processed=3).query_progress == 0.75
+
+    def test_a_half_finished_run_does_NOT_look_complete(self) -> None:
+        """La razón de que `queries_total` sea el PLAN y no la suma de lo ejecutado: si se sumara,
+        una corrida cortada a la mitad reportaría 2 de 2 y se vería terminada."""
+        from src.contexts.save.domain.entities.orchestration_run import RunMetrics
+
+        assert RunMetrics(queries_total=4, queries_processed=2).query_progress == 0.5

@@ -84,6 +84,12 @@ class RunMetricsDto(BaseModel):
     discarded: int
     # Derivado por atribución, no almacenado: sigue creciendo mientras el operador resuelve la cola.
     new_canonicals: int
+    # §14 #14 — progreso REAL por búsquedas. `seen` cuenta productos DEVUELTOS, así que nunca pudo
+    # responder "¿por dónde va?". `query_progress` es `None` cuando no hay plan contra el que medir:
+    # un 0.0 afirmaría "0% hecho" de algo sin progreso definido.
+    queries_total: int = 0
+    queries_processed: int = 0
+    query_progress: float | None = None
 
 
 class ProviderFlowDto(BaseModel):
@@ -290,6 +296,11 @@ def list_provider_flows(
                         queued_for_review=snapshot.metrics.queued_for_review,
                         discarded=snapshot.metrics.discarded,
                         new_canonicals=snapshot.new_canonicals,
+                        queries_total=snapshot.metrics.queries_total,
+                        queries_processed=snapshot.metrics.queries_processed,
+                        # Lo deriva el DOMINIO (`RunMetrics.query_progress`), no el front: el detalle
+                        # por proveedor (#11) va a leer la misma señal y dos derivaciones divergen.
+                        query_progress=snapshot.metrics.query_progress,
                     )
             # La última EXITOSA es lo que define el SLA. Si la última corrida ya lo fue, se reusa y
             # nos ahorramos el viaje; si no, se pide filtrando del lado del runner (un flujo que

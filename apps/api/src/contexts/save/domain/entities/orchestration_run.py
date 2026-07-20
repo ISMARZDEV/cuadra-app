@@ -108,6 +108,19 @@ class RunMetrics:
     discarded: int = 0
     auto_linked: int = 0
     queued_for_review: int = 0
+    # §14 #14 — progreso REAL de la corrida. `seen` cuenta productos devueltos, no búsquedas: con él
+    # es imposible decir "va por la 3 de 4". `queries_total` es el PLAN y `queries_processed` lo
+    # cumplido, así que una corrida cortada a la mitad se ve cortada y no completa.
+    queries_total: int = 0
+    queries_processed: int = 0
+
+    @property
+    def query_progress(self) -> float | None:
+        """`None` cuando no hay plan contra el que medir. Un `0.0` afirmaría "0% hecho" de algo que
+        no tiene progreso definido — el mismo criterio que `coverage_ratio` en los assets."""
+        if self.queries_total <= 0:
+            return None
+        return self.queries_processed / self.queries_total
 
 
 @dataclass(frozen=True, slots=True)

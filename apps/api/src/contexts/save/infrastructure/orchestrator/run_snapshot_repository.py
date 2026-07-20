@@ -16,7 +16,7 @@ from ...domain.entities.orchestration_run import RunMetrics, RunSnapshot
 from ..models import CanonicalProductModel, OrchestrationRunSnapshotModel
 
 _FIELDS = ("seen", "refreshed", "unmatched", "matched", "discarded",
-           "auto_linked", "queued_for_review")
+           "auto_linked", "queued_for_review", "queries_total", "queries_processed")
 
 
 class SqlRunSnapshotRepository:

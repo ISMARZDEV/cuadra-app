@@ -59,7 +59,9 @@ def test_aggregates_counts_across_adapters() -> None:
 
     result = refresh_source(repo, adapters)
 
-    assert result == RefreshResult(seen=3, refreshed=2, unmatched=1)
+    assert result == RefreshResult(
+        seen=3, refreshed=2, unmatched=1, queries_total=2, queries_processed=2
+    )
     assert repo.observations == 2  # "a" conocido en ambos adapters; "b" desconocido
 
 
@@ -90,7 +92,8 @@ def test_forwards_matcher_and_aggregates_matched_across_adapters() -> None:
     result = refresh_source(repo, adapters, matcher=matcher)
 
     assert result == RefreshResult(
-        seen=3, refreshed=0, unmatched=0, matched=3, auto_linked=3
+        seen=3, refreshed=0, unmatched=0, matched=3, auto_linked=3,
+        queries_total=2, queries_processed=2,
     )
     assert matcher.calls == 3  # el matcher fue efectivamente enrutado por cada fuente
 
@@ -190,3 +193,37 @@ def test_forwards_the_run_id_to_every_adapter() -> None:
     refresh_source(repo, adapters, matcher=matcher, run_id="dagster-run-abc")
 
     assert {p.run_id for p in matcher.products} == {"dagster-run-abc"}
+
+
+class TestQueryCounter:
+    """§14 #14 — el contador de queries REAL.
+
+    `seen` cuenta productos DEVUELTOS, no búsquedas ejecutadas: con él no se puede decir "vamos por
+    la query 3 de 4". Y el runner YA tenía los dos números (`len(adapters)` e `index`) — se los
+    pasaba a `on_progress` y los tiraba. Es la tercera vez en este módulo que un valor se calcula y
+    nadie lo lee (ver el corolario en `docs/pending/save-fase4-orquestacion-pendientes.md` §6).
+    """
+
+    def test_counts_the_QUERIES_not_the_products_they_returned(self) -> None:
+        # Dos queries que devuelven 3 productos en total: seen=3, pero queries=2.
+        adapters = [FakeSource([_entry("a"), _entry("b")]), FakeSource([_entry("c")])]
+
+        result = refresh_source(FakeStoreRepo(set()), adapters)
+
+        assert result.seen == 3
+        assert result.queries_total == 2
+        assert result.queries_processed == 2
+
+    def test_total_is_what_was_PLANNED_so_a_partial_run_is_visible(self) -> None:
+        """`queries_total` NO se suma por adapter: es cuántas se pensaban ejecutar. Si se sumara,
+        una corrida cortada a la mitad reportaría total == procesadas y se vería COMPLETA."""
+        adapters = [FakeSource([]) for _ in range(4)]
+
+        result = refresh_source(FakeStoreRepo(set()), adapters)
+
+        assert (result.queries_total, result.queries_processed) == (4, 4)
+
+    def test_a_source_with_no_adapters_reports_zero_not_a_division_by_zero(self) -> None:
+        result = refresh_source(FakeStoreRepo(set()), [])
+
+        assert (result.queries_total, result.queries_processed) == (0, 0)

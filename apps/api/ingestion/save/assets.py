@@ -180,6 +180,8 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
                 discarded=result.discarded,
                 auto_linked=result.auto_linked,
                 queued_for_review=result.queued_for_review,
+                queries_total=result.queries_total,
+                queries_processed=result.queries_processed,
             ),
             provider_id=provider_id,
             flow_key="provider_prices_refresh",

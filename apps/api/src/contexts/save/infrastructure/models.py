@@ -678,6 +678,9 @@ class OrchestrationRunSnapshotModel(Base):
     discarded: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     auto_linked: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     queued_for_review: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # §14 #14 — progreso por QUERIES (distinto de `seen`, que cuenta productos devueltos).
+    queries_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    queries_processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
