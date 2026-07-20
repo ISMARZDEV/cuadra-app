@@ -105,8 +105,27 @@ dedicado para prod (in-process no escala). Ninguno bloquea: la cascada determini
 5. **"Ejecutar ahora" con overrides de una sola vez** (idea tomada de SupermercadosRD, ausente del
    SDD): correr con `limit=10` para probar SIN mutar la policy.
 6. **KPIs del SDD que no se implementaron por falta de señal**: corridas exitosas/fallidas hoy
-   (necesita listado global de runs en el bridge), proveedores dentro del SLA (el SLA no está
-   definido en ningún doc), queries ejecutadas vs límite (`seen` ≠ queries).
+   (necesita listado global de runs en el bridge), queries ejecutadas vs límite (`seen` ≠ queries).
+   El de **proveedores dentro del SLA ya NO está bloqueado** — ver abajo.
+
+> [!success] Decisión 2026-07-19 — el SLA quedó definido (desbloquea el KPI 3)
+> ```
+> dentro_de_sla(flow) ⟺ (ahora − última corrida EXITOSA) ≤ policy.sla_minutes
+> ```
+> - **Solo policies en `execution_mode = automatic`.** Una en `manual` no puede llegar tarde (no
+>   tiene programación): muestra `N/A` y **queda fuera del denominador**. Sin esta regla, con los 3
+>   flows actuales en `manual` el KPI diría *"0/3 dentro de SLA"* con todo sano — otra vez un número
+>   que **miente en verde**.
+> - **Solo la última corrida EXITOSA** mueve la marca; una fallida o cancelada no. Si no, un flujo que
+>   falla cada 5 minutos parecería el más fresco.
+> - **La frescura del PRECIO es señal aparte** y vive en el health de Sources. Mezclarlas haría que un
+>   proveedor apareciera fuera de SLA porque la tienda dejó de devolver un producto — algo que la
+>   orquestación no controla.
+>
+> Se eligió esta definición porque mide lo que la orquestación CONTROLA, `sla_minutes` ya vive en
+> `OrchestrationPolicy` (es por provider-flow, como la fórmula lo usa) y **no requiere instrumentación
+> nueva**. Registrada en los SDD `Sub-modulo List - Orquestacion Save` (US-OR-L2) y
+> `Orquestacion Save List - Details by Provider` (US-OR-D5).
 7. **Detalle por proveedor** `/admin/orchestration/providers/{id}`: es el segundo SDD del vault,
    merece su propia rama.
 

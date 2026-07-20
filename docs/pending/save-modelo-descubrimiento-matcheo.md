@@ -465,7 +465,11 @@ Transversales P0 (menos el cutover, ya hecho; queda el fallback legacy)
 
 **Fase 5 — Catálogo (superficies de curación):**
 14. Canónicos List → Details (EAN-alcanzable, duplicado-por-EAN, evidencia, categorías D2c) → bulk L10.
-15. Productos List → Details (analítica de visitas/clicks al final, como fasean sus SDD).
+    **Única superficie de catálogo de F5.**
+15. ~~Productos List → Details~~ → **DIFERIDO 2026-07-19**: se solapa ~80% con Canónicos (misma
+    entidad, mismas capacidades) y todo su valor diferencial es **analítica que no existe todavía**.
+    Construirlo hoy sería duplicar alta manual, import CSV y archivado. Se retoma cuando exista el
+    tracking de visitas/clicks. Razonamiento completo en `save-plan-maestro-ejecucion.md` §4.
 
 **Fase 6 — P1 / pulido:**
 16. Marcas · señal "¿nuevo o exclusivo?" + `run_id` · canasta scope/yield · R2 · GetMatchingMetrics ·
