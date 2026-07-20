@@ -186,12 +186,84 @@ type MessageKey =
   | "admin.orchestration.action.cancel"
   | "admin.orchestration.kpi.activeFlows"
   | "admin.orchestration.kpi.activeFlows.hint"
-  | "admin.orchestration.kpi.autoLinked"
-  | "admin.orchestration.kpi.autoLinked.hint"
-  | "admin.orchestration.kpi.queued"
-  | "admin.orchestration.kpi.queued.hint"
   | "admin.orchestration.kpi.newCanonicals"
   | "admin.orchestration.kpi.newCanonicals.hint"
+  | "admin.orchestration.col.status"
+  | "admin.orchestration.col.schedule"
+  | "admin.orchestration.col.products"
+  | "admin.orchestration.products.seen"
+  | "admin.orchestration.products.breakdown"
+  | "admin.orchestration.schedule.none"
+  | "admin.orchestration.action.retry"
+  | "admin.orchestration.action.edit"
+  | "admin.orchestration.action.delete"
+  | "admin.orchestration.actions.menuLabel"
+  | "admin.orchestration.confirm.back"
+  | "admin.orchestration.confirm.cancel.title"
+  | "admin.orchestration.confirm.cancel.body"
+  | "admin.orchestration.confirm.cancel.accept"
+  | "admin.orchestration.confirm.delete.title"
+  | "admin.orchestration.confirm.delete.body"
+  | "admin.orchestration.confirm.delete.accept"
+  | "admin.orchestration.modal.title"
+  | "admin.orchestration.modal.save"
+  | "admin.orchestration.modal.saving"
+  | "admin.orchestration.modal.reset"
+  | "admin.orchestration.modal.fieldMode"
+  | "admin.orchestration.modal.fieldCron"
+  | "admin.orchestration.modal.fieldTimezone"
+  | "admin.orchestration.modal.fieldSla"
+  | "admin.orchestration.modal.fieldQueryLimit"
+  | "admin.orchestration.modal.fieldPriority"
+  | "admin.orchestration.modal.hintCron"
+  | "admin.orchestration.modal.hintQueryLimit"
+  | "admin.orchestration.modal.hintSla"
+  | "admin.orchestration.modal.errCronRequired"
+  | "admin.orchestration.modal.errSave"
+  | "admin.orchestration.modal.envTitle"
+  | "admin.orchestration.modal.envBody"
+  | "admin.orchestration.create.cta"
+  | "admin.orchestration.create.title"
+  | "admin.orchestration.create.save"
+  | "admin.orchestration.create.saving"
+  | "admin.orchestration.create.clear"
+  | "admin.orchestration.create.fieldProvider"
+  | "admin.orchestration.create.providerSearch"
+  | "admin.orchestration.create.providerAll"
+  | "admin.orchestration.create.fieldFlow"
+  | "admin.orchestration.create.hintFlow"
+  | "admin.orchestration.create.errProviderRequired"
+  | "admin.orchestration.create.errSave"
+  | "admin.orchestration.create.noProviders"
+  | "admin.orchestration.search.placeholder"
+  | "admin.orchestration.search.aria"
+  | "admin.orchestration.filters"
+  | "admin.orchestration.filters.title"
+  | "admin.orchestration.filters.mode"
+  | "admin.orchestration.filters.state"
+  | "admin.orchestration.filters.all"
+  | "admin.orchestration.filters.clear"
+  | "admin.orchestration.filters.apply"
+  | "admin.orchestration.emptySearch"
+  | "admin.orchestration.pagination.show"
+  | "admin.orchestration.pagination.perPage"
+  | "admin.orchestration.pagination.of"
+  | "admin.orchestration.kpi.withinSla"
+  | "admin.orchestration.kpi.withinSla.hint"
+  | "admin.orchestration.kpi.autoLinkRate"
+  | "admin.orchestration.kpi.autoLinkRate.hint"
+  | "admin.orchestration.kpi.badge.allActive"
+  | "admin.orchestration.kpi.badge.paused"
+  | "admin.orchestration.kpi.badge.onTime"
+  | "admin.orchestration.kpi.badge.breached"
+  | "admin.orchestration.kpi.badge.queued"
+  | "admin.orchestration.kpi.badge.fromQueued"
+  | "admin.orchestration.kpi.legend.autoLinked"
+  | "admin.orchestration.kpi.legend.queued"
+  | "admin.orchestration.kpi.legend.active"
+  | "admin.orchestration.kpi.legend.paused"
+  | "admin.orchestration.kpi.legend.onTime"
+  | "admin.orchestration.kpi.legend.late"
   | "admin.nav.save.financialProducts"
   | "admin.nav.wip"
   | "admin.nav.footer.feedback"
@@ -614,12 +686,89 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.action.cancel": "Cancelar corrida",
     "admin.orchestration.kpi.activeFlows": "Flujos activos",
     "admin.orchestration.kpi.activeFlows.hint": "Activos sobre el total configurado",
-    "admin.orchestration.kpi.autoLinked": "Auto-enlazados",
-    "admin.orchestration.kpi.autoLinked.hint": "La cascada los resolvió sola en la última corrida",
-    "admin.orchestration.kpi.queued": "A la cola",
-    "admin.orchestration.kpi.queued.hint": "Quedaron esperando decisión humana",
     "admin.orchestration.kpi.newCanonicals": "Canónicos nuevos",
     "admin.orchestration.kpi.newCanonicals.hint": "Nacieron de lo que estas corridas descubrieron",
+    "admin.orchestration.col.status": "Estado",
+    "admin.orchestration.col.schedule": "Horario",
+    "admin.orchestration.col.products": "Productos",
+    "admin.orchestration.products.seen": "{seen} vistos",
+    "admin.orchestration.products.breakdown": "{refreshed} actualizados · {matched} matcheados · {discarded} descartados",
+    "admin.orchestration.schedule.none": "Sin programar",
+    "admin.orchestration.action.retry": "Reintentar",
+    "admin.orchestration.action.edit": "Editar política",
+    "admin.orchestration.action.delete": "Eliminar flujo",
+    "admin.orchestration.actions.menuLabel": "Acciones del flujo",
+    "admin.orchestration.confirm.back": "Volver",
+    "admin.orchestration.confirm.cancel.title": "¿Cancelar la corrida en curso?",
+    "admin.orchestration.confirm.cancel.body":
+      "La corrida se detiene donde esté. Los precios ya ingeridos se conservan y lo que quede sin procesar entrará en la próxima corrida.",
+    "admin.orchestration.confirm.cancel.accept": "Sí, cancelar la corrida",
+    "admin.orchestration.confirm.delete.title": "¿Eliminar este flujo?",
+    "admin.orchestration.confirm.delete.body":
+      "El flujo deja de aparecer en la consola y no volverá a ejecutarse. El histórico de sus corridas se conserva intacto: es un retiro reversible, no un borrado.",
+    "admin.orchestration.confirm.delete.accept": "Sí, eliminar el flujo",
+    "admin.orchestration.modal.title": "Editar política",
+    "admin.orchestration.modal.save": "Guardar política",
+    "admin.orchestration.modal.saving": "Guardando…",
+    "admin.orchestration.modal.reset": "Restablecer",
+    "admin.orchestration.modal.fieldMode": "Modo de ejecución",
+    "admin.orchestration.modal.fieldCron": "Expresión cron",
+    "admin.orchestration.modal.fieldTimezone": "Zona horaria",
+    "admin.orchestration.modal.fieldSla": "SLA (minutos)",
+    "admin.orchestration.modal.fieldQueryLimit": "Límite de queries",
+    "admin.orchestration.modal.fieldPriority": "Prioridad",
+    "admin.orchestration.modal.hintCron":
+      "Cinco campos (minuto hora día mes día-semana). Se evalúa en la zona horaria de abajo, no en la del servidor.",
+    "admin.orchestration.modal.hintQueryLimit": "Vacío = usa el límite global del mercado. Un 0 sería un límite de cero queries.",
+    "admin.orchestration.modal.hintSla": "Minutos tolerados desde la última corrida EXITOSA. Solo aplica a flujos programados.",
+    "admin.orchestration.modal.errCronRequired": "Un flujo programado necesita su expresión cron.",
+    "admin.orchestration.modal.errSave": "No se pudo guardar la política. Revisá los valores e intentá de nuevo.",
+    "admin.orchestration.modal.envTitle": "Qué NO se configura desde acá",
+    "admin.orchestration.modal.envBody": "Estas piezas siguen viviendo en variables de entorno del servidor y no se pueden cambiar desde el admin: el límite global de queries (SAVE_REFRESH_QUERY_LIMIT), y los switches de la cascada de matcheo, del clasificador y del juez LLM. Si necesitás tocar alguna, hace falta un cambio de configuración en el despliegue.",
+    "admin.orchestration.create.cta": "Nuevo flujo",
+    "admin.orchestration.create.title": "Nuevo flujo de proveedor",
+    "admin.orchestration.create.save": "Crear flujo",
+    "admin.orchestration.create.saving": "Creando…",
+    "admin.orchestration.create.clear": "Limpiar",
+    "admin.orchestration.create.fieldProvider": "Proveedor",
+    "admin.orchestration.create.providerSearch": "Buscar proveedor…",
+    "admin.orchestration.create.providerAll": "Todos",
+    "admin.orchestration.create.fieldFlow": "Flujo",
+    "admin.orchestration.create.hintFlow":
+      "El flujo nace en modo manual: no dispara nada hasta que le definas un horario desde «Editar política».",
+    "admin.orchestration.create.errProviderRequired": "Elegí un proveedor para el flujo.",
+    "admin.orchestration.create.errSave": "No se pudo crear el flujo.",
+    "admin.orchestration.create.noProviders":
+      "Todos los proveedores del mercado ya tienen su flujo configurado. Para reutilizar uno, editá el existente.",
+    "admin.orchestration.search.placeholder": "Buscar proveedor o flujo…",
+    "admin.orchestration.search.aria": "Buscar flujos de orquestación",
+    "admin.orchestration.filters": "Filtros",
+    "admin.orchestration.filters.title": "Filtrar flujos",
+    "admin.orchestration.filters.mode": "Modo de ejecución",
+    "admin.orchestration.filters.state": "Estado de la última corrida",
+    "admin.orchestration.filters.all": "Todos",
+    "admin.orchestration.filters.clear": "Restablecer",
+    "admin.orchestration.filters.apply": "Aplicar filtros",
+    "admin.orchestration.emptySearch": "Ningún flujo coincide con la búsqueda o los filtros aplicados.",
+    "admin.orchestration.pagination.show": "Mostrar",
+    "admin.orchestration.pagination.perPage": "por página",
+    "admin.orchestration.pagination.of": "{from}–{to} de {total}",
+    "admin.orchestration.kpi.withinSla": "Dentro del SLA",
+    "admin.orchestration.kpi.withinSla.hint": "Corrieron a tiempo. Los manuales no cuentan.",
+    "admin.orchestration.kpi.autoLinkRate": "Tasa de auto-enlace",
+    "admin.orchestration.kpi.autoLinkRate.hint": "Resueltos sin humano en la última corrida",
+    "admin.orchestration.kpi.badge.allActive": "Todos activos",
+    "admin.orchestration.kpi.badge.paused": "{count} en pausa",
+    "admin.orchestration.kpi.badge.onTime": "Todos a tiempo",
+    "admin.orchestration.kpi.badge.breached": "{count} fuera",
+    "admin.orchestration.kpi.badge.queued": "{count} a la cola",
+    "admin.orchestration.kpi.badge.fromQueued": "de {count} en cola",
+    "admin.orchestration.kpi.legend.autoLinked": "Auto-enlazados",
+    "admin.orchestration.kpi.legend.queued": "A la cola",
+    "admin.orchestration.kpi.legend.active": "Activos",
+    "admin.orchestration.kpi.legend.paused": "En pausa",
+    "admin.orchestration.kpi.legend.onTime": "A tiempo",
+    "admin.orchestration.kpi.legend.late": "Fuera",
     "admin.nav.save.financialProducts": "Productos Financieros",
     "admin.nav.wip": "🚧 En construcción — aún no disponible",
     "admin.nav.footer.feedback": "Feedback",
@@ -1038,12 +1187,89 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.action.cancel": "Cancel run",
     "admin.orchestration.kpi.activeFlows": "Active flows",
     "admin.orchestration.kpi.activeFlows.hint": "Active out of total configured",
-    "admin.orchestration.kpi.autoLinked": "Auto-linked",
-    "admin.orchestration.kpi.autoLinked.hint": "The cascade resolved these on its own in the last run",
-    "admin.orchestration.kpi.queued": "Queued for review",
-    "admin.orchestration.kpi.queued.hint": "Left waiting for a human decision",
     "admin.orchestration.kpi.newCanonicals": "New canonicals",
     "admin.orchestration.kpi.newCanonicals.hint": "Born from what these runs discovered",
+    "admin.orchestration.col.status": "Status",
+    "admin.orchestration.col.schedule": "Schedule",
+    "admin.orchestration.col.products": "Products",
+    "admin.orchestration.products.seen": "{seen} seen",
+    "admin.orchestration.products.breakdown": "{refreshed} refreshed · {matched} matched · {discarded} discarded",
+    "admin.orchestration.schedule.none": "Not scheduled",
+    "admin.orchestration.action.retry": "Retry",
+    "admin.orchestration.action.edit": "Edit policy",
+    "admin.orchestration.action.delete": "Delete flow",
+    "admin.orchestration.actions.menuLabel": "Flow actions",
+    "admin.orchestration.confirm.back": "Go back",
+    "admin.orchestration.confirm.cancel.title": "Cancel the run in progress?",
+    "admin.orchestration.confirm.cancel.body":
+      "The run stops wherever it is. Prices already ingested are kept, and whatever is left unprocessed will be picked up by the next run.",
+    "admin.orchestration.confirm.cancel.accept": "Yes, cancel the run",
+    "admin.orchestration.confirm.delete.title": "Delete this flow?",
+    "admin.orchestration.confirm.delete.body":
+      "The flow disappears from the console and will not run again. Its run history is kept intact: this is a reversible retirement, not a deletion.",
+    "admin.orchestration.confirm.delete.accept": "Yes, delete the flow",
+    "admin.orchestration.modal.title": "Edit policy",
+    "admin.orchestration.modal.save": "Save policy",
+    "admin.orchestration.modal.saving": "Saving…",
+    "admin.orchestration.modal.reset": "Reset",
+    "admin.orchestration.modal.fieldMode": "Execution mode",
+    "admin.orchestration.modal.fieldCron": "Cron expression",
+    "admin.orchestration.modal.fieldTimezone": "Time zone",
+    "admin.orchestration.modal.fieldSla": "SLA (minutes)",
+    "admin.orchestration.modal.fieldQueryLimit": "Query limit",
+    "admin.orchestration.modal.fieldPriority": "Priority",
+    "admin.orchestration.modal.hintCron":
+      "Five fields (minute hour day month weekday). Evaluated in the time zone below, not the server's.",
+    "admin.orchestration.modal.hintQueryLimit": "Empty = use the market-wide limit. A 0 would mean a limit of zero queries.",
+    "admin.orchestration.modal.hintSla": "Minutes tolerated since the last SUCCESSFUL run. Only applies to scheduled flows.",
+    "admin.orchestration.modal.errCronRequired": "A scheduled flow needs its cron expression.",
+    "admin.orchestration.modal.errSave": "Could not save the policy. Check the values and try again.",
+    "admin.orchestration.modal.envTitle": "What is NOT configured here",
+    "admin.orchestration.modal.envBody": "These still live in server environment variables and cannot be changed from the admin: the market-wide query limit (SAVE_REFRESH_QUERY_LIMIT), and the switches for the matching cascade, the classifier and the LLM judge. Changing any of them requires a deployment config change.",
+    "admin.orchestration.create.cta": "New flow",
+    "admin.orchestration.create.title": "New provider flow",
+    "admin.orchestration.create.save": "Create flow",
+    "admin.orchestration.create.saving": "Creating…",
+    "admin.orchestration.create.clear": "Clear",
+    "admin.orchestration.create.fieldProvider": "Provider",
+    "admin.orchestration.create.providerSearch": "Search provider…",
+    "admin.orchestration.create.providerAll": "All",
+    "admin.orchestration.create.fieldFlow": "Flow",
+    "admin.orchestration.create.hintFlow":
+      "The flow starts in manual mode: it fires nothing until you give it a schedule from “Edit policy”.",
+    "admin.orchestration.create.errProviderRequired": "Pick a provider for the flow.",
+    "admin.orchestration.create.errSave": "Could not create the flow.",
+    "admin.orchestration.create.noProviders":
+      "Every provider in this market already has its flow configured. To reuse one, edit the existing flow.",
+    "admin.orchestration.search.placeholder": "Search provider or flow…",
+    "admin.orchestration.search.aria": "Search orchestration flows",
+    "admin.orchestration.filters": "Filters",
+    "admin.orchestration.filters.title": "Filter flows",
+    "admin.orchestration.filters.mode": "Execution mode",
+    "admin.orchestration.filters.state": "Last run state",
+    "admin.orchestration.filters.all": "All",
+    "admin.orchestration.filters.clear": "Reset",
+    "admin.orchestration.filters.apply": "Apply filters",
+    "admin.orchestration.emptySearch": "No flow matches the current search or filters.",
+    "admin.orchestration.pagination.show": "Show",
+    "admin.orchestration.pagination.perPage": "per page",
+    "admin.orchestration.pagination.of": "{from}–{to} of {total}",
+    "admin.orchestration.kpi.withinSla": "Within SLA",
+    "admin.orchestration.kpi.withinSla.hint": "Ran on time. Manual flows are excluded.",
+    "admin.orchestration.kpi.autoLinkRate": "Auto-link rate",
+    "admin.orchestration.kpi.autoLinkRate.hint": "Resolved without a human in the last run",
+    "admin.orchestration.kpi.badge.allActive": "All active",
+    "admin.orchestration.kpi.badge.paused": "{count} paused",
+    "admin.orchestration.kpi.badge.onTime": "All on time",
+    "admin.orchestration.kpi.badge.breached": "{count} late",
+    "admin.orchestration.kpi.badge.queued": "{count} queued",
+    "admin.orchestration.kpi.badge.fromQueued": "from {count} queued",
+    "admin.orchestration.kpi.legend.autoLinked": "Auto-linked",
+    "admin.orchestration.kpi.legend.queued": "Queued",
+    "admin.orchestration.kpi.legend.active": "Active",
+    "admin.orchestration.kpi.legend.paused": "Paused",
+    "admin.orchestration.kpi.legend.onTime": "On time",
+    "admin.orchestration.kpi.legend.late": "Late",
     "admin.nav.save.financialProducts": "Financial products",
     "admin.nav.wip": "🚧 Under construction — not available yet",
     "admin.nav.footer.feedback": "Feedback",
@@ -1462,12 +1688,89 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.action.cancel": "Cancelar execução",
     "admin.orchestration.kpi.activeFlows": "Fluxos ativos",
     "admin.orchestration.kpi.activeFlows.hint": "Ativos sobre o total configurado",
-    "admin.orchestration.kpi.autoLinked": "Autovinculados",
-    "admin.orchestration.kpi.autoLinked.hint": "A cascata resolveu sozinha na última execução",
-    "admin.orchestration.kpi.queued": "Na fila",
-    "admin.orchestration.kpi.queued.hint": "Ficaram aguardando decisão humana",
     "admin.orchestration.kpi.newCanonicals": "Canônicos novos",
     "admin.orchestration.kpi.newCanonicals.hint": "Nasceram do que estas execuções descobriram",
+    "admin.orchestration.col.status": "Estado",
+    "admin.orchestration.col.schedule": "Horário",
+    "admin.orchestration.col.products": "Produtos",
+    "admin.orchestration.products.seen": "{seen} vistos",
+    "admin.orchestration.products.breakdown": "{refreshed} atualizados · {matched} correspondidos · {discarded} descartados",
+    "admin.orchestration.schedule.none": "Sem agendamento",
+    "admin.orchestration.action.retry": "Tentar de novo",
+    "admin.orchestration.action.edit": "Editar política",
+    "admin.orchestration.action.delete": "Excluir fluxo",
+    "admin.orchestration.actions.menuLabel": "Ações do fluxo",
+    "admin.orchestration.confirm.back": "Voltar",
+    "admin.orchestration.confirm.cancel.title": "Cancelar a execução em curso?",
+    "admin.orchestration.confirm.cancel.body":
+      "A execução para onde estiver. Os preços já ingeridos são mantidos e o que ficar por processar entra na próxima execução.",
+    "admin.orchestration.confirm.cancel.accept": "Sim, cancelar a execução",
+    "admin.orchestration.confirm.delete.title": "Excluir este fluxo?",
+    "admin.orchestration.confirm.delete.body":
+      "O fluxo deixa de aparecer na consola e não voltará a ser executado. O histórico das suas execuções é mantido intacto: é uma retirada reversível, não uma exclusão.",
+    "admin.orchestration.confirm.delete.accept": "Sim, excluir o fluxo",
+    "admin.orchestration.modal.title": "Editar política",
+    "admin.orchestration.modal.save": "Salvar política",
+    "admin.orchestration.modal.saving": "Salvando…",
+    "admin.orchestration.modal.reset": "Restaurar",
+    "admin.orchestration.modal.fieldMode": "Modo de execução",
+    "admin.orchestration.modal.fieldCron": "Expressão cron",
+    "admin.orchestration.modal.fieldTimezone": "Fuso horário",
+    "admin.orchestration.modal.fieldSla": "SLA (minutos)",
+    "admin.orchestration.modal.fieldQueryLimit": "Limite de consultas",
+    "admin.orchestration.modal.fieldPriority": "Prioridade",
+    "admin.orchestration.modal.hintCron":
+      "Cinco campos (minuto hora dia mês dia-semana). Avaliado no fuso horário abaixo, não no do servidor.",
+    "admin.orchestration.modal.hintQueryLimit": "Vazio = usa o limite global do mercado. Um 0 seria um limite de zero consultas.",
+    "admin.orchestration.modal.hintSla": "Minutos tolerados desde a última execução BEM-SUCEDIDA. Só se aplica a fluxos agendados.",
+    "admin.orchestration.modal.errCronRequired": "Um fluxo agendado precisa da sua expressão cron.",
+    "admin.orchestration.modal.errSave": "Não foi possível salvar a política. Verifique os valores e tente de novo.",
+    "admin.orchestration.modal.envTitle": "O que NÃO se configura aqui",
+    "admin.orchestration.modal.envBody": "Estas peças ainda vivem em variáveis de ambiente do servidor e não podem ser alteradas pelo admin: o limite global de consultas (SAVE_REFRESH_QUERY_LIMIT) e os switches da cascata de correspondência, do classificador e do juiz LLM. Alterá-las exige uma mudança de configuração no deploy.",
+    "admin.orchestration.create.cta": "Novo fluxo",
+    "admin.orchestration.create.title": "Novo fluxo de fornecedor",
+    "admin.orchestration.create.save": "Criar fluxo",
+    "admin.orchestration.create.saving": "Criando…",
+    "admin.orchestration.create.clear": "Limpar",
+    "admin.orchestration.create.fieldProvider": "Fornecedor",
+    "admin.orchestration.create.providerSearch": "Buscar fornecedor…",
+    "admin.orchestration.create.providerAll": "Todos",
+    "admin.orchestration.create.fieldFlow": "Fluxo",
+    "admin.orchestration.create.hintFlow":
+      "O fluxo nasce em modo manual: não dispara nada até você definir um horário em “Editar política”.",
+    "admin.orchestration.create.errProviderRequired": "Escolha um fornecedor para o fluxo.",
+    "admin.orchestration.create.errSave": "Não foi possível criar o fluxo.",
+    "admin.orchestration.create.noProviders":
+      "Todos os fornecedores do mercado já têm o seu fluxo configurado. Para reutilizar um, edite o existente.",
+    "admin.orchestration.search.placeholder": "Buscar fornecedor ou fluxo…",
+    "admin.orchestration.search.aria": "Buscar fluxos de orquestração",
+    "admin.orchestration.filters": "Filtros",
+    "admin.orchestration.filters.title": "Filtrar fluxos",
+    "admin.orchestration.filters.mode": "Modo de execução",
+    "admin.orchestration.filters.state": "Estado da última execução",
+    "admin.orchestration.filters.all": "Todos",
+    "admin.orchestration.filters.clear": "Restaurar",
+    "admin.orchestration.filters.apply": "Aplicar filtros",
+    "admin.orchestration.emptySearch": "Nenhum fluxo corresponde à busca ou aos filtros aplicados.",
+    "admin.orchestration.pagination.show": "Mostrar",
+    "admin.orchestration.pagination.perPage": "por página",
+    "admin.orchestration.pagination.of": "{from}–{to} de {total}",
+    "admin.orchestration.kpi.withinSla": "Dentro do SLA",
+    "admin.orchestration.kpi.withinSla.hint": "Executaram a tempo. Os manuais não contam.",
+    "admin.orchestration.kpi.autoLinkRate": "Taxa de auto-vínculo",
+    "admin.orchestration.kpi.autoLinkRate.hint": "Resolvidos sem humano na última execução",
+    "admin.orchestration.kpi.badge.allActive": "Todos ativos",
+    "admin.orchestration.kpi.badge.paused": "{count} em pausa",
+    "admin.orchestration.kpi.badge.onTime": "Todos em dia",
+    "admin.orchestration.kpi.badge.breached": "{count} fora",
+    "admin.orchestration.kpi.badge.queued": "{count} na fila",
+    "admin.orchestration.kpi.badge.fromQueued": "de {count} na fila",
+    "admin.orchestration.kpi.legend.autoLinked": "Auto-vinculados",
+    "admin.orchestration.kpi.legend.queued": "Na fila",
+    "admin.orchestration.kpi.legend.active": "Ativos",
+    "admin.orchestration.kpi.legend.paused": "Em pausa",
+    "admin.orchestration.kpi.legend.onTime": "Em dia",
+    "admin.orchestration.kpi.legend.late": "Fora",
     "admin.nav.save.financialProducts": "Produtos Financeiros",
     "admin.nav.wip": "🚧 Em construção — ainda não disponível",
     "admin.nav.footer.feedback": "Feedback",
