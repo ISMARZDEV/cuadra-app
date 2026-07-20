@@ -37,8 +37,11 @@ from ...domain.ports.orchestrator import (
     TAG_ACTOR,
     TAG_POLICY_ID,
     TAG_TRIGGER,
+    AssetPartitionKind,
+    AssetPartitionStats,
     OrchestrationRun,
     OrchestratorUnavailable,
+    PipelineAsset,
     RunTrigger,
 )
 
@@ -51,6 +54,21 @@ HttpPost = Callable[[str, dict, dict[str, str]], dict]
 _PARTITION_TAG = "dagster/partition"
 
 _TIMEOUT_SECONDS = 10.0
+
+# Jobs que Dagster fabrica solo y que el operador NO puede lanzar ni reintentar. Se filtran del
+# vocabulario de la consola: mostrarlos es ruido con forma de acción. Lo destapó el dato real —
+# los 8 assets del pipeline traían `__ASSET_JOB` y ningún fixture propio lo habría incluido.
+_IMPLICIT_JOBS = frozenset({"__ASSET_JOB"})
+
+# Nombre de la `PartitionsDefinition` de Dagster → vocabulario del dominio. Los nombres los ponemos
+# NOSOTROS en `ingestion/save/assets.py`, así que son estables; pero viven en el grupo `ingestion`
+# (que el adapter no puede importar, gotcha #1), de modo que el mapa vive acá, en la capa que ya
+# conoce el vocabulario de Dagster. Valores VERIFICADOS contra el runner real, no supuestos.
+# Un nombre no mapeado NO rompe ni inventa: cae en `OTHER` → la UI dice "partes".
+_PARTITION_KIND_BY_NAME = {
+    "query_catalog_provider": AssetPartitionKind.PROVIDER,
+    "rest_catalog_section": AssetPartitionKind.SECTION,
+}
 
 _RUN_FIELDS = "runId jobName status startTime endTime tags { key value }"
 
@@ -120,6 +138,43 @@ query CuadraRun($runId: ID!) {{
 """
 
 
+# Campos verificados por INTROSPECCIÓN del schema instalado (gotcha #4: los docs mienten, el
+# `graphql_schema` no). `partitionStats` es lo que permite pintar `rest_catalog_prices` como UNA fila
+# con su estado agregado, que es lo que US-OR-L4 pide — no hay que agregarlo a mano.
+_ASSET_FIELDS = """
+  assetKey { path }
+  groupName
+  description
+  jobNames
+  dependencyKeys { path }
+  dependedByKeys { path }
+  isPartitioned
+  partitionDefinition { name }
+  partitionStats { numMaterialized numPartitions numFailed numMaterializing }
+  assetMaterializations(limit: 1) { runId timestamp }
+"""
+
+# OJO: `assetNodes` devuelve una LISTA PELADA, no una unión — así que acá el único camino de error
+# es el array `errors` (que `_execute` ya cubre). No se puede `_unwrap` lo que no es unión.
+_ASSET_NODES = f"""
+query CuadraAssetNodes {{
+  assetNodes(loadMaterializations: true) {{ {_ASSET_FIELDS} }}
+}}
+"""
+
+# En cambio `assetNodeOrError` SÍ es unión (`AssetNode | AssetNotFoundError`), y su error "no existe"
+# NO es una caída del runner: es una respuesta legítima que el puerto traduce a `None`.
+_ASSET_NODE = f"""
+query CuadraAssetNode($assetKey: AssetKeyInput!) {{
+  assetNodeOrError(assetKey: $assetKey) {{
+    __typename
+    ... on AssetNode {{ {_ASSET_FIELDS} }}
+    ... on AssetNotFoundError {{ message }}
+  }}
+}}
+"""
+
+
 def _default_post(url: str, payload: dict, headers: dict[str, str]) -> dict:
     with httpx.Client(timeout=_TIMEOUT_SECONDS) as client:
         response = client.post(url, json=payload, headers=headers)
@@ -131,6 +186,25 @@ def _epoch_to_dt(value: float | None) -> datetime | None:
     """Dagster expone los tiempos como epoch en SEGUNDOS (float). Siempre en UTC: el huso lo aplica
     la policy al mostrar, no el adapter al leer."""
     return datetime.fromtimestamp(value, tz=UTC) if value else None
+
+
+def _materialization_ts(event: dict | None) -> datetime | None:
+    """Los tiempos de MATERIALIZACIÓN no vienen como los de las corridas: `MaterializationEvent.
+    timestamp` es un **String** en **MILISEGUNDOS** (verificado por introspección; su argumento
+    hermano se llama `beforeTimestampMillis`), mientras que `Run.startTime` es un float en SEGUNDOS.
+
+    Dos unidades y dos tipos en el mismo schema, así que la conversión vive acá y no se comparte con
+    `_epoch_to_dt`: tratarlos igual daría fechas de 1970 o del año 57000 — plausibles a la vista y
+    silenciosamente falsas.
+    """
+    if not event or not (raw := event.get("timestamp")):
+        return None
+    try:
+        return _epoch_to_dt(float(raw) / 1000)
+    except (TypeError, ValueError):
+        # Un timestamp ilegible NO tumba la consola: el asset se muestra como "nunca materializado",
+        # que es exactamente lo que sabemos de él.
+        return None
 
 
 class DagsterGraphQLOrchestrator:
@@ -217,6 +291,47 @@ class DagsterGraphQLOrchestrator:
             tags={t["key"]: t["value"] for t in node.get("tags") or []},
         )
 
+    @staticmethod
+    def _key_of(node: dict) -> str:
+        """`AssetKey` es una LISTA de segmentos (`{path: ["save","prices"]}`), no un string. Se une
+        con `/` para tener una clave estable y legible en la URL del detalle."""
+        return "/".join((node or {}).get("path") or [])
+
+    def _to_asset(self, node: dict) -> PipelineAsset:
+        raw_stats = node.get("partitionStats")
+        # `isPartitioned` manda sobre la presencia de `partitionStats`: un asset no particionado no
+        # tiene una cobertura del 0%, no tiene cobertura. (Dominio: `partitions is None`.)
+        stats = (
+            AssetPartitionStats(
+                total=raw_stats.get("numPartitions") or 0,
+                materialized=raw_stats.get("numMaterialized") or 0,
+                failed=raw_stats.get("numFailed") or 0,
+                materializing=raw_stats.get("numMaterializing") or 0,
+                kind=_PARTITION_KIND_BY_NAME.get(
+                    ((node.get("partitionDefinition") or {}).get("name") or ""),
+                    AssetPartitionKind.OTHER,
+                ),
+            )
+            if node.get("isPartitioned") and raw_stats
+            else None
+        )
+        # `assetMaterializations(limit: 1)` = la más reciente. Lista vacía = NUNCA se materializó,
+        # que el dominio distingue de "falló" (AssetHealth.NEVER_MATERIALIZED).
+        last = (node.get("assetMaterializations") or [None])[0]
+        return PipelineAsset(
+            key=self._key_of(node.get("assetKey") or {}),
+            group=node.get("groupName") or "",
+            description=node.get("description"),
+            job_names=tuple(
+                j for j in node.get("jobNames") or [] if j not in _IMPLICIT_JOBS
+            ),
+            dependency_keys=tuple(self._key_of(k) for k in node.get("dependencyKeys") or []),
+            depended_by_keys=tuple(self._key_of(k) for k in node.get("dependedByKeys") or []),
+            partitions=stats,
+            last_materialized_at=_materialization_ts(last),
+            last_run_id=last.get("runId") if last else None,
+        )
+
     # ------------------------------------------------------------------------------ operaciones --
 
     def launch(
@@ -280,6 +395,22 @@ class DagsterGraphQLOrchestrator:
         data = self._execute(_RUNS, {"filter": run_filter, "limit": limit})
         node = self._unwrap(data["runsOrError"], "Runs", "listado de corridas")
         return [self._to_run(r) for r in node.get("results") or []]
+
+    def list_assets(self) -> Sequence[PipelineAsset]:
+        """Todos los assets del pipeline, con su lineage. UNA llamada = el grafo completo."""
+        data = self._execute(_ASSET_NODES, {})
+        return [self._to_asset(n) for n in data.get("assetNodes") or []]
+
+    def get_asset(self, key: str) -> PipelineAsset | None:
+        data = self._execute(_ASSET_NODE, {"assetKey": {"path": key.split("/")}})
+        node = data.get("assetNodeOrError") or {}
+        # "Ese asset no existe" es una RESPUESTA, no una caída: se traduce a `None` y el controller
+        # lo vuelve un 404. Pasarlo por `_unwrap` lo convertiría en `OrchestratorUnavailable` y la
+        # consola diría "el orquestador no responde" con el orquestador contestando perfectamente
+        # — el mismo error que F4 ya cometió una vez con el runner.
+        if node.get("__typename") == "AssetNotFoundError":
+            return None
+        return self._to_asset(self._unwrap(node, "AssetNode", "consulta de asset"))
 
     def get_run(self, run_id: str) -> OrchestrationRun | None:
         data = self._execute(_RUN, {"runId": run_id})

@@ -68,6 +68,90 @@ class OrchestrationRun:
         return self.tags.get(TAG_POLICY_ID)
 
 
+class AssetHealth(StrEnum):
+    """Salud OPERATIVA de un asset — derivada, nunca almacenada.
+
+    `NEVER_MATERIALIZED` es un estado propio y no un `FAILED`: es la misma distinción que costó cara
+    en F4 con el runner ("un flujo que nunca corrió ≠ runner muerto"). Fusionarlos haría que un
+    deploy nuevo mostrara el pipeline entero en rojo estando perfectamente sano.
+    """
+
+    NEVER_MATERIALIZED = "never_materialized"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"  # algunas particiones fallaron; el asset sigue sirviendo
+    FAILED = "failed"      # TODAS fallaron
+
+
+class AssetPartitionKind(StrEnum):
+    """De QUÉ son las partes. Sin esto, `2/41` es un número sin sujeto — el operador no sabe si son
+    supermercados, secciones o cualquier otra cosa, y un número que no se puede interpretar no
+    sirve para decidir nada.
+
+    `OTHER` es la salida honesta: una partición nueva que nadie mapeó dice "partes", que es cierto
+    aunque sea vago. Inventarle un nombre sería peor que ser genérico.
+    """
+
+    PROVIDER = "provider"  # una parte por supermercado
+    SECTION = "section"    # una parte por sección del catálogo
+    OTHER = "other"
+
+
+@dataclass(frozen=True, slots=True)
+class AssetPartitionStats:
+    """Estado AGREGADO de las particiones, tal como lo da el runner (`PartitionStats`).
+
+    US-OR-L4 lo pide explícitamente así para `rest_catalog_prices`: una fila por asset con su estado
+    agregado, NO una fila por sección. No hace falta agregarlo a mano — Dagster ya lo calcula.
+    """
+
+    total: int
+    materialized: int
+    failed: int
+    materializing: int
+    kind: AssetPartitionKind = AssetPartitionKind.OTHER
+
+    @property
+    def coverage_ratio(self) -> float | None:
+        """`None` cuando no hay particiones que cubrir. Devolver `0.0` sería afirmar "0% cubierto"
+        de algo que no tiene cobertura definida — un cero es una AFIRMACIÓN."""
+        if self.total <= 0:
+            return None
+        return self.materialized / self.total
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineAsset:
+    """Un asset del pipeline, en el vocabulario de la consola (no el del runner).
+
+    `partitions is None` significa NO PARTICIONADO — distinto de "particionado con 0 particiones".
+    """
+
+    key: str
+    group: str
+    description: str | None
+    job_names: tuple[str, ...]
+    # El lineage viaja CON el nodo porque en el schema real es un CAMPO (`dependencyKeys` /
+    # `dependedByKeys`), no una query. Por eso el puerto no tiene `get_lineage()`: sería un segundo
+    # round-trip para recomponer lo que `list_assets()` ya trajo — devuelve el grafo COMPLETO.
+    dependency_keys: tuple[str, ...]
+    depended_by_keys: tuple[str, ...]
+    partitions: AssetPartitionStats | None
+    last_materialized_at: datetime | None
+    last_run_id: str | None
+
+    @property
+    def health(self) -> AssetHealth:
+        if self.last_materialized_at is None:
+            return AssetHealth.NEVER_MATERIALIZED
+        p = self.partitions
+        if p is None or p.failed == 0:
+            return AssetHealth.HEALTHY
+        # Todas fallaron → FAILED. Algunas → DEGRADED: que una sección del browse de Bravo falle no
+        # significa que el browse esté caído, y mandar al operador a arreglar algo que mayormente
+        # funciona es ruido con forma de alarma.
+        return AssetHealth.FAILED if p.materialized == 0 else AssetHealth.DEGRADED
+
+
 class PipelineOrchestrator(Protocol):
     """Lo que la consola necesita del runner. Todo puede levantar `OrchestratorUnavailable`."""
 
@@ -110,3 +194,18 @@ class PipelineOrchestrator(Protocol):
         ...
 
     def get_run(self, run_id: str) -> OrchestrationRun | None: ...
+
+    def list_assets(self) -> Sequence[PipelineAsset]:
+        """TODOS los assets del pipeline, con su lineage incluido.
+
+        Es UNA sola llamada al runner y devuelve el grafo completo: por eso no hay `get_lineage()`.
+        El SDD proponía tres métodos (`list_assets`/`get_asset`/`get_lineage`); la introspección del
+        schema instalado mostró que el lineage son CAMPOS del nodo, así que el tercero sería un
+        round-trip extra para datos que ya tenemos.
+        """
+        ...
+
+    def get_asset(self, key: str) -> PipelineAsset | None:
+        """`None` cuando el runner responde que ese asset NO EXISTE (`AssetNotFoundError`), que es
+        distinto de no poder preguntar — eso último es `OrchestratorUnavailable`."""
+        ...

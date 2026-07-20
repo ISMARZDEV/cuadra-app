@@ -38,6 +38,7 @@ from src.contexts.save.domain.entities.orchestration import (
 from src.contexts.save.domain.entities.orchestration_run import RunState
 from src.contexts.save.domain.ports.orchestrator import (
     OrchestratorUnavailable,
+    PipelineAsset,
     PipelineOrchestrator,
 )
 
@@ -65,6 +66,11 @@ class PolicyDto(BaseModel):
     sla_minutes: int | None
     query_limit_override: int | None
     enabled: bool
+    # Se EXPONE aunque hoy ninguna lógica lo lea (solo se persiste), porque `UpdatePolicyRequest` lo
+    # acepta: un campo escribible que no se puede leer es una trampa — un form no puede conocer su
+    # valor actual, nace vacío y cada guardado lo pisa en silencio. Fue un bug real (2026-07-20).
+    # La simetría la vigila `tests/save/unit/test_admin_dto_symmetry.py`.
+    priority: int | None
     # `None` no es "nunca": es "el reloj no dispara este flow" (modo manual o cadena declarativa).
     next_run_at: str | None
 
@@ -135,6 +141,49 @@ class RunLaunchedDto(BaseModel):
     run_id: str
 
 
+class AssetPartitionsDto(BaseModel):
+    """AUSENTE (`null`) cuando el asset no está particionado — que no es lo mismo que "0 de 0"."""
+
+    total: int
+    materialized: int
+    failed: int
+    materializing: int
+    # `None` cuando no hay particiones que cubrir: un `0.0` afirmaría "0% cubierto".
+    coverage_ratio: float | None
+    # De QUÉ son las partes (`provider` | `section` | `other`). Sin esto `2/41` es un número sin
+    # sujeto. Lo declara el runner y lo traduce el dominio; el front solo elige la palabra.
+    kind: str
+
+
+class AssetAdminRowDto(BaseModel):
+    key: str
+    group: str
+    description: str | None
+    job_names: list[str]
+    partitions: AssetPartitionsDto | None
+    last_materialized_at: str | None
+    last_run_id: str | None
+    # Derivada en el DOMINIO (`PipelineAsset.health`), no acá: la misma señal la va a necesitar el
+    # detalle por proveedor (#11), y dos derivaciones se desincronizan.
+    health: str
+
+
+class AssetListDto(BaseModel):
+    assets: list[AssetAdminRowDto]
+
+
+class LineageNodeDto(BaseModel):
+    key: str
+    direction: str  # upstream | downstream
+
+
+class AssetDetailDto(AssetAdminRowDto):
+    """El detalle es la fila MÁS el lineage. No es una query aparte: `dependencyKeys`/`dependedByKeys`
+    son campos del nodo, así que el runner ya los trajo (por eso el puerto no tiene `get_lineage`)."""
+
+    lineage: list[LineageNodeDto]
+
+
 # ------------------------------------------------------------------------------------- helpers --
 
 def _to_dto(policy: OrchestrationPolicy) -> PolicyDto:
@@ -152,6 +201,7 @@ def _to_dto(policy: OrchestrationPolicy) -> PolicyDto:
         sla_minutes=policy.sla_minutes,
         query_limit_override=policy.query_limit_override,
         enabled=policy.enabled,
+        priority=policy.priority,
         next_run_at=next_run.isoformat() if next_run else None,
     )
 
@@ -167,6 +217,33 @@ def _unavailable(exc: OrchestratorUnavailable) -> HTTPException:
     """503 y no 500: el runner es una dependencia EXTERNA que puede estar caída sin que nada nuestro
     esté roto. La consola degrada; la política sigue siendo editable."""
     return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"Orquestador no disponible: {exc}")
+
+
+def _to_asset_row(asset: PipelineAsset) -> AssetAdminRowDto:
+    p = asset.partitions
+    return AssetAdminRowDto(
+        key=asset.key,
+        group=asset.group,
+        description=asset.description,
+        job_names=list(asset.job_names),
+        partitions=(
+            AssetPartitionsDto(
+                total=p.total,
+                materialized=p.materialized,
+                failed=p.failed,
+                materializing=p.materializing,
+                coverage_ratio=p.coverage_ratio,
+                kind=p.kind.value,
+            )
+            if p is not None
+            else None
+        ),
+        last_materialized_at=(
+            asset.last_materialized_at.isoformat() if asset.last_materialized_at else None
+        ),
+        last_run_id=asset.last_run_id,
+        health=asset.health.value,
+    )
 
 
 # -------------------------------------------------------------------------------------- rutas --
@@ -383,3 +460,50 @@ def cancel_run(
     except OrchestratorUnavailable as exc:
         raise _unavailable(exc) from exc
     audit.record("orchestration.run.cancel", "run", run_id, {})
+
+
+@orchestration_router.get("/assets", response_model=AssetListDto)
+def list_assets(
+    orchestrator: PipelineOrchestrator = Depends(get_pipeline_orchestrator),
+) -> AssetListDto:
+    """Todos los assets del pipeline (§14 #9).
+
+    A diferencia de `/provider-flows`, esto NO degrada: las policies viven en NUESTRA DB, pero los
+    assets viven SOLO en Dagster. Devolver una lista vacía diría "el pipeline no tiene assets" cuando
+    la verdad es "no pudimos preguntar" — y esa es la mentira más cara que este módulo puede contar.
+    Runner caído ⇒ 503, y la tab lo declara.
+
+    Es una LECTURA: no se audita (T2 registra mutaciones; auditar lecturas ahogaría el registro).
+    """
+    try:
+        assets = orchestrator.list_assets()
+    except OrchestratorUnavailable as exc:
+        raise _unavailable(exc) from exc
+    return AssetListDto(assets=[_to_asset_row(a) for a in assets])
+
+
+@orchestration_router.get("/assets/{key:path}", response_model=AssetDetailDto)
+def get_asset(
+    key: str,
+    orchestrator: PipelineOrchestrator = Depends(get_pipeline_orchestrator),
+) -> AssetDetailDto:
+    """Detalle + lineage de un asset.
+
+    `{key:path}` y no `{key}` porque `AssetKey` es una LISTA de segmentos que la consola une con `/`:
+    con el converter por defecto, todo asset multi-segmento sería inalcanzable (404 sin explicación).
+    """
+    try:
+        asset = orchestrator.get_asset(key)
+    except OrchestratorUnavailable as exc:
+        raise _unavailable(exc) from exc
+    if asset is None:
+        # 404 y NO 503: "ese asset no existe" es una respuesta del runner, no una caída suya.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Asset no encontrado.")
+    row = _to_asset_row(asset)
+    return AssetDetailDto(
+        **row.model_dump(),
+        lineage=[
+            *(LineageNodeDto(key=k, direction="upstream") for k in asset.dependency_keys),
+            *(LineageNodeDto(key=k, direction="downstream") for k in asset.depended_by_keys),
+        ],
+    )

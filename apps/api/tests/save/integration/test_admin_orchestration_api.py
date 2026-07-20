@@ -6,6 +6,8 @@ existe.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -13,7 +15,11 @@ from seeds.identity_seed import seed_identity
 from src.api.composition_root import get_pipeline_orchestrator, get_session
 from src.api.extensions.security import get_current_user_id
 from src.contexts.identity.infrastructure.models import UserModel, UserRoleModel
-from src.contexts.save.domain.ports.orchestrator import OrchestratorUnavailable
+from src.contexts.save.domain.ports.orchestrator import (
+    AssetPartitionStats,
+    OrchestratorUnavailable,
+    PipelineAsset,
+)
 from src.contexts.save.infrastructure.models import AdminAuditLogModel
 from src.main import app
 
@@ -34,6 +40,12 @@ class DeadOrchestrator:
         raise OrchestratorUnavailable("connection refused")
 
     def get_run(self, _run_id):  # type: ignore[no-untyped-def]
+        raise OrchestratorUnavailable("connection refused")
+
+    def list_assets(self):  # type: ignore[no-untyped-def]
+        raise OrchestratorUnavailable("connection refused")
+
+    def get_asset(self, _key):  # type: ignore[no-untyped-def]
         raise OrchestratorUnavailable("connection refused")
 
 
@@ -72,6 +84,8 @@ class TestTheGateIsOn:
             ("post", "/v1/admin/save/orchestration/policies/p-1/run"),
             ("post", "/v1/admin/save/orchestration/runs/r-1/retry"),
             ("post", "/v1/admin/save/orchestration/runs/r-1/cancel"),
+            ("get", "/v1/admin/save/orchestration/assets"),
+            ("get", "/v1/admin/save/orchestration/assets/query_catalog_prices"),
         ],
     )
     def test_no_route_is_reachable_without_a_token(self, client, method, path) -> None:  # type: ignore[no-untyped-def]
@@ -295,3 +309,146 @@ def test_the_audit_table_is_reachable_and_append_only(db_session) -> None:  # ty
     )
     assert len(rows) == 1
     assert rows[0].payload_summary == {"run_id": "r-1"}
+
+
+# ------------------------------------------------------------------------------- assets (#9) --
+
+
+class _AssetsOrchestrator:
+    """Fake con assets. NO usa `**_`: un fake permisivo deja invisible un argumento nuevo del puerto
+    (gotcha #21) — el mismo agujero que dejó `states=` sin cobertura cuando se agregó."""
+
+    def __init__(self, assets: list[PipelineAsset], detail: PipelineAsset | None = None):
+        self._assets = assets
+        self._detail = detail
+        self.asked_for: list[str] = []
+
+    def list_assets(self):  # type: ignore[no-untyped-def]
+        return self._assets
+
+    def get_asset(self, key):  # type: ignore[no-untyped-def]
+        self.asked_for.append(key)
+        return self._detail
+
+    def list_runs(self, **_):  # type: ignore[no-untyped-def]
+        return []
+
+    def launch(self, **_):  # type: ignore[no-untyped-def]
+        raise AssertionError("una LECTURA de assets no debe lanzar corridas")
+
+    def retry(self, _run_id):  # type: ignore[no-untyped-def]
+        raise AssertionError("una LECTURA de assets no debe reintentar nada")
+
+    def cancel(self, _run_id):  # type: ignore[no-untyped-def]
+        raise AssertionError("una LECTURA de assets no debe cancelar nada")
+
+    def get_run(self, _run_id):  # type: ignore[no-untyped-def]
+        return None
+
+
+def _pipeline_asset(**over):  # type: ignore[no-untyped-def]
+    base = {
+        "key": "query_catalog_prices",
+        "group": "default",
+        "description": "Descubrimiento por-query",
+        "job_names": ("save_query_catalog",),
+        "dependency_keys": (),
+        "depended_by_keys": (),
+        "partitions": None,
+        "last_materialized_at": None,
+        "last_run_id": None,
+    }
+    base.update(over)
+    return PipelineAsset(**base)  # type: ignore[arg-type]
+
+
+class TestListAssetsEndpoint:
+    def _get(self, db_session, user_id, orchestrator, path="/assets"):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        app.dependency_overrides[get_pipeline_orchestrator] = lambda: orchestrator
+        try:
+            with TestClient(app) as c:
+                return c.get(f"/v1/admin/save/orchestration{path}")
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_exposes_the_aggregate_of_a_partitioned_asset_as_ONE_row(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """US-OR-L4 lo pide explícito: `rest_catalog_prices` es UNA fila con su estado agregado, no
+        una fila por sección. Con 40+ secciones, una fila por partición ahogaría la tabla."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        asset = _pipeline_asset(
+            key="rest_catalog_prices",
+            partitions=AssetPartitionStats(total=10, materialized=8, failed=1, materializing=1),
+            last_materialized_at=datetime(2026, 7, 20, tzinfo=UTC),
+            last_run_id="r-1",
+        )
+
+        res = self._get(db_session, user_id, _AssetsOrchestrator([asset]))
+
+        assert res.status_code == 200
+        row = res.json()["assets"][0]
+        assert row["key"] == "rest_catalog_prices"
+        assert row["partitions"]["total"] == 10
+        assert row["partitions"]["coverage_ratio"] == 0.8
+        assert row["health"] == "degraded"
+
+    def test_a_non_partitioned_asset_reports_NO_partitions_instead_of_zeroes(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+
+        res = self._get(db_session, user_id, _AssetsOrchestrator([_pipeline_asset()]))
+
+        assert res.json()["assets"][0]["partitions"] is None
+
+    def test_a_dead_runner_is_a_503_not_an_empty_pipeline(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """A diferencia de `/provider-flows`, acá NO se puede degradar: las policies viven en NUESTRA
+        DB, pero los assets viven SOLO en Dagster. Devolver `[]` diría "el pipeline no tiene assets"
+        cuando la verdad es "no pudimos preguntar" — la mentira más cara que este módulo puede
+        contar."""
+        user_id = _seed_role_user(db_session, "super_admin")
+
+        res = self._get(db_session, user_id, DeadOrchestrator())
+
+        assert res.status_code == 503
+
+    def test_the_detail_carries_the_lineage_in_both_directions(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        detail = _pipeline_asset(
+            dependency_keys=("embed_canonicals",),
+            depended_by_keys=("price_drops",),
+            last_materialized_at=datetime(2026, 7, 20, tzinfo=UTC),
+        )
+
+        res = self._get(
+            db_session, user_id, _AssetsOrchestrator([], detail), "/assets/query_catalog_prices",
+        )
+
+        assert res.status_code == 200
+        lineage = res.json()["lineage"]
+        assert {"key": "embed_canonicals", "direction": "upstream"} in lineage
+        assert {"key": "price_drops", "direction": "downstream"} in lineage
+
+    def test_an_unknown_asset_is_a_404_not_a_503(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """"Ese asset no existe" es una RESPUESTA del runner, no una caída suya. Devolver 503 haría
+        que la consola dijera "el orquestador no responde" con el orquestador contestando."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        orchestrator = _AssetsOrchestrator([], None)
+
+        res = self._get(db_session, user_id, orchestrator, "/assets/no_existe")
+
+        assert res.status_code == 404
+        # Sin esto el test pasaría con la RUTA INEXISTENTE (FastAPI también contesta 404), o sea
+        # afirmando un comportamiento que nadie implementó. Exigir que el puerto haya sido consultado
+        # es lo que distingue "el runner dijo que no existe" de "no llegamos ni a preguntar".
+        assert orchestrator.asked_for == ["no_existe"]
+
+    def test_a_slashed_key_reaches_the_port_intact(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """`AssetKey` es una LISTA de segmentos; la clave de la URL los une con `/`. Si la ruta no
+        acepta el path completo, todo asset multi-segmento sería inalcanzable."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        orchestrator = _AssetsOrchestrator([], _pipeline_asset(key="save/prices"))
+
+        res = self._get(db_session, user_id, orchestrator, "/assets/save/prices")
+
+        assert res.status_code == 200
+        assert orchestrator.asked_for == ["save/prices"]
