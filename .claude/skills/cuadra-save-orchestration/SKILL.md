@@ -126,6 +126,33 @@ append-only and sacred).
     adapter cannot import dagster, gotcha #1). A wiring test must EXECUTE a real run, not just check
     the returned id. Guards: `test_orchestration_partition.py`, `test_run_policy_now.py`.
 
+19. **The SLA is a DOMAIN rule, not a front-end formula.** `OrchestrationPolicy.sla_status(last_success_at, now)`
+    → `within | breached | not_applicable`. Three parts of the definition, all load-bearing:
+    (a) only the last **SUCCESSFUL** run moves the mark — otherwise a flow failing every 5 minutes
+    looks like the freshest of all; (b) `manual` is **never late** (no schedule to miss) → it returns
+    `NOT_APPLICABLE` and the KPI must drop it from the **denominator**, or the console reads
+    *"0/3 within SLA"* with everything healthy; (c) no `sla_minutes` (or ≤ 0) → nothing was promised,
+    so nothing is measured. A scheduled flow that never succeeded is `BREACHED`, not "unknown".
+    It lives in the domain so the list KPI and the per-provider detail can never disagree.
+20. **`list_runs(states=)` filters SERVER-side, and the reverse state map has ONE home.**
+    `runner_statuses_for()` sits next to `_RUNNER_STATES` in `orchestration_run.py` — two maps
+    desynchronise the moment someone adds a state to one. It is 1→N on purpose (`RUNNING` covers
+    `STARTING`+`STARTED`). Pulling the whole history to filter in Python does not scale: a flow that
+    fails often can have its last success hundreds of runs back. The controller skips the second
+    round-trip when the last run already succeeded.
+21. **The integration fake accepts `**_`, so a new port argument is INVISIBLE to the suite.**
+    `test_orchestration_protocol_conformance` only checks `hasattr` — it cannot see signatures. When
+    `states=` was added, nothing covered it. The guard is `_RunsByState` in
+    `test_admin_orchestration_api.py`: a fake that actually *distinguishes* the filter, plus the test
+    that matters — *"a failing flow does NOT inherit freshness from its failed run"*. Any new port
+    argument needs a fake that can tell the difference, or gotcha #16 bites again in a new place.
+22. **Base UI: `DropdownMenuLabel` MUST be inside a `Menu.Group`/`Menu.RadioGroup`.** Outside it
+    throws at runtime — `MenuGroupContext is missing` — and the whole menu fails to open. It passed
+    typecheck and only a render test caught it. **And a filter panel is a `Popover`, not a `Menu`**:
+    menus are for COMMANDS, and nesting a `<Select>` in one fights its click-outside close (the
+    select popup portals OUTSIDE the menu and counts as "outside"). `@base-ui/react/popover` with
+    `align="end"` opens leftward so the panel does not cover the table it is filtering.
+
 ## Operating the runner (dev) — hard-won
 
 - **Run EXACTLY ONE `dagster dev` at a time.** `dagster dev` spawns a tree (webserver + daemon +
@@ -159,6 +186,24 @@ append-only and sacred).
 | Ingestion | `ingestion/save/policy_sensor.py` (+ registered in `ingestion/definitions.py`) |
 | Web | `apps/web/src/features/admin/resources/save-orchestration/` · `apps/web/pages/admin/orchestration/` |
 | Migrations | `986cfadeb758` (policy+config) · `383f4c14de46` (run correlation) · `d9b8ab9bb88a` (snapshot) |
+
+### Web feature map (console v2)
+
+| File | What it owns |
+|---|---|
+| `components/OrchestrationScreen.tsx` | Shell, live-poll, pagination, confirmations, modal wiring |
+| `components/OrchestrationRow.tsx` | The 8 columns (status · provider+logo · flow+mode · schedule · next · products · outcome · actions) |
+| `components/OrchestrationActionsMenu.tsx` | Run / Retry / Cancel / Edit / Pause / Delete — each item shown ONLY when the runner state allows it |
+| `components/OrchestrationToolbar.tsx` | Search + filter **Popover** (selects + Apply/Reset + active-count badge) + create CTA |
+| `components/OrchestrationKpis.tsx` | `buildKpis` (pure, tested) + the 4 cards; inert `ChartSkeleton` when there is no data |
+| `components/{PolicyModal,CreateFlowModal}.tsx` | Edit policy (3 modes; cron field only in `cron`) · create flow (surfaces the 422 REASON verbatim) |
+| `lib/run-state.ts` | `isCancellable` / `isInFlight` — affordances derived from the runner's declared state |
+| `lib/filter-flows.ts` | Pure client-side filter (search AND mode AND state); `NEVER_RAN` is a real, filterable state |
+| `lib/run-queue-href.ts` | The run→queue deep-link (only when there IS a run and `queued > 0`) |
+
+> Shared pieces this console consumes — see `cuadra-save-admin` §"shared UI inventory" **before**
+> writing any new admin UI: `ProviderLogo`, `ConfirmDialog`, `KpiCard` + `RadialGauge`/`MiniBarChart`,
+> `FilterField`, `FunnelIcon`, `Pagination`. None of them should ever be re-implemented locally.
 
 ## Security
 
@@ -195,16 +240,32 @@ file-watch reloads on CODE changes, not on `.env`.
 launch-partition fix. The cascade has been ACTIVATED and measured against the live APIs (see the
 baseline above). Full record: `docs/pending/save-fase4-orquestacion-pendientes.md`.
 
-**Left for later (none is an open bug):** provider-detail page (`/admin/orchestration/providers/{id}`)
-· the "Assets Dagster" tab (needs a `GET …/orchestration/assets` endpoint) · `scope=asset` policies
-(until they exist the three `ScheduleDefinition` stay in code on purpose) · the `provider_coverage`
-handler + R7 deps (v1.1) · re-enable the LLM judge (quota; today the grey band goes 100% to human) ·
-a dedicated BGE-M3 endpoint for prod (in-process does not scale).
+**CONSOLE v2 — branch `feat/save-orchestration-console-v2`, NOT yet committed.** Closes the whole
+unblocked part of the SDD's §14 backlog: P0 (paint the metrics that already travelled · wire the
+zombie `retryRun` · strong confirmation on Cancel · live refresh while a run is in flight), P1
+(policy + create-flow modals · Delete in a secondary menu · search & filters), the **SLA KPI**
+end-to-end (#12), pagination, the admin visual language, and US-OR-L5 (the UI now declares what
+policy lives in env and cannot be changed from the console).
+
+**Left for later — every item is blocked by signal or endpoints that do not exist yet:**
+
+| §14 | Item | Blocker |
+|---|---|---|
+| #9, #10 | "Assets Dagster" tab + the tab bar | `GET …/orchestration/assets` + `list_assets`/`get_asset`/`get_lineage` on the port. **All or nothing** — an empty tab lies, and one lone tab is decoration |
+| #11 | Provider detail `/admin/orchestration/providers/{id}` | The sibling SDD; its own branch |
+| #13 | KPIs "runs succeeded/failed today" | The bridge only exposes runs per policy, not a global per-day listing |
+| #14 | Progress bar `queries_processed/total` | **Nobody counts queries.** `seen` counts products returned, not searches issued |
+| #15 | `log_excerpt` / run events | `get_run_events()` on the port |
+| #16-19 | `provider_coverage` handler · `depends_on_flow` (R7) · `scope=asset` policies · one-off run overrides | v1.1 backend work |
+
+Deliberately NOT built: country filter/column (single market — a filter with one value filters
+nothing) and the row's `Ver detalle` action (its destination does not exist → a link to a 404).
+Also still open: re-enable the LLM judge (quota) · a dedicated BGE-M3 endpoint for prod.
 
 ## Resources
 
-- **Pendings + lessons:** `docs/pending/save-fase4-orquestacion-pendientes.md` (source of truth)
-- **Spec:** vault `Sub-modulo List - Orquestacion Save - SDD Refinado.md` + `… Details by Provider …`
-  — ⚠️ their "Estado real" sections still describe the pre-R1 world; verify against
-  `ingestion/definitions.py`, which is the source of truth for assets/jobs/schedules.
+- **Pendings + lessons:** `docs/pending/save-fase4-orquestacion-pendientes.md` (F4) and
+  `docs/pending/save-orchestration-console-v2-pendientes.md` (console v2 — **state of the branch**)
+- **Spec:** vault `Sub-modulo List - Orquestacion Save - SDD Refinado.md` (reconciled 2026-07-19:
+  every US carries its real status and **§14 is the live backlog**) + `… Details by Provider …`
 - **Composes with:** `cuadra-save-admin` · `cuadra-save` · `cuadra-save-matching` · `cuadra-api` · `cuadra-web`

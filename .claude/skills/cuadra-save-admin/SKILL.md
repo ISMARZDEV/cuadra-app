@@ -59,6 +59,53 @@ decides) → clean canonical catalog. Providers + health give visibility over th
 | Web resources | `apps/web/src/features/admin/resources/{save-matching,save-providers,save-sources,save-basket}/` |
 | Web routes | `apps/web/pages/admin/{+Wrapper is at pages/+Wrapper.tsx, +Layout.clear.tsx, +guard.ts, +data.ts, <resource>/{+Page.tsx,+data.ts,+guard.ts}}` |
 
+## The shared UI inventory — CHECK THIS BEFORE BUILDING ANY ADMIN SCREEN
+
+> **Read this section first, every time.** It exists because a whole session was spent re-inventing
+> pieces that already existed: the orchestration console shipped with its own flat KPI cards, no
+> toolbar, no row component and no actions menu, and the user had to point at the review queue
+> **twice** before the right components were found. The other resources looked "from another app".
+
+**Two reference resources, and you must look at BOTH.** `save-sources` is the closest structural
+analog (rows + actions + modal), but **`save-matching` (Cola de revisión) is THE visual reference**
+for tone and ergonomics. Looking at only one is how the wrong answer gets shipped.
+
+| Piece | Import from | Notes |
+|---|---|---|
+| `ProviderLogo` | `features/admin/components/ProviderLogo` | Re-export of `ProviderBadge`; img + text fallback. **Do NOT write another logo component** |
+| `CategoryBadge` · `MethodBadge` | `features/admin/components/` | Category/method pills |
+| `FilterModal` · `FilterField` · `FilterSearchSelect` · `FilterRangeSlider` | `features/admin/components/filters/` | The reusable filter/form shell. `FilterModal` is ALSO the shell every add/edit modal uses (`SourceModal`, `PolicyModal`, `CreateFlowModal`) |
+| `ConfirmDialog` | `features/admin/components/ConfirmDialog` | Strong confirmation for destructive/irreversible actions. Explains the IMPACT, not "are you sure?" |
+| `KpiCard` + `types.ts` (`KpiSentiment`, `SeriesPoint`) | `features/admin/resources/save-matching/components/kpi/` | The admin KPI card: `rounded-[50px]` squircle, value `text-[40px]`, lime kebab, sentiment pill, chart slot |
+| `MiniBarChart` · `RadialGauge` · `MiniLineChart` | `…/kpi/charts/` | Generic and reusable. `MethodShareChart` is NOT — it is bound to the matching palette |
+| `SelectCheckbox` · `FunnelIcon`/`ListChecksIcon`/`ListStarIcon` | `save-matching/components/` | Cross-resource imports here are the established pattern (Sources does it too) |
+| `Table` · `DropdownMenu` · `Pagination` · `Select` · `Input` | `components/ui-base/*`, `components/ui/*` | |
+
+**The visual language, verbatim** (copy these, do not approximate):
+
+- Page shell: `flex flex-1 flex-col p-4 md:p-6` > `rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]`
+- Title: `text-2xl font-bold text-brand-forest dark:text-brand-lime` **+ the count in parentheses**
+- Search pill: `h-9 w-[272px] rounded-full border border-[#8daeae]/40 bg-[#b0b0b0]/15`
+- Filter button: `size-9 rounded-full bg-brand-lime text-brand-forest` + `FunnelIcon`
+- Primary CTA: `h-9 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest`
+- Bulk/secondary pill: `h-9 rounded-full bg-brand-forest px-4 text-brand-lime`
+- Table card: `overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-card`
+- Row actions trigger: `size-8 rounded-full border border-[#b7e36f] bg-[#daff9f] text-[#015442]` + `MoreHorizontal`
+- Menu item colouring uses `**:` (ALL descendants), **not** `[&_svg]`: Lucide draws with
+  `stroke="currentColor"` and the base tints the inner `<path>` grey.
+- Footer: page-size `Select` + `from–to of total` + `Pagination` (see `SourcesScreen`)
+
+> [!warning] A gauge NEVER goes alone, and an `<svg>` always needs a flex parent
+> In the reference the `RadialGauge` always sits beside a legend (`gauge + legend` two-column). A
+> lone arc in a wide card looks unbalanced — and a bare `<svg>` takes the container width and
+> **stretches until it overflows the card**. Always wrap it in a centred flex container.
+
+> [!warning] Do NOT use `Skeleton` for "no data"
+> `components/ui-base/skeleton.tsx` has `animate-pulse`, which promises *"wait, it's loading"*. When
+> the data is **unavailable** (a dependency is down), a pulsing skeleton is the same lie-in-green
+> this codebase keeps hunting. Render an INERT skeleton of the indicator's own shape instead
+> (empty arc / flat bars at ~30% opacity) so the card keeps its size without asserting a value.
+
 ## Critical Patterns (the gotchas — do NOT relearn the hard way)
 
 1. **ClerkProvider mounts EXACTLY ONCE — in `pages/+Wrapper.tsx`.** A provider inside a layout
