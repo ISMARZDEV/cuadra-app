@@ -191,6 +191,8 @@ type MessageKey =
   | "admin.orchestration.col.status"
   | "admin.orchestration.col.schedule"
   | "admin.orchestration.col.products"
+  | "admin.orchestration.products.queryProgress"
+  | "admin.orchestration.products.queryProgressTitle"
   | "admin.orchestration.products.seen"
   | "admin.orchestration.products.breakdown"
   | "admin.orchestration.schedule.none"
@@ -713,6 +715,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.status": "Estado",
     "admin.orchestration.col.schedule": "Horario",
     "admin.orchestration.col.products": "Productos",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} búsquedas",
+    "admin.orchestration.products.queryProgressTitle": "Búsquedas ejecutadas sobre las planificadas. Es el progreso REAL de la corrida: el número de productos no lo dice, porque una búsqueda puede devolver muchos o ninguno.",
     "admin.orchestration.products.seen": "{seen} vistos",
     "admin.orchestration.products.breakdown": "{refreshed} actualizados · {matched} matcheados · {discarded} descartados",
     "admin.orchestration.schedule.none": "Sin programar",
@@ -1236,6 +1240,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.status": "Status",
     "admin.orchestration.col.schedule": "Schedule",
     "admin.orchestration.col.products": "Products",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} searches",
+    "admin.orchestration.products.queryProgressTitle": "Searches run out of those planned. This is the run's REAL progress: the product count cannot tell you, because one search may return many or none.",
     "admin.orchestration.products.seen": "{seen} seen",
     "admin.orchestration.products.breakdown": "{refreshed} refreshed · {matched} matched · {discarded} discarded",
     "admin.orchestration.schedule.none": "Not scheduled",
@@ -1759,6 +1765,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.status": "Estado",
     "admin.orchestration.col.schedule": "Horário",
     "admin.orchestration.col.products": "Produtos",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} buscas",
+    "admin.orchestration.products.queryProgressTitle": "Buscas executadas sobre as planejadas. É o progresso REAL da corrida: o número de produtos não diz, porque uma busca pode devolver muitos ou nenhum.",
     "admin.orchestration.products.seen": "{seen} vistos",
     "admin.orchestration.products.breakdown": "{refreshed} atualizados · {matched} correspondidos · {discarded} descartados",
     "admin.orchestration.schedule.none": "Sem agendamento",

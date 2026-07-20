@@ -392,3 +392,33 @@ describe("OrchestrationScreen — la barra de tabs (§14 #10)", () => {
     expect(screen.getByText("Sirena")).toBeInTheDocument();
   });
 });
+
+
+describe("OrchestrationScreen — progreso por búsquedas (§14 #14)", () => {
+  it("draws the progress bar from the QUERY counter, not from the product count", async () => {
+    // `seen` cuenta productos DEVUELTOS: una búsqueda puede traer 40 o ninguno, así que jamás pudo
+    // responder "¿por dónde va la corrida?".
+    mockData = {
+      flows: [flow({ last_run_metrics: metrics({ seen: 120, queries_total: 4, queries_processed: 3, query_progress: 0.75 }) })],
+      runnerDisconnected: false,
+      providers: [],
+    };
+    render(<OrchestrationScreen />);
+
+    expect(await screen.findByTestId("orchestration-query-progress")).toHaveTextContent("3/4");
+  });
+
+  it("draws NOTHING when there is no plan to measure against", async () => {
+    // Corridas anteriores al contador: `query_progress` viene null. Una barra al 0% ahí afirmaría
+    // "no avanzó", que es distinto de "no lo sabemos".
+    mockData = {
+      flows: [flow({ last_run_metrics: metrics({ seen: 120 }) })],
+      runnerDisconnected: false,
+      providers: [],
+    };
+    render(<OrchestrationScreen />);
+
+    await screen.findByText("Sirena");
+    expect(screen.queryByTestId("orchestration-query-progress")).not.toBeInTheDocument();
+  });
+});

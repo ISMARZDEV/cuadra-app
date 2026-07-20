@@ -112,6 +112,29 @@ export function OrchestrationRow({
                 discarded: String(metrics.discarded),
               })}
             </span>
+            {/* §14 #14. Solo se pinta si hay PLAN contra el que medir (`query_progress != null`):
+                una barra al 0% sobre una corrida sin plan afirmaría "no avanzó", que es distinto de
+                "no sabemos". Las corridas viejas —anteriores al contador— caen justo ahí. */}
+            {metrics.query_progress != null ? (
+              <span
+                data-testid="orchestration-query-progress"
+                title={t("admin.orchestration.products.queryProgressTitle")}
+                className="mt-1 flex items-center gap-1.5"
+              >
+                <span className="h-1 w-16 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full bg-brand-lime"
+                    style={{ width: `${Math.round(metrics.query_progress * 100)}%` }}
+                  />
+                </span>
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  {format(locale, "admin.orchestration.products.queryProgress", {
+                    processed: String(metrics.queries_processed),
+                    total: String(metrics.queries_total),
+                  })}
+                </span>
+              </span>
+            ) : null}
           </div>
         ) : (
           <span className="text-muted-foreground">—</span>
