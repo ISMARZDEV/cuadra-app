@@ -28,7 +28,11 @@ from typing import Any
 
 import httpx
 
-from ...domain.entities.orchestration_run import RunState, run_state_from_runner
+from ...domain.entities.orchestration_run import (
+    RunState,
+    run_state_from_runner,
+    runner_statuses_for,
+)
 from ...domain.ports.orchestrator import (
     TAG_ACTOR,
     TAG_POLICY_ID,
@@ -255,11 +259,25 @@ class DagsterGraphQLOrchestrator:
         data = self._execute(_TERMINATE, {"runId": run_id})
         self._unwrap(data["terminateRun"], "TerminateRunSuccess", "cancelación")
 
-    def list_runs(self, *, policy_id: str, limit: int = 20) -> Sequence[OrchestrationRun]:
-        data = self._execute(
-            _RUNS,
-            {"filter": {"tags": [{"key": TAG_POLICY_ID, "value": policy_id}]}, "limit": limit},
-        )
+    def list_runs(
+        self,
+        *,
+        policy_id: str,
+        limit: int = 20,
+        states: Sequence[RunState] | None = None,
+    ) -> Sequence[OrchestrationRun]:
+        run_filter: dict[str, object] = {
+            "tags": [{"key": TAG_POLICY_ID, "value": policy_id}]
+        }
+        if states:
+            # Se filtra DEL LADO DEL RUNNER: traerse el histórico entero para descartarlo acá no
+            # escala (un flujo que falla seguido puede tener su último éxito a cientos de corridas).
+            # La traducción a los estados del runner sale del ÚNICO mapa que existe (dominio), no de
+            # una lista repetida acá — dos mapas se desincronizan en cuanto alguien toca uno solo.
+            run_filter["statuses"] = [
+                runner for state in states for runner in runner_statuses_for(state)
+            ]
+        data = self._execute(_RUNS, {"filter": run_filter, "limit": limit})
         node = self._unwrap(data["runsOrError"], "Runs", "listado de corridas")
         return [self._to_run(r) for r in node.get("results") or []]
 

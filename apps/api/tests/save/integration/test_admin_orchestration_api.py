@@ -113,6 +113,161 @@ class TestDegradation:
             app.dependency_overrides.clear()
 
 
+class _RunsByState:
+    """Runner que SÍ distingue `states` — sin esto el test no probaría nada.
+
+    El fake anterior acepta `**_` y devuelve siempre lo mismo, así que el filtro por estado podría
+    no existir y la suite seguiría verde: exactamente el "fake que confirma una firma inventada" que
+    documenta `test_orchestration_protocol_conformance.py`.
+    """
+
+    def __init__(self, last, success) -> None:  # type: ignore[no-untyped-def]
+        self._last = last
+        self._success = success
+
+    def list_runs(self, *, policy_id: str, limit: int = 20, states=None):  # type: ignore[no-untyped-def]
+        del policy_id, limit
+        if states:  # se pidió filtrando: solo corridas exitosas
+            return [self._success] if self._success else []
+        return [self._last] if self._last else []
+
+    def launch(self, **_):  # type: ignore[no-untyped-def]
+        raise AssertionError("no debería lanzarse en este test")
+
+    def retry(self, _run_id):  # type: ignore[no-untyped-def] ...
+        raise AssertionError
+
+    def cancel(self, _run_id):  # type: ignore[no-untyped-def]
+        raise AssertionError
+
+    def get_run(self, _run_id):  # type: ignore[no-untyped-def]
+        return None
+
+
+class TestSlaIsComputedFromTheLastSUCCESSFULRun:
+    """La regla cerrada el 2026-07-19: `(ahora − última corrida EXITOSA) ≤ sla_minutes`.
+
+    Se prueba por la API y no solo en el dominio porque lo que puede romperse es el CABLEADO: que el
+    controller pida la corrida exitosa y no la última a secas. Una salvaguarda sin test de wiring no
+    existe (plan maestro §6.1).
+    """
+
+    # Ids REALES: la columna es UUID, así que un "pol-sla" legible revienta en el repo.
+    POLICY_ID = "11111111-1111-4111-8111-111111111111"
+    PROVIDER_ID = "22222222-2222-4222-8222-222222222222"
+
+    def _seed_cron_policy(self, db_session, sla_minutes: int = 120) -> None:  # type: ignore[no-untyped-def]
+        from src.contexts.save.domain.entities.orchestration import (
+            ExecutionMode,
+            FlowKey,
+            OrchestrationPolicy,
+            PolicyScope,
+        )
+        from src.contexts.save.infrastructure.models import ProviderModel
+        from src.contexts.save.infrastructure.orchestrator.policy_repository import (
+            SqlOrchestrationPolicyRepository,
+        )
+
+        # La policy tiene FK al provider: sin sembrarlo, el insert muere por integridad referencial.
+        db_session.add(
+            ProviderModel(
+                id=self.PROVIDER_ID, name="SLA Test", type="supermarket",
+                platform="vtex", market_id="DO",
+            )
+        )
+        db_session.flush()
+
+        # `add`, no `save`: `save` solo actualiza campos editables de una policy que ya existe.
+        SqlOrchestrationPolicyRepository(db_session).add(
+            OrchestrationPolicy(
+                id=self.POLICY_ID,
+                scope=PolicyScope.PROVIDER_FLOW,
+                market_id="DO",
+                timezone="America/Santo_Domingo",
+                provider_id=self.PROVIDER_ID,
+                flow_key=FlowKey.PROVIDER_PRICES_REFRESH,
+                execution_mode=ExecutionMode.CRON,
+                cron_expression="0 6 * * *",
+                sla_minutes=sla_minutes,
+            )
+        )
+        db_session.flush()
+
+    def _call(self, db_session, user_id: str, orchestrator):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        app.dependency_overrides[get_pipeline_orchestrator] = lambda: orchestrator
+        try:
+            res = TestClient(app).get("/v1/admin/save/orchestration/provider-flows")
+            assert res.status_code == 200, res.text
+            return next(
+                f for f in res.json()["flows"] if f["policy"]["policy_id"] == self.POLICY_ID
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_a_recent_success_is_within_sla(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        from datetime import UTC, datetime, timedelta
+
+        from src.contexts.save.domain.entities.orchestration_run import RunState
+        from src.contexts.save.domain.ports.orchestrator import OrchestrationRun
+
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed_cron_policy(db_session)
+        ok = OrchestrationRun(
+            run_id="r-ok", job_name="j", state=RunState.SUCCEEDED,
+            ended_at=datetime.now(UTC) - timedelta(minutes=30),
+        )
+
+        row = self._call(db_session, user_id, _RunsByState(last=ok, success=ok))
+
+        assert row["sla_status"] == "within"
+
+    def test_a_failing_flow_does_NOT_inherit_freshness_from_its_failed_run(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """El corazón de la regla: la ÚLTIMA corrida es de hace un minuto, pero FALLÓ. El último
+        ÉXITO es de hace 5 horas → incumplido. Si el controller mirara la última corrida a secas,
+        un flujo que falla cada minuto parecería el más fresco de todos."""
+        from datetime import UTC, datetime, timedelta
+
+        from src.contexts.save.domain.entities.orchestration_run import RunState
+        from src.contexts.save.domain.ports.orchestrator import OrchestrationRun
+
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed_cron_policy(db_session)
+        now = datetime.now(UTC)
+        failed_just_now = OrchestrationRun(
+            run_id="r-bad", job_name="j", state=RunState.FAILED,
+            ended_at=now - timedelta(minutes=1),
+        )
+        old_success = OrchestrationRun(
+            run_id="r-old", job_name="j", state=RunState.SUCCEEDED,
+            ended_at=now - timedelta(hours=5),
+        )
+
+        row = self._call(db_session, user_id, _RunsByState(last=failed_just_now, success=old_success))
+
+        assert row["sla_status"] == "breached"
+        assert row["last_run_state"] == "failed"
+
+    def test_never_succeeded_is_breached_not_silently_ok(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        from datetime import UTC, datetime, timedelta
+
+        from src.contexts.save.domain.entities.orchestration_run import RunState
+        from src.contexts.save.domain.ports.orchestrator import OrchestrationRun
+
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed_cron_policy(db_session)
+        failed = OrchestrationRun(
+            run_id="r-bad", job_name="j", state=RunState.FAILED,
+            ended_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+
+        row = self._call(db_session, user_id, _RunsByState(last=failed, success=None))
+
+        assert row["sla_status"] == "breached"
+        assert row["last_success_at"] is None
+
+
 def test_the_audit_table_is_reachable_and_append_only(db_session) -> None:  # type: ignore[no-untyped-def]
     """Smoke del canal de auditoría: la tabla existe y acepta las acciones del módulo nuevo. Los
     handlers escriben acá vía `AdminAuditRecorder` en la misma transacción del request (T2)."""

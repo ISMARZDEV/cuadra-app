@@ -94,6 +94,19 @@ class PipelineOrchestrator(Protocol):
 
     def cancel(self, run_id: str) -> None: ...
 
-    def list_runs(self, *, policy_id: str, limit: int = 20) -> Sequence[OrchestrationRun]: ...
+    def list_runs(
+        self,
+        *,
+        policy_id: str,
+        limit: int = 20,
+        states: Sequence[RunState] | None = None,
+    ) -> Sequence[OrchestrationRun]:
+        """Corridas de una policy, de la más nueva a la más vieja.
+
+        `states` filtra DEL LADO DEL RUNNER. Existe para poder pedir "la última corrida EXITOSA"
+        —lo que define el SLA— sin traerse el histórico entero para descartarlo acá: un flujo que
+        falla seguido podría tener su último éxito a cientos de corridas de distancia.
+        """
+        ...
 
     def get_run(self, run_id: str) -> OrchestrationRun | None: ...

@@ -20,7 +20,7 @@ MIENTEN en verde. Por eso el cron es un invariante del modo, validado acá y no 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -41,6 +41,19 @@ class ExecutionMode(StrEnum):
 class PolicyScope(StrEnum):
     PROVIDER_FLOW = "provider_flow"
     ASSET = "asset"
+
+
+class SlaStatus(StrEnum):
+    """Desenlace del SLA de un provider-flow.
+
+    `NOT_APPLICABLE` NO es un error ni un "no sabemos": es la respuesta correcta para un flujo que no
+    tiene una promesa que cumplir (manual, o sin `sla_minutes`). Existe como valor propio para que el
+    KPI pueda EXCLUIRLO del denominador en vez de contarlo como incumplido.
+    """
+
+    WITHIN = "within"
+    BREACHED = "breached"
+    NOT_APPLICABLE = "not_applicable"
 
 
 class FlowKey(StrEnum):
@@ -182,6 +195,37 @@ class OrchestrationPolicy:
         if self.execution_mode is not ExecutionMode.CRON or not self.cron_expression:
             return None
         return next(CronSim(self.cron_expression, now.astimezone(ZoneInfo(self.timezone))))
+
+    def sla_status(self, last_success_at: datetime | None, now: datetime) -> SlaStatus:
+        """¿Este flujo está dentro de su SLA? (decisión del usuario, 2026-07-19)
+
+            dentro_de_sla ⟺ (ahora − última corrida EXITOSA) ≤ sla_minutes
+
+        Tres reglas que son PARTE de la definición, no detalles:
+
+        1. **Solo la última corrida EXITOSA cuenta.** Una fallida o cancelada no mueve la marca; si
+           no, un flujo que falla cada 5 minutos parecería el más fresco de todos.
+        2. **`manual` nunca llega tarde** → `NOT_APPLICABLE`, y queda FUERA del denominador del KPI.
+           No tiene programación que incumplir. Sin esta regla, con los flujos en manual la consola
+           diría "0/3 dentro de SLA" con todo sano.
+        3. **Sin `sla_minutes` (o ≤ 0) no hay promesa que medir** → `NOT_APPLICABLE`. Inventar un
+           default sería fijar una política que nadie decidió.
+
+        Un flujo PROGRAMADO que nunca tuvo una corrida exitosa está `BREACHED`, no "desconocido":
+        todavía no cumplió su promesa, y esconderlo sería el hueco silencioso de siempre.
+
+        Ojo con lo que esto NO mide: la frescura del PRECIO. Esa es otra señal y vive en el health de
+        Sources — mezclarlas culparía a la orquestación de que una tienda dejó de devolver un producto.
+        """
+        if self.execution_mode is ExecutionMode.MANUAL:
+            return SlaStatus.NOT_APPLICABLE
+        if self.sla_minutes is None or self.sla_minutes <= 0:
+            return SlaStatus.NOT_APPLICABLE
+        if last_success_at is None:
+            return SlaStatus.BREACHED
+        # `<=`: justo en el borde el SLA se CUMPLE. Un flujo que corrió a tiempo no se reporta tarde.
+        within = (now - last_success_at) <= timedelta(minutes=self.sla_minutes)
+        return SlaStatus.WITHIN if within else SlaStatus.BREACHED
 
     def query_limit_effective(self, config: OrchestrationGlobalConfig) -> int:
         """Precedencia del SDD §8: override del provider-flow → default global del mercado.

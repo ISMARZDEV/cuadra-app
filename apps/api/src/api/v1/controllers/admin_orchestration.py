@@ -33,7 +33,9 @@ from src.contexts.save.domain.entities.orchestration import (
     ExecutionMode,
     FlowKey,
     OrchestrationPolicy,
+    SlaStatus,
 )
+from src.contexts.save.domain.entities.orchestration_run import RunState
 from src.contexts.save.domain.ports.orchestrator import (
     OrchestratorUnavailable,
     PipelineOrchestrator,
@@ -91,6 +93,14 @@ class ProviderFlowDto(BaseModel):
     # `desconectado`/`sin corridas`, nunca un estado inventado.
     last_run_state: str | None = None
     last_run_id: str | None = None
+    # Desenlace del SLA: `within` | `breached` | `not_applicable`. Lo calcula el DOMINIO
+    # (`OrchestrationPolicy.sla_status`), no el front — el KPI de la consola y el detalle por
+    # proveedor tienen que responder lo MISMO, y una regla duplicada en dos pantallas se
+    # desincroniza en silencio. `not_applicable` = flujo manual o sin SLA configurado: queda FUERA
+    # del denominador del KPI, nunca contado como incumplido.
+    sla_status: str = SlaStatus.NOT_APPLICABLE.value
+    # Última corrida EXITOSA. `None` = nunca tuvo una (que NO es lo mismo que "el runner no respondió").
+    last_success_at: str | None = None
 
 
 class ProviderFlowListDto(BaseModel):
@@ -174,12 +184,20 @@ def list_provider_flows(
     política vive en nuestra DB y tiene que seguir siendo visible y editable aunque Dagster no esté
     (SDD §8) — es justamente cuando el operador más necesita mirarla.
     """
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
     flows: list[ProviderFlowDto] = []
     runner_available = True
     for policy in policy_repo.list_by_market(MARKET):
         metrics = None
         last_state: str | None = None
         last_run_id: str | None = None
+        last_success: datetime | None = None
+        # Sin poder preguntarle al runner NO se afirma nada sobre el SLA: `not_applicable` es el
+        # default honesto. Decir "incumplido" porque el orquestador está caído culparía al flujo de
+        # una falla que no es suya.
+        sla = SlaStatus.NOT_APPLICABLE
         try:
             runs = orchestrator.list_runs(policy_id=policy.id, limit=1)
             if runs:
@@ -196,6 +214,18 @@ def list_provider_flows(
                         discarded=snapshot.metrics.discarded,
                         new_canonicals=snapshot.new_canonicals,
                     )
+            # La última EXITOSA es lo que define el SLA. Si la última corrida ya lo fue, se reusa y
+            # nos ahorramos el viaje; si no, se pide filtrando del lado del runner (un flujo que
+            # falla seguido puede tener su último éxito a cientos de corridas de distancia).
+            if runs and runs[0].state is RunState.SUCCEEDED:
+                last_success = runs[0].ended_at or runs[0].started_at
+            else:
+                ok = orchestrator.list_runs(
+                    policy_id=policy.id, limit=1, states=[RunState.SUCCEEDED]
+                )
+                if ok:
+                    last_success = ok[0].ended_at or ok[0].started_at
+            sla = policy.sla_status(last_success, now)
         except OrchestratorUnavailable:
             metrics = None  # degradado, no roto
             runner_available = False
@@ -207,6 +237,8 @@ def list_provider_flows(
             last_run_metrics=metrics,
             last_run_state=last_state,
             last_run_id=last_run_id,
+            sla_status=sla.value,
+            last_success_at=last_success.isoformat() if last_success else None,
         ))
     return ProviderFlowListDto(runner_available=runner_available, flows=flows)
 
