@@ -99,8 +99,10 @@ describe("OrchestrationScreen — deep-link corrida→cola (F4 #4.7)", () => {
 
     render(<OrchestrationScreen />);
 
-    const link = screen.getByRole("link", { name: /40/ });
+    // El link es la etiqueta "Pendientes" (el destino accionable), y su número acompaña arriba.
+    const link = screen.getByRole("link", { name: /Pendientes/i });
     expect(link).toHaveAttribute("href", "/admin/review-queue?run_id=run-abc");
+    expect(screen.getByTestId("orchestration-products")).toHaveTextContent("40");
   });
 
   it("renders the queued count as plain text (no link) when the run queued nothing", () => {
@@ -116,9 +118,11 @@ describe("OrchestrationScreen — deep-link corrida→cola (F4 #4.7)", () => {
     // Acotado a la TABLA: el KPI de auto-enlace también rotula "0 a la cola" en su badge, y esta
     // aserción es sobre la fila, no sobre el resumen de arriba.
     const table = within(screen.getByRole("table"));
-    // El "0 a la cola" se muestra pero NUNCA como link (un 0 clicable llevaría a una cola vacía).
-    expect(table.queryByRole("link", { name: /a la cola/i })).not.toBeInTheDocument();
-    expect(table.getByText(/0 a la cola/i)).toBeInTheDocument();
+    // "Pendientes" se muestra pero NUNCA como link (un 0 clicable llevaría a una cola vacía).
+    expect(table.queryByRole("link", { name: /Pendientes/i })).not.toBeInTheDocument();
+    const cell = within(table.getByTestId("orchestration-products"));
+    expect(cell.getByText(/Pendientes/i)).toBeInTheDocument();
+    expect(cell.getByTestId("help-pending")).toHaveTextContent(/Pendientes/i);
   });
 });
 
@@ -141,11 +145,12 @@ describe("OrchestrationScreen — métricas que YA viajan en el DTO", () => {
 
     render(<OrchestrationScreen />);
 
+    // `seen` (120) es progreso; refreshed/matched y los descartados son resultado.
+    expect(screen.getByTestId("orchestration-progress")).toHaveTextContent("120");
     const cell = screen.getByTestId("orchestration-products");
-    expect(cell).toHaveTextContent("120");
-    expect(cell).toHaveTextContent("87");
-    expect(cell).toHaveTextContent("61");
-    expect(cell).toHaveTextContent("12");
+    expect(cell).toHaveTextContent("87"); // Existentes
+    expect(cell).toHaveTextContent("61"); // Nuevos
+    expect(cell).toHaveTextContent("12"); // descartados (chip)
   });
 
   it("shows an honest dash when the runner could not be asked", () => {
@@ -155,6 +160,99 @@ describe("OrchestrationScreen — métricas que YA viajan en el DTO", () => {
     render(<OrchestrationScreen />);
 
     expect(screen.getByTestId("orchestration-products")).toHaveTextContent("—");
+  });
+});
+
+/** La corrida real de Bravo (2026-07-21) — los números que hicieron dudar al operador. */
+const BRAVO = { seen: 100, refreshed: 19, matched: 81, auto_linked: 13, queued_for_review: 68 };
+
+function renderFunnel(over: Partial<typeof BRAVO> = {}) {
+  mockData = {
+    runnerDisconnected: false,
+    providers: [],
+    locale: "es",
+    flows: [flow({ last_run_id: "run-abc", last_run_metrics: metrics({ ...BRAVO, ...over }) })],
+  };
+  render(<OrchestrationScreen />);
+  return screen.getByTestId("orchestration-products");
+}
+
+describe("OrchestrationScreen — resultado de la corrida", () => {
+  it("nunca llama «matcheados» a los enrutados a la cascada", () => {
+    // EL bug de comprensión que originó el rediseño: `matched` significa "desconocidos ENRUTADOS a
+    // la cascada", pero el chip decía "81 Matcheados" y se lee como "81 emparejados con éxito"
+    // cuando solo 13 lo fueron. Ahora es "Nuevos": un hecho de origen, no un resultado.
+    const cell = renderFunnel();
+
+    expect(cell).toHaveTextContent(/Nuevos/i);
+    expect(cell.textContent ?? "").not.toMatch(/matchead/i);
+  });
+
+  it("muestra los cuatro destinos con sus números", () => {
+    const cell = renderFunnel();
+
+    for (const [n, label] of [
+      ["19", /Existentes/i],
+      ["13", /Vinculados/i],
+      ["81", /Nuevos/i],
+      ["68", /Pendientes/i],
+    ] as const) {
+      expect(cell).toHaveTextContent(n);
+      expect(cell).toHaveTextContent(label);
+    }
+  });
+
+  it("el TOTAL vive en Progreso, no en Resultado (cuánto se procesó ≠ en qué terminó)", () => {
+    renderFunnel();
+
+    // `seen` (100) se movió a la columna de progreso; su ayuda vive junto a él.
+    const progress = screen.getByTestId("orchestration-progress");
+    expect(progress).toHaveTextContent("100");
+    expect(within(progress).getByTestId("help-seen")).toBeInTheDocument();
+  });
+
+  it("dimensiona cada tramo según su proporción sobre la suma de los cuatro", () => {
+    // La barra normaliza sobre 19+13+81+68=181 (nota de dato: `Nuevos` solapa con
+    // `Vinculados`+`Pendientes`; comunica proporción relativa, no partición exacta).
+    const cell = renderFunnel();
+    const pct = (n: number) => `${(n / 181) * 100}%`;
+
+    expect(within(cell).getByTestId("funnel-seg-existing")).toHaveStyle({ width: pct(19) });
+    expect(within(cell).getByTestId("funnel-seg-linked")).toHaveStyle({ width: pct(13) });
+    expect(within(cell).getByTestId("funnel-seg-new")).toHaveStyle({ width: pct(81) });
+    expect(within(cell).getByTestId("funnel-seg-pending")).toHaveStyle({ width: pct(68) });
+  });
+
+  it("omite el tramo de un destino en cero, pero conserva su columna en la leyenda", () => {
+    // Un tramo de ancho 0 sería una franja invisible; el número (0) sí debe verse en la leyenda.
+    const cell = renderFunnel({ auto_linked: 0 });
+
+    expect(within(cell).queryByTestId("funnel-seg-linked")).not.toBeInTheDocument();
+    expect(within(cell).getByTestId("help-linked")).toBeInTheDocument();
+  });
+
+  it("cada destino explica su concepto con un tooltip en su etiqueta", () => {
+    const cell = renderFunnel();
+
+    for (const id of ["help-existing", "help-linked", "help-new", "help-pending"]) {
+      expect(within(cell).getByTestId(id)).toBeInTheDocument();
+    }
+  });
+
+  it("explica el embudo UNA vez en la cabecera, no una vez por fila", () => {
+    // El concepto no cambia de una fila a otra: repetir su ayuda por celda pintaría decenas de
+    // íconos idénticos. En la cabecera va una sola vez, pase la tabla las filas que pase.
+    renderFunnel();
+
+    expect(screen.getAllByTestId("run-funnel-help")).toHaveLength(1);
+  });
+
+  it("no pinta ni un ícono suelto de ayuda dentro de la celda de resultado", () => {
+    // La etiqueta ES el disparador (subrayado punteado). Un `ⓘ` por destino serían 4 glifos por
+    // fila explicando algo que ya explica la cabecera.
+    const cell = renderFunnel();
+
+    expect(cell.querySelectorAll("svg")).toHaveLength(0);
   });
 });
 

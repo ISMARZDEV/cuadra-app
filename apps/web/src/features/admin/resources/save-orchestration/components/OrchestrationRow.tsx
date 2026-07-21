@@ -1,6 +1,12 @@
 import type { ProviderFlowDto } from "@cuadra/api-client";
 
 import { TableCell, TableRow } from "@/components/ui-base/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-base/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { AdminDateTime } from "@/features/admin/components/AdminDateTime";
 import { ProviderLogo } from "@/features/admin/components/ProviderLogo";
@@ -12,6 +18,7 @@ import { isInFlight } from "../lib/run-state";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 
 import { FlowStatusBadge } from "./FlowStatusBadge";
+import { RunFunnel } from "./RunFunnel";
 import { OrchestrationActionsMenu } from "./OrchestrationActionsMenu";
 
 type T = (key: MessageKey) => string;
@@ -228,26 +235,55 @@ export function OrchestrationRow({
             al 0% afirmaría "no avanzó", que es distinto de "todavía no sabemos")
           - el resto → `—` honesto. Incluye las corridas anteriores al contador. */}
       <TableCell data-testid="orchestration-progress">
-        {metrics?.query_progress != null ? (
-          <span
-            data-testid="orchestration-query-progress"
-            title={t("admin.orchestration.products.queryProgressTitle")}
-            className="flex flex-col gap-1"
-          >
-            <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+        {metrics ? (
+          <span className="flex flex-col gap-1.5">
+            {/* El TOTAL (`seen`) vive acá, no en "Resultado": "cuántos se procesaron" es progreso, no
+                desenlace. Antes encabezaba la celda del embudo y competía con sus cuatro destinos.
+                Se muestra SIEMPRE que haya métricas — `seen` viaja siempre; la barra de búsquedas,
+                en cambio, solo aparece con el contador `query_progress` (§14 #14), ausente en las
+                corridas anteriores a él. Atar el total a ese contador escondería el dato principal. */}
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-[17px] leading-none font-semibold tabular-nums text-foreground">
+                {metrics.seen}
+              </span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    data-testid="help-seen"
+                    render={
+                      <span className="cursor-help text-[11px] font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-[3px]" />
+                    }
+                  >
+                    {t("admin.orchestration.products.seenLabel")}
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs leading-relaxed">
+                    {t("admin.orchestration.products.seenHelp")}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </span>
+            {metrics.query_progress != null ? (
               <span
-                className="block h-full rounded-full bg-brand-lime transition-[width] duration-500"
-                style={{
-                  width: `${Math.round(metrics.query_progress * 100)}%`,
-                }}
-              />
-            </span>
-            <span className="text-[11px] tabular-nums text-muted-foreground">
-              {format(locale, "admin.orchestration.products.queryProgress", {
-                processed: String(metrics.queries_processed),
-                total: String(metrics.queries_total),
-              })}
-            </span>
+                data-testid="orchestration-query-progress"
+                title={t("admin.orchestration.products.queryProgressTitle")}
+                className="flex flex-col gap-1.5"
+              >
+                <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full bg-brand-lime transition-[width] duration-500"
+                    style={{
+                      width: `${Math.round(metrics.query_progress * 100)}%`,
+                    }}
+                  />
+                </span>
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  {format(locale, "admin.orchestration.products.queryProgress", {
+                    processed: String(metrics.queries_processed),
+                    total: String(metrics.queries_total),
+                  })}
+                </span>
+              </span>
+            ) : null}
           </span>
         ) : running ? (
           <span
@@ -263,91 +299,34 @@ export function OrchestrationRow({
         )}
       </TableCell>
 
-      {/* Productos: QUÉ encontró la corrida (el avance vive en su propia columna, a la izquierda).
-          Dos niveles de lectura — el número grande manda y los chips desglosan. Antes eran renglones
-          de texto corrido del mismo peso, y el operador tenía que LEERLOS para ver si algo iba mal. */}
+      {/* Resultado de la corrida — UNA celda con el embudo entero (antes: "Productos" + "Resultado",
+          dos columnas y cinco chips del mismo peso donde nada decía que 19+81=100 ni que 13+68=81).
+          Los descartados y los canónicos nuevos quedan como chips aparte: no son parte del embudo
+          —el descarte ocurre ANTES de contar, y un canónico lo crea un humano DESPUÉS— y meterlos
+          en una barra que debe sumar el total sería exactamente la mentira que el rediseño corrige. */}
       <TableCell data-testid="orchestration-products">
         {metrics ? (
-          <div className="flex flex-col gap-1">
-            <span className="flex items-baseline gap-1.5">
-              <span className="text-lg leading-none font-semibold tabular-nums text-foreground">
-                {metrics.seen}
+          <div className="flex flex-col gap-1.5">
+            <RunFunnel metrics={metrics} locale={locale} t={t} queueHref={queueHref} />
+            {metrics.discarded > 0 || metrics.new_canonicals > 0 ? (
+              <span className="flex flex-wrap gap-1">
+                {metrics.discarded > 0 ? (
+                  <Chip tone="warn">
+                    {format(locale, "admin.orchestration.products.chipDiscarded", {
+                      n: String(metrics.discarded),
+                    })}
+                  </Chip>
+                ) : null}
+                {metrics.new_canonicals > 0 ? (
+                  <Chip>
+                    {format(locale, "admin.orchestration.outcome.chipNew", {
+                      n: String(metrics.new_canonicals),
+                    })}
+                  </Chip>
+                ) : null}
               </span>
-              <span className="text-[14px] font-bold text-muted-foreground">
-                {t("admin.orchestration.products.seenLabel")}
-              </span>
-            </span>
-
-            <span className="flex flex-wrap gap-1">
-              <Chip>
-                {format(locale, "admin.orchestration.products.chipRefreshed", {
-                  n: String(metrics.refreshed),
-                })}
-              </Chip>
-              <Chip>
-                {format(locale, "admin.orchestration.products.chipMatched", {
-                  n: String(metrics.matched),
-                })}
-              </Chip>
-              {/* Los descartados solo se muestran si los HAY: un "0 descartados" permanente es ruido
-                  que compite por atención con los números que sí cambian. */}
-              {metrics.discarded > 0 ? (
-                <Chip tone="warn">
-                  {format(
-                    locale,
-                    "admin.orchestration.products.chipDiscarded",
-                    { n: String(metrics.discarded) },
-                  )}
-                </Chip>
-              ) : null}
-            </span>
-          </div>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Resultado del matcheo. Chips con semántica, no texto corrido separado por puntos: cada
-          número significa una cosa distinta para el operador y merece color propio.
-          - enlazados: la cascada resolvió sola (bien, verde)
-          - a la cola: TRABAJO HUMANO pendiente → ámbar y es el ÚNICO clicable, porque es lo único
-            sobre lo que se puede actuar
-          - nuevos: canónicos nacidos de esa corrida (neutro, informativo) */}
-      <TableCell>
-        {metrics ? (
-          <span className="flex flex-wrap gap-1">
-            <Chip tone="ok">
-              {format(locale, "admin.orchestration.outcome.chipLinked", {
-                n: String(metrics.auto_linked),
-              })}
-            </Chip>
-            {queueHref ? (
-              <a
-                href={queueHref}
-                title={t("admin.orchestration.outcome.queuedLinkTitle")}
-                className="rounded-full"
-              >
-                <Chip tone="warn" interactive>
-                  {format(locale, "admin.orchestration.outcome.chipQueued", {
-                    n: String(metrics.queued_for_review),
-                  })}
-                </Chip>
-              </a>
-            ) : (
-              <Chip>
-                {format(locale, "admin.orchestration.outcome.chipQueued", {
-                  n: String(metrics.queued_for_review),
-                })}
-              </Chip>
-            )}
-            {metrics.new_canonicals > 0 ? (
-              <Chip>
-                {format(locale, "admin.orchestration.outcome.chipNew", {
-                  n: String(metrics.new_canonicals),
-                })}
-              </Chip>
             ) : null}
-          </span>
+          </div>
         ) : running ? (
           <span className="text-xs text-muted-foreground">
             {t("admin.orchestration.outcome.nothing")}

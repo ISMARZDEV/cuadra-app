@@ -164,7 +164,6 @@ type MessageKey =
   | "admin.orchestration.col.nextRun"
   | "admin.orchestration.col.runOutcome"
   | "admin.orchestration.col.lastRun"
-  | "admin.orchestration.col.outcome"
   | "admin.orchestration.col.actions"
   | "admin.orchestration.outcome.linkedPart"
   | "admin.orchestration.outcome.queuedPart"
@@ -255,14 +254,25 @@ type MessageKey =
   | "admin.orchestration.bulk.deleteTitle"
   | "admin.orchestration.bulk.deleteBody"
   | "admin.orchestration.col.progress"
-  | "admin.orchestration.col.products"
+  | "admin.orchestration.col.progressHelp"
+  | "admin.orchestration.col.runFunnel"
+  | "admin.orchestration.col.runFunnelHelp"
+  | "admin.orchestration.funnel.existing"
+  | "admin.orchestration.funnel.linked"
+  | "admin.orchestration.funnel.new"
+  | "admin.orchestration.funnel.pending"
   | "admin.orchestration.products.queryProgress"
   | "admin.orchestration.products.queryProgressTitle"
   | "admin.orchestration.products.starting"
   | "admin.orchestration.products.startingHint"
   | "admin.orchestration.products.seenLabel"
-  | "admin.orchestration.products.chipRefreshed"
-  | "admin.orchestration.products.chipMatched"
+  | "admin.orchestration.products.chipKnown"
+  | "admin.orchestration.products.chipNew"
+  | "admin.orchestration.products.seenHelp"
+  | "admin.orchestration.products.knownHelp"
+  | "admin.orchestration.products.newHelp"
+  | "admin.orchestration.outcome.linkedHelp"
+  | "admin.orchestration.outcome.queuedHelp"
   | "admin.orchestration.products.chipDiscarded"
   | "admin.orchestration.outcome.chipLinked"
   | "admin.orchestration.outcome.chipQueued"
@@ -784,7 +794,6 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.nextRun": "Próxima corrida",
     "admin.orchestration.col.runOutcome": "Desenlace",
     "admin.orchestration.col.lastRun": "Última corrida",
-    "admin.orchestration.col.outcome": "Resultado",
     "admin.orchestration.col.actions": "Acciones",
     "admin.orchestration.outcome.linkedPart": "{autoLinked} enlazados",
     "admin.orchestration.outcome.queuedPart": "{queued} a la cola",
@@ -875,14 +884,25 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.bulk.deleteTitle": "¿Eliminar {count} flujo(s)?",
     "admin.orchestration.bulk.deleteBody": "Dejan de programarse y desaparecen de la consola. El histórico de sus corridas se conserva: no se borra nada de lo que ya ocurrió.",
     "admin.orchestration.col.progress": "Progreso",
-    "admin.orchestration.col.products": "Productos",
+    "admin.orchestration.col.progressHelp": "Cuánto avanzó la corrida. El número es el total de productos que la tienda devolvió; la barra, cuántas de las búsquedas de la canasta ya terminaron.",
+    "admin.orchestration.col.runFunnel": "Resultado de la corrida",
+    "admin.orchestration.col.runFunnelHelp": "Cómo terminó la última corrida, en dos niveles. Arriba: de todo lo que la tienda devolvió, cuánto ya teníamos y cuánto era nuevo. Abajo: de esos NUEVOS —no del total—, cuántos el sistema pudo enlazar solo y cuántos quedaron esperando a una persona. Pasá el cursor por cada etiqueta para el detalle.",
+    "admin.orchestration.funnel.existing": "Existentes",
+    "admin.orchestration.funnel.linked": "Vinculados",
+    "admin.orchestration.funnel.new": "Nuevos",
+    "admin.orchestration.funnel.pending": "Pendientes",
     "admin.orchestration.products.queryProgress": "{processed}/{total} Búsquedas",
     "admin.orchestration.products.queryProgressTitle": "Búsquedas ejecutadas sobre las planificadas. Es el progreso REAL de la corrida: el número de productos no lo dice, porque una búsqueda puede devolver muchos o ninguno.",
     "admin.orchestration.products.starting": "Iniciando…",
     "admin.orchestration.products.startingHint": "La corrida arrancó pero todavía no ejecutó ninguna búsqueda. El runner tarda unos segundos en levantar el proceso.",
-    "admin.orchestration.products.seenLabel": "Productos vistos",
-    "admin.orchestration.products.chipRefreshed": "{n} Actualizados",
-    "admin.orchestration.products.chipMatched": "{n} Matcheados",
+    "admin.orchestration.products.seenLabel": "productos",
+    "admin.orchestration.products.chipKnown": "{n} Ya conocidos",
+    "admin.orchestration.products.chipNew": "{n} Nuevos",
+    "admin.orchestration.products.seenHelp": "Todo lo que la tienda devolvió en esta corrida, contando repeticiones: si un mismo producto aparece en dos búsquedas distintas de la canasta, se cuenta dos veces. Es volumen bruto, no productos distintos.",
+    "admin.orchestration.products.knownHelp": "Productos que ya teníamos en la base. Solo se les registró el precio de hoy: no vuelven a pasar por el emparejamiento. En la primera corrida de una tienda casi no hay; en las siguientes deberían ser la mayoría.",
+    "admin.orchestration.products.newHelp": "Productos que no teníamos y entraron al emparejamiento automático. «Nuevo» describe de dónde vienen, no cómo terminaron: el desenlace es la barra de abajo.",
+    "admin.orchestration.outcome.linkedHelp": "El sistema decidió solo a qué producto del catálogo corresponden, con confianza suficiente para no consultar a nadie. Nadie los revisó a mano.",
+    "admin.orchestration.outcome.queuedHelp": "Quedaron sin decidir y esperan a una persona en la Cola de revisión. No es un error: ante la duda el sistema prefiere preguntar antes que inventar un enlace.",
     "admin.orchestration.products.chipDiscarded": "{n} Descartados",
     "admin.orchestration.outcome.chipLinked": "{n} Enlazados",
     "admin.orchestration.outcome.chipQueued": "{n} A la cola",
@@ -1405,7 +1425,6 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.nextRun": "Next run",
     "admin.orchestration.col.runOutcome": "Outcome",
     "admin.orchestration.col.lastRun": "Last run",
-    "admin.orchestration.col.outcome": "Outcome",
     "admin.orchestration.col.actions": "Actions",
     "admin.orchestration.outcome.linkedPart": "{autoLinked} linked",
     "admin.orchestration.outcome.queuedPart": "{queued} queued",
@@ -1496,14 +1515,25 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.bulk.deleteTitle": "Delete {count} flow(s)?",
     "admin.orchestration.bulk.deleteBody": "They stop being scheduled and leave the console. Their run history is kept: nothing that already happened is deleted.",
     "admin.orchestration.col.progress": "Progress",
-    "admin.orchestration.col.products": "Products",
+    "admin.orchestration.col.progressHelp": "How far the run got. The number is the total of products the store returned; the bar, how many of the basket searches have finished.",
+    "admin.orchestration.col.runFunnel": "Run outcome",
+    "admin.orchestration.col.runFunnelHelp": "How the last run ended, in two levels. Top: of everything the store returned, how much we already had and how much was new. Bottom: of those NEW ones — not of the total — how many the system linked on its own and how many are waiting for a person. Hover each label for detail.",
+    "admin.orchestration.funnel.existing": "Existing",
+    "admin.orchestration.funnel.linked": "Linked",
+    "admin.orchestration.funnel.new": "New",
+    "admin.orchestration.funnel.pending": "Pending",
     "admin.orchestration.products.queryProgress": "{processed}/{total} Searches",
     "admin.orchestration.products.queryProgressTitle": "Searches run out of those planned. This is the run's REAL progress: the product count cannot tell you, because one search may return many or none.",
     "admin.orchestration.products.starting": "Starting…",
     "admin.orchestration.products.startingHint": "The run started but has not executed any search yet. The runner takes a few seconds to spin up its process.",
-    "admin.orchestration.products.seenLabel": "Products seen",
-    "admin.orchestration.products.chipRefreshed": "{n} Refreshed",
-    "admin.orchestration.products.chipMatched": "{n} Matched",
+    "admin.orchestration.products.seenLabel": "products",
+    "admin.orchestration.products.chipKnown": "{n} Already known",
+    "admin.orchestration.products.chipNew": "{n} New",
+    "admin.orchestration.products.seenHelp": "Everything the store returned in this run, repeats included: if the same product shows up in two different basket searches, it counts twice. This is raw volume, not distinct products.",
+    "admin.orchestration.products.knownHelp": "Products we already had. Only today's price was recorded for them; they do not go through matching again. A store's first run has almost none; later runs should be mostly these.",
+    "admin.orchestration.products.newHelp": "Products we did not have, which entered automatic matching. \"New\" describes where they came from, not how they ended up: the outcome is the bar below.",
+    "admin.orchestration.outcome.linkedHelp": "The system decided on its own which catalog product they correspond to, confident enough not to ask anyone. No human reviewed them.",
+    "admin.orchestration.outcome.queuedHelp": "Left undecided, waiting for a person in the review queue. This is not a failure: when in doubt the system would rather ask than invent a link.",
     "admin.orchestration.products.chipDiscarded": "{n} Discarded",
     "admin.orchestration.outcome.chipLinked": "{n} Linked",
     "admin.orchestration.outcome.chipQueued": "{n} Queued",
@@ -2026,7 +2056,6 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.nextRun": "Próxima execução",
     "admin.orchestration.col.runOutcome": "Desfecho",
     "admin.orchestration.col.lastRun": "Última execução",
-    "admin.orchestration.col.outcome": "Resultado",
     "admin.orchestration.col.actions": "Ações",
     "admin.orchestration.outcome.linkedPart": "{autoLinked} vinculados",
     "admin.orchestration.outcome.queuedPart": "{queued} na fila",
@@ -2117,14 +2146,25 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.bulk.deleteTitle": "Excluir {count} fluxo(s)?",
     "admin.orchestration.bulk.deleteBody": "Deixam de ser programados e saem do console. O histórico das corridas é mantido: nada do que já ocorreu é apagado.",
     "admin.orchestration.col.progress": "Progresso",
-    "admin.orchestration.col.products": "Produtos",
+    "admin.orchestration.col.progressHelp": "Quanto a execução avançou. O número é o total de produtos que a loja devolveu; a barra, quantas das buscas da cesta já terminaram.",
+    "admin.orchestration.col.runFunnel": "Resultado da execução",
+    "admin.orchestration.col.runFunnelHelp": "Como terminou a última execução, em dois níveis. Em cima: de tudo o que a loja devolveu, quanto já tínhamos e quanto era novo. Embaixo: desses NOVOS — não do total — quantos o sistema conseguiu vincular sozinho e quantos ficaram esperando uma pessoa. Passe o cursor em cada etiqueta para o detalhe.",
+    "admin.orchestration.funnel.existing": "Existentes",
+    "admin.orchestration.funnel.linked": "Vinculados",
+    "admin.orchestration.funnel.new": "Novos",
+    "admin.orchestration.funnel.pending": "Pendentes",
     "admin.orchestration.products.queryProgress": "{processed}/{total} Buscas",
     "admin.orchestration.products.queryProgressTitle": "Buscas executadas sobre as planejadas. É o progresso REAL da corrida: o número de produtos não diz, porque uma busca pode devolver muitos ou nenhum.",
     "admin.orchestration.products.starting": "Iniciando…",
     "admin.orchestration.products.startingHint": "A corrida começou mas ainda não executou nenhuma busca. O runner leva alguns segundos para subir o processo.",
-    "admin.orchestration.products.seenLabel": "Produtos vistos",
-    "admin.orchestration.products.chipRefreshed": "{n} Atualizados",
-    "admin.orchestration.products.chipMatched": "{n} Correspondidos",
+    "admin.orchestration.products.seenLabel": "produtos",
+    "admin.orchestration.products.chipKnown": "{n} Já conhecidos",
+    "admin.orchestration.products.chipNew": "{n} Novos",
+    "admin.orchestration.products.seenHelp": "Tudo o que a loja devolveu nesta execução, incluindo repetições: se o mesmo produto aparece em duas buscas diferentes da cesta, conta duas vezes. É volume bruto, não produtos distintos.",
+    "admin.orchestration.products.knownHelp": "Produtos que já tínhamos na base. Só foi registrado o preço de hoje: não passam de novo pelo emparelhamento. Na primeira execução de uma loja quase não há; nas seguintes devem ser a maioria.",
+    "admin.orchestration.products.newHelp": "Produtos que não tínhamos e entraram no emparelhamento automático. «Novo» descreve de onde vêm, não como terminaram: o desfecho é a barra de baixo.",
+    "admin.orchestration.outcome.linkedHelp": "O sistema decidiu sozinho a que produto do catálogo correspondem, com confiança suficiente para não consultar ninguém. Ninguém os revisou à mão.",
+    "admin.orchestration.outcome.queuedHelp": "Ficaram sem decisão e esperam uma pessoa na Fila de revisão. Não é um erro: na dúvida o sistema prefere perguntar em vez de inventar um vínculo.",
     "admin.orchestration.products.chipDiscarded": "{n} Descartados",
     "admin.orchestration.outcome.chipLinked": "{n} Vinculados",
     "admin.orchestration.outcome.chipQueued": "{n} Na fila",

@@ -1,6 +1,14 @@
 import type { ProviderFlowDto } from "@cuadra/api-client";
+import { Info } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useData } from "vike-react/useData";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-base/tooltip";
 
 import {
   Table,
@@ -306,9 +314,46 @@ export function OrchestrationScreen() {
                   <TableHead>{t("admin.orchestration.col.runOutcome")}</TableHead>
                   <TableHead>{t("admin.orchestration.col.lastRun")}</TableHead>
                   <TableHead>{t("admin.orchestration.col.nextRun")}</TableHead>
-                  <TableHead>{t("admin.orchestration.col.progress")}</TableHead>
-                  <TableHead>{t("admin.orchestration.col.products")}</TableHead>
-                  <TableHead>{t("admin.orchestration.col.outcome")}</TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">
+                      {t("admin.orchestration.col.progress")}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={<span className="inline-flex cursor-help" />}
+                            data-testid="progress-help"
+                          >
+                            <Info className="size-3.5 text-muted-foreground" aria-hidden />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-sm leading-relaxed">
+                            {t("admin.orchestration.col.progressHelp")}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </span>
+                  </TableHead>
+                  {/* La ayuda del embudo vive ACÁ y no en cada celda: el concepto no cambia de una
+                      fila a otra, así que repetirlo por fila pintaba decenas de íconos idénticos
+                      para explicar lo mismo. En la cabecera se explica una vez; en las celdas, cada
+                      etiqueta dispara su propio detalle sin gastar un glifo. */}
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">
+                      {t("admin.orchestration.col.runFunnel")}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={<span className="inline-flex cursor-help" />}
+                            data-testid="run-funnel-help"
+                          >
+                            <Info className="size-3.5 text-muted-foreground" aria-hidden />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-sm leading-relaxed">
+                            {t("admin.orchestration.col.runFunnelHelp")}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </span>
+                  </TableHead>
                   <TableHead className="text-center">{t("admin.orchestration.col.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
