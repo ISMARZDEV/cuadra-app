@@ -8,16 +8,19 @@ al CLI.
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from src.config import settings
+from src.shared.db.base import SessionLocal
 from src.contexts.save.application.classify_backfill import ClassifyBackfill
 from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.embed_canonical_products import EmbedCanonicalProducts
 from src.contexts.save.application.embed_categories import EmbedCategories
 from src.contexts.save.application.match_store_product import MatchStoreProduct
+from src.contexts.save.application.refresh_prices import RefreshResult
 from src.contexts.save.domain.ports import CatalogSource
 from src.contexts.save.domain.ports.repositories import EmbeddingProvider
 from src.contexts.save.infrastructure.classification.category_judge import CategoryJudge
@@ -51,18 +54,38 @@ from src.contexts.save.infrastructure.repositories import (
 )
 
 
-def select_queries(db_queries: Sequence[str], limit_env: str | None) -> tuple[str, ...]:
+def select_queries(
+    db_queries: Sequence[str], limit_env: str | None, limit: int | None = None
+) -> tuple[str, ...]:
     """PURO: la canasta que ingiere = las queries de la TABLA `basket_query` (active, ya resueltas
     por el repo). La tabla es la ÚNICA fuente de verdad — ya NO hay fallback hardcodeado (el backfill
-    vive en migración y la tabla se protege de los resets). `SAVE_REFRESH_QUERY_LIMIT` recorta a las
-    primeras N (runs cortos en dev)."""
+    vive en migración y la tabla se protege de los resets).
+
+    Cadena de tope, en orden: **`limit` (la POLICY) → `SAVE_REFRESH_QUERY_LIMIT` (env) → sin tope.**
+
+    `limit` es lo que el operador configuró desde el admin (`query_limit_override` → default global,
+    resuelto por el dominio). Hasta que se cableó, ese campo no influía en NADA: la ingesta recortaba
+    solo por la env y la policy se limitaba a persistirse — la misma mentira que `priority`, y con un
+    formulario que ya la dejaba editar.
+
+    La env NO se retira, y no es compatibilidad fantasma: `dagster-dev.sh` la exporta en 10, así que
+    quitarla haría que dev saltara de 10 a las 213 queries de la canasta — 20x más requests REALES
+    contra las APIs de los súper. Queda como red de seguridad cuando no hay nada configurado.
+
+    `limit == 0` NO cae al fallback: es una decisión deliberada del operador (frenar esa fuente), y
+    tratarlo como "sin configurar" la volvería a encender sola.
+    """
     queries = tuple(db_queries)
+    if limit is not None and limit >= 0:
+        return queries[:limit]
     if limit_env and limit_env.isdigit() and int(limit_env) > 0:
         return queries[: int(limit_env)]
     return queries
 
 
-def build_basket_queries(session: Session, market: str) -> tuple[str, ...]:
+def build_basket_queries(
+    session: Session, market: str, limit: int | None = None
+) -> tuple[str, ...]:
     """Canasta que consume la INGESTA: lee `basket_query WHERE active=true` del MERCADO (multi-país
     — cada mercado ingiere SU canasta, nunca market-blind).
 
@@ -73,7 +96,7 @@ def build_basket_queries(session: Session, market: str) -> tuple[str, ...]:
     """
     active = SqlBasketQueryRepository(session).list_active(market)
     return select_queries(
-        [q.query_text for q in active], os.getenv("SAVE_REFRESH_QUERY_LIMIT")
+        [q.query_text for q in active], os.getenv("SAVE_REFRESH_QUERY_LIMIT"), limit=limit
     )
 
 
@@ -440,3 +463,89 @@ def build_classify_backfill(session: Session) -> ClassifyBackfill | None:
     if classifier is None:
         return None
     return ClassifyBackfill(SqlCategoryClassificationRepository(session), classifier)
+
+
+def resolve_query_limit(session: Session, provider_id: str, market: str) -> int | None:
+    """Tope de queries que el ADMIN configuró para este provider-flow, o `None` si no configuró
+    ninguno (→ la ingesta cae a la env y, si tampoco, ingiere la canasta entera).
+
+    La precedencia (`override → default global`) vive en el DOMINIO
+    (`OrchestrationPolicy.query_limit_effective`); acá solo se cargan las dos piezas. Duplicar la
+    regla en la ingesta la desincronizaría de lo que la consola muestra como `resolved_query_limit`.
+
+    Sin policy para ese proveedor tampoco se inventa nada: `None`.
+    """
+    from src.contexts.save.domain.entities.orchestration import FlowKey
+    from src.contexts.save.infrastructure.orchestrator.policy_repository import (
+        SqlOrchestrationGlobalConfigRepository,
+        SqlOrchestrationPolicyRepository,
+    )
+
+    policy = SqlOrchestrationPolicyRepository(session).find_active(
+        provider_id=provider_id,
+        market_id=market,
+        flow_key=FlowKey.PROVIDER_PRICES_REFRESH.value,
+    )
+    if policy is None:
+        return None
+    return policy.query_limit_effective(SqlOrchestrationGlobalConfigRepository(session).get(market))
+
+
+def build_progress_recorder(
+    *,
+    run_id: str,
+    market: str,
+    provider_id: str | None = None,
+    policy_id: str | None = None,
+    flow_key: str | None = None,
+    session_factory: Callable[[], Any] = SessionLocal,
+) -> Callable[[int, int, RefreshResult], None]:
+    """Callback de progreso que persiste el snapshot en CADA query (§14 #14, segunda mitad).
+
+    Antes `on_progress` solo escribía al log de Dagster y el snapshot se grababa UNA vez al terminar:
+    durante la corrida no existía fila para ese `run_id`, así que la consola no tenía qué mostrar y
+    la barra aparecía recién al final, siempre al 100%. Una barra que solo se ve cuando ya no hay
+    progreso que mirar.
+
+    **Sesión PROPIA, que commitea sola.** El snapshot final viaja en la transacción de la ingesta (a
+    propósito: si el refresh se revierte, sus métricas no quedan huérfanas), pero esa transacción
+    commitea al final — o sea, invisible en vivo. El progreso necesita commitear aparte.
+
+    Efecto secundario deseable: si la corrida MUERE, la fila de progreso sobrevive al rollback y
+    queda registrado "murió en la query 7 de 213". Eso es forense, no basura.
+
+    Una falla escribiendo el progreso NO tumba la corrida: perder observabilidad es molesto, perder
+    la ingesta es caro. Es lo único que este callback puede romper, así que no puede romper nada.
+    """
+    from src.contexts.save.domain.entities.orchestration_run import RunMetrics
+    from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
+        SqlRunSnapshotRepository,
+    )
+
+    def on_progress(index: int, total: int, acc: RefreshResult) -> None:
+        del index, total  # el acumulado ya trae los dos contadores, puestos por el runner
+        try:
+            with session_factory() as session:
+                SqlRunSnapshotRepository(session).record(
+                    dagster_run_id=run_id,
+                    market_id=market,
+                    metrics=RunMetrics(
+                        seen=acc.seen,
+                        refreshed=acc.refreshed,
+                        unmatched=acc.unmatched,
+                        matched=acc.matched,
+                        discarded=acc.discarded,
+                        auto_linked=acc.auto_linked,
+                        queued_for_review=acc.queued_for_review,
+                        queries_total=acc.queries_total,
+                        queries_processed=acc.queries_processed,
+                    ),
+                    provider_id=provider_id,
+                    policy_id=policy_id,
+                    flow_key=flow_key,
+                )
+                session.commit()
+        except Exception:  # noqa: BLE001 — ver el docstring: no puede tumbar la corrida
+            pass
+
+    return on_progress

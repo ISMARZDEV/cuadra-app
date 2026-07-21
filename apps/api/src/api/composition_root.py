@@ -72,6 +72,7 @@ from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
     DagsterGraphQLOrchestrator,
 )
 from src.contexts.save.infrastructure.orchestrator.policy_repository import (
+    SqlOrchestrationGlobalConfigRepository,
     SqlOrchestrationPolicyRepository,
 )
 from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
@@ -391,6 +392,12 @@ def get_orchestration_policy_repo(
     session: Session = Depends(get_session),
 ) -> SqlOrchestrationPolicyRepository:
     return SqlOrchestrationPolicyRepository(session)
+
+
+def get_orchestration_config_repo(
+    session: Session = Depends(get_session),
+) -> SqlOrchestrationGlobalConfigRepository:
+    return SqlOrchestrationGlobalConfigRepository(session)
 
 
 def get_run_snapshot_repo(session: Session = Depends(get_session)) -> SqlRunSnapshotRepository:

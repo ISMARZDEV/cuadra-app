@@ -227,12 +227,21 @@ class OrchestrationPolicy:
         within = (now - last_success_at) <= timedelta(minutes=self.sla_minutes)
         return SlaStatus.WITHIN if within else SlaStatus.BREACHED
 
-    def query_limit_effective(self, config: OrchestrationGlobalConfig) -> int:
+    def query_limit_effective(self, config: OrchestrationGlobalConfig | None) -> int | None:
         """Precedencia del SDD §8: override del provider-flow → default global del mercado.
 
         `is None` y NO `or`: un override de 0 es una decisión deliberada del operador (frenar esa
         fuente), y `or` lo convertiría silenciosamente en el default.
+
+        `config` puede ser `None` y el resultado también: `orchestration_global_config` existe desde
+        F4 y NADIE la sembró, así que "sin default global" es el estado REAL de hoy, no un caso raro.
+        Devolver `None` (= SIN TOPE) en vez de un número inventado mantiene la distinción que
+        importa: **"no hay límite configurado" ≠ "el límite es no ingerir nada"**. Un 0 aquí
+        detendría la ingesta en silencio.
+
+        Quién completa la cadena con la red de seguridad de dev (`SAVE_REFRESH_QUERY_LIMIT`) es la
+        ingesta, no el dominio: una variable de entorno es infraestructura.
         """
-        if self.query_limit_override is None:
-            return config.default_query_limit
-        return self.query_limit_override
+        if self.query_limit_override is not None:
+            return self.query_limit_override
+        return config.default_query_limit if config is not None else None

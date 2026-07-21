@@ -39,7 +39,9 @@ from .composition import (
     build_classifier,
     build_cover_canonicals,
     build_matcher,
+    build_progress_recorder,
     build_query_catalog_sources_for,
+    resolve_query_limit,
     build_refresh_covered_prices,
     build_refresh_known_prices,
     build_relevance_gate,
@@ -87,6 +89,21 @@ _AFTER_DEPS_SETTLE = (
 )
 
 
+def _log_and_record_progress(context, provider_id, record):  # type: ignore[no-untyped-def]
+    """Une las DOS cosas que hay que hacer en cada query: dejar rastro en el log del runner (para
+    depurar la corrida) y persistir el snapshot (para que la consola lo vea EN VIVO). Antes solo
+    ocurría la primera."""
+
+    def on_progress(index, total, acc):  # type: ignore[no-untyped-def]
+        context.log.info(
+            f"[{provider_id}] query {index}/{total} · acumulado: "
+            f"seen={acc.seen} matched={acc.matched} unmatched={acc.unmatched}"
+        )
+        record(index, total, acc)
+
+    return on_progress
+
+
 @dg.asset(
     name="embed_canonicals",
     group_name="save_catalog",
@@ -131,7 +148,12 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
     with SessionLocal() as session:
         # La canasta sale de la TABLA `basket_query` (active) del mercado. La sesión se abre antes
         # para leerla y reusarla en el refresh.
-        queries = build_basket_queries(session, SAVE_MARKET)
+        # El tope lo manda la POLICY del admin (override → default global), con la env como red de
+        # seguridad de dev. Hasta que se cableó, `query_limit_override` no influía en nada y el
+        # formulario ya lo dejaba editar: un control cuyo efecto no existía.
+        queries = build_basket_queries(
+            session, SAVE_MARKET, limit=resolve_query_limit(session, provider_id, SAVE_MARKET)
+        )
         if not queries:
             context.log.warning(
                 f"query_catalog_prices[{provider_id}]: canasta VACÍA para {SAVE_MARKET} "
@@ -153,9 +175,19 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             SqlStoreProductRepository(session), adapters,
             matcher=build_matcher(session), classifier=build_classifier(session),
             relevance_gate=build_relevance_gate(session),
-            on_progress=lambda i, n, r: context.log.info(
-                f"[{provider_id}] query {i}/{n} · acumulado: "
-                f"seen={r.seen} matched={r.matched} unmatched={r.unmatched}"
+            # El progreso se PERSISTE en cada query, no solo se loguea: sin esto la consola no
+            # tiene qué mostrar hasta que la corrida termina, y la barra aparece siempre al 100%.
+            # Va en sesión propia (ver `build_progress_recorder`) porque la de la ingesta commitea
+            # al final.
+            on_progress=_log_and_record_progress(
+                context,
+                provider_id,
+                build_progress_recorder(
+                    run_id=context.run_id,
+                    market=SAVE_MARKET,
+                    provider_id=provider_id,
+                    flow_key="provider_prices_refresh",
+                ),
             ),
             # Un adapter POR TÉRMINO de canasta contra la MISMA tienda (hoy 213) → sin pausa es un
             # martilleo. El browse REST (abajo) no la necesita acá: trae la suya del factory.
