@@ -117,8 +117,8 @@ describe("OrchestrationScreen — deep-link corrida→cola (F4 #4.7)", () => {
     // aserción es sobre la fila, no sobre el resumen de arriba.
     const table = within(screen.getByRole("table"));
     // El "0 a la cola" se muestra pero NUNCA como link (un 0 clicable llevaría a una cola vacía).
-    expect(table.queryByRole("link", { name: /a la cola/ })).not.toBeInTheDocument();
-    expect(table.getByText(/0 a la cola/)).toBeInTheDocument();
+    expect(table.queryByRole("link", { name: /a la cola/i })).not.toBeInTheDocument();
+    expect(table.getByText(/0 a la cola/i)).toBeInTheDocument();
   });
 });
 
@@ -420,5 +420,168 @@ describe("OrchestrationScreen — progreso por búsquedas (§14 #14)", () => {
 
     await screen.findByText("Sirena");
     expect(screen.queryByTestId("orchestration-query-progress")).not.toBeInTheDocument();
+  });
+});
+
+
+describe("OrchestrationScreen — la celda no queda muda mientras arranca la corrida", () => {
+  it("declares 'Iniciando…' while the run is up but has produced no snapshot yet", async () => {
+    // El hueco que el usuario vio: la consola decía "corriendo" y la celda estaba vacía, así que
+    // parecía que no pasaba nada. El runner tarda segundos en levantar su proceso y hasta entonces
+    // NO hay snapshot. Se declara en vez de dejar el vacío o pintar una barra al 0%.
+    mockData = {
+      flows: [flow({ last_run_state: "running", last_run_id: "run-x", last_run_metrics: null })],
+      runnerDisconnected: false,
+      providers: [],
+    };
+    render(<OrchestrationScreen />);
+
+    // Vive en la columna PROGRESO, no en Productos: son dos preguntas distintas.
+    expect(await screen.findByTestId("orchestration-products-starting")).toBeInTheDocument();
+    expect(screen.getByTestId("orchestration-progress")).toHaveTextContent("Iniciando");
+  });
+
+  it("shows an honest dash — not 'starting' — when the flow simply never ran", async () => {
+    // "Nunca corrió" y "arrancando" se ven igual si se infiere el estado de que falten métricas.
+    // Lo declara el runner (`last_run_state`), no la ausencia de datos.
+    mockData = {
+      flows: [flow({ last_run_state: null, last_run_metrics: null })],
+      runnerDisconnected: false,
+      providers: [],
+    };
+    render(<OrchestrationScreen />);
+
+    await screen.findByText("Sirena");
+    expect(screen.queryByTestId("orchestration-products-starting")).not.toBeInTheDocument();
+    expect(screen.getByTestId("orchestration-products")).toHaveTextContent("—");
+    expect(screen.getByTestId("orchestration-progress")).toHaveTextContent("—");
+  });
+});
+
+
+describe("OrchestrationScreen — última corrida (columna de fecha)", () => {
+  it("shows WHEN the last run happened, whatever its outcome", async () => {
+    // Distinto de `last_success_at`: un flujo que falla cada 5 minutos tiene una última corrida
+    // fresquísima y una última sincronización vieja. El operador necesita ver las dos.
+    mockData = {
+      flows: [flow({ last_run_state: "failed", last_run_at: "2026-07-19T16:54:54Z" })],
+      runnerDisconnected: false,
+      providers: [],
+      locale: "es",
+    };
+    render(<OrchestrationScreen />);
+
+    const cell = await screen.findByTestId("orchestration-last-run");
+    expect(cell).toHaveTextContent("4:54");           // 12h, como el resto del admin
+    expect(cell.textContent?.toLowerCase()).toMatch(/p\.?\s?m\.?/);
+  });
+
+  it("shows an honest dash when the flow never ran", async () => {
+    mockData = {
+      flows: [flow({ last_run_at: null })],
+      runnerDisconnected: false,
+      providers: [],
+      locale: "es",
+    };
+    render(<OrchestrationScreen />);
+
+    expect(await screen.findByTestId("orchestration-last-run")).toHaveTextContent("—");
+  });
+});
+
+
+describe("OrchestrationScreen — pausar y reintentar", () => {
+  it("declares that a flow is PAUSED — the opacity alone was invisible", async () => {
+    // Pausar funcionaba en el backend, pero en la tabla solo bajaba la opacidad de la fila mientras
+    // el badge seguía diciendo "Exitosa". La acción parecía no hacer nada, y el badge la contradecía.
+    mockData = {
+      flows: [flow({ policy: { ...flow().policy, enabled: false }, last_run_state: "succeeded" })],
+      runnerDisconnected: false,
+      providers: [],
+      locale: "es",
+    };
+    render(<OrchestrationScreen />);
+
+    expect(await screen.findByTestId("orchestration-paused")).toBeInTheDocument();
+  });
+
+  it("does NOT offer 'Reintentar' on a SUCCESSFUL run", () => {
+    // El adapter re-ejecuta con FROM_FAILURE: sin fallo del cual partir, Dagster devuelve
+    // PythonError (500) y la consola lo traducía a "Orquestador no disponible" — culpando al runner
+    // de una acción imposible que le pedíamos nosotros. Verificado contra el runner real.
+    mockData = {
+      flows: [flow({ last_run_id: "run-ok", last_run_state: "succeeded" })],
+      runnerDisconnected: false,
+      providers: [],
+      locale: "es",
+    };
+    render(<OrchestrationScreen />);
+
+    expect(within(openRowMenu()).queryByText("Reintentar")).not.toBeInTheDocument();
+  });
+
+  it("DOES offer 'Reintentar' after a failure", () => {
+    mockData = {
+      flows: [flow({ last_run_id: "run-bad", last_run_state: "failed" })],
+      runnerDisconnected: false,
+      providers: [],
+      locale: "es",
+    };
+    render(<OrchestrationScreen />);
+
+    expect(within(openRowMenu()).getByText("Reintentar")).toBeInTheDocument();
+  });
+});
+
+
+describe("OrchestrationScreen — acciones en lote", () => {
+  const twoFlows = () => [
+    flow({ policy: { ...flow().policy, policy_id: "pol-a" } }),
+    flow({ policy: { ...flow().policy, policy_id: "pol-b" } }),
+  ];
+
+  it("keeps the bulk menu disabled while nothing is selected", async () => {
+    // Un menú que no puede hacer nada es un control decorativo.
+    mockData = { flows: twoFlows(), runnerDisconnected: false, providers: [], locale: "es" };
+    render(<OrchestrationScreen />);
+
+    expect(await screen.findByTestId("orchestration-bulk-menu")).toBeDisabled();
+  });
+
+  it("runs ONLY the selected flows, one by one", async () => {
+    // Secuencial y no en paralelo: cada lanzamiento dispara una corrida real contra las APIs de los
+    // súper, y N a la vez es el martilleo que el `pace()` de la ingesta existe para evitar.
+    mockData = { flows: twoFlows(), runnerDisconnected: false, providers: [], locale: "es" };
+    render(<OrchestrationScreen />);
+
+    fireEvent.click(await screen.findByTestId("orchestration-select-pol-a"));
+    fireEvent.click(screen.getByTestId("orchestration-bulk-menu"));
+    fireEvent.click(await screen.findByText("Ejecutar seleccionados"));
+
+    await waitFor(() => expect(api.runPolicy).toHaveBeenCalledTimes(1));
+    expect(api.runPolicy).toHaveBeenCalledWith("pol-a");
+  });
+
+  it("select-all marks only the VISIBLE page", async () => {
+    // Marcar filas que el operador no está viendo y luego borrarlas en lote sería el peor final
+    // posible de esta pantalla.
+    mockData = { flows: twoFlows(), runnerDisconnected: false, providers: [], locale: "es" };
+    render(<OrchestrationScreen />);
+
+    fireEvent.click(await screen.findByTestId("orchestration-select-all"));
+
+    expect(screen.getByTestId("orchestration-selected-count")).toHaveTextContent("2");
+  });
+
+  it("asks before deleting in bulk, and says HOW MANY", async () => {
+    mockData = { flows: twoFlows(), runnerDisconnected: false, providers: [], locale: "es" };
+    render(<OrchestrationScreen />);
+
+    fireEvent.click(await screen.findByTestId("orchestration-select-all"));
+    fireEvent.click(screen.getByTestId("orchestration-bulk-menu"));
+    fireEvent.click(await screen.findByText("Eliminar seleccionados"));
+
+    expect(await screen.findByText(/Eliminar 2 flujo/)).toBeInTheDocument();
+    expect(api.deletePolicy).not.toHaveBeenCalled();
   });
 });

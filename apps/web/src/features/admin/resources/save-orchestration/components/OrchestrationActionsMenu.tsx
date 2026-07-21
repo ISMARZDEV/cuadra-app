@@ -1,5 +1,6 @@
 import type { ProviderFlowDto } from "@cuadra/api-client";
-import { Ban, MoreHorizontal, Pencil, Play, Power, RotateCcw, Trash2 } from "lucide-react";
+import { Ban, Eye, MoreHorizontal, Pencil, Play, Power, RotateCcw, Trash2 } from "lucide-react";
+import { navigate } from "vike/client/router";
 
 import {
   DropdownMenu,
@@ -9,7 +10,7 @@ import {
 } from "@/components/ui-base/dropdown-menu";
 import type { MessageKey } from "@/i18n/messages";
 
-import { isCancellable } from "../lib/run-state";
+import { isCancellable, isRetriable } from "../lib/run-state";
 
 // Menú de acciones de un provider-flow. Mismo patrón que `ReviewRow` y `SourceActionsMenu`: trigger
 // redondo lima + ítems con íconos Lucide coloreados.
@@ -47,7 +48,10 @@ export function OrchestrationActionsMenu({
   // Solo se ofrece lo que el runner puede realmente atender. Un "Reintentar" sin corrida previa, o
   // un "Cancelar" sobre algo terminado, son botones que no hacen nada — y eso erosiona la confianza
   // en la consola entera.
-  const canRetry = flow.last_run_id != null;
+  // Reintentar exige una corrida FALLIDA: el adapter re-ejecuta con FROM_FAILURE y sin fallo del
+  // cual partir Dagster devuelve PythonError (500), que la consola traduce a "Orquestador no
+  // disponible" — culpándolo de una acción imposible que le pedimos nosotros.
+  const canRetry = flow.last_run_id != null && isRetriable(flow.last_run_state);
   const canCancel = flow.last_run_id != null && isCancellable(flow.last_run_state);
 
   return (
@@ -63,6 +67,18 @@ export function OrchestrationActionsMenu({
 
       {/* `min-w`/`nowrap`: el `min-w-[96px]` del base parte "Ejecutar ahora" en dos líneas. */}
       <DropdownMenuContent align="end" className="min-w-48 [&_[role=menuitem]]:whitespace-nowrap">
+        {/* Ver detalle (#11): la pantalla ya existe, así que dejó de ser un enlace a 404. Va PRIMERO
+            porque abrir el proveedor es la acción exploratoria; lanzar/pausar son las operativas. */}
+        {policy.provider_id ? (
+          <DropdownMenuItem
+            onClick={() => void navigate(`/admin/orchestration/providers/${policy.provider_id}`)}
+            className="focus:bg-emerald-500/10 focus:text-emerald-600 not-data-[variant=destructive]:focus:**:text-emerald-600 dark:focus:text-emerald-400 dark:not-data-[variant=destructive]:focus:**:text-emerald-400"
+          >
+            <Eye className="text-emerald-600 dark:text-emerald-400" />
+            {t("admin.orchestration.action.detail")}
+          </DropdownMenuItem>
+        ) : null}
+
         <DropdownMenuItem
           disabled={!policy.enabled}
           onClick={onRun}

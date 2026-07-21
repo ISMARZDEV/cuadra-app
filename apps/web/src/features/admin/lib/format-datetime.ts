@@ -29,3 +29,86 @@ export function formatAdminDateTime(iso: string | null | undefined, locale: Loca
     timeZone: "UTC",
   }).format(date);
 }
+
+
+/**
+ * Primera línea del par fecha/hora del admin: `"Vie 19, Julio 2026"`.
+ *
+ * `Intl` ya localiza mes y día de semana en es/en/pt; lo único que NO da gratis es la
+ * CAPITALIZACIÓN (en es/pt devuelve "vie"/"julio" en minúscula), así que el string se arma con las
+ * partes en vez de confiar en que el runtime devuelva Title Case.
+ *
+ * Nació en la cola de revisión (`formatMatchDate`) y vive acá desde que la Orquestación necesitó el
+ * mismo par: dos implementaciones del mismo formato se desincronizan en cuanto alguien toca una.
+ */
+export function formatAdminDate(iso: string | null | undefined, locale: Locale): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const parts = new Intl.DateTimeFormat(locale, {
+    weekday: "short",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    // El backend emite `created_at` en UTC (`datetime.utcnow()`/tz-aware UTC) — fijar el
+    // timezone acá hace el resultado determinístico sin importar dónde corra el navegador/CI
+    // (evita que un offset negativo empuje la fecha un día atrás).
+    timeZone: "UTC",
+  }).formatToParts(date);
+
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+
+  const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+  const weekday = capitalize(part("weekday").replace(/\.$/, ""));
+  const day = part("day");
+  const month = capitalize(part("month"));
+  const year = part("year");
+
+  return `${weekday} ${day}, ${month} ${year}`;
+}
+
+
+
+/**
+ * La hora CON SEGUNDOS: `"11:01:58 p. m."`. Para la línea de tiempo de una corrida (US-OR-D7).
+ *
+ * Los segundos no son un capricho de precisión: en una corrida real medida, cuatro eventos
+ * consecutivos caen en el mismo minuto (`23:01:58`). Sin segundos la línea de tiempo se ve como si
+ * todo hubiera pasado a la vez, y deja de responder la única pregunta que un log contesta — en qué
+ * ORDEN y con cuánto tiempo entre medio.
+ *
+ * Mismas dos reglas del resto del admin: 12 horas con AM/PM y fijada a UTC.
+ */
+export function formatAdminTimeWithSeconds(
+  iso: string | null | undefined,
+  locale: Locale,
+): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  }).format(date);
+}
+
+
+/** Segunda línea del par: `"4:54 p. m."`. Devuelve `""` —y no `—`— cuando no hay fecha: el guion ya
+ * lo pone la línea de arriba, y repetirlo dejaría dos guiones apilados. */
+export function formatAdminTime(iso: string | null | undefined, locale: Locale): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  }).format(date);
+}

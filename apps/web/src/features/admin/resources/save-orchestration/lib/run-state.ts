@@ -28,3 +28,19 @@ export function isCancellable(state: string | null | undefined): boolean {
 export function isInFlight(state: string | null | undefined): boolean {
   return state != null && IN_FLIGHT.has(state);
 }
+
+/** Estados desde los que REINTENTAR tiene sentido: los que terminaron mal.
+ *
+ * El adapter re-ejecuta con `FROM_FAILURE`, que necesita un fallo del cual partir. Ofrecerlo sobre
+ * una corrida EXITOSA no es un matiz teórico: Dagster responde `PythonError` (HTTP 500) y la consola
+ * lo traduce a "Orquestador no disponible", culpando al runner de una acción imposible que le
+ * pedimos nosotros. Verificado contra el runner real (2026-07-20).
+ *
+ * Y tampoco haría falta: volver a correr una corrida exitosa es "Ejecutar ahora", que ya existe.
+ * Dos ítems de menú para lo mismo es peor que uno bien acotado.
+ */
+const RETRIABLE = new Set(["failed", "canceled"]);
+
+export function isRetriable(state: string | null | undefined): boolean {
+  return state != null && RETRIABLE.has(state);
+}

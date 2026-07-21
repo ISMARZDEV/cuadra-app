@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isCancellable, isInFlight } from "./run-state";
+import { isCancellable, isInFlight, isRetriable } from "./run-state";
 
 // Afordancias del RUNNER, derivadas del estado que él declara. Espejan `RunState.is_cancellable`
 // del dominio: ofrecer "Cancelar" sobre algo que ya terminó (o que ya se está cancelando) es un
@@ -50,5 +50,26 @@ describe("isInFlight", () => {
     // machacar el runner para siempre.
     expect(isInFlight("unknown")).toBe(false);
     expect(isInFlight(null)).toBe(false);
+  });
+});
+
+describe("isRetriable", () => {
+  it("allows retrying a run that FAILED", () => {
+    expect(isRetriable("failed")).toBe(true);
+    expect(isRetriable("canceled")).toBe(true);
+  });
+
+  it("does NOT offer retry on a successful run", () => {
+    // El adapter usa FROM_FAILURE: sin fallo del cual partir, Dagster devuelve PythonError (500) y
+    // la consola lo traduce a "Orquestador no disponible" — culpando al runner de algo que le
+    // pedimos mal. Volver a correr algo exitoso ya es "Ejecutar ahora".
+    expect(isRetriable("succeeded")).toBe(false);
+  });
+
+  it("does NOT offer retry while the run is still in flight or unknown", () => {
+    expect(isRetriable("running")).toBe(false);
+    expect(isRetriable("queued")).toBe(false);
+    expect(isRetriable("unknown")).toBe(false);
+    expect(isRetriable(null)).toBe(false);
   });
 });

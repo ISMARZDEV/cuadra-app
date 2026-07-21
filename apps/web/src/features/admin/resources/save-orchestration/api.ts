@@ -2,7 +2,10 @@ import {
   cancelRun as cancelRunRequest,
   createProviderFlow as createProviderFlowRequest,
   deletePolicy as deletePolicyRequest,
+  getProviderDetail as getProviderDetailRequest,
+  getRunEvents as getRunEventsRequest,
   listAssets as listAssetsRequest,
+  listProviderRuns as listProviderRunsRequest,
   listProviderFlows as listProviderFlowsRequest,
   pausePolicy as pausePolicyRequest,
   resumePolicy as resumePolicyRequest,
@@ -100,4 +103,46 @@ export async function listPipelineAssets(): Promise<AssetAdminRowDto[]> {
   const res = await listAssetsRequest({ client: apiClient, headers: await authHeaders() });
   if (res.error || !res.data) throw new AssetsUnavailable("el orquestador no respondió");
   return res.data.assets;
+}
+
+/** Detalle operativo de un provider-flow (#11). Lanza si el runner+DB no pudieron responder el
+ * mínimo (identidad + policy); el `+data.ts` lo traduce a 404/estado degradado. */
+export async function getProviderDetail(providerId: string) {
+  return getProviderDetailRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { provider_id: providerId },
+  });
+}
+
+/** Una tanda del histórico de corridas (US-OR-D6), paginada por cursor del lado del runner. */
+export async function listProviderRuns(
+  providerId: string,
+  cursor?: string | null,
+  limit = 50,
+) {
+  return listProviderRunsRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { provider_id: providerId },
+    query: { limit, ...(cursor ? { cursor } : {}) },
+  });
+}
+
+/** Línea de tiempo de UNA corrida (US-OR-D7), paginada hacia ADELANTE por cursor.
+ *
+ * La corrida va bajo su provider-flow y no suelta: sin la policy no hay a quién pertenece esa
+ * corrida, y un endpoint de logs sin dueño sería una puerta a los eventos de cualquier otra. */
+export async function getRunEvents(
+  providerId: string,
+  runId: string,
+  cursor?: string | null,
+  limit = 200,
+) {
+  return getRunEventsRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { provider_id: providerId, run_id: runId },
+    query: { limit, ...(cursor ? { cursor } : {}) },
+  });
 }

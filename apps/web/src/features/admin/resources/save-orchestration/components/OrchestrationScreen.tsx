@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
+import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
@@ -68,6 +69,9 @@ function pageWindow(current: number, total: number, max = 5): number[] {
 type Pending =
   | { kind: "cancel"; policyId: string; runId: string }
   | { kind: "delete"; policyId: string }
+  // Borrado en LOTE: lleva los ids consigo porque la selección puede cambiar mientras el diálogo
+  // está abierto, y confirmar tiene que aplicar sobre lo que el operador VIO al confirmar.
+  | { kind: "bulkDelete"; policyIds: string[] }
   | null;
 
 // Consola de Orquestación (F4 + rediseño v2). Opera el Descubrimiento sin salir del admin.
@@ -90,6 +94,8 @@ export function OrchestrationScreen() {
   const { items: flows, refresh } = useAdminList(initialFlows, listProviderFlowEntries);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending>(null);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [editing, setEditing] = useState<ProviderFlowDto["policy"] | null>(null);
   const [tab, setTab] = useState<OrchestrationTab>("flows");
   const [creating, setCreating] = useState(false);
@@ -146,8 +152,63 @@ export function OrchestrationScreen() {
     const p = pending;
     setPending(null);
     if (p.kind === "cancel") await act(p.policyId, () => cancelRun(p.runId));
+    else if (p.kind === "bulkDelete") await runBulk(p.policyIds, deletePolicy);
     else await act(p.policyId, () => deletePolicy(p.policyId));
   };
+
+  /** Aplica una acción a cada id y refresca UNA vez al final.
+   *
+   * SECUENCIAL y no `Promise.all`: cada acción golpea al runner (lanzar dispara una corrida real
+   * contra las APIs de los súper), y disparar N en paralelo es exactamente el martilleo que el
+   * `pace()` de la ingesta existe para evitar.
+   *
+   * `allSettled` en espíritu: un fallo en una policy NO debe abortar el resto ni dejar la selección
+   * a medio aplicar sin que nada se refresque. */
+  async function runBulk(ids: string[], fn: (id: string) => Promise<unknown>) {
+    setBulkBusy(true);
+    try {
+      for (const id of ids) {
+        try {
+          await fn(id);
+        } catch {
+          // Se sigue con las demás: abortar dejaría la selección aplicada a medias en silencio.
+        }
+      }
+      await refresh();
+      // La selección se limpia DESPUÉS de refrescar: si quedara marcada, el operador podría repetir
+      // la acción creyendo que no pasó nada.
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  const toggleOne = (id: string, next: boolean) =>
+    setSelected((prev) => {
+      const copy = new Set(prev);
+      if (next) copy.add(id);
+      else copy.delete(id);
+      return copy;
+    });
+
+  /** Marca/desmarca SOLO la página visible; conserva lo seleccionado en otras páginas. */
+  const togglePage = (next: boolean) =>
+    setSelected((prev) => {
+      const copy = new Set(prev);
+      for (const f of pageRows) {
+        if (next) copy.add(f.policy.policy_id);
+        else copy.delete(f.policy.policy_id);
+      }
+      return copy;
+    });
+
+  const allOnPageSelected =
+    pageRows.length > 0 && pageRows.every((f) => selected.has(f.policy.policy_id));
+
+  const selectedFlows = visible.filter((f) => selected.has(f.policy.policy_id));
+  const enabledSelectedIds = selectedFlows
+    .filter((f) => f.policy.enabled)
+    .map((f) => f.policy.policy_id);
 
   return (
     <div className="flex flex-1 flex-col p-4 md:p-6">
@@ -192,6 +253,18 @@ export function OrchestrationScreen() {
           filters={filters}
           onFiltersChange={setFilters}
           onCreate={() => setCreating(true)}
+          selectedCount={selectedFlows.length}
+          hasEnabledSelected={enabledSelectedIds.length > 0}
+          bulkBusy={bulkBusy}
+          locale={locale}
+          onBulkRun={() => void runBulk(enabledSelectedIds, runPolicy)}
+          onBulkPause={() => void runBulk(enabledSelectedIds, pausePolicy)}
+          onBulkDelete={() =>
+            setPending({
+              kind: "bulkDelete",
+              policyIds: selectedFlows.map((f) => f.policy.policy_id),
+            })
+          }
           t={t}
         />
 
@@ -207,17 +280,36 @@ export function OrchestrationScreen() {
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-card">
+            {/* `overflow-x-auto` DENTRO del card: sin él, `overflow-hidden` (que pide el radio)
+                recorta las columnas de la derecha en SILENCIO — están en el DOM, invisibles y sin
+                forma de llegar a ellas. Pasó en la tab de Assets y con 10 columnas acá el margen
+                ya no sobra. */}
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent [&>th]:h-11 [&>th]:text-sm [&>th]:font-semibold [&>th]:text-muted-foreground">
+                  <TableHead className="w-10">
+                    {/* Maestro: marca/desmarca lo VISIBLE en la página, no la lista entera. Marcar
+                        filas que el operador no está viendo (otras páginas, u ocultas por el filtro)
+                        y después borrarlas en lote sería el peor final posible de esta pantalla. */}
+                    <SelectCheckbox
+                      checked={allOnPageSelected}
+                      onChange={(e) => togglePage(e.target.checked)}
+                      aria-label={t("admin.orchestration.bulk.selectAll")}
+                      data-testid="orchestration-select-all"
+                    />
+                  </TableHead>
                   <TableHead>{t("admin.orchestration.col.status")}</TableHead>
                   <TableHead>{t("admin.orchestration.col.provider")}</TableHead>
                   <TableHead>{t("admin.orchestration.col.flow")}</TableHead>
                   <TableHead>{t("admin.orchestration.col.schedule")}</TableHead>
+                  <TableHead>{t("admin.orchestration.col.runOutcome")}</TableHead>
+                  <TableHead>{t("admin.orchestration.col.lastRun")}</TableHead>
                   <TableHead>{t("admin.orchestration.col.nextRun")}</TableHead>
+                  <TableHead>{t("admin.orchestration.col.progress")}</TableHead>
                   <TableHead>{t("admin.orchestration.col.products")}</TableHead>
                   <TableHead>{t("admin.orchestration.col.outcome")}</TableHead>
-                  <TableHead className="text-right">{t("admin.orchestration.col.actions")}</TableHead>
+                  <TableHead className="text-center">{t("admin.orchestration.col.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -250,10 +342,13 @@ export function OrchestrationScreen() {
                       )
                     }
                     onDelete={() => setPending({ kind: "delete", policyId: flow.policy.policy_id })}
+                    selected={selected.has(flow.policy.policy_id)}
+                    onSelectedChange={(next) => toggleOne(flow.policy.policy_id, next)}
                   />
                 ))}
               </TableBody>
             </Table>
+            </div>
 
             {/* Footer de paginación — mismo patrón que Fuentes: tamaño de página, rango y páginas.
                 Pagina lo FILTRADO, no la lista cruda: el rango tiene que cuadrar con lo que se ve. */}
@@ -323,20 +418,31 @@ export function OrchestrationScreen() {
       <ConfirmDialog
         open={pending !== null}
         onOpenChange={(open) => !open && setPending(null)}
-        destructive={pending?.kind === "delete"}
-        busy={busyId !== null}
-        title={t(
-          pending?.kind === "delete"
-            ? "admin.orchestration.confirm.delete.title"
-            : "admin.orchestration.confirm.cancel.title",
-        )}
+        destructive={pending?.kind === "delete" || pending?.kind === "bulkDelete"}
+        busy={busyId !== null || bulkBusy}
+        // El borrado en LOTE dice CUÁNTOS flujos se lleva por delante: "¿Eliminar el flujo?" cuando
+        // son siete es una confirmación que no informa de lo que va a pasar (§5.3 pide explicar el
+        // IMPACTO, no preguntar "¿estás seguro?").
+        title={
+          pending?.kind === "bulkDelete"
+            ? format(locale, "admin.orchestration.bulk.deleteTitle", {
+                count: String(pending.policyIds.length),
+              })
+            : t(
+                pending?.kind === "delete"
+                  ? "admin.orchestration.confirm.delete.title"
+                  : "admin.orchestration.confirm.cancel.title",
+              )
+        }
         description={t(
-          pending?.kind === "delete"
-            ? "admin.orchestration.confirm.delete.body"
-            : "admin.orchestration.confirm.cancel.body",
+          pending?.kind === "bulkDelete"
+            ? "admin.orchestration.bulk.deleteBody"
+            : pending?.kind === "delete"
+              ? "admin.orchestration.confirm.delete.body"
+              : "admin.orchestration.confirm.cancel.body",
         )}
         confirmLabel={t(
-          pending?.kind === "delete"
+          pending?.kind === "delete" || pending?.kind === "bulkDelete"
             ? "admin.orchestration.confirm.delete.accept"
             : "admin.orchestration.confirm.cancel.accept",
         )}

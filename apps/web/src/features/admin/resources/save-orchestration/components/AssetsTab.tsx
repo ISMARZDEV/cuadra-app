@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TruncatedText } from "@/features/admin/components/TruncatedText";
-import { formatAdminDateTime } from "@/features/admin/lib/format-datetime";
+import { AdminDateTime } from "@/features/admin/components/AdminDateTime";
 import type { Locale } from "@/i18n/config";
 import { format, type MessageKey } from "@/i18n/messages";
 
@@ -262,8 +262,8 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
                   </TooltipProvider>
                 )}
               </TableCell>
-              <TableCell className="text-muted-foreground">
-                {formatAdminDateTime(a.last_materialized_at, locale)}
+              <TableCell className="text-xs">
+                <AdminDateTime iso={a.last_materialized_at} locale={locale} />
               </TableCell>
               <TableCell>
                 <span

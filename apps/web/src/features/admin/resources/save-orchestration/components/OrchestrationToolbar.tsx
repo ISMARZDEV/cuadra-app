@@ -1,13 +1,20 @@
 import { Popover } from "@base-ui/react/popover";
-import { Plus, RotateCcw, Search } from "lucide-react";
+import { ChevronDown, Play, Plus, Power, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui-base/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui-base/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FilterField } from "@/features/admin/components/filters/FilterField";
-import { FunnelIcon } from "@/features/admin/resources/save-matching/components/toolbar-icons";
-import type { MessageKey } from "@/i18n/messages";
+import { FunnelIcon, ListChecksIcon } from "@/features/admin/resources/save-matching/components/toolbar-icons";
+import type { Locale } from "@/i18n/config";
+import { format, type MessageKey } from "@/i18n/messages";
 
 import type { FlowFilters } from "../lib/filter-flows";
 import { NEVER_RAN } from "../lib/filter-flows";
@@ -45,11 +52,27 @@ export function OrchestrationToolbar({
   filters,
   onFiltersChange,
   onCreate,
+  selectedCount,
+  hasEnabledSelected,
+  bulkBusy,
+  locale,
+  onBulkRun,
+  onBulkPause,
+  onBulkDelete,
   t,
 }: {
   filters: FlowFilters;
   onFiltersChange: (next: FlowFilters) => void;
   onCreate: () => void;
+  /** Nº de filas seleccionadas — sin selección el menú de lote no puede hacer nada y se deshabilita. */
+  selectedCount: number;
+  /** ¿Hay al menos un flujo ACTIVO en la selección? Ejecutar y Pausar no aplican a los pausados. */
+  hasEnabledSelected: boolean;
+  bulkBusy?: boolean;
+  locale: Locale;
+  onBulkRun: () => void;
+  onBulkPause: () => void;
+  onBulkDelete: () => void;
   t: T;
 }) {
   const [open, setOpen] = useState(false);
@@ -194,14 +217,77 @@ export function OrchestrationToolbar({
         </Popover.Root>
       </div>
 
-      <button
-        type="button"
-        onClick={onCreate}
-        className="inline-flex h-9 items-center gap-2 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest shadow-sm hover:bg-brand-lime/90"
-      >
-        <Plus className="size-4" aria-hidden="true" />
-        {t("admin.orchestration.create.cta")}
-      </button>
+      <div className="flex items-center gap-2.5">
+        {/* Contador PEGADO al botón que actúa sobre esa selección. Debajo de la tabla el número y
+            el "Ejecutar seleccionados" quedaban a media pantalla de distancia, y una acción en lote
+            sin saber sobre cuántas filas aplica es justo la que no se debe ofrecer. */}
+        {selectedCount > 0 ? (
+          <span
+            data-testid="orchestration-selected-count"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            {format(locale, "admin.orchestration.bulk.selected", {
+              count: String(selectedCount),
+            })}
+          </span>
+        ) : null}
+
+        {/* Acciones en lote — mismo patrón que la cola de revisión: píldora verde bosque con
+            `ListChecksIcon`, deshabilitada SIN selección (un menú que no puede hacer nada es un
+            control decorativo).
+
+            Los ítems repiten los íconos y colores del menú de fila a propósito: es la MISMA acción
+            aplicada a varias filas, y dársele otro aspecto haría dudar de si hace lo mismo.
+
+            Cada ítem se deshabilita cuando no afectaría a nada: "Ejecutar" y "Pausar" solo tienen
+            sentido sobre flujos ACTIVOS, y ofrecerlos sobre una selección entera de pausados sería
+            prometer una acción que no ocurre. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            data-testid="orchestration-bulk-menu"
+            disabled={selectedCount === 0 || bulkBusy}
+            className="flex h-9 items-center gap-1.5 rounded-full bg-brand-forest px-4 text-sm font-semibold text-brand-lime disabled:opacity-50"
+          >
+            <ListChecksIcon className="size-[18px]" />
+            {t("admin.toolbar.actions")}
+            <ChevronDown className="size-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-56 [&_[role=menuitem]]:whitespace-nowrap">
+            <DropdownMenuItem
+              disabled={!hasEnabledSelected}
+              onClick={onBulkRun}
+              className="focus:bg-emerald-500/10 focus:text-emerald-600 not-data-[variant=destructive]:focus:**:text-emerald-600 dark:focus:text-emerald-400 dark:not-data-[variant=destructive]:focus:**:text-emerald-400"
+            >
+              <Play className="text-emerald-600 dark:text-emerald-400" />
+              {t("admin.orchestration.bulk.run")}
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              disabled={!hasEnabledSelected}
+              onClick={onBulkPause}
+              className="focus:bg-sky-500/10 focus:text-sky-600 not-data-[variant=destructive]:focus:**:text-sky-600 dark:focus:text-sky-400 dark:not-data-[variant=destructive]:focus:**:text-sky-400"
+            >
+              <Power className="text-sky-600 dark:text-sky-400" />
+              {t("admin.orchestration.bulk.pause")}
+            </DropdownMenuItem>
+
+            {/* Destructivo y último (§5.3). La confirmación fuerte la dispara la screen. */}
+            <DropdownMenuItem variant="destructive" onClick={onBulkDelete}>
+              <Trash2 />
+              {t("admin.orchestration.bulk.delete")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <button
+          type="button"
+          onClick={onCreate}
+          className="inline-flex h-9 items-center gap-2 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest shadow-sm hover:bg-brand-lime/90"
+        >
+          <Plus className="size-4" aria-hidden="true" />
+          {t("admin.orchestration.create.cta")}
+        </button>
+      </div>
     </div>
   );
 }

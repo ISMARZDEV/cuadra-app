@@ -162,6 +162,7 @@ type MessageKey =
   | "admin.orchestration.col.provider"
   | "admin.orchestration.col.mode"
   | "admin.orchestration.col.nextRun"
+  | "admin.orchestration.col.runOutcome"
   | "admin.orchestration.col.lastRun"
   | "admin.orchestration.col.outcome"
   | "admin.orchestration.col.actions"
@@ -180,7 +181,11 @@ type MessageKey =
   | "admin.orchestration.state.failed"
   | "admin.orchestration.state.canceled"
   | "admin.orchestration.state.unknown"
+  | "admin.orchestration.action.detail"
   | "admin.orchestration.action.run"
+  | "admin.orchestration.state.active"
+  | "admin.orchestration.flow.provider_prices_refresh"
+  | "admin.orchestration.state.paused"
   | "admin.orchestration.action.pause"
   | "admin.orchestration.action.resume"
   | "admin.orchestration.action.cancel"
@@ -190,9 +195,79 @@ type MessageKey =
   | "admin.orchestration.kpi.newCanonicals.hint"
   | "admin.orchestration.col.status"
   | "admin.orchestration.col.schedule"
+  | "admin.orchestration.detail.slaWithin"
+  | "admin.orchestration.detail.slaBreached"
+  | "admin.orchestration.detail.slaNa"
+  | "admin.orchestration.detail.back"
+  | "admin.orchestration.detail.lastRunTitle"
+  | "admin.orchestration.detail.trigger"
+  | "admin.orchestration.detail.startedAt"
+  | "admin.orchestration.detail.endedAt"
+  | "admin.orchestration.detail.duration"
+  | "admin.orchestration.detail.noRun"
+  | "admin.orchestration.detail.resultsTitle"
+  | "admin.orchestration.detail.healthTitle"
+  | "admin.orchestration.detail.lastSync"
+  | "admin.orchestration.detail.queryLimit"
+  | "admin.orchestration.detail.queryLimitNone"
+  | "admin.orchestration.detail.historyTitle"
+  | "admin.orchestration.detail.historyUnavailable"
+  | "admin.orchestration.detail.historyEmpty"
+  | "admin.orchestration.detail.historyMore"
+  | "admin.orchestration.detail.runnerDown"
+  | "admin.orchestration.detail.activityTitle"
+  | "admin.orchestration.detail.activityEmpty"
+  | "admin.orchestration.detail.activityUnavailable"
+  | "admin.orchestration.detail.activityShowAll"
+  | "admin.orchestration.detail.activityShowKey"
+  | "admin.orchestration.detail.activityHiddenCount"
+  | "admin.orchestration.detail.activityLoadMore"
+  | "admin.orchestration.detail.activityOfRun"
+  | "admin.orchestration.detail.activityBackToCurrent"
+  | "admin.orchestration.detail.rowSeeActivity"
+  | "admin.orchestration.detail.failureTitle"
+  | "admin.orchestration.detail.failureTechnical"
+  | "admin.orchestration.event.queued"
+  | "admin.orchestration.event.started"
+  | "admin.orchestration.event.succeeded"
+  | "admin.orchestration.event.canceled"
+  | "admin.orchestration.event.failure"
+  | "admin.orchestration.event.step"
+  | "admin.orchestration.event.materialization"
+  | "admin.orchestration.event.log"
+  | "admin.orchestration.event.machinery"
+  | "admin.orchestration.detail.colWhen"
+  | "admin.orchestration.detail.colTrigger"
+  | "admin.orchestration.detail.colState"
+  | "admin.orchestration.detail.colDuration"
+  | "admin.orchestration.detail.durationMinutes"
+  | "admin.orchestration.detail.durationSeconds"
+  | "admin.orchestration.detail.durationRunning"
+  | "admin.orchestration.trigger.manual"
+  | "admin.orchestration.trigger.automatic"
+  | "admin.orchestration.trigger.retry"
+  | "admin.orchestration.bulk.selected"
+  | "admin.orchestration.bulk.run"
+  | "admin.orchestration.bulk.pause"
+  | "admin.orchestration.bulk.delete"
+  | "admin.orchestration.bulk.selectAll"
+  | "admin.orchestration.bulk.selectRow"
+  | "admin.orchestration.bulk.deleteTitle"
+  | "admin.orchestration.bulk.deleteBody"
+  | "admin.orchestration.col.progress"
   | "admin.orchestration.col.products"
   | "admin.orchestration.products.queryProgress"
   | "admin.orchestration.products.queryProgressTitle"
+  | "admin.orchestration.products.starting"
+  | "admin.orchestration.products.startingHint"
+  | "admin.orchestration.products.seenLabel"
+  | "admin.orchestration.products.chipRefreshed"
+  | "admin.orchestration.products.chipMatched"
+  | "admin.orchestration.products.chipDiscarded"
+  | "admin.orchestration.outcome.chipLinked"
+  | "admin.orchestration.outcome.chipQueued"
+  | "admin.orchestration.outcome.chipNew"
+  | "admin.orchestration.outcome.nothing"
   | "admin.orchestration.products.seen"
   | "admin.orchestration.products.breakdown"
   | "admin.orchestration.schedule.none"
@@ -686,6 +761,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.provider": "Proveedor",
     "admin.orchestration.col.mode": "Modo",
     "admin.orchestration.col.nextRun": "Próxima corrida",
+    "admin.orchestration.col.runOutcome": "Desenlace",
     "admin.orchestration.col.lastRun": "Última corrida",
     "admin.orchestration.col.outcome": "Resultado",
     "admin.orchestration.col.actions": "Acciones",
@@ -704,7 +780,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.state.failed": "Fallida",
     "admin.orchestration.state.canceled": "Cancelada",
     "admin.orchestration.state.unknown": "Desconocido",
+    "admin.orchestration.action.detail": "Ver detalle",
     "admin.orchestration.action.run": "Ejecutar ahora",
+    "admin.orchestration.state.active": "Activo",
+    "admin.orchestration.flow.provider_prices_refresh": "Descubrimiento por búsqueda",
+    "admin.orchestration.state.paused": "Pausado",
     "admin.orchestration.action.pause": "Pausar",
     "admin.orchestration.action.resume": "Activar",
     "admin.orchestration.action.cancel": "Cancelar corrida",
@@ -714,9 +794,79 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.kpi.newCanonicals.hint": "Nacieron de lo que estas corridas descubrieron",
     "admin.orchestration.col.status": "Estado",
     "admin.orchestration.col.schedule": "Horario",
+    "admin.orchestration.detail.slaWithin": "Dentro del SLA",
+    "admin.orchestration.detail.slaBreached": "Fuera del SLA",
+    "admin.orchestration.detail.slaNa": "SLA N/A",
+    "admin.orchestration.detail.back": "Volver a la consola",
+    "admin.orchestration.detail.lastRunTitle": "Última corrida",
+    "admin.orchestration.detail.trigger": "Disparada por",
+    "admin.orchestration.detail.startedAt": "Inicio",
+    "admin.orchestration.detail.endedAt": "Fin",
+    "admin.orchestration.detail.duration": "Duración",
+    "admin.orchestration.detail.noRun": "Este flujo todavía no tuvo ninguna corrida.",
+    "admin.orchestration.detail.resultsTitle": "Resultados de la corrida",
+    "admin.orchestration.detail.healthTitle": "Salud y SLA",
+    "admin.orchestration.detail.lastSync": "Última sincronización exitosa",
+    "admin.orchestration.detail.queryLimit": "Límite de búsquedas efectivo",
+    "admin.orchestration.detail.queryLimitNone": "Sin límite",
+    "admin.orchestration.detail.historyTitle": "Histórico de corridas",
+    "admin.orchestration.detail.historyUnavailable": "No pudimos consultar el histórico del orquestador.",
+    "admin.orchestration.detail.historyEmpty": "Sin corridas en el histórico.",
+    "admin.orchestration.detail.historyMore": "Cargar más",
+    "admin.orchestration.detail.runnerDown": "No pudimos consultar el orquestador. La configuración de abajo sigue disponible; el estado de las corridas volverá cuando el runner responda.",
+    "admin.orchestration.detail.activityTitle": "Actividad",
+    "admin.orchestration.detail.activityEmpty": "Esta corrida no registró eventos.",
+    "admin.orchestration.detail.activityUnavailable": "No pudimos leer la actividad de esta corrida.",
+    "admin.orchestration.detail.activityShowAll": "Ver todo",
+    "admin.orchestration.detail.activityShowKey": "Ver lo esencial",
+    "admin.orchestration.detail.activityHiddenCount": "{n} de maquinaria oculta",
+    "admin.orchestration.detail.activityLoadMore": "Cargar más eventos",
+    "admin.orchestration.detail.activityOfRun": "Corrida del {when}",
+    "admin.orchestration.detail.activityBackToCurrent": "Volver a la última",
+    "admin.orchestration.detail.rowSeeActivity": "Ver la actividad de esta corrida",
+    "admin.orchestration.detail.failureTitle": "Por qué falló",
+    "admin.orchestration.detail.failureTechnical": "Detalle técnico",
+    "admin.orchestration.event.queued": "En cola",
+    "admin.orchestration.event.started": "Arrancó",
+    "admin.orchestration.event.succeeded": "Terminó bien",
+    "admin.orchestration.event.canceled": "Cancelada",
+    "admin.orchestration.event.failure": "Falló",
+    "admin.orchestration.event.step": "Paso",
+    "admin.orchestration.event.materialization": "Produjo",
+    "admin.orchestration.event.log": "Registro",
+    "admin.orchestration.event.machinery": "Sistema",
+    "admin.orchestration.detail.colWhen": "Cuándo",
+    "admin.orchestration.detail.colTrigger": "Disparo",
+    "admin.orchestration.detail.colState": "Estado",
+    "admin.orchestration.detail.colDuration": "Duración",
+    "admin.orchestration.detail.durationMinutes": "{minutes}m {seconds}s",
+    "admin.orchestration.detail.durationSeconds": "{seconds}s",
+    "admin.orchestration.detail.durationRunning": "En curso",
+    "admin.orchestration.trigger.manual": "Manual",
+    "admin.orchestration.trigger.automatic": "Programada",
+    "admin.orchestration.trigger.retry": "Reintento",
+    "admin.orchestration.bulk.selected": "{count} seleccionado(s)",
+    "admin.orchestration.bulk.run": "Ejecutar seleccionados",
+    "admin.orchestration.bulk.pause": "Pausar seleccionados",
+    "admin.orchestration.bulk.delete": "Eliminar seleccionados",
+    "admin.orchestration.bulk.selectAll": "Seleccionar todos los flujos de la página",
+    "admin.orchestration.bulk.selectRow": "Seleccionar este flujo",
+    "admin.orchestration.bulk.deleteTitle": "¿Eliminar {count} flujo(s)?",
+    "admin.orchestration.bulk.deleteBody": "Dejan de programarse y desaparecen de la consola. El histórico de sus corridas se conserva: no se borra nada de lo que ya ocurrió.",
+    "admin.orchestration.col.progress": "Progreso",
     "admin.orchestration.col.products": "Productos",
-    "admin.orchestration.products.queryProgress": "{processed}/{total} búsquedas",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} Búsquedas",
     "admin.orchestration.products.queryProgressTitle": "Búsquedas ejecutadas sobre las planificadas. Es el progreso REAL de la corrida: el número de productos no lo dice, porque una búsqueda puede devolver muchos o ninguno.",
+    "admin.orchestration.products.starting": "Iniciando…",
+    "admin.orchestration.products.startingHint": "La corrida arrancó pero todavía no ejecutó ninguna búsqueda. El runner tarda unos segundos en levantar el proceso.",
+    "admin.orchestration.products.seenLabel": "Productos vistos",
+    "admin.orchestration.products.chipRefreshed": "{n} Actualizados",
+    "admin.orchestration.products.chipMatched": "{n} Matcheados",
+    "admin.orchestration.products.chipDiscarded": "{n} Descartados",
+    "admin.orchestration.outcome.chipLinked": "{n} Enlazados",
+    "admin.orchestration.outcome.chipQueued": "{n} A la cola",
+    "admin.orchestration.outcome.chipNew": "{n} Nuevos",
+    "admin.orchestration.outcome.nothing": "Sin resultados todavía",
     "admin.orchestration.products.seen": "{seen} vistos",
     "admin.orchestration.products.breakdown": "{refreshed} actualizados · {matched} matcheados · {discarded} descartados",
     "admin.orchestration.schedule.none": "Sin programar",
@@ -1211,6 +1361,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.provider": "Provider",
     "admin.orchestration.col.mode": "Mode",
     "admin.orchestration.col.nextRun": "Next run",
+    "admin.orchestration.col.runOutcome": "Outcome",
     "admin.orchestration.col.lastRun": "Last run",
     "admin.orchestration.col.outcome": "Outcome",
     "admin.orchestration.col.actions": "Actions",
@@ -1229,7 +1380,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.state.failed": "Failed",
     "admin.orchestration.state.canceled": "Canceled",
     "admin.orchestration.state.unknown": "Unknown",
+    "admin.orchestration.action.detail": "View detail",
     "admin.orchestration.action.run": "Run now",
+    "admin.orchestration.state.active": "Active",
+    "admin.orchestration.flow.provider_prices_refresh": "Search-based discovery",
+    "admin.orchestration.state.paused": "Paused",
     "admin.orchestration.action.pause": "Pause",
     "admin.orchestration.action.resume": "Resume",
     "admin.orchestration.action.cancel": "Cancel run",
@@ -1239,9 +1394,79 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.kpi.newCanonicals.hint": "Born from what these runs discovered",
     "admin.orchestration.col.status": "Status",
     "admin.orchestration.col.schedule": "Schedule",
+    "admin.orchestration.detail.slaWithin": "Within SLA",
+    "admin.orchestration.detail.slaBreached": "SLA breached",
+    "admin.orchestration.detail.slaNa": "SLA N/A",
+    "admin.orchestration.detail.back": "Back to the console",
+    "admin.orchestration.detail.lastRunTitle": "Last run",
+    "admin.orchestration.detail.trigger": "Triggered by",
+    "admin.orchestration.detail.startedAt": "Started",
+    "admin.orchestration.detail.endedAt": "Ended",
+    "admin.orchestration.detail.duration": "Duration",
+    "admin.orchestration.detail.noRun": "This flow has not run yet.",
+    "admin.orchestration.detail.resultsTitle": "Run results",
+    "admin.orchestration.detail.healthTitle": "Health & SLA",
+    "admin.orchestration.detail.lastSync": "Last successful sync",
+    "admin.orchestration.detail.queryLimit": "Effective search limit",
+    "admin.orchestration.detail.queryLimitNone": "No limit",
+    "admin.orchestration.detail.historyTitle": "Run history",
+    "admin.orchestration.detail.historyUnavailable": "We could not reach the orchestrator's run history.",
+    "admin.orchestration.detail.historyEmpty": "No runs in the history.",
+    "admin.orchestration.detail.historyMore": "Load more",
+    "admin.orchestration.detail.runnerDown": "We could not reach the orchestrator. The configuration below is still available; run state returns once the runner answers.",
+    "admin.orchestration.detail.activityTitle": "Activity",
+    "admin.orchestration.detail.activityEmpty": "This run recorded no events.",
+    "admin.orchestration.detail.activityUnavailable": "We could not read this run's activity.",
+    "admin.orchestration.detail.activityShowAll": "Show all",
+    "admin.orchestration.detail.activityShowKey": "Show the essentials",
+    "admin.orchestration.detail.activityHiddenCount": "{n} machinery events hidden",
+    "admin.orchestration.detail.activityLoadMore": "Load more events",
+    "admin.orchestration.detail.activityOfRun": "Run from {when}",
+    "admin.orchestration.detail.activityBackToCurrent": "Back to the latest",
+    "admin.orchestration.detail.rowSeeActivity": "See this run's activity",
+    "admin.orchestration.detail.failureTitle": "Why it failed",
+    "admin.orchestration.detail.failureTechnical": "Technical detail",
+    "admin.orchestration.event.queued": "Queued",
+    "admin.orchestration.event.started": "Started",
+    "admin.orchestration.event.succeeded": "Finished successfully",
+    "admin.orchestration.event.canceled": "Canceled",
+    "admin.orchestration.event.failure": "Failed",
+    "admin.orchestration.event.step": "Step",
+    "admin.orchestration.event.materialization": "Produced",
+    "admin.orchestration.event.log": "Log",
+    "admin.orchestration.event.machinery": "System",
+    "admin.orchestration.detail.colWhen": "When",
+    "admin.orchestration.detail.colTrigger": "Trigger",
+    "admin.orchestration.detail.colState": "State",
+    "admin.orchestration.detail.colDuration": "Duration",
+    "admin.orchestration.detail.durationMinutes": "{minutes}m {seconds}s",
+    "admin.orchestration.detail.durationSeconds": "{seconds}s",
+    "admin.orchestration.detail.durationRunning": "Running",
+    "admin.orchestration.trigger.manual": "Manual",
+    "admin.orchestration.trigger.automatic": "Scheduled",
+    "admin.orchestration.trigger.retry": "Retry",
+    "admin.orchestration.bulk.selected": "{count} selected",
+    "admin.orchestration.bulk.run": "Run selected",
+    "admin.orchestration.bulk.pause": "Pause selected",
+    "admin.orchestration.bulk.delete": "Delete selected",
+    "admin.orchestration.bulk.selectAll": "Select every flow on this page",
+    "admin.orchestration.bulk.selectRow": "Select this flow",
+    "admin.orchestration.bulk.deleteTitle": "Delete {count} flow(s)?",
+    "admin.orchestration.bulk.deleteBody": "They stop being scheduled and leave the console. Their run history is kept: nothing that already happened is deleted.",
+    "admin.orchestration.col.progress": "Progress",
     "admin.orchestration.col.products": "Products",
-    "admin.orchestration.products.queryProgress": "{processed}/{total} searches",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} Searches",
     "admin.orchestration.products.queryProgressTitle": "Searches run out of those planned. This is the run's REAL progress: the product count cannot tell you, because one search may return many or none.",
+    "admin.orchestration.products.starting": "Starting…",
+    "admin.orchestration.products.startingHint": "The run started but has not executed any search yet. The runner takes a few seconds to spin up its process.",
+    "admin.orchestration.products.seenLabel": "Products seen",
+    "admin.orchestration.products.chipRefreshed": "{n} Refreshed",
+    "admin.orchestration.products.chipMatched": "{n} Matched",
+    "admin.orchestration.products.chipDiscarded": "{n} Discarded",
+    "admin.orchestration.outcome.chipLinked": "{n} Linked",
+    "admin.orchestration.outcome.chipQueued": "{n} Queued",
+    "admin.orchestration.outcome.chipNew": "{n} New",
+    "admin.orchestration.outcome.nothing": "No results yet",
     "admin.orchestration.products.seen": "{seen} seen",
     "admin.orchestration.products.breakdown": "{refreshed} refreshed · {matched} matched · {discarded} discarded",
     "admin.orchestration.schedule.none": "Not scheduled",
@@ -1736,6 +1961,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.provider": "Fornecedor",
     "admin.orchestration.col.mode": "Modo",
     "admin.orchestration.col.nextRun": "Próxima execução",
+    "admin.orchestration.col.runOutcome": "Desfecho",
     "admin.orchestration.col.lastRun": "Última execução",
     "admin.orchestration.col.outcome": "Resultado",
     "admin.orchestration.col.actions": "Ações",
@@ -1754,7 +1980,11 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.state.failed": "Falhou",
     "admin.orchestration.state.canceled": "Cancelada",
     "admin.orchestration.state.unknown": "Desconhecido",
+    "admin.orchestration.action.detail": "Ver detalhe",
     "admin.orchestration.action.run": "Executar agora",
+    "admin.orchestration.state.active": "Ativo",
+    "admin.orchestration.flow.provider_prices_refresh": "Descoberta por busca",
+    "admin.orchestration.state.paused": "Pausado",
     "admin.orchestration.action.pause": "Pausar",
     "admin.orchestration.action.resume": "Ativar",
     "admin.orchestration.action.cancel": "Cancelar execução",
@@ -1764,9 +1994,79 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.kpi.newCanonicals.hint": "Nasceram do que estas execuções descobriram",
     "admin.orchestration.col.status": "Estado",
     "admin.orchestration.col.schedule": "Horário",
+    "admin.orchestration.detail.slaWithin": "Dentro do SLA",
+    "admin.orchestration.detail.slaBreached": "Fora do SLA",
+    "admin.orchestration.detail.slaNa": "SLA N/A",
+    "admin.orchestration.detail.back": "Voltar ao console",
+    "admin.orchestration.detail.lastRunTitle": "Última corrida",
+    "admin.orchestration.detail.trigger": "Disparada por",
+    "admin.orchestration.detail.startedAt": "Início",
+    "admin.orchestration.detail.endedAt": "Fim",
+    "admin.orchestration.detail.duration": "Duração",
+    "admin.orchestration.detail.noRun": "Este fluxo ainda não teve nenhuma corrida.",
+    "admin.orchestration.detail.resultsTitle": "Resultados da corrida",
+    "admin.orchestration.detail.healthTitle": "Saúde e SLA",
+    "admin.orchestration.detail.lastSync": "Última sincronização bem-sucedida",
+    "admin.orchestration.detail.queryLimit": "Limite de buscas efetivo",
+    "admin.orchestration.detail.queryLimitNone": "Sem limite",
+    "admin.orchestration.detail.historyTitle": "Histórico de corridas",
+    "admin.orchestration.detail.historyUnavailable": "Não foi possível consultar o histórico do orquestrador.",
+    "admin.orchestration.detail.historyEmpty": "Sem corridas no histórico.",
+    "admin.orchestration.detail.historyMore": "Carregar mais",
+    "admin.orchestration.detail.runnerDown": "Não foi possível consultar o orquestrador. A configuração abaixo continua disponível; o estado das corridas volta quando o runner responder.",
+    "admin.orchestration.detail.activityTitle": "Atividade",
+    "admin.orchestration.detail.activityEmpty": "Esta corrida não registrou eventos.",
+    "admin.orchestration.detail.activityUnavailable": "Não conseguimos ler a atividade desta corrida.",
+    "admin.orchestration.detail.activityShowAll": "Ver tudo",
+    "admin.orchestration.detail.activityShowKey": "Ver o essencial",
+    "admin.orchestration.detail.activityHiddenCount": "{n} de maquinaria oculta",
+    "admin.orchestration.detail.activityLoadMore": "Carregar mais eventos",
+    "admin.orchestration.detail.activityOfRun": "Corrida de {when}",
+    "admin.orchestration.detail.activityBackToCurrent": "Voltar à última",
+    "admin.orchestration.detail.rowSeeActivity": "Ver a atividade desta corrida",
+    "admin.orchestration.detail.failureTitle": "Por que falhou",
+    "admin.orchestration.detail.failureTechnical": "Detalhe técnico",
+    "admin.orchestration.event.queued": "Na fila",
+    "admin.orchestration.event.started": "Começou",
+    "admin.orchestration.event.succeeded": "Terminou bem",
+    "admin.orchestration.event.canceled": "Cancelada",
+    "admin.orchestration.event.failure": "Falhou",
+    "admin.orchestration.event.step": "Passo",
+    "admin.orchestration.event.materialization": "Produziu",
+    "admin.orchestration.event.log": "Registro",
+    "admin.orchestration.event.machinery": "Sistema",
+    "admin.orchestration.detail.colWhen": "Quando",
+    "admin.orchestration.detail.colTrigger": "Disparo",
+    "admin.orchestration.detail.colState": "Estado",
+    "admin.orchestration.detail.colDuration": "Duração",
+    "admin.orchestration.detail.durationMinutes": "{minutes}m {seconds}s",
+    "admin.orchestration.detail.durationSeconds": "{seconds}s",
+    "admin.orchestration.detail.durationRunning": "Em curso",
+    "admin.orchestration.trigger.manual": "Manual",
+    "admin.orchestration.trigger.automatic": "Programada",
+    "admin.orchestration.trigger.retry": "Nova tentativa",
+    "admin.orchestration.bulk.selected": "{count} selecionado(s)",
+    "admin.orchestration.bulk.run": "Executar selecionados",
+    "admin.orchestration.bulk.pause": "Pausar selecionados",
+    "admin.orchestration.bulk.delete": "Excluir selecionados",
+    "admin.orchestration.bulk.selectAll": "Selecionar todos os fluxos da página",
+    "admin.orchestration.bulk.selectRow": "Selecionar este fluxo",
+    "admin.orchestration.bulk.deleteTitle": "Excluir {count} fluxo(s)?",
+    "admin.orchestration.bulk.deleteBody": "Deixam de ser programados e saem do console. O histórico das corridas é mantido: nada do que já ocorreu é apagado.",
+    "admin.orchestration.col.progress": "Progresso",
     "admin.orchestration.col.products": "Produtos",
-    "admin.orchestration.products.queryProgress": "{processed}/{total} buscas",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} Buscas",
     "admin.orchestration.products.queryProgressTitle": "Buscas executadas sobre as planejadas. É o progresso REAL da corrida: o número de produtos não diz, porque uma busca pode devolver muitos ou nenhum.",
+    "admin.orchestration.products.starting": "Iniciando…",
+    "admin.orchestration.products.startingHint": "A corrida começou mas ainda não executou nenhuma busca. O runner leva alguns segundos para subir o processo.",
+    "admin.orchestration.products.seenLabel": "Produtos vistos",
+    "admin.orchestration.products.chipRefreshed": "{n} Atualizados",
+    "admin.orchestration.products.chipMatched": "{n} Correspondidos",
+    "admin.orchestration.products.chipDiscarded": "{n} Descartados",
+    "admin.orchestration.outcome.chipLinked": "{n} Vinculados",
+    "admin.orchestration.outcome.chipQueued": "{n} Na fila",
+    "admin.orchestration.outcome.chipNew": "{n} Novos",
+    "admin.orchestration.outcome.nothing": "Sem resultados ainda",
     "admin.orchestration.products.seen": "{seen} vistos",
     "admin.orchestration.products.breakdown": "{refreshed} atualizados · {matched} correspondidos · {discarded} descartados",
     "admin.orchestration.schedule.none": "Sem agendamento",
