@@ -42,6 +42,11 @@ from ...domain.ports.orchestrator import (
     OrchestrationRun,
     OrchestratorUnavailable,
     PipelineAsset,
+    RunEvent,
+    RunEventKind,
+    RunEventLevel,
+    RunEventPage,
+    RunFailure,
     RunTrigger,
 )
 
@@ -118,8 +123,8 @@ mutation CuadraCancel($runId: String!) {
 """
 
 _RUNS = f"""
-query CuadraRuns($filter: RunsFilter, $limit: Int) {{
-  runsOrError(filter: $filter, limit: $limit) {{
+query CuadraRuns($filter: RunsFilter, $limit: Int, $cursor: String) {{
+  runsOrError(filter: $filter, limit: $limit, cursor: $cursor) {{
     __typename
     ... on Runs {{ results {{ {_RUN_FIELDS} }} }}
     ... on PythonError {{ message }}
@@ -135,6 +140,38 @@ query CuadraRun($runId: ID!) {{
     ... on PythonError {{ message }}
   }}
 }}
+"""
+
+
+# Eventos de una corrida (US-OR-D7). Dos fragmentos sobre INTERFACES en vez de 41 sobre cada miembro
+# de la unión: `MessageEvent` da los campos comunes y `ErrorEvent` el error, así que un tipo de
+# evento nuevo de Dagster entra solo sin tocar esta query. Verificado contra el runner real.
+#
+# `errorChain` es una lista PLANA y va de afuera hacia adentro — se pide en vez de anidar `cause`
+# a una profundidad fija, que obligaría a adivinar cuántos niveles trae la excepción de turno.
+_RUN_EVENTS = """
+query CuadraRunEvents($runId: ID!, $afterCursor: String, $limit: Int) {
+  logsForRun(runId: $runId, afterCursor: $afterCursor, limit: $limit) {
+    __typename
+    ... on EventConnection {
+      cursor
+      hasMore
+      events {
+        __typename
+        ... on MessageEvent { message timestamp level stepKey }
+        ... on ErrorEvent {
+          error {
+            message
+            className
+            errorChain { error { message className } }
+          }
+        }
+      }
+    }
+    ... on RunNotFoundError { message }
+    ... on PythonError { message }
+  }
+}
 """
 
 
@@ -188,13 +225,14 @@ def _epoch_to_dt(value: float | None) -> datetime | None:
     return datetime.fromtimestamp(value, tz=UTC) if value else None
 
 
-def _materialization_ts(event: dict | None) -> datetime | None:
-    """Los tiempos de MATERIALIZACIÓN no vienen como los de las corridas: `MaterializationEvent.
-    timestamp` es un **String** en **MILISEGUNDOS** (verificado por introspección; su argumento
-    hermano se llama `beforeTimestampMillis`), mientras que `Run.startTime` es un float en SEGUNDOS.
+def _millis_ts(event: dict | None) -> datetime | None:
+    """Los tiempos de los EVENTOS no vienen como los de las corridas: tanto
+    `MaterializationEvent.timestamp` como `MessageEvent.timestamp` son un **String** en
+    **MILISEGUNDOS** (verificado por introspección; el argumento hermano se llama
+    `beforeTimestampMillis`), mientras que `Run.startTime` es un **float** en **SEGUNDOS**.
 
     Dos unidades y dos tipos en el mismo schema, así que la conversión vive acá y no se comparte con
-    `_epoch_to_dt`: tratarlos igual daría fechas de 1970 o del año 57000 — plausibles a la vista y
+    `_epoch_to_dt`: tratarlos igual daría fechas de 1970 o del año 58500 — plausibles a la vista y
     silenciosamente falsas.
     """
     if not event or not (raw := event.get("timestamp")):
@@ -202,9 +240,53 @@ def _materialization_ts(event: dict | None) -> datetime | None:
     try:
         return _epoch_to_dt(float(raw) / 1000)
     except (TypeError, ValueError):
-        # Un timestamp ilegible NO tumba la consola: el asset se muestra como "nunca materializado",
-        # que es exactamente lo que sabemos de él.
+        # Un timestamp ilegible NO tumba la consola: el evento se muestra sin hora y el asset como
+        # "nunca materializado" — que es exactamente lo que sabemos de ellos.
         return None
+
+
+# `DagsterRunEvent` es una unión de 41 miembros. Este mapa la destila al vocabulario de la consola
+# (6 palabras). Va por `__typename` y NO por `eventType` a propósito: en el dato real
+# `LogMessageEvent` —los `context.log` de nuestra propia ingesta, justo los que escribimos para ser
+# leídos— llega con `eventType: null`, así que mapear por ahí los perdería en silencio.
+# Lo no mapeado cae en MACHINERY: Dagster va a agregar tipos, y un `KeyError` convertiría "no sé qué
+# es esto" en "la consola está rota".
+_EVENT_KIND_BY_TYPENAME = {
+    # Las fases de la corrida, SEPARADAS: llegan con `message: ""`, así que el `kind` es lo único
+    # que le queda a la UI para nombrarlas. Bajo una sola palabra serían filas mudas e idénticas.
+    "RunEnqueuedEvent": RunEventKind.QUEUED,
+    "RunDequeuedEvent": RunEventKind.QUEUED,
+    "RunStartingEvent": RunEventKind.QUEUED,
+    "RunStartEvent": RunEventKind.STARTED,
+    "RunSuccessEvent": RunEventKind.SUCCEEDED,
+    "RunCancelingEvent": RunEventKind.CANCELED,
+    "RunCanceledEvent": RunEventKind.CANCELED,
+    # Lo que se rompió. `ResourceInitFailureEvent` entra acá y no en MACHINERY aunque el recurso sea
+    # andamiaje: si la conexión a la DB no levanta, la corrida no arranca y el operador tiene que
+    # verlo.
+    "RunFailureEvent": RunEventKind.FAILURE,
+    "ExecutionStepFailureEvent": RunEventKind.FAILURE,
+    "ResourceInitFailureEvent": RunEventKind.FAILURE,
+    "FailedToMaterializeEvent": RunEventKind.FAILURE,
+    "HookErroredEvent": RunEventKind.FAILURE,
+    # Los pasos.
+    "ExecutionStepStartEvent": RunEventKind.STEP,
+    "ExecutionStepSuccessEvent": RunEventKind.STEP,
+    "ExecutionStepSkippedEvent": RunEventKind.STEP,
+    "ExecutionStepUpForRetryEvent": RunEventKind.STEP,
+    "ExecutionStepRestartEvent": RunEventKind.STEP,
+    # Lo que la corrida existe para PRODUCIR. `AssetMaterializationPlannedEvent` NO entra: es una
+    # intención ("intends to materialize"), no un resultado, y anunciarla como producción haría que
+    # una corrida que no materializó nada pareciera haber producido.
+    "MaterializationEvent": RunEventKind.MATERIALIZATION,
+    "ObservationEvent": RunEventKind.MATERIALIZATION,
+    # Nuestro propio código hablando.
+    "LogMessageEvent": RunEventKind.LOG,
+}
+
+# Techo DURO del runner, MEDIDO: `limit: 2000` responde `Limit of 2000 is too large. Max is 1000`
+# — un ERROR, no una lista recortada. Se acota acá para que ninguna UI pueda provocarlo.
+_MAX_EVENT_LIMIT = 1000
 
 
 class DagsterGraphQLOrchestrator:
@@ -292,6 +374,46 @@ class DagsterGraphQLOrchestrator:
         )
 
     @staticmethod
+    def _to_failure(raw: dict | None) -> RunFailure | None:
+        """Traduce un `PythonError` de Dagster a la causa que el operador va a leer.
+
+        La RAÍZ es el ÚLTIMO eslabón de `errorChain` (va de afuera hacia adentro, verificado con un
+        fallo real). El de arriba solo dice `Error occurred while executing op "X"` — nombra el op
+        que el operador ya está mirando y no responde nada.
+        """
+        if not raw:
+            return None
+        chain = [link.get("error") or {} for link in raw.get("errorChain") or []]
+        root = chain[-1] if chain else None
+        return RunFailure(
+            class_name=raw.get("className") or "",
+            message=raw.get("message") or "",
+            root_class_name=(root or {}).get("className"),
+            root_message=(root or {}).get("message"),
+        )
+
+    def _to_event(self, node: dict) -> RunEvent:
+        failure = self._to_failure(node.get("error"))
+        typename = node.get("__typename") or ""
+        kind = _EVENT_KIND_BY_TYPENAME.get(typename, RunEventKind.MACHINERY)
+        try:
+            level = RunEventLevel((node.get("level") or "").lower())
+        except ValueError:
+            # Un nivel desconocido no se promueve ni se esconde: INFO es la lectura honesta de
+            # "pasó algo y no sé cuán grave".
+            level = RunEventLevel.INFO
+        return RunEvent(
+            timestamp=_millis_ts(node),
+            level=level,
+            kind=kind,
+            # Los eventos de ciclo de vida llegan con `message: ""` (verificado): el hecho ES el
+            # evento. La palabra la pone la UI desde `kind`, no un texto en inglés del runner.
+            message=node.get("message") or "",
+            step_key=node.get("stepKey"),
+            failure=failure,
+        )
+
+    @staticmethod
     def _key_of(node: dict) -> str:
         """`AssetKey` es una LISTA de segmentos (`{path: ["save","prices"]}`), no un string. Se une
         con `/` para tener una clave estable y legible en la URL del detalle."""
@@ -328,7 +450,7 @@ class DagsterGraphQLOrchestrator:
             dependency_keys=tuple(self._key_of(k) for k in node.get("dependencyKeys") or []),
             depended_by_keys=tuple(self._key_of(k) for k in node.get("dependedByKeys") or []),
             partitions=stats,
-            last_materialized_at=_materialization_ts(last),
+            last_materialized_at=_millis_ts(last),
             last_run_id=last.get("runId") if last else None,
         )
 
@@ -380,6 +502,7 @@ class DagsterGraphQLOrchestrator:
         policy_id: str,
         limit: int = 20,
         states: Sequence[RunState] | None = None,
+        cursor: str | None = None,
     ) -> Sequence[OrchestrationRun]:
         run_filter: dict[str, object] = {
             "tags": [{"key": TAG_POLICY_ID, "value": policy_id}]
@@ -392,14 +515,64 @@ class DagsterGraphQLOrchestrator:
             run_filter["statuses"] = [
                 runner for state in states for runner in runner_statuses_for(state)
             ]
-        data = self._execute(_RUNS, {"filter": run_filter, "limit": limit})
+        variables: dict[str, object] = {"filter": run_filter, "limit": limit}
+        if cursor is not None:
+            # `runsOrError` pagina por `cursor` = el id de la última corrida ya vista; devuelve las
+            # posteriores. Verificado por introspección del schema instalado.
+            variables["cursor"] = cursor
+        data = self._execute(_RUNS, variables)
         node = self._unwrap(data["runsOrError"], "Runs", "listado de corridas")
         return [self._to_run(r) for r in node.get("results") or []]
 
+    def get_run_events(
+        self,
+        run_id: str,
+        *,
+        cursor: str | None = None,
+        limit: int = 200,
+    ) -> RunEventPage | None:
+        variables: dict[str, Any] = {
+            "runId": run_id,
+            # Acotado ACÁ y no en el controller: el techo es del runner, así que quien lo conoce es
+            # la capa que le habla. `max(1, …)` evita que un `limit=0` pida una página vacía eterna.
+            "limit": max(1, min(limit, _MAX_EVENT_LIMIT)),
+        }
+        if cursor is not None:
+            variables["afterCursor"] = cursor
+        data = self._execute(_RUN_EVENTS, variables)
+        node = data["logsForRun"]
+        if node.get("__typename") == "RunNotFoundError":
+            # Igual que `get_asset`: "esa corrida no existe" es una RESPUESTA, no una caída. El
+            # controller la vuelve un 404; pasarla por `_unwrap` haría que la consola dijera "el
+            # orquestador no responde" con el orquestador contestando perfectamente.
+            return None
+        node = self._unwrap(node, "EventConnection", "consulta de eventos")
+        return RunEventPage(
+            events=tuple(self._to_event(e) for e in node.get("events") or []),
+            # El cursor lo dicta `hasMore`, NO la cantidad de filas devueltas: el runner puede
+            # entregar una página corta y tener continuación, y devolver un cursor sin más datos
+            # invitaría a un viaje extra que vuelve vacío.
+            next_cursor=node.get("cursor") if node.get("hasMore") else None,
+        )
+
     def list_assets(self) -> Sequence[PipelineAsset]:
-        """Todos los assets del pipeline, con su lineage. UNA llamada = el grafo completo."""
+        """Todos los assets del pipeline, con su lineage. UNA llamada = el grafo completo.
+
+        Una lista VACÍA se verifica antes de creerla: si el runner tampoco reporta ubicación de
+        código, no hay un pipeline sin assets — hay una ubicación caída, y son dos situaciones
+        operativas distintas. Pasó de verdad (2026-07-20): el code-server perdió su conexión a
+        Postgres, el webserver siguió vivo respondiendo `[]`, y la consola anunció "el orquestador
+        respondió, pero no declara ningún asset" — cierto en lo literal, engañoso en lo operativo.
+
+        El chequeo extra solo ocurre cuando la lista viene vacía, así que el camino feliz sigue
+        siendo UNA sola llamada. Reusa `_repository_selector` (que ya cachea) en vez de repetir la
+        query: es la misma pregunta que `launch` ya hacía para no lanzar contra un selector vacío.
+        """
         data = self._execute(_ASSET_NODES, {})
-        return [self._to_asset(n) for n in data.get("assetNodes") or []]
+        nodes = data.get("assetNodes") or []
+        if not nodes:
+            self._repository_selector()  # levanta `OrchestratorUnavailable` si no hay ubicación
+        return [self._to_asset(n) for n in nodes]
 
     def get_asset(self, key: str) -> PipelineAsset | None:
         data = self._execute(_ASSET_NODE, {"assetKey": {"path": key.split("/")}})

@@ -12,6 +12,7 @@ from src.contexts.save.domain.ports.orchestrator import (
     AssetHealth,
     AssetPartitionKind,
     OrchestratorUnavailable,
+    RunEventKind,
     RunTrigger,
 )
 from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
@@ -463,6 +464,32 @@ class TestListAssets:
 
         assert stats is not None and stats.kind is AssetPartitionKind.OTHER
 
+    def test_no_code_location_is_NOT_a_pipeline_without_assets(self) -> None:
+        """Incidente real (2026-07-20): el code-server perdió su conexión a Postgres y quedó en
+        error. El webserver seguía vivo y `assetNodes` devolvía `[]`, así que la consola anunció "el
+        orquestador respondió, pero no declara ningún asset" — cierto de forma literal y engañoso de
+        forma operativa: no había pipeline vacío, había una ubicación de código caída.
+
+        Se distingue preguntando por las ubicaciones, que es lo mismo que ya hacía `launch` para no
+        lanzar contra un selector vacío."""
+        transport = FakeTransport([
+            {"data": {"assetNodes": []}},
+            {"data": {"repositoriesOrError": {"__typename": "RepositoryConnection", "nodes": []}}},
+        ])
+
+        with pytest.raises(OrchestratorUnavailable, match="ubicación de código"):
+            _orchestrator(transport).list_assets()
+
+    def test_an_empty_pipeline_with_a_healthy_location_is_reported_as_empty(self) -> None:
+        """Y al revés: con la ubicación cargada, una lista vacía es una respuesta legítima."""
+        transport = FakeTransport([
+            {"data": {"assetNodes": []}},
+            {"data": {"repositoriesOrError": {"__typename": "RepositoryConnection", "nodes": [
+                {"name": "__repository__", "location": {"name": "ingestion.definitions"}}]}}},
+        ])
+
+        assert _orchestrator(transport).list_assets() == []
+
     def test_an_errors_array_is_NOT_an_empty_pipeline(self) -> None:
         """`assetNodes` es lista pelada: su único camino de error es `errors`. Devolver `[]` acá haría
         que la tab dijera "el pipeline no tiene assets" cuando no se pudo preguntar."""
@@ -501,3 +528,145 @@ class TestGetAsset:
 
         with pytest.raises(OrchestratorUnavailable):
             _orchestrator(transport).get_asset("query_catalog_prices")
+
+
+class TestGetRunEvents:
+    """US-OR-D7. Los fixtures de acá son RECORTES LITERALES de un Dagster real (2026-07-20),
+    incluida la corrida fallida `55017ded` — no formas inventadas."""
+
+    @staticmethod
+    def _connection(events: list[dict], cursor: str = "cur-1", has_more: bool = False) -> dict:
+        return {"data": {"logsForRun": {
+            "__typename": "EventConnection",
+            "cursor": cursor,
+            "hasMore": has_more,
+            "events": events,
+        }}}
+
+    def test_timestamps_are_MILLISECONDS_here_unlike_run_start_times(self) -> None:
+        """`MessageEvent.timestamp` es un **String** en **MILISEGUNDOS**, mientras que
+        `Run.startTime` es un **float** en **SEGUNDOS**. Dos unidades y dos tipos en el mismo schema.
+        Tratarlos igual da fechas del año 58.500 — plausibles a la vista y falsas."""
+        transport = FakeTransport([self._connection([
+            {"__typename": "RunStartEvent", "message": "", "timestamp": "1784588507883",
+             "level": "INFO", "stepKey": None, "eventType": "RUN_START"},
+        ])])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None
+        assert page.events[0].timestamp is not None
+        assert page.events[0].timestamp.year == 2026
+
+    def test_the_root_cause_is_the_LAST_link_of_the_error_chain(self) -> None:
+        """Recorte literal de la corrida fallida real: Dagster envuelve la excepción en un error
+        propio que no dice nada. `errorChain` va de AFUERA hacia ADENTRO → la raíz es la última."""
+        transport = FakeTransport([self._connection([
+            {"__typename": "RunFailureEvent", "message": "", "timestamp": "1784527320000",
+             "level": "ERROR", "stepKey": None, "eventType": "RUN_FAILURE",
+             "error": {
+                 "message": 'dagster._core.errors.DagsterExecutionStepExecutionError: Error '
+                            'occurred while executing op "query_catalog_prices":\n',
+                 "className": "DagsterExecutionStepExecutionError",
+                 "errorChain": [
+                     {"isExplicitLink": True, "error": {
+                         "className": "OperationalError",
+                         "message": "sqlalchemy.exc.OperationalError: (psycopg.OperationalError) "
+                                    "consuming input failed\n[SQL: SELECT ...]\n"}},
+                     {"isExplicitLink": True, "error": {
+                         "className": "OperationalError",
+                         "message": "psycopg.OperationalError: consuming input failed: server "
+                                    "closed the connection unexpectedly\n"}},
+                 ],
+             }},
+        ])])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None and page.failure is not None
+        assert page.failure.root_class_name == "OperationalError"
+        assert "server closed the connection unexpectedly" in page.failure.summary
+
+    def test_dagster_event_types_are_translated_to_the_console_vocabulary(self) -> None:
+        """41 tipos de evento del runner → 6 palabras nuestras. `LogMessageEvent` llega con
+        `eventType: null` en el dato real, así que el mapeo va por `__typename`, no por `eventType`."""
+        transport = FakeTransport([self._connection([
+            {"__typename": "RunStartEvent", "message": "", "timestamp": "1784588507000",
+             "level": "INFO", "stepKey": None, "eventType": "RUN_START"},
+            {"__typename": "LogMessageEvent", "message": "Sirena: 5/5 búsquedas",
+             "timestamp": "1784588508000", "level": "INFO", "stepKey": "query_catalog_prices",
+             "eventType": None},
+            {"__typename": "MaterializationEvent", "message": "", "timestamp": "1784588509000",
+             "level": "DEBUG", "stepKey": "query_catalog_prices",
+             "eventType": "ASSET_MATERIALIZATION"},
+            {"__typename": "StepWorkerStartedEvent", "message": "", "timestamp": "1784588510000",
+             "level": "DEBUG", "stepKey": "x", "eventType": "STEP_WORKER_STARTED"},
+        ])])
+
+        kinds = [e.kind for e in (_orchestrator(transport).get_run_events("r-1") or []).events]
+
+        assert kinds == [
+            RunEventKind.STARTED,
+            RunEventKind.LOG,
+            RunEventKind.MATERIALIZATION,
+            RunEventKind.MACHINERY,
+        ]
+
+    def test_an_unknown_event_type_degrades_to_machinery_instead_of_crashing(self) -> None:
+        """Dagster va a agregar tipos. Un `KeyError` en la consola por un evento nuevo sería
+        cambiar "no sé qué es esto" por "la consola está rota"."""
+        transport = FakeTransport([self._connection([
+            {"__typename": "AlgoQueTodaviaNoExisteEvent", "message": "?",
+             "timestamp": "1784588507000", "level": "DEBUG", "stepKey": None, "eventType": "?"},
+        ])])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None and page.events[0].kind is RunEventKind.MACHINERY
+
+    def test_the_limit_is_clamped_to_the_runners_hard_ceiling(self) -> None:
+        """Medido: pedir 2000 devuelve `Limit of 2000 is too large. Max is 1000` — un ERROR, no una
+        lista recortada. Un techo que se descubre en producción no es un techo, es una caída."""
+        transport = FakeTransport([self._connection([])])
+
+        _orchestrator(transport).get_run_events("r-1", limit=5000)
+
+        assert transport.last_variables["limit"] == 1000
+
+    def test_next_cursor_is_None_when_the_runner_says_there_is_no_more(self) -> None:
+        """El cursor lo dicta `hasMore`, NO la cantidad de filas: el runner filtra del lado suyo, así
+        que una página corta puede perfectamente tener continuación."""
+        transport = FakeTransport([self._connection([], cursor="c-9", has_more=False)])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None and page.next_cursor is None
+
+    def test_next_cursor_is_forwarded_when_there_IS_more(self) -> None:
+        transport = FakeTransport([self._connection([], cursor="c-9", has_more=True)])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None and page.next_cursor == "c-9"
+
+    def test_the_cursor_travels_as_afterCursor_because_a_log_is_read_forward(self) -> None:
+        transport = FakeTransport([self._connection([])])
+
+        _orchestrator(transport).get_run_events("r-1", cursor="c-3")
+
+        assert transport.last_variables["afterCursor"] == "c-3"
+
+    def test_a_missing_run_is_an_ANSWER_not_an_outage(self) -> None:
+        transport = FakeTransport([
+            {"data": {"logsForRun": {"__typename": "RunNotFoundError", "message": "nope"}}}
+        ])
+
+        assert _orchestrator(transport).get_run_events("no-existe") is None
+
+    def test_a_python_error_in_the_union_is_still_an_outage(self) -> None:
+        transport = FakeTransport([
+            {"data": {"logsForRun": {"__typename": "PythonError", "message": "boom"}}}
+        ])
+
+        with pytest.raises(OrchestratorUnavailable):
+            _orchestrator(transport).get_run_events("r-1")
