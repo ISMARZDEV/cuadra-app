@@ -1,4 +1,4 @@
-import { ChevronDown, LayoutGrid, List, Search } from "lucide-react";
+import { CheckCheck, ChevronDown, LayoutGrid, List, PackagePlus, Search, Tags, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui-base/button";
@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui-base/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,15 @@ export interface ReviewQueueToolbarProps {
   /** Nº de filas seleccionadas (bulk actions) — deshabilita el dropdown "Acciones" en 0. */
   selectedCount: number;
   onBulkApprove: () => void;
+  /** ¿Hay al menos una fila seleccionada CON candidatos? "Aprobar" enlaza al candidato top: sobre
+   * una selección entera sin candidatos no puede hacer nada. */
+  hasCandidatesSelected?: boolean;
   onBulkReject: () => void;
+  /** Clasifica en lote lo seleccionado (llena la categoría, precondición para canonizar). */
+  onBulkClassify: () => void;
+  /** Crea canónicos NUEVOS a partir de lo seleccionado. Es la acción que sirve cuando no hay
+   *  candidatos a los que enlazar — el caso normal en un catálogo en arranque en frío. */
+  onBulkCanonize: () => void;
   bulkBusy?: boolean;
   /** Locale explícito (SSR admin, ver `useAdminI18n`). */
   locale: Locale;
@@ -68,7 +77,10 @@ export function ReviewQueueToolbar({
   onViewChange,
   selectedCount,
   onBulkApprove,
+  hasCandidatesSelected = true,
   onBulkReject,
+  onBulkClassify,
+  onBulkCanonize,
   bulkBusy,
   locale,
 }: ReviewQueueToolbarProps) {
@@ -144,23 +156,28 @@ export function ReviewQueueToolbar({
         </div>
       </div>
 
+      {/* Orden del cluster derecho: contador → Acciones → Mostrar todos. Es el MISMO que el de
+          Orquestación (contador → Acciones → Nuevo flujo), y no es simetría por simetría: lo que
+          opera sobre la SELECCIÓN va junto al número de filas seleccionadas, y lo que cambia el
+          alcance de la vista queda después. Antes "Mostrar todos" se metía entre el contador y su
+          propio botón. */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* "Mostrar todos": STUB — dropdown presentacional, sin efecto (follow-up). Pill lima con
-            ícono lista+estrella (duotono) y texto verde bosque. */}
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest">
-            <ListStarIcon className="size-[18px]" />
-            {t("admin.toolbar.showAll")}
-            <ChevronDown className="size-3.5" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem>{t("admin.toolbar.showAll.optionAll")}</DropdownMenuItem>
-            <DropdownMenuItem>{t("admin.toolbar.showAll.optionUncertain")}</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Contador PEGADO al botón que actúa sobre esa selección. Vivía debajo de la tabla, a media
+            pantalla del menú: al abrir "Aprobar seleccionados" el número ya no estaba a la vista, y
+            una acción en lote sin saber sobre cuántas filas aplica es la que no se debe ofrecer. */}
+        {selectedCount > 0 ? (
+          <span
+            data-testid="review-selected-count"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            {selectedCount} {t("admin.reviewQueue.selectedSuffix")}
+          </span>
+        ) : null}
 
         {/* "Acciones": bulk approve/reject reales — deshabilitado sin selección. Pill verde bosque
-            con ícono list-checks (duotono) y texto lima. */}
+            con ícono list-checks (duotono) y texto lima. Los ítems llevan los MISMOS íconos y
+            colores que el menú de fila: es la misma acción sobre varias filas, y otro aspecto haría
+            dudar de si hace lo mismo. */}
         <DropdownMenu>
           <DropdownMenuTrigger
             disabled={selectedCount === 0 || bulkBusy}
@@ -170,13 +187,73 @@ export function ReviewQueueToolbar({
             {t("admin.toolbar.actions")}
             <ChevronDown className="size-3.5" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onClick={onBulkApprove}>
+          {/* `align="end"` + `min-w-56` + `nowrap`: EXACTAMENTE lo mismo que el menú de lote de
+              Orquestación, y no por simetría estética sino porque sin eso el menú medía 139px, los
+              ítems se partían en dos líneas (52px de alto en vez de 32) y el panel se desbordaba
+              hacia la derecha de la tabla. Medido, no supuesto. */}
+          <DropdownMenuContent align="end" className="min-w-56 [&_[role=menuitem]]:whitespace-nowrap">
+            {/* PREPARAR primero: clasificar no decide nada sobre el match, sólo le pone la
+                categoría — que es la precondición para poder canonizar después. `Tags` y no
+                `Sparkles`: no todo el trabajo lo hace un LLM (el léxico y la señal de origen son
+                deterministas), y vender magia donde hay reglas sería mentir sobre el sistema. */}
+            <DropdownMenuItem
+              onClick={onBulkClassify}
+              className="focus:bg-violet-500/10 focus:text-violet-600 not-data-[variant=destructive]:focus:**:text-violet-600 dark:focus:text-violet-400 dark:not-data-[variant=destructive]:focus:**:text-violet-400"
+            >
+              <Tags className="text-violet-600 dark:text-violet-400" />
+              {t("admin.toolbar.actions.classify")}
+            </DropdownMenuItem>
+
+            {/* El separador agrupa por TIPO DE ACTO: preparar · decidir · destruir. Sin él las
+                cuatro acciones se leen como intercambiables, y una de ellas borra. */}
+            <DropdownMenuSeparator />
+
+            {/* Deshabilitado cuando NINGUNA fila seleccionada tiene candidatos: enlazar al
+                candidato top es imposible sin candidatos, y ofrecerlo devolvía una lista de fallos
+                por cada fila. El `title` dice por qué, y a dónde ir en su lugar. */}
+            <DropdownMenuItem
+              disabled={!hasCandidatesSelected}
+              title={
+                hasCandidatesSelected ? undefined : t("admin.toolbar.actions.approve.noCandidates")
+              }
+              onClick={onBulkApprove}
+              className="focus:bg-emerald-500/10 focus:text-emerald-600 not-data-[variant=destructive]:focus:**:text-emerald-600 dark:focus:text-emerald-400 dark:not-data-[variant=destructive]:focus:**:text-emerald-400"
+            >
+              {/* `CheckCheck` (doble tilde) y no `Check`: es la acción sobre VARIAS filas, y el
+                  glifo lo dice sin leer. El simple queda para el aprobar de una sola. */}
+              <CheckCheck className="text-emerald-600 dark:text-emerald-400" />
               {t("admin.toolbar.actions.approve")}
             </DropdownMenuItem>
+            {/* Crear canónicos: NO se deshabilita por candidatos — justamente sirve cuando NO
+                los hay. `PackagePlus`: nace una entrada nueva en el catálogo maestro. */}
+            <DropdownMenuItem
+              onClick={onBulkCanonize}
+              className="focus:bg-emerald-500/10 focus:text-emerald-600 not-data-[variant=destructive]:focus:**:text-emerald-600 dark:focus:text-emerald-400 dark:not-data-[variant=destructive]:focus:**:text-emerald-400"
+            >
+              <PackagePlus className="text-emerald-600 dark:text-emerald-400" />
+              {t("admin.toolbar.actions.canonize")}
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
             <DropdownMenuItem variant="destructive" onClick={onBulkReject}>
+              <X />
               {t("admin.toolbar.actions.reject")}
             </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* "Mostrar todos": STUB — dropdown presentacional, sin efecto (follow-up). Pill lima con
+            ícono lista+estrella (duotono) y texto verde bosque. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest">
+            <ListStarIcon className="size-[18px]" />
+            {t("admin.toolbar.showAll")}
+            <ChevronDown className="size-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>{t("admin.toolbar.showAll.optionAll")}</DropdownMenuItem>
+            <DropdownMenuItem>{t("admin.toolbar.showAll.optionUncertain")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

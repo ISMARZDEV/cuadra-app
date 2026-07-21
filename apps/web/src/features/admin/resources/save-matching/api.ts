@@ -1,7 +1,11 @@
 import type { AdminReviewQueueRowDto, BulkResolveResultDto } from "@cuadra/api-client";
 import {
+  bulkClassifyReview,
+  bulkCreateCanonicals,
   bulkResolveReview,
   createCanonicalAndLink,
+  listTaxonomyLeaves,
+  setProductCategory,
   listReviewQueue,
   resolveReview,
   reviewDetail,
@@ -9,6 +13,8 @@ import {
 
 import { authHeaders } from "@/features/save/hooks/use-auth";
 import { apiClient } from "@/lib/api";
+
+import { ADMIN_DECIDED_BY } from "./lib/decided-by";
 
 import type { ReviewQueueParams } from "./types";
 
@@ -136,4 +142,59 @@ export async function createCanonicalAndLinkMatch(params: {
       market_id: params.marketId,
     },
   });
+}
+
+
+/** Hojas de la taxonomía CON su id — el endpoint público `/save/categories` solo da slugs, y fijar
+ * una categoría necesita el `taxonomy_node_id`. */
+export async function fetchTaxonomyLeaves() {
+  const res = await listTaxonomyLeaves({ client: apiClient, headers: await authHeaders() });
+  return res.data?.leaves ?? [];
+}
+
+/** Override HUMANO de la categoría de un store_product. `false` = el servidor la rechazó (la celda
+ * revierte su valor optimista). */
+export async function setStoreProductCategory(
+  storeProductId: string,
+  taxonomyNodeId: string,
+): Promise<boolean> {
+  const res = await setProductCategory({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { store_product_id: storeProductId },
+    body: { taxonomy_node_id: taxonomyNodeId, decided_by: ADMIN_DECIDED_BY },
+  });
+  return !res.error;
+}
+
+/** Clasifica en lote lo seleccionado. Devuelve el resumen de TRES estados (clasificadas / sin
+ * decidir / con error) — fundir los dos últimos haría que un lote a medias se lea como terminado. */
+export async function classifySelected(matchIds: string[]) {
+  const res = await bulkClassifyReview({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: { match_ids: matchIds },
+  });
+  return res.data ?? null;
+}
+
+
+/** Convierte en canónicos las filas seleccionadas. `fallbackTaxonomyNodeId` llena SOLO los huecos:
+ * nunca pisa una categoría ya decidida (la regla vive en el use case del backend). */
+export async function createCanonicalsFromSelection(
+  matchIds: string[],
+  fallbackTaxonomyNodeId: string | null,
+  overrides: Record<string, string> = {},
+) {
+  const res = await bulkCreateCanonicals({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: {
+      match_ids: matchIds,
+      fallback_taxonomy_node_id: fallbackTaxonomyNodeId,
+      overrides,
+      decided_by: ADMIN_DECIDED_BY,
+    },
+  });
+  return res.data ?? null;
 }

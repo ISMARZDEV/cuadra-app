@@ -1,4 +1,4 @@
-import type { SeriesPoint } from "../../../lib/review-queue-kpis";
+import type { SeriesPoint } from "../types";
 
 interface MiniLineChartProps {
   data: SeriesPoint[];

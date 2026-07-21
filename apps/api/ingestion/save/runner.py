@@ -49,6 +49,7 @@ def refresh_source(
     )
     seen = refreshed = unmatched = matched = discarded = 0
     auto_linked = queued_for_review = 0
+    queries_processed = 0
     total = len(adapters)
     for index, adapter in enumerate(adapters, start=1):
         if index > 1 and pace is not None:
@@ -61,6 +62,11 @@ def refresh_source(
         discarded += result.discarded
         auto_linked += result.auto_linked
         queued_for_review += result.queued_for_review
+        # Una vuelta completa del bucle = una query ejecutada. Se cuenta ACÁ y no se suma desde el
+        # use-case, que no sabe si su fuente es una query o una sección del browse.
+        # `queries_total` tampoco se suma: es el PLAN (`len(adapters)`). Sumarlo haría que una
+        # corrida cortada a la mitad reportara total == procesadas, o sea, COMPLETA.
+        queries_processed += 1
         if on_progress is not None:
             on_progress(
                 index,
@@ -69,9 +75,11 @@ def refresh_source(
                     seen=seen, refreshed=refreshed, unmatched=unmatched,
                     matched=matched, discarded=discarded,
                     auto_linked=auto_linked, queued_for_review=queued_for_review,
+                    queries_total=total, queries_processed=queries_processed,
                 ),
             )
     return RefreshResult(
         seen=seen, refreshed=refreshed, unmatched=unmatched, matched=matched, discarded=discarded,
         auto_linked=auto_linked, queued_for_review=queued_for_review,
+        queries_total=total, queries_processed=queries_processed,
     )

@@ -1,4 +1,4 @@
-import type { AdminReviewQueueRowDto } from "@cuadra/api-client";
+import type { AdminReviewQueueRowDto, TaxonomyLeafDto } from "@cuadra/api-client";
 import { ExternalLink, Eye, ImageOff, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { navigate } from "vike/client/router";
@@ -10,11 +10,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-base/dropdown-menu";
 import { TableCell, TableRow } from "@/components/ui-base/table";
-import { CategoryBadge } from "@/features/admin/components/CategoryBadge";
+
 import { MethodBadge } from "@/features/admin/components/MethodBadge";
 import { ProviderLogo } from "@/features/admin/components/ProviderLogo";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
+
+import { CategoryCell } from "./CategoryCell";
 import type { Locale } from "@/i18n/config";
 
 import { confidencePillClass } from "../lib/confidence-color";
@@ -24,6 +26,10 @@ import { parseSize } from "../lib/parse-size";
 
 interface ReviewRowProps {
   row: AdminReviewQueueRowDto;
+  /** Hojas de la taxonomía para el selector de la celda. Vacío/ausente = celda no editable. */
+  taxonomyLeaves?: TaxonomyLeafDto[];
+  /** Persiste la categoría; `false` = rechazada (la celda revierte su valor optimista). */
+  onSetCategory?: (storeProductId: string, taxonomyNodeId: string) => Promise<boolean>;
   href: string;
   /** Locale explícito (SSR admin, ver `useAdminI18n`) — pinta `CategoryBadge`/`MethodBadge`/
    * `formatMatchDate` y las etiquetas del menú "Acciones". */
@@ -42,7 +48,16 @@ interface ReviewRowProps {
 // Imagen (thumbnail + badge del nº de candidatos SOBRE la foto) · Producto (nombre 2 líneas) ·
 // Tamaño/Peso (parseSize) · Descripción (placeholder — sin dato en el DTO) · Categoría · Marca
 // (texto) · Tienda (logo) · Método · Fecha del match (2 líneas: fecha + hora) · Acciones.
-export function ReviewRow({ row, href, locale, selected = false, onToggleSelect, onDelete }: ReviewRowProps) {
+export function ReviewRow({
+  row,
+  href,
+  locale,
+  selected = false,
+  onToggleSelect,
+  onDelete,
+  taxonomyLeaves,
+  onSetCategory,
+}: ReviewRowProps) {
   const { t } = useAdminI18n(locale);
   const size = parseSize(row.store_product_size_text);
   const confidencePct = row.confidence === null ? "N/A" : `${Math.round(row.confidence * 100)}%`;
@@ -141,8 +156,17 @@ export function ReviewRow({ row, href, locale, selected = false, onToggleSelect,
         <span className="text-xs text-muted-foreground">{t("admin.reviewQueue.noDescription")}</span>
       </TableCell>
 
+      {/* Categoría EDITABLE: el badge es el disparador. La clasificación automática deja huecos a
+          propósito, así que llenarlos a mano es el caso normal — y se hace acá, con la imagen, la
+          marca y el tamaño de la fila delante, no en un modal que los tapa. */}
       <TableCell>
-        <CategoryBadge slug={row.category?.slug} name={row.category?.name} locale={locale} />
+        <CategoryCell
+          storeProductId={row.store_product_id}
+          category={row.category}
+          leaves={taxonomyLeaves ?? []}
+          onSet={onSetCategory ?? (async () => false)}
+          locale={locale}
+        />
       </TableCell>
 
       {/* Marca: logo bundleado por nombre si existe (Figma — GOYA/…), si no el texto de la marca. */}
@@ -197,7 +221,10 @@ export function ReviewRow({ row, href, locale, selected = false, onToggleSelect,
               íconos Lucide dibujan con `stroke="currentColor"`: el color real lo decide el `color` del
               `<path>` interior, y el base tiñe ese path de gris vía `**:text-accent-foreground`. Misma
               firma de variante que el base → tailwind-merge conserva la nuestra (va después). */}
-          <DropdownMenuContent align="end">
+          {/* `min-w-56` + `nowrap`: mismo tratamiento que el menú de lote y que Orquestación. Sin
+              esto "Ver en la tienda" se partía en dos líneas (52px de alto contra 32 del resto),
+              y un ítem que mide distinto a sus hermanos rompe el ritmo de la lista. Medido. */}
+          <DropdownMenuContent align="end" className="min-w-56 [&_[role=menuitem]]:whitespace-nowrap">
             <DropdownMenuItem
               onClick={() => void navigate(href)}
               className="focus:bg-emerald-500/10 focus:text-emerald-600 not-data-[variant=destructive]:focus:**:text-emerald-600 dark:focus:text-emerald-400 dark:not-data-[variant=destructive]:focus:**:text-emerald-400"

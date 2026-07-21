@@ -39,7 +39,9 @@ from .composition import (
     build_classifier,
     build_cover_canonicals,
     build_matcher,
+    build_progress_recorder,
     build_query_catalog_sources_for,
+    resolve_query_limit,
     build_refresh_covered_prices,
     build_refresh_known_prices,
     build_relevance_gate,
@@ -87,15 +89,33 @@ _AFTER_DEPS_SETTLE = (
 )
 
 
+def _log_and_record_progress(context, provider_id, record):  # type: ignore[no-untyped-def]
+    """Une las DOS cosas que hay que hacer en cada query: dejar rastro en el log del runner (para
+    depurar la corrida) y persistir el snapshot (para que la consola lo vea EN VIVO). Antes solo
+    ocurría la primera."""
+
+    def on_progress(index, total, acc):  # type: ignore[no-untyped-def]
+        context.log.info(
+            f"[{provider_id}] query {index}/{total} · acumulado: "
+            f"seen={acc.seen} matched={acc.matched} unmatched={acc.unmatched}"
+        )
+        record(index, total, acc)
+
+    return on_progress
+
+
 @dg.asset(
     name="embed_canonicals",
     group_name="save_catalog",
     automation_condition=_DAILY_CHAIN_HEAD,
-    description="Backfill del índice semántico: embebe los canónicos antes del matching (no-op si dark). "
-    "Cabeza de la cadena diaria (06:00) — lo que sigue lo arrastran las dependencias, no el reloj.",
+    description="Prepara el índice de búsqueda por significado con los productos del catálogo. "
+    "Abre la jornada (06:00) y todo lo demás lo arrastran sus dependencias: si esto no corre, el "
+    "emparejamiento por parecido se queda sin con qué comparar.",
 )
 def embed_canonicals(context) -> dg.MaterializeResult:
-    """Upstream de las fuentes: la etapa vectorial de la cascada necesita canónicos ya embebidos.
+    """Cabeza de la cadena diaria — el ÚNICO cron; el resto se encadena por DEPENDENCIA, no por reloj.
+
+    Upstream de las fuentes: la etapa vectorial de la cascada necesita canónicos ya embebidos.
     No-op cuando `SAVE_MATCHING_CASCADE_ENABLED=false` (`build_canonical_embedder` → None)."""
     with SessionLocal() as session:
         embedder = build_canonical_embedder(session)
@@ -114,9 +134,9 @@ def embed_canonicals(context) -> dg.MaterializeResult:
     deps=[dg.AssetKey("embed_canonicals")],  # matching necesita el índice semántico poblado
     group_name="save_catalog",
     automation_condition=dg.AutomationCondition.eager(),
-    description="Descubrimiento (Loop A): busca las queries ACTIVAS de la canasta en UNA tienda por "
-    "partición. Registry-driven — el set de tiendas sale de `store_registry` activo × capacidad "
-    "by_text, no de un tuple en código. Particionado → cada tienda se materializa/reintenta sola.",
+    description="Busca en un supermercado los productos de la canasta curada y trae sus precios. "
+    "Es la vía por la que aparecen productos NUEVOS. Una partición por supermercado: cada uno se "
+    "lanza y se reintenta por separado.",
 )
 def query_catalog_prices(context) -> dg.MaterializeResult:
     """Antes eran tres assets fijos (`sirena_prices`/`nacional_prices`/`jumbo_prices`) armados desde
@@ -128,7 +148,12 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
     with SessionLocal() as session:
         # La canasta sale de la TABLA `basket_query` (active) del mercado. La sesión se abre antes
         # para leerla y reusarla en el refresh.
-        queries = build_basket_queries(session, SAVE_MARKET)
+        # El tope lo manda la POLICY del admin (override → default global), con la env como red de
+        # seguridad de dev. Hasta que se cableó, `query_limit_override` no influía en nada y el
+        # formulario ya lo dejaba editar: un control cuyo efecto no existía.
+        queries = build_basket_queries(
+            session, SAVE_MARKET, limit=resolve_query_limit(session, provider_id, SAVE_MARKET)
+        )
         if not queries:
             context.log.warning(
                 f"query_catalog_prices[{provider_id}]: canasta VACÍA para {SAVE_MARKET} "
@@ -150,9 +175,19 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             SqlStoreProductRepository(session), adapters,
             matcher=build_matcher(session), classifier=build_classifier(session),
             relevance_gate=build_relevance_gate(session),
-            on_progress=lambda i, n, r: context.log.info(
-                f"[{provider_id}] query {i}/{n} · acumulado: "
-                f"seen={r.seen} matched={r.matched} unmatched={r.unmatched}"
+            # El progreso se PERSISTE en cada query, no solo se loguea: sin esto la consola no
+            # tiene qué mostrar hasta que la corrida termina, y la barra aparece siempre al 100%.
+            # Va en sesión propia (ver `build_progress_recorder`) porque la de la ingesta commitea
+            # al final.
+            on_progress=_log_and_record_progress(
+                context,
+                provider_id,
+                build_progress_recorder(
+                    run_id=context.run_id,
+                    market=SAVE_MARKET,
+                    provider_id=provider_id,
+                    flow_key="provider_prices_refresh",
+                ),
             ),
             # Un adapter POR TÉRMINO de canasta contra la MISMA tienda (hoy 213) → sin pausa es un
             # martilleo. El browse REST (abajo) no la necesita acá: trae la suya del factory.
@@ -177,6 +212,8 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
                 discarded=result.discarded,
                 auto_linked=result.auto_linked,
                 queued_for_review=result.queued_for_review,
+                queries_total=result.queries_total,
+                queries_processed=result.queries_processed,
             ),
             provider_id=provider_id,
             flow_key="provider_prices_refresh",
@@ -230,8 +267,9 @@ def sync_query_catalog_providers(context) -> dg.SensorResult | dg.SkipReason:
     partitions_def=rest_catalog_sections,  # UNA sección REST_CATALOG por partición ({provider}:{section})
     deps=[dg.AssetKey("embed_canonicals")],  # el matching del refresh necesita el índice semántico
     group_name="save_catalog",
-    description="Refresh (browse-full) de UNA sección REST_CATALOG por partición ({provider}:{section}), "
-    "registry-driven (Bravo y afines). Particionado → cada sección se materializa/reintenta por separado.",
+    description="Recorre el catálogo completo de un supermercado, sección por sección. Descubre los "
+    "productos EXCLUSIVOS que la canasta nunca pediría. Una partición por sección: cada una se lanza "
+    "y se reintenta por separado.",
 )
 def rest_catalog_prices(context) -> dg.MaterializeResult:
     """Loop A por sección para súper con API REST propia: a diferencia de sirena/nacional/jumbo
@@ -295,10 +333,11 @@ def sync_rest_catalog_sections(context) -> dg.SensorResult | dg.SkipReason:
     name="coverage",
     deps=[dg.AssetKey("embed_canonicals")],  # la cascada valida los candidatos → índice semántico
     group_name="save_catalog",
-    description="Loop B (cobertura dirigida, F3.1): busca cada canónico NO cubierto en cada tienda "
-    "(consulta EAN-first) y lo enlaza vía la cascada; nunca crea canónicos.",
+    description="Toma los productos del catálogo que todavía no se venden en una tienda y los busca "
+    "ahí por código de barras para enlazarlos. Completa cobertura: NUNCA crea productos nuevos.",
 )
 def coverage(context) -> dg.MaterializeResult:
+    """Loop B (cobertura dirigida, F3.1) — consulta EAN-first, enlaza vía la cascada."""
     with SessionLocal() as session:
         result = build_cover_canonicals(session).execute(SAVE_MARKET)
         session.commit()
@@ -318,11 +357,13 @@ def coverage(context) -> dg.MaterializeResult:
 @dg.asset(
     name="freshness",
     group_name="save_catalog",
-    description="F3.2a (frescura): re-fetch DIRECTO por id/url de lo cubierto+VIEJO (staleness 18h/3d) "
-    "→ record_observation change-only. NO re-descubre (el enlace ya se conoce) → sin dep de "
-    "embed_canonicals. Su schedule es FRECUENTE (equivalente al Prices Batch de SRD §3.1).",
+    description="Vuelve a consultar el precio de los productos ya enlazados cuyo dato quedó viejo. "
+    "Es lo que mantiene al día lo que el usuario ve en la app, así que corre seguido (cada 2h).",
 )
 def freshness(context) -> dg.MaterializeResult:
+    """F3.2a — re-fetch DIRECTO por id/url de lo cubierto+VIEJO (staleness 18h/3d), `record_observation`
+    change-only. NO re-descubre (el enlace ya se conoce) → sin dep de `embed_canonicals`. Equivale al
+    Prices Batch de SRD §3.1."""
     with SessionLocal() as session:
         result = build_refresh_covered_prices(session).execute(SAVE_MARKET)
         session.commit()
@@ -343,12 +384,13 @@ def freshness(context) -> dg.MaterializeResult:
 @dg.asset(
     name="price_refresh",
     group_name="save_catalog",
-    description="Prices Batch (paridad SRD §3.1): re-precia por id/get TODO lo CONOCIDO y viejo "
-    "(matcheado O en revisión) → record_observation change-only, SIN matcher ni descubrimiento. "
-    "Superset de `freshness` (covered-only): mantiene fresco el precio de la cola de revisión sin "
-    "re-browsear. Sin dep de embed_canonicals (no re-descubre).",
+    description="Vuelve a consultar el precio de TODO lo conocido, incluido lo que espera en la cola "
+    "de revisión. Es más amplio que «Frescura» y por eso corre menos seguido (cada 4h).",
 )
 def price_refresh(context) -> dg.MaterializeResult:
+    """Prices Batch (paridad SRD §3.1) — re-precia por id/get lo CONOCIDO y viejo (matcheado O en
+    revisión), `record_observation` change-only, SIN matcher ni descubrimiento. Superset de
+    `freshness` (covered-only): mantiene fresco el precio de la cola sin re-browsear."""
     with SessionLocal() as session:
         result = build_refresh_known_prices(session).execute(SAVE_MARKET)
         session.commit()
@@ -370,7 +412,8 @@ def price_refresh(context) -> dg.MaterializeResult:
     deps=[dg.AssetKey("query_catalog_prices"), dg.AssetKey("rest_catalog_prices")],
     group_name="save_catalog",
     automation_condition=_AFTER_DEPS_SETTLE,
-    description="Bajadas de precio detectadas tras el refresh (G4).",
+    description="Detecta qué productos bajaron de precio en los últimos días. Alimenta las alertas "
+    "que reciben los usuarios.",
 )
 def price_drops(context) -> dg.MaterializeResult:
     with SessionLocal() as session:
@@ -385,7 +428,8 @@ def price_drops(context) -> dg.MaterializeResult:
     deps=[dg.AssetKey("query_catalog_prices"), dg.AssetKey("rest_catalog_prices")],
     group_name="save_catalog",
     automation_condition=_AFTER_DEPS_SETTLE,
-    description="Cruce de bajadas con las suscripciones → notificaciones de alerta (G4).",
+    description="Cruza las bajadas de precio con las alertas que los usuarios configuraron y genera "
+    "sus notificaciones. Es el último paso de la jornada.",
 )
 def alert_matching(context) -> dg.MaterializeResult:
     """Vía de PROD del matching de alertas (antes: endpoint dev-guarded). Cuelga de las fuentes —

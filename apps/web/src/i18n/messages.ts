@@ -162,8 +162,8 @@ type MessageKey =
   | "admin.orchestration.col.provider"
   | "admin.orchestration.col.mode"
   | "admin.orchestration.col.nextRun"
+  | "admin.orchestration.col.runOutcome"
   | "admin.orchestration.col.lastRun"
-  | "admin.orchestration.col.outcome"
   | "admin.orchestration.col.actions"
   | "admin.orchestration.outcome.linkedPart"
   | "admin.orchestration.outcome.queuedPart"
@@ -180,24 +180,226 @@ type MessageKey =
   | "admin.orchestration.state.failed"
   | "admin.orchestration.state.canceled"
   | "admin.orchestration.state.unknown"
+  | "admin.orchestration.action.detail"
   | "admin.orchestration.action.run"
+  | "admin.orchestration.state.active"
+  | "admin.orchestration.flow.provider_prices_refresh"
+  | "admin.orchestration.state.paused"
   | "admin.orchestration.action.pause"
   | "admin.orchestration.action.resume"
   | "admin.orchestration.action.cancel"
   | "admin.orchestration.kpi.activeFlows"
   | "admin.orchestration.kpi.activeFlows.hint"
-  | "admin.orchestration.kpi.autoLinked"
-  | "admin.orchestration.kpi.autoLinked.hint"
-  | "admin.orchestration.kpi.queued"
-  | "admin.orchestration.kpi.queued.hint"
   | "admin.orchestration.kpi.newCanonicals"
   | "admin.orchestration.kpi.newCanonicals.hint"
+  | "admin.orchestration.col.status"
+  | "admin.orchestration.col.schedule"
+  | "admin.orchestration.detail.slaWithin"
+  | "admin.orchestration.detail.slaBreached"
+  | "admin.orchestration.detail.slaNa"
+  | "admin.orchestration.detail.back"
+  | "admin.orchestration.detail.lastRunTitle"
+  | "admin.orchestration.detail.trigger"
+  | "admin.orchestration.detail.startedAt"
+  | "admin.orchestration.detail.endedAt"
+  | "admin.orchestration.detail.duration"
+  | "admin.orchestration.detail.noRun"
+  | "admin.orchestration.detail.resultsTitle"
+  | "admin.orchestration.detail.healthTitle"
+  | "admin.orchestration.detail.lastSync"
+  | "admin.orchestration.detail.queryLimit"
+  | "admin.orchestration.detail.queryLimitNone"
+  | "admin.orchestration.detail.historyTitle"
+  | "admin.orchestration.detail.historyUnavailable"
+  | "admin.orchestration.detail.historyEmpty"
+  | "admin.orchestration.detail.historyMore"
+  | "admin.orchestration.detail.runnerDown"
+  | "admin.orchestration.detail.activityTitle"
+  | "admin.orchestration.detail.activityEmpty"
+  | "admin.orchestration.detail.activityUnavailable"
+  | "admin.orchestration.detail.activityShowAll"
+  | "admin.orchestration.detail.activityShowKey"
+  | "admin.orchestration.detail.activityHiddenCount"
+  | "admin.orchestration.detail.activityLoadMore"
+  | "admin.orchestration.detail.activityOfRun"
+  | "admin.orchestration.detail.activityBackToCurrent"
+  | "admin.orchestration.detail.rowSeeActivity"
+  | "admin.orchestration.detail.failureTitle"
+  | "admin.orchestration.detail.failureTechnical"
+  | "admin.orchestration.event.queued"
+  | "admin.orchestration.event.started"
+  | "admin.orchestration.event.succeeded"
+  | "admin.orchestration.event.canceled"
+  | "admin.orchestration.event.failure"
+  | "admin.orchestration.event.step"
+  | "admin.orchestration.event.materialization"
+  | "admin.orchestration.event.log"
+  | "admin.orchestration.event.machinery"
+  | "admin.orchestration.detail.colWhen"
+  | "admin.orchestration.detail.colTrigger"
+  | "admin.orchestration.detail.colState"
+  | "admin.orchestration.detail.colDuration"
+  | "admin.orchestration.detail.durationMinutes"
+  | "admin.orchestration.detail.durationSeconds"
+  | "admin.orchestration.detail.durationRunning"
+  | "admin.orchestration.trigger.manual"
+  | "admin.orchestration.trigger.automatic"
+  | "admin.orchestration.trigger.retry"
+  | "admin.orchestration.bulk.selected"
+  | "admin.orchestration.bulk.run"
+  | "admin.orchestration.bulk.pause"
+  | "admin.orchestration.bulk.delete"
+  | "admin.orchestration.bulk.selectAll"
+  | "admin.orchestration.bulk.selectRow"
+  | "admin.orchestration.bulk.deleteTitle"
+  | "admin.orchestration.bulk.deleteBody"
+  | "admin.orchestration.col.progress"
+  | "admin.orchestration.col.progressHelp"
+  | "admin.orchestration.col.runFunnel"
+  | "admin.orchestration.col.runFunnelHelp"
+  | "admin.orchestration.funnel.existing"
+  | "admin.orchestration.funnel.linked"
+  | "admin.orchestration.funnel.new"
+  | "admin.orchestration.funnel.pending"
+  | "admin.orchestration.products.queryProgress"
+  | "admin.orchestration.products.queryProgressTitle"
+  | "admin.orchestration.products.starting"
+  | "admin.orchestration.products.startingHint"
+  | "admin.orchestration.products.seenLabel"
+  | "admin.orchestration.products.chipKnown"
+  | "admin.orchestration.products.chipNew"
+  | "admin.orchestration.products.seenHelp"
+  | "admin.orchestration.products.knownHelp"
+  | "admin.orchestration.products.newHelp"
+  | "admin.orchestration.outcome.linkedHelp"
+  | "admin.orchestration.outcome.queuedHelp"
+  | "admin.orchestration.products.chipDiscarded"
+  | "admin.orchestration.outcome.chipLinked"
+  | "admin.orchestration.outcome.chipQueued"
+  | "admin.orchestration.outcome.chipNew"
+  | "admin.orchestration.outcome.nothing"
+  | "admin.orchestration.products.seen"
+  | "admin.orchestration.products.breakdown"
+  | "admin.orchestration.schedule.none"
+  | "admin.orchestration.action.retry"
+  | "admin.orchestration.action.edit"
+  | "admin.orchestration.action.delete"
+  | "admin.orchestration.actions.menuLabel"
+  | "admin.orchestration.confirm.back"
+  | "admin.orchestration.confirm.cancel.title"
+  | "admin.orchestration.confirm.cancel.body"
+  | "admin.orchestration.confirm.cancel.accept"
+  | "admin.orchestration.confirm.delete.title"
+  | "admin.orchestration.confirm.delete.body"
+  | "admin.orchestration.confirm.delete.accept"
+  | "admin.orchestration.tabs.flows"
+  | "admin.orchestration.tabs.assets"
+  | "admin.orchestration.assets.loading"
+  | "admin.orchestration.assets.empty"
+  | "admin.orchestration.assets.unavailableTitle"
+  | "admin.orchestration.assets.unavailableHint"
+  | "admin.orchestration.assets.partsProvider"
+  | "admin.orchestration.assets.partsSection"
+  | "admin.orchestration.assets.partsOther"
+  | "admin.orchestration.assets.partitionsHelp"
+  | "admin.orchestration.assets.partitionsDetail"
+  | "admin.orchestration.assets.partitionsNone"
+  | "admin.orchestration.assets.colAsset"
+  | "admin.orchestration.assets.colGroup"
+  | "admin.orchestration.assets.colJobs"
+  | "admin.orchestration.assets.colPartitions"
+  | "admin.orchestration.assets.colLastRun"
+  | "admin.orchestration.assets.colHealth"
+  | "admin.orchestration.assets.failedCount"
+  | "admin.orchestration.assets.health.never_materialized"
+  | "admin.orchestration.assets.health.healthy"
+  | "admin.orchestration.assets.health.degraded"
+  | "admin.orchestration.assets.health.failed"
+  | "admin.orchestration.modal.title"
+  | "admin.orchestration.modal.save"
+  | "admin.orchestration.modal.saving"
+  | "admin.orchestration.modal.reset"
+  | "admin.orchestration.modal.fieldMode"
+  | "admin.orchestration.modal.fieldCron"
+  | "admin.orchestration.modal.fieldTimezone"
+  | "admin.orchestration.modal.fieldSla"
+  | "admin.orchestration.modal.fieldQueryLimit"
+  | "admin.orchestration.modal.hintCron"
+  | "admin.orchestration.modal.hintQueryLimit"
+  | "admin.orchestration.modal.hintSla"
+  | "admin.orchestration.modal.errCronRequired"
+  | "admin.orchestration.modal.errSave"
+  | "admin.orchestration.modal.envTitle"
+  | "admin.orchestration.modal.envBody"
+  | "admin.orchestration.create.cta"
+  | "admin.orchestration.create.title"
+  | "admin.orchestration.create.save"
+  | "admin.orchestration.create.saving"
+  | "admin.orchestration.create.clear"
+  | "admin.orchestration.create.fieldProvider"
+  | "admin.orchestration.create.providerSearch"
+  | "admin.orchestration.create.providerAll"
+  | "admin.orchestration.create.fieldFlow"
+  | "admin.orchestration.create.hintFlow"
+  | "admin.orchestration.create.errProviderRequired"
+  | "admin.orchestration.create.errSave"
+  | "admin.orchestration.create.noProviders"
+  | "admin.orchestration.search.placeholder"
+  | "admin.orchestration.search.aria"
+  | "admin.orchestration.filters"
+  | "admin.orchestration.filters.title"
+  | "admin.orchestration.filters.mode"
+  | "admin.orchestration.filters.state"
+  | "admin.orchestration.filters.all"
+  | "admin.orchestration.filters.clear"
+  | "admin.orchestration.filters.apply"
+  | "admin.orchestration.emptySearch"
+  | "admin.orchestration.pagination.show"
+  | "admin.orchestration.pagination.perPage"
+  | "admin.orchestration.pagination.of"
+  | "admin.orchestration.kpi.withinSla"
+  | "admin.orchestration.kpi.withinSla.hint"
+  | "admin.orchestration.kpi.autoLinkRate"
+  | "admin.orchestration.kpi.autoLinkRate.hint"
+  | "admin.orchestration.kpi.badge.allActive"
+  | "admin.orchestration.kpi.badge.paused"
+  | "admin.orchestration.kpi.badge.onTime"
+  | "admin.orchestration.kpi.badge.breached"
+  | "admin.orchestration.kpi.badge.queued"
+  | "admin.orchestration.kpi.badge.fromQueued"
+  | "admin.orchestration.kpi.legend.autoLinked"
+  | "admin.orchestration.kpi.legend.queued"
+  | "admin.orchestration.kpi.legend.active"
+  | "admin.orchestration.kpi.legend.paused"
+  | "admin.orchestration.kpi.legend.onTime"
+  | "admin.orchestration.kpi.legend.late"
   | "admin.nav.save.financialProducts"
   | "admin.nav.wip"
   | "admin.nav.footer.feedback"
   | "admin.nav.footer.help"
   // Batch 3 — componentes de dominio (CategoryBadge / MethodBadge)
   | "admin.category.none"
+  | "admin.reviewQueue.category.edit"
+  | "admin.reviewQueue.category.search"
+  | "admin.reviewQueue.category.noMatch"
+  | "admin.toolbar.actions.classify"
+  | "admin.toolbar.actions.canonize"
+  | "admin.reviewQueue.canonize.title"
+  | "admin.reviewQueue.canonize.description"
+  | "admin.reviewQueue.canonize.confirm"
+  | "admin.reviewQueue.canonize.missing"
+  | "admin.reviewQueue.canonize.choose"
+  | "admin.reviewQueue.canonize.onlyFillsGaps"
+  | "admin.reviewQueue.canonize.done"
+  | "admin.reviewQueue.canonize.preview"
+  | "admin.reviewQueue.canonize.rowMissing"
+  | "admin.reviewQueue.canonize.perPage"
+  | "admin.reviewQueue.canonize.prev"
+  | "admin.reviewQueue.canonize.next"
+  | "admin.toolbar.actions.approve.noCandidates"
+  | "admin.reviewQueue.classify.done"
+  | "admin.reviewQueue.classify.undecided"
+  | "admin.reviewQueue.classify.failed"
   | "admin.method.ean"
   | "admin.method.trgm"
   | "admin.method.vector"
@@ -590,8 +792,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.provider": "Proveedor",
     "admin.orchestration.col.mode": "Modo",
     "admin.orchestration.col.nextRun": "Próxima corrida",
+    "admin.orchestration.col.runOutcome": "Desenlace",
     "admin.orchestration.col.lastRun": "Última corrida",
-    "admin.orchestration.col.outcome": "Resultado",
     "admin.orchestration.col.actions": "Acciones",
     "admin.orchestration.outcome.linkedPart": "{autoLinked} enlazados",
     "admin.orchestration.outcome.queuedPart": "{queued} a la cola",
@@ -608,23 +810,230 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.state.failed": "Fallida",
     "admin.orchestration.state.canceled": "Cancelada",
     "admin.orchestration.state.unknown": "Desconocido",
+    "admin.orchestration.action.detail": "Ver detalle",
     "admin.orchestration.action.run": "Ejecutar ahora",
+    "admin.orchestration.state.active": "Activo",
+    "admin.orchestration.flow.provider_prices_refresh": "Descubrimiento por búsqueda",
+    "admin.orchestration.state.paused": "Pausado",
     "admin.orchestration.action.pause": "Pausar",
     "admin.orchestration.action.resume": "Activar",
     "admin.orchestration.action.cancel": "Cancelar corrida",
     "admin.orchestration.kpi.activeFlows": "Flujos activos",
     "admin.orchestration.kpi.activeFlows.hint": "Activos sobre el total configurado",
-    "admin.orchestration.kpi.autoLinked": "Auto-enlazados",
-    "admin.orchestration.kpi.autoLinked.hint": "La cascada los resolvió sola en la última corrida",
-    "admin.orchestration.kpi.queued": "A la cola",
-    "admin.orchestration.kpi.queued.hint": "Quedaron esperando decisión humana",
     "admin.orchestration.kpi.newCanonicals": "Canónicos nuevos",
     "admin.orchestration.kpi.newCanonicals.hint": "Nacieron de lo que estas corridas descubrieron",
+    "admin.orchestration.col.status": "Estado",
+    "admin.orchestration.col.schedule": "Horario",
+    "admin.orchestration.detail.slaWithin": "Dentro del SLA",
+    "admin.orchestration.detail.slaBreached": "Fuera del SLA",
+    "admin.orchestration.detail.slaNa": "SLA N/A",
+    "admin.orchestration.detail.back": "Volver a la consola",
+    "admin.orchestration.detail.lastRunTitle": "Última corrida",
+    "admin.orchestration.detail.trigger": "Disparada por",
+    "admin.orchestration.detail.startedAt": "Inicio",
+    "admin.orchestration.detail.endedAt": "Fin",
+    "admin.orchestration.detail.duration": "Duración",
+    "admin.orchestration.detail.noRun": "Este flujo todavía no tuvo ninguna corrida.",
+    "admin.orchestration.detail.resultsTitle": "Resultados de la corrida",
+    "admin.orchestration.detail.healthTitle": "Salud y SLA",
+    "admin.orchestration.detail.lastSync": "Última sincronización exitosa",
+    "admin.orchestration.detail.queryLimit": "Límite de búsquedas efectivo",
+    "admin.orchestration.detail.queryLimitNone": "Sin límite",
+    "admin.orchestration.detail.historyTitle": "Histórico de corridas",
+    "admin.orchestration.detail.historyUnavailable": "No pudimos consultar el histórico del orquestador.",
+    "admin.orchestration.detail.historyEmpty": "Sin corridas en el histórico.",
+    "admin.orchestration.detail.historyMore": "Cargar más",
+    "admin.orchestration.detail.runnerDown": "No pudimos consultar el orquestador. La configuración de abajo sigue disponible; el estado de las corridas volverá cuando el runner responda.",
+    "admin.orchestration.detail.activityTitle": "Actividad",
+    "admin.orchestration.detail.activityEmpty": "Esta corrida no registró eventos.",
+    "admin.orchestration.detail.activityUnavailable": "No pudimos leer la actividad de esta corrida.",
+    "admin.orchestration.detail.activityShowAll": "Ver todo",
+    "admin.orchestration.detail.activityShowKey": "Ver lo esencial",
+    "admin.orchestration.detail.activityHiddenCount": "{n} de maquinaria oculta",
+    "admin.orchestration.detail.activityLoadMore": "Cargar más eventos",
+    "admin.orchestration.detail.activityOfRun": "Corrida del {when}",
+    "admin.orchestration.detail.activityBackToCurrent": "Volver a la última",
+    "admin.orchestration.detail.rowSeeActivity": "Ver la actividad de esta corrida",
+    "admin.orchestration.detail.failureTitle": "Por qué falló",
+    "admin.orchestration.detail.failureTechnical": "Detalle técnico",
+    "admin.orchestration.event.queued": "En cola",
+    "admin.orchestration.event.started": "Arrancó",
+    "admin.orchestration.event.succeeded": "Terminó bien",
+    "admin.orchestration.event.canceled": "Cancelada",
+    "admin.orchestration.event.failure": "Falló",
+    "admin.orchestration.event.step": "Paso",
+    "admin.orchestration.event.materialization": "Produjo",
+    "admin.orchestration.event.log": "Registro",
+    "admin.orchestration.event.machinery": "Sistema",
+    "admin.orchestration.detail.colWhen": "Cuándo",
+    "admin.orchestration.detail.colTrigger": "Disparo",
+    "admin.orchestration.detail.colState": "Estado",
+    "admin.orchestration.detail.colDuration": "Duración",
+    "admin.orchestration.detail.durationMinutes": "{minutes}m {seconds}s",
+    "admin.orchestration.detail.durationSeconds": "{seconds}s",
+    "admin.orchestration.detail.durationRunning": "En curso",
+    "admin.orchestration.trigger.manual": "Manual",
+    "admin.orchestration.trigger.automatic": "Programada",
+    "admin.orchestration.trigger.retry": "Reintento",
+    "admin.orchestration.bulk.selected": "{count} seleccionado(s)",
+    "admin.orchestration.bulk.run": "Ejecutar seleccionados",
+    "admin.orchestration.bulk.pause": "Pausar seleccionados",
+    "admin.orchestration.bulk.delete": "Eliminar seleccionados",
+    "admin.orchestration.bulk.selectAll": "Seleccionar todos los flujos de la página",
+    "admin.orchestration.bulk.selectRow": "Seleccionar este flujo",
+    "admin.orchestration.bulk.deleteTitle": "¿Eliminar {count} flujo(s)?",
+    "admin.orchestration.bulk.deleteBody": "Dejan de programarse y desaparecen de la consola. El histórico de sus corridas se conserva: no se borra nada de lo que ya ocurrió.",
+    "admin.orchestration.col.progress": "Progreso",
+    "admin.orchestration.col.progressHelp": "Cuánto avanzó la corrida. El número es el total de productos que la tienda devolvió; la barra, cuántas de las búsquedas de la canasta ya terminaron.",
+    "admin.orchestration.col.runFunnel": "Resultado de la corrida",
+    "admin.orchestration.col.runFunnelHelp": "Cómo terminó la última corrida, en dos niveles. Arriba: de todo lo que la tienda devolvió, cuánto ya teníamos y cuánto era nuevo. Abajo: de esos NUEVOS —no del total—, cuántos el sistema pudo enlazar solo y cuántos quedaron esperando a una persona. Pasá el cursor por cada etiqueta para el detalle.",
+    "admin.orchestration.funnel.existing": "Existentes",
+    "admin.orchestration.funnel.linked": "Vinculados",
+    "admin.orchestration.funnel.new": "Nuevos",
+    "admin.orchestration.funnel.pending": "Pendientes",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} Búsquedas",
+    "admin.orchestration.products.queryProgressTitle": "Búsquedas ejecutadas sobre las planificadas. Es el progreso REAL de la corrida: el número de productos no lo dice, porque una búsqueda puede devolver muchos o ninguno.",
+    "admin.orchestration.products.starting": "Iniciando…",
+    "admin.orchestration.products.startingHint": "La corrida arrancó pero todavía no ejecutó ninguna búsqueda. El runner tarda unos segundos en levantar el proceso.",
+    "admin.orchestration.products.seenLabel": "productos",
+    "admin.orchestration.products.chipKnown": "{n} Ya conocidos",
+    "admin.orchestration.products.chipNew": "{n} Nuevos",
+    "admin.orchestration.products.seenHelp": "Todo lo que la tienda devolvió en esta corrida, contando repeticiones: si un mismo producto aparece en dos búsquedas distintas de la canasta, se cuenta dos veces. Es volumen bruto, no productos distintos.",
+    "admin.orchestration.products.knownHelp": "Productos que ya teníamos en la base. Solo se les registró el precio de hoy: no vuelven a pasar por el emparejamiento. En la primera corrida de una tienda casi no hay; en las siguientes deberían ser la mayoría.",
+    "admin.orchestration.products.newHelp": "Productos que no teníamos y entraron al emparejamiento automático. «Nuevo» describe de dónde vienen, no cómo terminaron: el desenlace es la barra de abajo.",
+    "admin.orchestration.outcome.linkedHelp": "El sistema decidió solo a qué producto del catálogo corresponden, con confianza suficiente para no consultar a nadie. Nadie los revisó a mano.",
+    "admin.orchestration.outcome.queuedHelp": "Quedaron sin decidir y esperan a una persona en la Cola de revisión. No es un error: ante la duda el sistema prefiere preguntar antes que inventar un enlace.",
+    "admin.orchestration.products.chipDiscarded": "{n} Descartados",
+    "admin.orchestration.outcome.chipLinked": "{n} Enlazados",
+    "admin.orchestration.outcome.chipQueued": "{n} A la cola",
+    "admin.orchestration.outcome.chipNew": "{n} Nuevos",
+    "admin.orchestration.outcome.nothing": "Sin resultados todavía",
+    "admin.orchestration.products.seen": "{seen} vistos",
+    "admin.orchestration.products.breakdown": "{refreshed} actualizados · {matched} matcheados · {discarded} descartados",
+    "admin.orchestration.schedule.none": "Sin programar",
+    "admin.orchestration.action.retry": "Reintentar",
+    "admin.orchestration.action.edit": "Editar política",
+    "admin.orchestration.action.delete": "Eliminar flujo",
+    "admin.orchestration.actions.menuLabel": "Acciones del flujo",
+    "admin.orchestration.confirm.back": "Volver",
+    "admin.orchestration.confirm.cancel.title": "¿Cancelar la corrida en curso?",
+    "admin.orchestration.confirm.cancel.body":
+      "La corrida se detiene donde esté. Los precios ya ingeridos se conservan y lo que quede sin procesar entrará en la próxima corrida.",
+    "admin.orchestration.confirm.cancel.accept": "Sí, cancelar la corrida",
+    "admin.orchestration.confirm.delete.title": "¿Eliminar este flujo?",
+    "admin.orchestration.confirm.delete.body":
+      "El flujo deja de aparecer en la consola y no volverá a ejecutarse. El histórico de sus corridas se conserva intacto: es un retiro reversible, no un borrado.",
+    "admin.orchestration.confirm.delete.accept": "Sí, eliminar el flujo",
+    "admin.orchestration.tabs.flows": "Proveedores",
+    "admin.orchestration.tabs.assets": "Assets Dagster",
+    "admin.orchestration.assets.loading": "Consultando el orquestador…",
+    "admin.orchestration.assets.empty": "El orquestador respondió, pero no declara ningún asset.",
+    "admin.orchestration.assets.unavailableTitle": "No pudimos consultar el orquestador",
+    "admin.orchestration.assets.unavailableHint": "Los assets viven solo en Dagster, así que no hay nada que mostrar hasta que responda. Las políticas de la pestaña Proveedores siguen disponibles.",
+    "admin.orchestration.assets.partsProvider": "supermercados",
+    "admin.orchestration.assets.partsSection": "secciones del catálogo",
+    "admin.orchestration.assets.partsOther": "partes",
+    "admin.orchestration.assets.partitionsHelp": "Algunos procesos se ejecutan por partes independientes: una por supermercado, o una por sección del catálogo. Cada parte se lanza y se reintenta sola, así que si una falla las demás siguen. El número indica cuántas partes ya terminaron bien. (En Dagster a esto se le llama «materializar».)",
+    "admin.orchestration.assets.partitionsDetail": "{materialized} de {total} {noun} ya se procesaron bien.",
+    "admin.orchestration.assets.partitionsNone": "Este proceso no se divide en partes: se ejecuta entero, de una sola vez.",
+    "admin.orchestration.assets.colAsset": "Asset",
+    "admin.orchestration.assets.colGroup": "Grupo",
+    "admin.orchestration.assets.colJobs": "Jobs",
+    "admin.orchestration.assets.colPartitions": "Particiones",
+    "admin.orchestration.assets.colLastRun": "Última ejecución",
+    "admin.orchestration.assets.colHealth": "Estado",
+    "admin.orchestration.assets.failedCount": "({count} con fallo)",
+    "admin.orchestration.assets.health.never_materialized": "Nunca se ejecutó",
+    "admin.orchestration.assets.health.healthy": "Sano",
+    "admin.orchestration.assets.health.degraded": "Degradado",
+    "admin.orchestration.assets.health.failed": "Con fallo",
+    "admin.orchestration.modal.title": "Editar política",
+    "admin.orchestration.modal.save": "Guardar política",
+    "admin.orchestration.modal.saving": "Guardando…",
+    "admin.orchestration.modal.reset": "Restablecer",
+    "admin.orchestration.modal.fieldMode": "Modo de ejecución",
+    "admin.orchestration.modal.fieldCron": "Expresión cron",
+    "admin.orchestration.modal.fieldTimezone": "Zona horaria",
+    "admin.orchestration.modal.fieldSla": "SLA (minutos)",
+    "admin.orchestration.modal.fieldQueryLimit": "Límite de queries",
+    "admin.orchestration.modal.hintCron":
+      "Cinco campos (minuto hora día mes día-semana). Se evalúa en la zona horaria de abajo, no en la del servidor.",
+    "admin.orchestration.modal.hintQueryLimit": "Vacío = usa el límite global del mercado. Un 0 sería un límite de cero queries.",
+    "admin.orchestration.modal.hintSla": "Minutos tolerados desde la última corrida EXITOSA. Solo aplica a flujos programados.",
+    "admin.orchestration.modal.errCronRequired": "Un flujo programado necesita su expresión cron.",
+    "admin.orchestration.modal.errSave": "No se pudo guardar la política. Revisá los valores e intentá de nuevo.",
+    "admin.orchestration.modal.envTitle": "Qué NO se configura desde acá",
+    "admin.orchestration.modal.envBody": "Estas piezas siguen viviendo en variables de entorno del servidor y no se pueden cambiar desde el admin: el límite global de queries (SAVE_REFRESH_QUERY_LIMIT), y los switches de la cascada de matcheo, del clasificador y del juez LLM. Si necesitás tocar alguna, hace falta un cambio de configuración en el despliegue.",
+    "admin.orchestration.create.cta": "Nuevo flujo",
+    "admin.orchestration.create.title": "Nuevo flujo de proveedor",
+    "admin.orchestration.create.save": "Crear flujo",
+    "admin.orchestration.create.saving": "Creando…",
+    "admin.orchestration.create.clear": "Limpiar",
+    "admin.orchestration.create.fieldProvider": "Proveedor",
+    "admin.orchestration.create.providerSearch": "Buscar proveedor…",
+    "admin.orchestration.create.providerAll": "Todos",
+    "admin.orchestration.create.fieldFlow": "Flujo",
+    "admin.orchestration.create.hintFlow":
+      "El flujo nace en modo manual: no dispara nada hasta que le definas un horario desde «Editar política».",
+    "admin.orchestration.create.errProviderRequired": "Elegí un proveedor para el flujo.",
+    "admin.orchestration.create.errSave": "No se pudo crear el flujo.",
+    "admin.orchestration.create.noProviders":
+      "Todos los proveedores del mercado ya tienen su flujo configurado. Para reutilizar uno, editá el existente.",
+    "admin.orchestration.search.placeholder": "Buscar proveedor o flujo…",
+    "admin.orchestration.search.aria": "Buscar flujos de orquestación",
+    "admin.orchestration.filters": "Filtros",
+    "admin.orchestration.filters.title": "Filtrar flujos",
+    "admin.orchestration.filters.mode": "Modo de ejecución",
+    "admin.orchestration.filters.state": "Estado de la última corrida",
+    "admin.orchestration.filters.all": "Todos",
+    "admin.orchestration.filters.clear": "Restablecer",
+    "admin.orchestration.filters.apply": "Aplicar filtros",
+    "admin.orchestration.emptySearch": "Ningún flujo coincide con la búsqueda o los filtros aplicados.",
+    "admin.orchestration.pagination.show": "Mostrar",
+    "admin.orchestration.pagination.perPage": "por página",
+    "admin.orchestration.pagination.of": "{from}–{to} de {total}",
+    "admin.orchestration.kpi.withinSla": "Dentro del SLA",
+    "admin.orchestration.kpi.withinSla.hint": "Corrieron a tiempo. Los manuales no cuentan.",
+    "admin.orchestration.kpi.autoLinkRate": "Tasa de auto-enlace",
+    "admin.orchestration.kpi.autoLinkRate.hint": "Resueltos sin humano en la última corrida",
+    "admin.orchestration.kpi.badge.allActive": "Todos activos",
+    "admin.orchestration.kpi.badge.paused": "{count} en pausa",
+    "admin.orchestration.kpi.badge.onTime": "Todos a tiempo",
+    "admin.orchestration.kpi.badge.breached": "{count} fuera",
+    "admin.orchestration.kpi.badge.queued": "{count} a la cola",
+    "admin.orchestration.kpi.badge.fromQueued": "de {count} en cola",
+    "admin.orchestration.kpi.legend.autoLinked": "Auto-enlazados",
+    "admin.orchestration.kpi.legend.queued": "A la cola",
+    "admin.orchestration.kpi.legend.active": "Activos",
+    "admin.orchestration.kpi.legend.paused": "En pausa",
+    "admin.orchestration.kpi.legend.onTime": "A tiempo",
+    "admin.orchestration.kpi.legend.late": "Fuera",
     "admin.nav.save.financialProducts": "Productos Financieros",
     "admin.nav.wip": "🚧 En construcción — aún no disponible",
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Ayuda",
     "admin.category.none": "Sin categoría",
+    "admin.reviewQueue.category.edit": "Cambiar categoría",
+    "admin.reviewQueue.category.search": "Buscar categoría...",
+    "admin.reviewQueue.category.noMatch": "Ninguna categoría coincide",
+    "admin.toolbar.actions.classify": "Clasificar seleccionados",
+    "admin.toolbar.actions.canonize": "Aprobar y crear canónico",
+    "admin.reviewQueue.canonize.title": "Crear canónicos",
+    "admin.reviewQueue.canonize.description": "Se crearán {n} productos canónicos nuevos y se enlazarán a estas filas. No se puede deshacer.",
+    "admin.reviewQueue.canonize.confirm": "Crear {n} canónicos",
+    "admin.reviewQueue.canonize.missing": "{n} sin categoría — elegí una para esas filas",
+    "admin.reviewQueue.canonize.choose": "Elegir categoría...",
+    "admin.reviewQueue.canonize.onlyFillsGaps": "Solo se aplica a las que no tienen. Las demás conservan la suya.",
+    "admin.reviewQueue.canonize.done": "{n} canónicos creados",
+    "admin.reviewQueue.canonize.preview": "Qué se va a crear",
+    "admin.reviewQueue.canonize.rowMissing": "Falta categoría",
+    "admin.reviewQueue.canonize.perPage": "Por página",
+    "admin.reviewQueue.canonize.prev": "Página anterior",
+    "admin.reviewQueue.canonize.next": "Página siguiente",
+    "admin.toolbar.actions.approve.noCandidates": "Ninguna de las filas seleccionadas tiene candidatos. Usá \"Aprobar y crear canónico\".",
+    "admin.reviewQueue.classify.done": "{n} clasificadas",
+    "admin.reviewQueue.classify.undecided": "{n} sin decidir",
+    "admin.reviewQueue.classify.failed": "{n} con error",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Similitud de texto",
     "admin.method.vector": "Vector",
@@ -1014,8 +1423,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.provider": "Provider",
     "admin.orchestration.col.mode": "Mode",
     "admin.orchestration.col.nextRun": "Next run",
+    "admin.orchestration.col.runOutcome": "Outcome",
     "admin.orchestration.col.lastRun": "Last run",
-    "admin.orchestration.col.outcome": "Outcome",
     "admin.orchestration.col.actions": "Actions",
     "admin.orchestration.outcome.linkedPart": "{autoLinked} linked",
     "admin.orchestration.outcome.queuedPart": "{queued} queued",
@@ -1032,23 +1441,230 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.state.failed": "Failed",
     "admin.orchestration.state.canceled": "Canceled",
     "admin.orchestration.state.unknown": "Unknown",
+    "admin.orchestration.action.detail": "View detail",
     "admin.orchestration.action.run": "Run now",
+    "admin.orchestration.state.active": "Active",
+    "admin.orchestration.flow.provider_prices_refresh": "Search-based discovery",
+    "admin.orchestration.state.paused": "Paused",
     "admin.orchestration.action.pause": "Pause",
     "admin.orchestration.action.resume": "Resume",
     "admin.orchestration.action.cancel": "Cancel run",
     "admin.orchestration.kpi.activeFlows": "Active flows",
     "admin.orchestration.kpi.activeFlows.hint": "Active out of total configured",
-    "admin.orchestration.kpi.autoLinked": "Auto-linked",
-    "admin.orchestration.kpi.autoLinked.hint": "The cascade resolved these on its own in the last run",
-    "admin.orchestration.kpi.queued": "Queued for review",
-    "admin.orchestration.kpi.queued.hint": "Left waiting for a human decision",
     "admin.orchestration.kpi.newCanonicals": "New canonicals",
     "admin.orchestration.kpi.newCanonicals.hint": "Born from what these runs discovered",
+    "admin.orchestration.col.status": "Status",
+    "admin.orchestration.col.schedule": "Schedule",
+    "admin.orchestration.detail.slaWithin": "Within SLA",
+    "admin.orchestration.detail.slaBreached": "SLA breached",
+    "admin.orchestration.detail.slaNa": "SLA N/A",
+    "admin.orchestration.detail.back": "Back to the console",
+    "admin.orchestration.detail.lastRunTitle": "Last run",
+    "admin.orchestration.detail.trigger": "Triggered by",
+    "admin.orchestration.detail.startedAt": "Started",
+    "admin.orchestration.detail.endedAt": "Ended",
+    "admin.orchestration.detail.duration": "Duration",
+    "admin.orchestration.detail.noRun": "This flow has not run yet.",
+    "admin.orchestration.detail.resultsTitle": "Run results",
+    "admin.orchestration.detail.healthTitle": "Health & SLA",
+    "admin.orchestration.detail.lastSync": "Last successful sync",
+    "admin.orchestration.detail.queryLimit": "Effective search limit",
+    "admin.orchestration.detail.queryLimitNone": "No limit",
+    "admin.orchestration.detail.historyTitle": "Run history",
+    "admin.orchestration.detail.historyUnavailable": "We could not reach the orchestrator's run history.",
+    "admin.orchestration.detail.historyEmpty": "No runs in the history.",
+    "admin.orchestration.detail.historyMore": "Load more",
+    "admin.orchestration.detail.runnerDown": "We could not reach the orchestrator. The configuration below is still available; run state returns once the runner answers.",
+    "admin.orchestration.detail.activityTitle": "Activity",
+    "admin.orchestration.detail.activityEmpty": "This run recorded no events.",
+    "admin.orchestration.detail.activityUnavailable": "We could not read this run's activity.",
+    "admin.orchestration.detail.activityShowAll": "Show all",
+    "admin.orchestration.detail.activityShowKey": "Show the essentials",
+    "admin.orchestration.detail.activityHiddenCount": "{n} machinery events hidden",
+    "admin.orchestration.detail.activityLoadMore": "Load more events",
+    "admin.orchestration.detail.activityOfRun": "Run from {when}",
+    "admin.orchestration.detail.activityBackToCurrent": "Back to the latest",
+    "admin.orchestration.detail.rowSeeActivity": "See this run's activity",
+    "admin.orchestration.detail.failureTitle": "Why it failed",
+    "admin.orchestration.detail.failureTechnical": "Technical detail",
+    "admin.orchestration.event.queued": "Queued",
+    "admin.orchestration.event.started": "Started",
+    "admin.orchestration.event.succeeded": "Finished successfully",
+    "admin.orchestration.event.canceled": "Canceled",
+    "admin.orchestration.event.failure": "Failed",
+    "admin.orchestration.event.step": "Step",
+    "admin.orchestration.event.materialization": "Produced",
+    "admin.orchestration.event.log": "Log",
+    "admin.orchestration.event.machinery": "System",
+    "admin.orchestration.detail.colWhen": "When",
+    "admin.orchestration.detail.colTrigger": "Trigger",
+    "admin.orchestration.detail.colState": "State",
+    "admin.orchestration.detail.colDuration": "Duration",
+    "admin.orchestration.detail.durationMinutes": "{minutes}m {seconds}s",
+    "admin.orchestration.detail.durationSeconds": "{seconds}s",
+    "admin.orchestration.detail.durationRunning": "Running",
+    "admin.orchestration.trigger.manual": "Manual",
+    "admin.orchestration.trigger.automatic": "Scheduled",
+    "admin.orchestration.trigger.retry": "Retry",
+    "admin.orchestration.bulk.selected": "{count} selected",
+    "admin.orchestration.bulk.run": "Run selected",
+    "admin.orchestration.bulk.pause": "Pause selected",
+    "admin.orchestration.bulk.delete": "Delete selected",
+    "admin.orchestration.bulk.selectAll": "Select every flow on this page",
+    "admin.orchestration.bulk.selectRow": "Select this flow",
+    "admin.orchestration.bulk.deleteTitle": "Delete {count} flow(s)?",
+    "admin.orchestration.bulk.deleteBody": "They stop being scheduled and leave the console. Their run history is kept: nothing that already happened is deleted.",
+    "admin.orchestration.col.progress": "Progress",
+    "admin.orchestration.col.progressHelp": "How far the run got. The number is the total of products the store returned; the bar, how many of the basket searches have finished.",
+    "admin.orchestration.col.runFunnel": "Run outcome",
+    "admin.orchestration.col.runFunnelHelp": "How the last run ended, in two levels. Top: of everything the store returned, how much we already had and how much was new. Bottom: of those NEW ones — not of the total — how many the system linked on its own and how many are waiting for a person. Hover each label for detail.",
+    "admin.orchestration.funnel.existing": "Existing",
+    "admin.orchestration.funnel.linked": "Linked",
+    "admin.orchestration.funnel.new": "New",
+    "admin.orchestration.funnel.pending": "Pending",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} Searches",
+    "admin.orchestration.products.queryProgressTitle": "Searches run out of those planned. This is the run's REAL progress: the product count cannot tell you, because one search may return many or none.",
+    "admin.orchestration.products.starting": "Starting…",
+    "admin.orchestration.products.startingHint": "The run started but has not executed any search yet. The runner takes a few seconds to spin up its process.",
+    "admin.orchestration.products.seenLabel": "products",
+    "admin.orchestration.products.chipKnown": "{n} Already known",
+    "admin.orchestration.products.chipNew": "{n} New",
+    "admin.orchestration.products.seenHelp": "Everything the store returned in this run, repeats included: if the same product shows up in two different basket searches, it counts twice. This is raw volume, not distinct products.",
+    "admin.orchestration.products.knownHelp": "Products we already had. Only today's price was recorded for them; they do not go through matching again. A store's first run has almost none; later runs should be mostly these.",
+    "admin.orchestration.products.newHelp": "Products we did not have, which entered automatic matching. \"New\" describes where they came from, not how they ended up: the outcome is the bar below.",
+    "admin.orchestration.outcome.linkedHelp": "The system decided on its own which catalog product they correspond to, confident enough not to ask anyone. No human reviewed them.",
+    "admin.orchestration.outcome.queuedHelp": "Left undecided, waiting for a person in the review queue. This is not a failure: when in doubt the system would rather ask than invent a link.",
+    "admin.orchestration.products.chipDiscarded": "{n} Discarded",
+    "admin.orchestration.outcome.chipLinked": "{n} Linked",
+    "admin.orchestration.outcome.chipQueued": "{n} Queued",
+    "admin.orchestration.outcome.chipNew": "{n} New",
+    "admin.orchestration.outcome.nothing": "No results yet",
+    "admin.orchestration.products.seen": "{seen} seen",
+    "admin.orchestration.products.breakdown": "{refreshed} refreshed · {matched} matched · {discarded} discarded",
+    "admin.orchestration.schedule.none": "Not scheduled",
+    "admin.orchestration.action.retry": "Retry",
+    "admin.orchestration.action.edit": "Edit policy",
+    "admin.orchestration.action.delete": "Delete flow",
+    "admin.orchestration.actions.menuLabel": "Flow actions",
+    "admin.orchestration.confirm.back": "Go back",
+    "admin.orchestration.confirm.cancel.title": "Cancel the run in progress?",
+    "admin.orchestration.confirm.cancel.body":
+      "The run stops wherever it is. Prices already ingested are kept, and whatever is left unprocessed will be picked up by the next run.",
+    "admin.orchestration.confirm.cancel.accept": "Yes, cancel the run",
+    "admin.orchestration.confirm.delete.title": "Delete this flow?",
+    "admin.orchestration.confirm.delete.body":
+      "The flow disappears from the console and will not run again. Its run history is kept intact: this is a reversible retirement, not a deletion.",
+    "admin.orchestration.confirm.delete.accept": "Yes, delete the flow",
+    "admin.orchestration.tabs.flows": "Providers",
+    "admin.orchestration.tabs.assets": "Dagster assets",
+    "admin.orchestration.assets.loading": "Asking the orchestrator…",
+    "admin.orchestration.assets.empty": "The orchestrator answered, but declares no assets.",
+    "admin.orchestration.assets.unavailableTitle": "We could not reach the orchestrator",
+    "admin.orchestration.assets.unavailableHint": "Assets live only in Dagster, so there is nothing to show until it answers. The policies in the Providers tab are still available.",
+    "admin.orchestration.assets.partsProvider": "supermarkets",
+    "admin.orchestration.assets.partsSection": "catalog sections",
+    "admin.orchestration.assets.partsOther": "parts",
+    "admin.orchestration.assets.partitionsHelp": "Some processes run in independent parts: one per supermarket, or one per catalog section. Each part is launched and retried on its own, so if one fails the others carry on. The number shows how many parts have finished successfully. (Dagster calls this \"materializing\".)",
+    "admin.orchestration.assets.partitionsDetail": "{materialized} of {total} {noun} processed successfully.",
+    "admin.orchestration.assets.partitionsNone": "This process is not split into parts: it runs as a whole, in one go.",
+    "admin.orchestration.assets.colAsset": "Asset",
+    "admin.orchestration.assets.colGroup": "Group",
+    "admin.orchestration.assets.colJobs": "Jobs",
+    "admin.orchestration.assets.colPartitions": "Partitions",
+    "admin.orchestration.assets.colLastRun": "Last run",
+    "admin.orchestration.assets.colHealth": "Health",
+    "admin.orchestration.assets.failedCount": "({count} failed)",
+    "admin.orchestration.assets.health.never_materialized": "Never run",
+    "admin.orchestration.assets.health.healthy": "Healthy",
+    "admin.orchestration.assets.health.degraded": "Degraded",
+    "admin.orchestration.assets.health.failed": "Failed",
+    "admin.orchestration.modal.title": "Edit policy",
+    "admin.orchestration.modal.save": "Save policy",
+    "admin.orchestration.modal.saving": "Saving…",
+    "admin.orchestration.modal.reset": "Reset",
+    "admin.orchestration.modal.fieldMode": "Execution mode",
+    "admin.orchestration.modal.fieldCron": "Cron expression",
+    "admin.orchestration.modal.fieldTimezone": "Time zone",
+    "admin.orchestration.modal.fieldSla": "SLA (minutes)",
+    "admin.orchestration.modal.fieldQueryLimit": "Query limit",
+    "admin.orchestration.modal.hintCron":
+      "Five fields (minute hour day month weekday). Evaluated in the time zone below, not the server's.",
+    "admin.orchestration.modal.hintQueryLimit": "Empty = use the market-wide limit. A 0 would mean a limit of zero queries.",
+    "admin.orchestration.modal.hintSla": "Minutes tolerated since the last SUCCESSFUL run. Only applies to scheduled flows.",
+    "admin.orchestration.modal.errCronRequired": "A scheduled flow needs its cron expression.",
+    "admin.orchestration.modal.errSave": "Could not save the policy. Check the values and try again.",
+    "admin.orchestration.modal.envTitle": "What is NOT configured here",
+    "admin.orchestration.modal.envBody": "These still live in server environment variables and cannot be changed from the admin: the market-wide query limit (SAVE_REFRESH_QUERY_LIMIT), and the switches for the matching cascade, the classifier and the LLM judge. Changing any of them requires a deployment config change.",
+    "admin.orchestration.create.cta": "New flow",
+    "admin.orchestration.create.title": "New provider flow",
+    "admin.orchestration.create.save": "Create flow",
+    "admin.orchestration.create.saving": "Creating…",
+    "admin.orchestration.create.clear": "Clear",
+    "admin.orchestration.create.fieldProvider": "Provider",
+    "admin.orchestration.create.providerSearch": "Search provider…",
+    "admin.orchestration.create.providerAll": "All",
+    "admin.orchestration.create.fieldFlow": "Flow",
+    "admin.orchestration.create.hintFlow":
+      "The flow starts in manual mode: it fires nothing until you give it a schedule from “Edit policy”.",
+    "admin.orchestration.create.errProviderRequired": "Pick a provider for the flow.",
+    "admin.orchestration.create.errSave": "Could not create the flow.",
+    "admin.orchestration.create.noProviders":
+      "Every provider in this market already has its flow configured. To reuse one, edit the existing flow.",
+    "admin.orchestration.search.placeholder": "Search provider or flow…",
+    "admin.orchestration.search.aria": "Search orchestration flows",
+    "admin.orchestration.filters": "Filters",
+    "admin.orchestration.filters.title": "Filter flows",
+    "admin.orchestration.filters.mode": "Execution mode",
+    "admin.orchestration.filters.state": "Last run state",
+    "admin.orchestration.filters.all": "All",
+    "admin.orchestration.filters.clear": "Reset",
+    "admin.orchestration.filters.apply": "Apply filters",
+    "admin.orchestration.emptySearch": "No flow matches the current search or filters.",
+    "admin.orchestration.pagination.show": "Show",
+    "admin.orchestration.pagination.perPage": "per page",
+    "admin.orchestration.pagination.of": "{from}–{to} of {total}",
+    "admin.orchestration.kpi.withinSla": "Within SLA",
+    "admin.orchestration.kpi.withinSla.hint": "Ran on time. Manual flows are excluded.",
+    "admin.orchestration.kpi.autoLinkRate": "Auto-link rate",
+    "admin.orchestration.kpi.autoLinkRate.hint": "Resolved without a human in the last run",
+    "admin.orchestration.kpi.badge.allActive": "All active",
+    "admin.orchestration.kpi.badge.paused": "{count} paused",
+    "admin.orchestration.kpi.badge.onTime": "All on time",
+    "admin.orchestration.kpi.badge.breached": "{count} late",
+    "admin.orchestration.kpi.badge.queued": "{count} queued",
+    "admin.orchestration.kpi.badge.fromQueued": "from {count} queued",
+    "admin.orchestration.kpi.legend.autoLinked": "Auto-linked",
+    "admin.orchestration.kpi.legend.queued": "Queued",
+    "admin.orchestration.kpi.legend.active": "Active",
+    "admin.orchestration.kpi.legend.paused": "Paused",
+    "admin.orchestration.kpi.legend.onTime": "On time",
+    "admin.orchestration.kpi.legend.late": "Late",
     "admin.nav.save.financialProducts": "Financial products",
     "admin.nav.wip": "🚧 Under construction — not available yet",
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Help",
     "admin.category.none": "No category",
+    "admin.reviewQueue.category.edit": "Change category",
+    "admin.reviewQueue.category.search": "Search category...",
+    "admin.reviewQueue.category.noMatch": "No category matches",
+    "admin.toolbar.actions.classify": "Classify selected",
+    "admin.toolbar.actions.canonize": "Approve and create canonical",
+    "admin.reviewQueue.canonize.title": "Create canonicals",
+    "admin.reviewQueue.canonize.description": "{n} new canonical products will be created and linked to these rows. This cannot be undone.",
+    "admin.reviewQueue.canonize.confirm": "Create {n} canonicals",
+    "admin.reviewQueue.canonize.missing": "{n} uncategorized — pick one for those rows",
+    "admin.reviewQueue.canonize.choose": "Choose category...",
+    "admin.reviewQueue.canonize.onlyFillsGaps": "Only applies to those without one. The rest keep theirs.",
+    "admin.reviewQueue.canonize.done": "{n} canonicals created",
+    "admin.reviewQueue.canonize.preview": "What will be created",
+    "admin.reviewQueue.canonize.rowMissing": "No category",
+    "admin.reviewQueue.canonize.perPage": "Per page",
+    "admin.reviewQueue.canonize.prev": "Previous page",
+    "admin.reviewQueue.canonize.next": "Next page",
+    "admin.toolbar.actions.approve.noCandidates": "None of the selected rows has candidates. Use \"Approve and create canonical\".",
+    "admin.reviewQueue.classify.done": "{n} classified",
+    "admin.reviewQueue.classify.undecided": "{n} undecided",
+    "admin.reviewQueue.classify.failed": "{n} failed",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Text similarity",
     "admin.method.vector": "Vector",
@@ -1438,8 +2054,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.col.provider": "Fornecedor",
     "admin.orchestration.col.mode": "Modo",
     "admin.orchestration.col.nextRun": "Próxima execução",
+    "admin.orchestration.col.runOutcome": "Desfecho",
     "admin.orchestration.col.lastRun": "Última execução",
-    "admin.orchestration.col.outcome": "Resultado",
     "admin.orchestration.col.actions": "Ações",
     "admin.orchestration.outcome.linkedPart": "{autoLinked} vinculados",
     "admin.orchestration.outcome.queuedPart": "{queued} na fila",
@@ -1456,23 +2072,230 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.state.failed": "Falhou",
     "admin.orchestration.state.canceled": "Cancelada",
     "admin.orchestration.state.unknown": "Desconhecido",
+    "admin.orchestration.action.detail": "Ver detalhe",
     "admin.orchestration.action.run": "Executar agora",
+    "admin.orchestration.state.active": "Ativo",
+    "admin.orchestration.flow.provider_prices_refresh": "Descoberta por busca",
+    "admin.orchestration.state.paused": "Pausado",
     "admin.orchestration.action.pause": "Pausar",
     "admin.orchestration.action.resume": "Ativar",
     "admin.orchestration.action.cancel": "Cancelar execução",
     "admin.orchestration.kpi.activeFlows": "Fluxos ativos",
     "admin.orchestration.kpi.activeFlows.hint": "Ativos sobre o total configurado",
-    "admin.orchestration.kpi.autoLinked": "Autovinculados",
-    "admin.orchestration.kpi.autoLinked.hint": "A cascata resolveu sozinha na última execução",
-    "admin.orchestration.kpi.queued": "Na fila",
-    "admin.orchestration.kpi.queued.hint": "Ficaram aguardando decisão humana",
     "admin.orchestration.kpi.newCanonicals": "Canônicos novos",
     "admin.orchestration.kpi.newCanonicals.hint": "Nasceram do que estas execuções descobriram",
+    "admin.orchestration.col.status": "Estado",
+    "admin.orchestration.col.schedule": "Horário",
+    "admin.orchestration.detail.slaWithin": "Dentro do SLA",
+    "admin.orchestration.detail.slaBreached": "Fora do SLA",
+    "admin.orchestration.detail.slaNa": "SLA N/A",
+    "admin.orchestration.detail.back": "Voltar ao console",
+    "admin.orchestration.detail.lastRunTitle": "Última corrida",
+    "admin.orchestration.detail.trigger": "Disparada por",
+    "admin.orchestration.detail.startedAt": "Início",
+    "admin.orchestration.detail.endedAt": "Fim",
+    "admin.orchestration.detail.duration": "Duração",
+    "admin.orchestration.detail.noRun": "Este fluxo ainda não teve nenhuma corrida.",
+    "admin.orchestration.detail.resultsTitle": "Resultados da corrida",
+    "admin.orchestration.detail.healthTitle": "Saúde e SLA",
+    "admin.orchestration.detail.lastSync": "Última sincronização bem-sucedida",
+    "admin.orchestration.detail.queryLimit": "Limite de buscas efetivo",
+    "admin.orchestration.detail.queryLimitNone": "Sem limite",
+    "admin.orchestration.detail.historyTitle": "Histórico de corridas",
+    "admin.orchestration.detail.historyUnavailable": "Não foi possível consultar o histórico do orquestrador.",
+    "admin.orchestration.detail.historyEmpty": "Sem corridas no histórico.",
+    "admin.orchestration.detail.historyMore": "Carregar mais",
+    "admin.orchestration.detail.runnerDown": "Não foi possível consultar o orquestrador. A configuração abaixo continua disponível; o estado das corridas volta quando o runner responder.",
+    "admin.orchestration.detail.activityTitle": "Atividade",
+    "admin.orchestration.detail.activityEmpty": "Esta corrida não registrou eventos.",
+    "admin.orchestration.detail.activityUnavailable": "Não conseguimos ler a atividade desta corrida.",
+    "admin.orchestration.detail.activityShowAll": "Ver tudo",
+    "admin.orchestration.detail.activityShowKey": "Ver o essencial",
+    "admin.orchestration.detail.activityHiddenCount": "{n} de maquinaria oculta",
+    "admin.orchestration.detail.activityLoadMore": "Carregar mais eventos",
+    "admin.orchestration.detail.activityOfRun": "Corrida de {when}",
+    "admin.orchestration.detail.activityBackToCurrent": "Voltar à última",
+    "admin.orchestration.detail.rowSeeActivity": "Ver a atividade desta corrida",
+    "admin.orchestration.detail.failureTitle": "Por que falhou",
+    "admin.orchestration.detail.failureTechnical": "Detalhe técnico",
+    "admin.orchestration.event.queued": "Na fila",
+    "admin.orchestration.event.started": "Começou",
+    "admin.orchestration.event.succeeded": "Terminou bem",
+    "admin.orchestration.event.canceled": "Cancelada",
+    "admin.orchestration.event.failure": "Falhou",
+    "admin.orchestration.event.step": "Passo",
+    "admin.orchestration.event.materialization": "Produziu",
+    "admin.orchestration.event.log": "Registro",
+    "admin.orchestration.event.machinery": "Sistema",
+    "admin.orchestration.detail.colWhen": "Quando",
+    "admin.orchestration.detail.colTrigger": "Disparo",
+    "admin.orchestration.detail.colState": "Estado",
+    "admin.orchestration.detail.colDuration": "Duração",
+    "admin.orchestration.detail.durationMinutes": "{minutes}m {seconds}s",
+    "admin.orchestration.detail.durationSeconds": "{seconds}s",
+    "admin.orchestration.detail.durationRunning": "Em curso",
+    "admin.orchestration.trigger.manual": "Manual",
+    "admin.orchestration.trigger.automatic": "Programada",
+    "admin.orchestration.trigger.retry": "Nova tentativa",
+    "admin.orchestration.bulk.selected": "{count} selecionado(s)",
+    "admin.orchestration.bulk.run": "Executar selecionados",
+    "admin.orchestration.bulk.pause": "Pausar selecionados",
+    "admin.orchestration.bulk.delete": "Excluir selecionados",
+    "admin.orchestration.bulk.selectAll": "Selecionar todos os fluxos da página",
+    "admin.orchestration.bulk.selectRow": "Selecionar este fluxo",
+    "admin.orchestration.bulk.deleteTitle": "Excluir {count} fluxo(s)?",
+    "admin.orchestration.bulk.deleteBody": "Deixam de ser programados e saem do console. O histórico das corridas é mantido: nada do que já ocorreu é apagado.",
+    "admin.orchestration.col.progress": "Progresso",
+    "admin.orchestration.col.progressHelp": "Quanto a execução avançou. O número é o total de produtos que a loja devolveu; a barra, quantas das buscas da cesta já terminaram.",
+    "admin.orchestration.col.runFunnel": "Resultado da execução",
+    "admin.orchestration.col.runFunnelHelp": "Como terminou a última execução, em dois níveis. Em cima: de tudo o que a loja devolveu, quanto já tínhamos e quanto era novo. Embaixo: desses NOVOS — não do total — quantos o sistema conseguiu vincular sozinho e quantos ficaram esperando uma pessoa. Passe o cursor em cada etiqueta para o detalhe.",
+    "admin.orchestration.funnel.existing": "Existentes",
+    "admin.orchestration.funnel.linked": "Vinculados",
+    "admin.orchestration.funnel.new": "Novos",
+    "admin.orchestration.funnel.pending": "Pendentes",
+    "admin.orchestration.products.queryProgress": "{processed}/{total} Buscas",
+    "admin.orchestration.products.queryProgressTitle": "Buscas executadas sobre as planejadas. É o progresso REAL da corrida: o número de produtos não diz, porque uma busca pode devolver muitos ou nenhum.",
+    "admin.orchestration.products.starting": "Iniciando…",
+    "admin.orchestration.products.startingHint": "A corrida começou mas ainda não executou nenhuma busca. O runner leva alguns segundos para subir o processo.",
+    "admin.orchestration.products.seenLabel": "produtos",
+    "admin.orchestration.products.chipKnown": "{n} Já conhecidos",
+    "admin.orchestration.products.chipNew": "{n} Novos",
+    "admin.orchestration.products.seenHelp": "Tudo o que a loja devolveu nesta execução, incluindo repetições: se o mesmo produto aparece em duas buscas diferentes da cesta, conta duas vezes. É volume bruto, não produtos distintos.",
+    "admin.orchestration.products.knownHelp": "Produtos que já tínhamos na base. Só foi registrado o preço de hoje: não passam de novo pelo emparelhamento. Na primeira execução de uma loja quase não há; nas seguintes devem ser a maioria.",
+    "admin.orchestration.products.newHelp": "Produtos que não tínhamos e entraram no emparelhamento automático. «Novo» descreve de onde vêm, não como terminaram: o desfecho é a barra de baixo.",
+    "admin.orchestration.outcome.linkedHelp": "O sistema decidiu sozinho a que produto do catálogo correspondem, com confiança suficiente para não consultar ninguém. Ninguém os revisou à mão.",
+    "admin.orchestration.outcome.queuedHelp": "Ficaram sem decisão e esperam uma pessoa na Fila de revisão. Não é um erro: na dúvida o sistema prefere perguntar em vez de inventar um vínculo.",
+    "admin.orchestration.products.chipDiscarded": "{n} Descartados",
+    "admin.orchestration.outcome.chipLinked": "{n} Vinculados",
+    "admin.orchestration.outcome.chipQueued": "{n} Na fila",
+    "admin.orchestration.outcome.chipNew": "{n} Novos",
+    "admin.orchestration.outcome.nothing": "Sem resultados ainda",
+    "admin.orchestration.products.seen": "{seen} vistos",
+    "admin.orchestration.products.breakdown": "{refreshed} atualizados · {matched} correspondidos · {discarded} descartados",
+    "admin.orchestration.schedule.none": "Sem agendamento",
+    "admin.orchestration.action.retry": "Tentar de novo",
+    "admin.orchestration.action.edit": "Editar política",
+    "admin.orchestration.action.delete": "Excluir fluxo",
+    "admin.orchestration.actions.menuLabel": "Ações do fluxo",
+    "admin.orchestration.confirm.back": "Voltar",
+    "admin.orchestration.confirm.cancel.title": "Cancelar a execução em curso?",
+    "admin.orchestration.confirm.cancel.body":
+      "A execução para onde estiver. Os preços já ingeridos são mantidos e o que ficar por processar entra na próxima execução.",
+    "admin.orchestration.confirm.cancel.accept": "Sim, cancelar a execução",
+    "admin.orchestration.confirm.delete.title": "Excluir este fluxo?",
+    "admin.orchestration.confirm.delete.body":
+      "O fluxo deixa de aparecer na consola e não voltará a ser executado. O histórico das suas execuções é mantido intacto: é uma retirada reversível, não uma exclusão.",
+    "admin.orchestration.confirm.delete.accept": "Sim, excluir o fluxo",
+    "admin.orchestration.tabs.flows": "Fornecedores",
+    "admin.orchestration.tabs.assets": "Assets Dagster",
+    "admin.orchestration.assets.loading": "Consultando o orquestrador…",
+    "admin.orchestration.assets.empty": "O orquestrador respondeu, mas não declara nenhum asset.",
+    "admin.orchestration.assets.unavailableTitle": "Não foi possível consultar o orquestrador",
+    "admin.orchestration.assets.unavailableHint": "Os assets vivem apenas no Dagster, portanto não há o que mostrar até que ele responda. As políticas da aba Fornecedores continuam disponíveis.",
+    "admin.orchestration.assets.partsProvider": "supermercados",
+    "admin.orchestration.assets.partsSection": "seções do catálogo",
+    "admin.orchestration.assets.partsOther": "partes",
+    "admin.orchestration.assets.partitionsHelp": "Alguns processos são executados em partes independentes: uma por supermercado, ou uma por seção do catálogo. Cada parte é lançada e repetida sozinha, então se uma falha as demais continuam. O número indica quantas partes já terminaram bem. (No Dagster isso se chama «materializar».)",
+    "admin.orchestration.assets.partitionsDetail": "{materialized} de {total} {noun} já foram processados bem.",
+    "admin.orchestration.assets.partitionsNone": "Este processo não se divide em partes: é executado inteiro, de uma só vez.",
+    "admin.orchestration.assets.colAsset": "Asset",
+    "admin.orchestration.assets.colGroup": "Grupo",
+    "admin.orchestration.assets.colJobs": "Jobs",
+    "admin.orchestration.assets.colPartitions": "Partições",
+    "admin.orchestration.assets.colLastRun": "Última execução",
+    "admin.orchestration.assets.colHealth": "Estado",
+    "admin.orchestration.assets.failedCount": "({count} com falha)",
+    "admin.orchestration.assets.health.never_materialized": "Nunca executado",
+    "admin.orchestration.assets.health.healthy": "Saudável",
+    "admin.orchestration.assets.health.degraded": "Degradado",
+    "admin.orchestration.assets.health.failed": "Com falha",
+    "admin.orchestration.modal.title": "Editar política",
+    "admin.orchestration.modal.save": "Salvar política",
+    "admin.orchestration.modal.saving": "Salvando…",
+    "admin.orchestration.modal.reset": "Restaurar",
+    "admin.orchestration.modal.fieldMode": "Modo de execução",
+    "admin.orchestration.modal.fieldCron": "Expressão cron",
+    "admin.orchestration.modal.fieldTimezone": "Fuso horário",
+    "admin.orchestration.modal.fieldSla": "SLA (minutos)",
+    "admin.orchestration.modal.fieldQueryLimit": "Limite de consultas",
+    "admin.orchestration.modal.hintCron":
+      "Cinco campos (minuto hora dia mês dia-semana). Avaliado no fuso horário abaixo, não no do servidor.",
+    "admin.orchestration.modal.hintQueryLimit": "Vazio = usa o limite global do mercado. Um 0 seria um limite de zero consultas.",
+    "admin.orchestration.modal.hintSla": "Minutos tolerados desde a última execução BEM-SUCEDIDA. Só se aplica a fluxos agendados.",
+    "admin.orchestration.modal.errCronRequired": "Um fluxo agendado precisa da sua expressão cron.",
+    "admin.orchestration.modal.errSave": "Não foi possível salvar a política. Verifique os valores e tente de novo.",
+    "admin.orchestration.modal.envTitle": "O que NÃO se configura aqui",
+    "admin.orchestration.modal.envBody": "Estas peças ainda vivem em variáveis de ambiente do servidor e não podem ser alteradas pelo admin: o limite global de consultas (SAVE_REFRESH_QUERY_LIMIT) e os switches da cascata de correspondência, do classificador e do juiz LLM. Alterá-las exige uma mudança de configuração no deploy.",
+    "admin.orchestration.create.cta": "Novo fluxo",
+    "admin.orchestration.create.title": "Novo fluxo de fornecedor",
+    "admin.orchestration.create.save": "Criar fluxo",
+    "admin.orchestration.create.saving": "Criando…",
+    "admin.orchestration.create.clear": "Limpar",
+    "admin.orchestration.create.fieldProvider": "Fornecedor",
+    "admin.orchestration.create.providerSearch": "Buscar fornecedor…",
+    "admin.orchestration.create.providerAll": "Todos",
+    "admin.orchestration.create.fieldFlow": "Fluxo",
+    "admin.orchestration.create.hintFlow":
+      "O fluxo nasce em modo manual: não dispara nada até você definir um horário em “Editar política”.",
+    "admin.orchestration.create.errProviderRequired": "Escolha um fornecedor para o fluxo.",
+    "admin.orchestration.create.errSave": "Não foi possível criar o fluxo.",
+    "admin.orchestration.create.noProviders":
+      "Todos os fornecedores do mercado já têm o seu fluxo configurado. Para reutilizar um, edite o existente.",
+    "admin.orchestration.search.placeholder": "Buscar fornecedor ou fluxo…",
+    "admin.orchestration.search.aria": "Buscar fluxos de orquestração",
+    "admin.orchestration.filters": "Filtros",
+    "admin.orchestration.filters.title": "Filtrar fluxos",
+    "admin.orchestration.filters.mode": "Modo de execução",
+    "admin.orchestration.filters.state": "Estado da última execução",
+    "admin.orchestration.filters.all": "Todos",
+    "admin.orchestration.filters.clear": "Restaurar",
+    "admin.orchestration.filters.apply": "Aplicar filtros",
+    "admin.orchestration.emptySearch": "Nenhum fluxo corresponde à busca ou aos filtros aplicados.",
+    "admin.orchestration.pagination.show": "Mostrar",
+    "admin.orchestration.pagination.perPage": "por página",
+    "admin.orchestration.pagination.of": "{from}–{to} de {total}",
+    "admin.orchestration.kpi.withinSla": "Dentro do SLA",
+    "admin.orchestration.kpi.withinSla.hint": "Executaram a tempo. Os manuais não contam.",
+    "admin.orchestration.kpi.autoLinkRate": "Taxa de auto-vínculo",
+    "admin.orchestration.kpi.autoLinkRate.hint": "Resolvidos sem humano na última execução",
+    "admin.orchestration.kpi.badge.allActive": "Todos ativos",
+    "admin.orchestration.kpi.badge.paused": "{count} em pausa",
+    "admin.orchestration.kpi.badge.onTime": "Todos em dia",
+    "admin.orchestration.kpi.badge.breached": "{count} fora",
+    "admin.orchestration.kpi.badge.queued": "{count} na fila",
+    "admin.orchestration.kpi.badge.fromQueued": "de {count} na fila",
+    "admin.orchestration.kpi.legend.autoLinked": "Auto-vinculados",
+    "admin.orchestration.kpi.legend.queued": "Na fila",
+    "admin.orchestration.kpi.legend.active": "Ativos",
+    "admin.orchestration.kpi.legend.paused": "Em pausa",
+    "admin.orchestration.kpi.legend.onTime": "Em dia",
+    "admin.orchestration.kpi.legend.late": "Fora",
     "admin.nav.save.financialProducts": "Produtos Financeiros",
     "admin.nav.wip": "🚧 Em construção — ainda não disponível",
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Ajuda",
     "admin.category.none": "Sem categoria",
+    "admin.reviewQueue.category.edit": "Alterar categoria",
+    "admin.reviewQueue.category.search": "Buscar categoria...",
+    "admin.reviewQueue.category.noMatch": "Nenhuma categoria corresponde",
+    "admin.toolbar.actions.classify": "Classificar selecionados",
+    "admin.toolbar.actions.canonize": "Aprovar e criar canônico",
+    "admin.reviewQueue.canonize.title": "Criar canônicos",
+    "admin.reviewQueue.canonize.description": "Serão criados {n} produtos canônicos novos e vinculados a estas linhas. Não pode ser desfeito.",
+    "admin.reviewQueue.canonize.confirm": "Criar {n} canônicos",
+    "admin.reviewQueue.canonize.missing": "{n} sem categoria — escolha uma para essas linhas",
+    "admin.reviewQueue.canonize.choose": "Escolher categoria...",
+    "admin.reviewQueue.canonize.onlyFillsGaps": "Só se aplica às que não têm. As demais mantêm a sua.",
+    "admin.reviewQueue.canonize.done": "{n} canônicos criados",
+    "admin.reviewQueue.canonize.preview": "O que será criado",
+    "admin.reviewQueue.canonize.rowMissing": "Falta categoria",
+    "admin.reviewQueue.canonize.perPage": "Por página",
+    "admin.reviewQueue.canonize.prev": "Página anterior",
+    "admin.reviewQueue.canonize.next": "Próxima página",
+    "admin.toolbar.actions.approve.noCandidates": "Nenhuma das linhas selecionadas tem candidatos. Use \"Aprovar e criar canônico\".",
+    "admin.reviewQueue.classify.done": "{n} classificadas",
+    "admin.reviewQueue.classify.undecided": "{n} sem decidir",
+    "admin.reviewQueue.classify.failed": "{n} com erro",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Similaridade de texto",
     "admin.method.vector": "Vetor",

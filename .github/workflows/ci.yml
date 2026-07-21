@@ -61,12 +61,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      - run: uv sync
+      # `--group ingestion` NO es opcional: sin él `dagster` no se instala y los 18 tests de
+      # `tests/ingestion/test_definitions.py` se SALTAN con su `importorskip` — nunca corrieron en CI.
+      # Peor: esa ausencia dejaba `sys.modules` sin dagster, y por eso la guarda de despliegue del
+      # adapter (que el adapter NO importe el SDK) pasaba en CI y fallaba en local. CI estaba verde
+      # por la misma razón que lo volvía incapaz de ver el bug.
+      - run: uv sync --group ingestion
       - run: uv run ruff check .
       - run: uv run lint-imports                 # límites hexagonales (ADR 31/33)
       - run: uv run pytest -m "not integration"  # unit (rápido, fail-fast)
       - run: uv run alembic upgrade head         # schema para integration
       - run: uv run pytest -m integration        # integration (con DB)
+      # Guarda del hábito: UN solo proceso para save + ingestion. Correrlas separadas esconde la
+      # contaminación cruzada — es exactamente lo que dejó pasar la guarda rota del adapter.
+      # Si el número de verificación del backend son DOS números, la combinada nunca se corrió.
+      - run: uv run pytest tests/save tests/ingestion -q
 
   mobile:
     needs: changes

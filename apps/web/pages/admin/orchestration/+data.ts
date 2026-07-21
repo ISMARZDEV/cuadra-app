@@ -1,4 +1,4 @@
-import { listProviderFlows } from "@cuadra/api-client";
+import { listAdminProviders, listProviderFlows } from "@cuadra/api-client";
 import type { PageContextServer } from "vike/types";
 
 import type { OrchestrationData } from "@/features/admin/resources/save-orchestration/interfaces";
@@ -20,13 +20,20 @@ export async function data(
   const shell = await adminShellData(pageContext);
   const token = extractToken(pageContext.headers);
 
-  const res = await listProviderFlows({
-    client: apiClient,
-    headers: token ? { authorization: `Bearer ${token}` } : undefined,
-  });
+  const auth = token ? { authorization: `Bearer ${token}` } : undefined;
+
+  // Proveedores para el select del modal de creación. Endpoint **ADMIN** (gateado, con token), no el
+  // público `listProviders`: §5.1 manda retirar ese consumo del admin ahora que el DTO admin existe.
+  // Un fallo acá NO degrada la consola: solo deja el modal de creación sin opciones.
+  const [res, providersRes] = await Promise.all([
+    listProviderFlows({ client: apiClient, headers: auth }),
+    listAdminProviders({ client: apiClient, headers: auth }),
+  ]);
+
+  const providers = providersRes.data ?? [];
 
   if (res.error || !res.data) {
-    return { flows: [], runnerDisconnected: true, ...shell };
+    return { flows: [], runnerDisconnected: true, providers, ...shell };
   }
   // La salud del runner la DECLARA el backend. Antes se infería de que ninguna fila trajera
   // métricas, y eso es falso: un flujo que nunca corrió se ve idéntico a un runner muerto — la
@@ -34,6 +41,7 @@ export async function data(
   return {
     flows: res.data.flows,
     runnerDisconnected: !res.data.runner_available,
+    providers,
     ...shell,
   };
 }

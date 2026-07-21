@@ -14,11 +14,11 @@ import { MatchMethod } from "./method-palette";
 export const KPI_DATA_IS_DEMO = true;
 
 /** Sentimiento de un delta → color del pill (verde = bueno, ámbar = malo, gris = neutro). */
-export enum KpiSentiment {
-  Positive = "positive",
-  Negative = "negative",
-  Neutral = "neutral",
-}
+import { KpiSentiment } from "../components/kpi/types";
+import type { SeriesPoint } from "../components/kpi/types";
+
+export { KpiSentiment };
+export type { SeriesPoint } from "../components/kpi/types";
 
 /** Un delta versus el período anterior (ej. "+12 productos", "+5pp", "-0.3 días"). */
 export interface KpiDelta {
@@ -29,11 +29,6 @@ export interface KpiDelta {
 }
 
 /** Un punto de una serie temporal corta (barras / línea). */
-export interface SeriesPoint {
-  /** Etiqueta del eje (ej. "L", "M"...) — hoy solo para el `<title>`/tooltip, no se dibuja. */
-  label: string;
-  value: number;
-}
 
 /** Un segmento de la dona de auto-link (auto-enlazado vs pendiente). */
 export interface GaugeSegment {

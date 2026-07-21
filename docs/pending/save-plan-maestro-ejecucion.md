@@ -292,9 +292,27 @@ Limpiar código muerto ≠ borrar DATOS. En entidades operativas:
 
 ### 6.2 Comandos de verificación (todos reales, verificados)
 
+> [!warning] El número del backend es UNO SOLO — 2026-07-20
+> **Si tu verificación del backend son DOS números, la suite combinada nunca se corrió.**
+>
+> Durante toda la consola v2 se reportó *"895 backend save · 62 ingestion"*: dos números, dos
+> procesos. Así pasaba verde una guarda rota (`test_the_adapter_does_not_import_dagster`) que
+> preguntaba por el `sys.modules` **global del proceso** — y `tests/ingestion` importa `dagster` por
+> definición. Pasaba SOLA y fallaba ACOMPAÑADA, y correrlas separadas es exactamente lo que la
+> escondía.
+>
+> Tenía un gemelo estructural: **CI hacía `uv sync` sin `--group ingestion`**, así que `dagster` no
+> se instalaba, los 18 tests de `test_definitions.py` se saltaban por `importorskip` y `sys.modules`
+> quedaba limpio. CI estaba verde **por la misma razón que lo volvía incapaz de ver el bug**.
+> Corregido: CI instala el grupo y corre el comando combinado como paso propio.
+>
+> Regla: un solo proceso, un solo número. Y desconfiá de una suite con rojos crónicos —
+> `tests/aispace/integration` tiene 13 que dependen de un LLM real: un rojo permanente entrena a la
+> gente a ignorar el rojo, que es el terreno donde estos bugs sobreviven.
+
 ```bash
-# Backend
-cd apps/api && uv run pytest tests/save tests/ingestion -q   # 712 verdes hoy · NO debe dormir
+# Backend — UN proceso, UN número. Nunca `tests/save` y `tests/ingestion` por separado.
+cd apps/api && uv run pytest tests/save tests/ingestion -q   # 987 verdes hoy · NO debe dormir
 cd apps/api && uv run ruff check <archivos tocados>
 cd apps/api && uv run lint-imports                            # contratos hexagonales: 2 kept, 0 broken
 cd apps/api && uv run alembic upgrade head

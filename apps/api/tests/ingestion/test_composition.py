@@ -493,3 +493,38 @@ def test_building_sources_for_a_disabled_provider_returns_none(
     _fake_registry_repo(monkeypatch, [_registry("p-jumbo", SourcePlatform.MAGENTO, enabled=False)])
 
     assert composition.build_query_catalog_sources_for(object(), "p-jumbo", ("arroz",)) is None
+
+
+class TestQueryLimitComesFromThePolicy:
+    """El cableado que hace CIERTO el número que el admin edita.
+
+    Hasta hoy `query_limit_override` no influía en NADA: la ingesta recortaba con
+    `SAVE_REFRESH_QUERY_LIMIT` (env) y la policy solo se persistía. Era la misma clase de mentira
+    que `priority` — un campo editable cuyo efecto no existe — y `PolicyModal` YA lo dejaba editar.
+
+    Cadena: override de la policy → default global → env (red de seguridad de dev) → sin tope.
+    """
+
+    def test_the_policy_override_wins_over_the_env_var(self) -> None:
+        from ingestion.save.composition import select_queries
+
+        assert select_queries(["a", "b", "c", "d"], limit_env="2", limit=3) == ("a", "b", "c")
+
+    def test_the_env_var_is_the_fallback_when_nothing_is_configured(self) -> None:
+        """No se retira: `dagster-dev.sh` exporta 10, y quitarla haría que dev saltara de 10 a 213
+        queries por tienda — 20x más requests reales contra las APIs de los súper."""
+        from ingestion.save.composition import select_queries
+
+        assert select_queries(["a", "b", "c"], limit_env="2", limit=None) == ("a", "b")
+
+    def test_no_limit_anywhere_means_the_whole_basket(self) -> None:
+        from ingestion.save.composition import select_queries
+
+        assert select_queries(["a", "b", "c"], limit_env=None, limit=None) == ("a", "b", "c")
+
+    def test_a_policy_cap_of_zero_stops_that_source(self) -> None:
+        """0 es una decisión deliberada del operador (frenar esa tienda), y NO puede colapsarse con
+        "sin tope" ni caer al fallback de la env."""
+        from ingestion.save.composition import select_queries
+
+        assert select_queries(["a", "b"], limit_env="5", limit=0) == ()

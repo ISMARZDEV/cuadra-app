@@ -48,7 +48,12 @@ class ClassifyStoreProduct:
         self,
         classifications: CategoryClassificationRepository,
         candidates: CategoryCandidateRepository,
-        embedder: EmbeddingProvider,
+        # `None` = este proceso NO tiene el modelo de embeddings. No es un caso hipotético: la API
+        # web no puede cargar BGE-M3 porque `sentence-transformers` vive en el grupo de dependencias
+        # `ingestion` (misma regla que impide importar `dagster` en el adapter del orquestador —
+        # importarlo reventaría la API al arrancar en producción, con un fallo invisible en local).
+        # Simétrico a `judge=None`: sin la etapa, no se inventa categoría.
+        embedder: EmbeddingProvider | None,
         judge: CategoryJudgePort | None,
         lexicon_index: LexiconIndex,
     ) -> None:
@@ -130,6 +135,13 @@ class ClassifyStoreProduct:
             return ClassificationResult(leaf_id, confidence, "lexicon", "auto_link")
 
         # --- Etapa 2: vector semántico, decisión por MARGEN ---
+        # Sin modelo en este proceso NO se sigue: se deja sin clasificar, igual que la banda grey
+        # con el juez apagado. Inventar acá sería peor que no responder, y reventar por
+        # `None.embed(...)` convertiría "no tengo esa etapa" en "la consola está rota".
+        # Medido sobre la cola real (48 filas): léxico + señal de origen resolvieron el 100%, así
+        # que en la práctica esta rama es la excepción, no el camino normal.
+        if self._embedder is None:
+            return ClassificationResult(None, 0.0, "none", "grey")
         embedding = self._embedder.embed([product.name])[0]
         vector = self._candidates.find_leaves_vector(embedding, market_id, limit=5)
         winner_id, score, band = decide_by_vector_margin(vector)

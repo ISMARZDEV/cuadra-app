@@ -8,7 +8,13 @@ from __future__ import annotations
 import pytest
 
 from src.contexts.save.domain.entities.orchestration_run import RunState
-from src.contexts.save.domain.ports.orchestrator import OrchestratorUnavailable, RunTrigger
+from src.contexts.save.domain.ports.orchestrator import (
+    AssetHealth,
+    AssetPartitionKind,
+    OrchestratorUnavailable,
+    RunEventKind,
+    RunTrigger,
+)
 from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
     DagsterGraphQLOrchestrator,
 )
@@ -217,6 +223,7 @@ def test_the_adapter_does_not_import_dagster() -> None:
     """
     import ast
     import pathlib
+    import subprocess
     import sys
 
     from src.contexts.save.infrastructure.orchestrator import dagster_graphql
@@ -233,8 +240,29 @@ def test_the_adapter_does_not_import_dagster() -> None:
 
     offenders = {m for m in imported if m == "dagster" or m.startswith("dagster")}
     assert not offenders, f"el adapter debe hablar GraphQL crudo, no usar el SDK: {offenders}"
-    # y que no se haya colado transitivamente al importarlo:
-    assert not any(m == "dagster" or m.startswith("dagster.") for m in sys.modules)
+
+    # Y que no se cuele TRANSITIVAMENTE al importarlo. Esto se mide en un intérprete LIMPIO, no
+    # sobre el `sys.modules` de la suite: ese es global del proceso, y `tests/ingestion` importa
+    # dagster por definición. Preguntarle a él daba una guarda que pasaba SOLA y fallaba
+    # ACOMPAÑADA — verde por aislamiento, roja por un motivo ajeno al adapter, y en ningún caso
+    # midiendo la cadena de imports que dice defender.
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys;"
+            " import src.contexts.save.infrastructure.orchestrator.dagster_graphql;"
+            " leaked = sorted(m for m in sys.modules"
+            "                 if m == 'dagster' or m.startswith('dagster.'));"
+            " print(','.join(leaked))",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=pathlib.Path(__file__).resolve().parents[3],
+    )
+    assert probe.returncode == 0, f"el adapter no importa en un intérprete limpio: {probe.stderr}"
+    leaked = probe.stdout.strip()
+    assert not leaked, f"dagster entró transitivamente al importar el adapter: {leaked}"
 
 
 class TestSelectorResolution:
@@ -288,3 +316,357 @@ class TestSelectorResolution:
 
         with pytest.raises(OrchestratorUnavailable):
             _orchestrator(transport).launch(job_name="save_query_catalog", policy_id="pol-1")
+
+
+# --------------------------------------------------------------------------------------- assets --
+#
+# §14 #9. Todo lo que se afirma acá salió de introspectar el schema instalado:
+#   assetNodes           -> [AssetNode!]!            LISTA PELADA (sin unión: solo falla por `errors`)
+#   assetNodeOrError     -> AssetNode | AssetNotFoundError    UNIÓN (dos caminos de error distintos)
+#   partitionStats       -> numMaterialized numPartitions numFailed numMaterializing
+#   MaterializationEvent.timestamp -> String! en MILISEGUNDOS  (¡no float en segundos como los runs!)
+
+
+def _node(**over: object) -> dict:
+    base: dict[str, object] = {
+        "assetKey": {"path": ["query_catalog_prices"]},
+        "groupName": "default",
+        "description": "Descubrimiento por-query",
+        "jobNames": ["save_query_catalog"],
+        "dependencyKeys": [],
+        "dependedByKeys": [],
+        "isPartitioned": False,
+        "partitionDefinition": None,
+        "partitionStats": None,
+        "assetMaterializations": [],
+    }
+    base.update(over)
+    return base
+
+
+class TestListAssets:
+    def test_joins_the_asset_key_path_because_it_is_a_LIST_of_segments(self) -> None:
+        """`AssetKey` no es un string: es `{path: [...]}`. Leerlo como string daría `None` silencioso
+        y la tabla saldría con la clave vacía en cada fila."""
+        transport = FakeTransport([
+            {"data": {"assetNodes": [_node(assetKey={"path": ["save", "prices"]})]}}
+        ])
+
+        assets = _orchestrator(transport).list_assets()
+
+        assert assets[0].key == "save/prices"
+
+    def test_a_non_partitioned_asset_carries_NO_partition_stats(self) -> None:
+        """Aunque el runner mandara un `partitionStats`, si el asset no está particionado no hay
+        cobertura que mostrar. `None` != `0 de 0`."""
+        transport = FakeTransport([{"data": {"assetNodes": [
+            _node(isPartitioned=False, partitionStats={
+                "numPartitions": 0, "numMaterialized": 0, "numFailed": 0, "numMaterializing": 0,
+            })
+        ]}}])
+
+        assert _orchestrator(transport).list_assets()[0].partitions is None
+
+    def test_a_partitioned_asset_keeps_the_AGGREGATE_that_the_runner_already_computed(self) -> None:
+        """US-OR-L4 pide `rest_catalog_prices` como UNA fila con su estado agregado, no una fila por
+        sección. Dagster ya lo agrega — no se recalcula acá."""
+        transport = FakeTransport([{"data": {"assetNodes": [
+            _node(assetKey={"path": ["rest_catalog_prices"]}, isPartitioned=True, partitionStats={
+                "numPartitions": 12, "numMaterialized": 9, "numFailed": 2, "numMaterializing": 1,
+            })
+        ]}}])
+
+        stats = _orchestrator(transport).list_assets()[0].partitions
+
+        assert stats is not None
+        assert (stats.total, stats.materialized, stats.failed, stats.materializing) == (12, 9, 2, 1)
+
+    def test_materialization_timestamp_is_a_STRING_in_MILLISECONDS(self) -> None:
+        """El bug que este test existe para impedir: `Run.startTime` es float en SEGUNDOS, pero
+        `MaterializationEvent.timestamp` es String en MILISEGUNDOS. Tratarlos igual da una fecha del
+        año ~57000 — plausible a la vista de un parser y absurda para el operador."""
+        transport = FakeTransport([{"data": {"assetNodes": [
+            _node(assetMaterializations=[{"runId": "run-9", "timestamp": "1752969600000"}])
+        ]}}])
+
+        asset = _orchestrator(transport).list_assets()[0]
+
+        assert asset.last_materialized_at is not None
+        assert asset.last_materialized_at.year == 2025
+        assert asset.last_run_id == "run-9"
+
+    def test_no_materialization_means_never_ran_not_broken(self) -> None:
+        transport = FakeTransport([{"data": {"assetNodes": [_node(assetMaterializations=[])]}}])
+
+        asset = _orchestrator(transport).list_assets()[0]
+
+        assert asset.last_materialized_at is None
+        assert asset.health is AssetHealth.NEVER_MATERIALIZED
+
+    def test_an_unreadable_timestamp_degrades_instead_of_taking_the_console_down(self) -> None:
+        transport = FakeTransport([{"data": {"assetNodes": [
+            _node(assetMaterializations=[{"runId": "r", "timestamp": "no-soy-un-numero"}])
+        ]}}])
+
+        assert _orchestrator(transport).list_assets()[0].last_materialized_at is None
+
+    def test_lineage_travels_with_the_node_so_ONE_call_returns_the_whole_graph(self) -> None:
+        """Por esto el puerto NO tiene `get_lineage()`: sería un round-trip extra para datos que la
+        primera llamada ya trajo."""
+        transport = FakeTransport([{"data": {"assetNodes": [_node(
+            dependencyKeys=[{"path": ["embed_canonicals"]}],
+            dependedByKeys=[{"path": ["price_drops"]}, {"path": ["alert_matching"]}],
+        )]}}])
+
+        asset = _orchestrator(transport).list_assets()[0]
+
+        assert asset.dependency_keys == ("embed_canonicals",)
+        assert asset.depended_by_keys == ("price_drops", "alert_matching")
+
+    def test_hides_dagsters_implicit_job_from_the_operator(self) -> None:
+        """`__ASSET_JOB` es el job IMPLÍCITO que Dagster se crea solo: no se puede lanzar ni
+        reintentar desde la consola, así que mostrarlo es ruido con forma de acción. Lo destapó el
+        dato REAL — todos los assets lo traían y ningún test con fixture propio podía verlo."""
+        transport = FakeTransport([{"data": {"assetNodes": [
+            _node(jobNames=["__ASSET_JOB", "save_query_catalog"])
+        ]}}])
+
+        assert _orchestrator(transport).list_assets()[0].job_names == ("save_query_catalog",)
+
+    def test_an_asset_with_ONLY_the_implicit_job_reports_no_jobs(self) -> None:
+        """Y entonces la fila muestra `—`: honesto. Inventarle un nombre de job sería peor."""
+        transport = FakeTransport([{"data": {"assetNodes": [_node(jobNames=["__ASSET_JOB"])]}}])
+
+        assert _orchestrator(transport).list_assets()[0].job_names == ()
+
+    def test_translates_the_runner_partition_name_into_domain_vocabulary(self) -> None:
+        """Nombres VERIFICADOS contra el Dagster real: `query_catalog_provider` (una parte por
+        supermercado) y `rest_catalog_section` (una por sección). Sin esto, `2/41` es un número sin
+        sujeto y el operador no puede interpretarlo."""
+        transport = FakeTransport([{"data": {"assetNodes": [
+            _node(isPartitioned=True, partitionDefinition={"name": "query_catalog_provider"},
+                  partitionStats={"numPartitions": 4, "numMaterialized": 3, "numFailed": 0,
+                                  "numMaterializing": 0}),
+        ]}}])
+
+        stats = _orchestrator(transport).list_assets()[0].partitions
+
+        assert stats is not None and stats.kind is AssetPartitionKind.PROVIDER
+
+    def test_an_unmapped_partition_name_degrades_to_generic_instead_of_guessing(self) -> None:
+        transport = FakeTransport([{"data": {"assetNodes": [
+            _node(isPartitioned=True, partitionDefinition={"name": "algo_nuevo"},
+                  partitionStats={"numPartitions": 2, "numMaterialized": 1, "numFailed": 0,
+                                  "numMaterializing": 0}),
+        ]}}])
+
+        stats = _orchestrator(transport).list_assets()[0].partitions
+
+        assert stats is not None and stats.kind is AssetPartitionKind.OTHER
+
+    def test_no_code_location_is_NOT_a_pipeline_without_assets(self) -> None:
+        """Incidente real (2026-07-20): el code-server perdió su conexión a Postgres y quedó en
+        error. El webserver seguía vivo y `assetNodes` devolvía `[]`, así que la consola anunció "el
+        orquestador respondió, pero no declara ningún asset" — cierto de forma literal y engañoso de
+        forma operativa: no había pipeline vacío, había una ubicación de código caída.
+
+        Se distingue preguntando por las ubicaciones, que es lo mismo que ya hacía `launch` para no
+        lanzar contra un selector vacío."""
+        transport = FakeTransport([
+            {"data": {"assetNodes": []}},
+            {"data": {"repositoriesOrError": {"__typename": "RepositoryConnection", "nodes": []}}},
+        ])
+
+        with pytest.raises(OrchestratorUnavailable, match="ubicación de código"):
+            _orchestrator(transport).list_assets()
+
+    def test_an_empty_pipeline_with_a_healthy_location_is_reported_as_empty(self) -> None:
+        """Y al revés: con la ubicación cargada, una lista vacía es una respuesta legítima."""
+        transport = FakeTransport([
+            {"data": {"assetNodes": []}},
+            {"data": {"repositoriesOrError": {"__typename": "RepositoryConnection", "nodes": [
+                {"name": "__repository__", "location": {"name": "ingestion.definitions"}}]}}},
+        ])
+
+        assert _orchestrator(transport).list_assets() == []
+
+    def test_an_errors_array_is_NOT_an_empty_pipeline(self) -> None:
+        """`assetNodes` es lista pelada: su único camino de error es `errors`. Devolver `[]` acá haría
+        que la tab dijera "el pipeline no tiene assets" cuando no se pudo preguntar."""
+        transport = FakeTransport([{"errors": [{"message": "boom"}]}])
+
+        with pytest.raises(OrchestratorUnavailable):
+            _orchestrator(transport).list_assets()
+
+
+class TestGetAsset:
+    def test_asset_not_found_is_an_ANSWER_not_an_outage(self) -> None:
+        """`AssetNotFoundError` es la unión respondiendo "no existe". Tratarlo como caída haría que
+        la consola dijera "el orquestador no responde" con el orquestador contestando — el error
+        exacto que F4 ya cometió una vez."""
+        transport = FakeTransport([
+            {"data": {"assetNodeOrError": {"__typename": "AssetNotFoundError", "message": "nope"}}}
+        ])
+
+        assert _orchestrator(transport).get_asset("no_existe") is None
+
+    def test_splits_the_key_back_into_the_path_the_schema_expects(self) -> None:
+        transport = FakeTransport([
+            {"data": {"assetNodeOrError": dict(_node(assetKey={"path": ["save", "prices"]}),
+                                               __typename="AssetNode")}}
+        ])
+
+        asset = _orchestrator(transport).get_asset("save/prices")
+
+        assert transport.last_variables["assetKey"] == {"path": ["save", "prices"]}
+        assert asset is not None and asset.key == "save/prices"
+
+    def test_a_python_error_in_the_union_is_still_an_outage(self) -> None:
+        transport = FakeTransport([
+            {"data": {"assetNodeOrError": {"__typename": "PythonError", "message": "boom"}}}
+        ])
+
+        with pytest.raises(OrchestratorUnavailable):
+            _orchestrator(transport).get_asset("query_catalog_prices")
+
+
+class TestGetRunEvents:
+    """US-OR-D7. Los fixtures de acá son RECORTES LITERALES de un Dagster real (2026-07-20),
+    incluida la corrida fallida `55017ded` — no formas inventadas."""
+
+    @staticmethod
+    def _connection(events: list[dict], cursor: str = "cur-1", has_more: bool = False) -> dict:
+        return {"data": {"logsForRun": {
+            "__typename": "EventConnection",
+            "cursor": cursor,
+            "hasMore": has_more,
+            "events": events,
+        }}}
+
+    def test_timestamps_are_MILLISECONDS_here_unlike_run_start_times(self) -> None:
+        """`MessageEvent.timestamp` es un **String** en **MILISEGUNDOS**, mientras que
+        `Run.startTime` es un **float** en **SEGUNDOS**. Dos unidades y dos tipos en el mismo schema.
+        Tratarlos igual da fechas del año 58.500 — plausibles a la vista y falsas."""
+        transport = FakeTransport([self._connection([
+            {"__typename": "RunStartEvent", "message": "", "timestamp": "1784588507883",
+             "level": "INFO", "stepKey": None, "eventType": "RUN_START"},
+        ])])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None
+        assert page.events[0].timestamp is not None
+        assert page.events[0].timestamp.year == 2026
+
+    def test_the_root_cause_is_the_LAST_link_of_the_error_chain(self) -> None:
+        """Recorte literal de la corrida fallida real: Dagster envuelve la excepción en un error
+        propio que no dice nada. `errorChain` va de AFUERA hacia ADENTRO → la raíz es la última."""
+        transport = FakeTransport([self._connection([
+            {"__typename": "RunFailureEvent", "message": "", "timestamp": "1784527320000",
+             "level": "ERROR", "stepKey": None, "eventType": "RUN_FAILURE",
+             "error": {
+                 "message": 'dagster._core.errors.DagsterExecutionStepExecutionError: Error '
+                            'occurred while executing op "query_catalog_prices":\n',
+                 "className": "DagsterExecutionStepExecutionError",
+                 "errorChain": [
+                     {"isExplicitLink": True, "error": {
+                         "className": "OperationalError",
+                         "message": "sqlalchemy.exc.OperationalError: (psycopg.OperationalError) "
+                                    "consuming input failed\n[SQL: SELECT ...]\n"}},
+                     {"isExplicitLink": True, "error": {
+                         "className": "OperationalError",
+                         "message": "psycopg.OperationalError: consuming input failed: server "
+                                    "closed the connection unexpectedly\n"}},
+                 ],
+             }},
+        ])])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None and page.failure is not None
+        assert page.failure.root_class_name == "OperationalError"
+        assert "server closed the connection unexpectedly" in page.failure.summary
+
+    def test_dagster_event_types_are_translated_to_the_console_vocabulary(self) -> None:
+        """41 tipos de evento del runner → 6 palabras nuestras. `LogMessageEvent` llega con
+        `eventType: null` en el dato real, así que el mapeo va por `__typename`, no por `eventType`."""
+        transport = FakeTransport([self._connection([
+            {"__typename": "RunStartEvent", "message": "", "timestamp": "1784588507000",
+             "level": "INFO", "stepKey": None, "eventType": "RUN_START"},
+            {"__typename": "LogMessageEvent", "message": "Sirena: 5/5 búsquedas",
+             "timestamp": "1784588508000", "level": "INFO", "stepKey": "query_catalog_prices",
+             "eventType": None},
+            {"__typename": "MaterializationEvent", "message": "", "timestamp": "1784588509000",
+             "level": "DEBUG", "stepKey": "query_catalog_prices",
+             "eventType": "ASSET_MATERIALIZATION"},
+            {"__typename": "StepWorkerStartedEvent", "message": "", "timestamp": "1784588510000",
+             "level": "DEBUG", "stepKey": "x", "eventType": "STEP_WORKER_STARTED"},
+        ])])
+
+        kinds = [e.kind for e in (_orchestrator(transport).get_run_events("r-1") or []).events]
+
+        assert kinds == [
+            RunEventKind.STARTED,
+            RunEventKind.LOG,
+            RunEventKind.MATERIALIZATION,
+            RunEventKind.MACHINERY,
+        ]
+
+    def test_an_unknown_event_type_degrades_to_machinery_instead_of_crashing(self) -> None:
+        """Dagster va a agregar tipos. Un `KeyError` en la consola por un evento nuevo sería
+        cambiar "no sé qué es esto" por "la consola está rota"."""
+        transport = FakeTransport([self._connection([
+            {"__typename": "AlgoQueTodaviaNoExisteEvent", "message": "?",
+             "timestamp": "1784588507000", "level": "DEBUG", "stepKey": None, "eventType": "?"},
+        ])])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None and page.events[0].kind is RunEventKind.MACHINERY
+
+    def test_the_limit_is_clamped_to_the_runners_hard_ceiling(self) -> None:
+        """Medido: pedir 2000 devuelve `Limit of 2000 is too large. Max is 1000` — un ERROR, no una
+        lista recortada. Un techo que se descubre en producción no es un techo, es una caída."""
+        transport = FakeTransport([self._connection([])])
+
+        _orchestrator(transport).get_run_events("r-1", limit=5000)
+
+        assert transport.last_variables["limit"] == 1000
+
+    def test_next_cursor_is_None_when_the_runner_says_there_is_no_more(self) -> None:
+        """El cursor lo dicta `hasMore`, NO la cantidad de filas: el runner filtra del lado suyo, así
+        que una página corta puede perfectamente tener continuación."""
+        transport = FakeTransport([self._connection([], cursor="c-9", has_more=False)])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None and page.next_cursor is None
+
+    def test_next_cursor_is_forwarded_when_there_IS_more(self) -> None:
+        transport = FakeTransport([self._connection([], cursor="c-9", has_more=True)])
+
+        page = _orchestrator(transport).get_run_events("r-1")
+
+        assert page is not None and page.next_cursor == "c-9"
+
+    def test_the_cursor_travels_as_afterCursor_because_a_log_is_read_forward(self) -> None:
+        transport = FakeTransport([self._connection([])])
+
+        _orchestrator(transport).get_run_events("r-1", cursor="c-3")
+
+        assert transport.last_variables["afterCursor"] == "c-3"
+
+    def test_a_missing_run_is_an_ANSWER_not_an_outage(self) -> None:
+        transport = FakeTransport([
+            {"data": {"logsForRun": {"__typename": "RunNotFoundError", "message": "nope"}}}
+        ])
+
+        assert _orchestrator(transport).get_run_events("no-existe") is None
+
+    def test_a_python_error_in_the_union_is_still_an_outage(self) -> None:
+        transport = FakeTransport([
+            {"data": {"logsForRun": {"__typename": "PythonError", "message": "boom"}}}
+        ])
+
+        with pytest.raises(OrchestratorUnavailable):
+            _orchestrator(transport).get_run_events("r-1")

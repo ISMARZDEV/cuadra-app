@@ -77,6 +77,19 @@ def run_state_from_runner(runner_status: str) -> RunState:
     return _RUNNER_STATES.get(runner_status.strip().upper(), RunState.UNKNOWN)
 
 
+def runner_statuses_for(state: RunState) -> tuple[str, ...]:
+    """Traducción INVERSA: nuestro vocabulario → los estados del runner que lo representan.
+
+    Necesaria para poder FILTRAR del lado del runner (p.ej. "la última corrida exitosa", que alimenta
+    el SLA) en vez de traerse todo el histórico y filtrarlo acá.
+
+    Vive junto al mapa directo por la misma razón que `JOB_BY_FLOW` tiene una sola casa: dos mapas
+    separados se desincronizan en cuanto alguien agrega un estado a uno solo. Es 1→N a propósito —
+    `RUNNING` cubre `STARTING` y `STARTED`, y `QUEUED` cubre `QUEUED` y `NOT_STARTED`.
+    """
+    return tuple(runner for runner, mapped in _RUNNER_STATES.items() if mapped is state)
+
+
 @dataclass(frozen=True, slots=True)
 class RunMetrics:
     """Lo que produjo una corrida, medido por NUESTRA ingesta.
@@ -95,6 +108,19 @@ class RunMetrics:
     discarded: int = 0
     auto_linked: int = 0
     queued_for_review: int = 0
+    # §14 #14 — progreso REAL de la corrida. `seen` cuenta productos devueltos, no búsquedas: con él
+    # es imposible decir "va por la 3 de 4". `queries_total` es el PLAN y `queries_processed` lo
+    # cumplido, así que una corrida cortada a la mitad se ve cortada y no completa.
+    queries_total: int = 0
+    queries_processed: int = 0
+
+    @property
+    def query_progress(self) -> float | None:
+        """`None` cuando no hay plan contra el que medir. Un `0.0` afirmaría "0% hecho" de algo que
+        no tiene progreso definido — el mismo criterio que `coverage_ratio` en los assets."""
+        if self.queries_total <= 0:
+            return None
+        return self.queries_processed / self.queries_total
 
 
 @dataclass(frozen=True, slots=True)

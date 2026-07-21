@@ -48,6 +48,25 @@ def _seed_pending_match(db_session) -> str:  # type: ignore[no-untyped-def]
     )
 
 
+def _provider_of(db_session, match_id: str) -> str:  # type: ignore[no-untyped-def]
+    """Proveedor de la fila sembrada, para ACOTAR la cola a ella.
+
+    Estos tests corren contra la DB de desarrollo (`settings.database_url`) dentro de una
+    transacción que se revierte: eso aísla lo que ESCRIBEN, no lo que ya había. La cola real
+    acumula matches pendientes de cada ingesta (155 al escribir esto), y la página por defecto
+    son 50 — así que asumir que la fila recién sembrada aparece en `rows` era depender de que
+    la base estuviera vacía. Lo estaba cuando se escribieron; dejó de estarlo al ingerir de
+    verdad, y el test empezó a fallar sin que nada del código se rompiera.
+
+    `_seed_provider_and_canonical` genera un `provider_id` nuevo por llamada, así que filtrar
+    por él deja la aserción determinista sin importar cuánto haya en la cola.
+    """
+    from src.contexts.save.infrastructure.models import ProductMatchModel, StoreProductModel
+
+    match = db_session.get(ProductMatchModel, uuid.UUID(match_id))
+    return str(db_session.get(StoreProductModel, match.store_product_id).provider_id)
+
+
 def _client(db_session, user_id: str) -> TestClient:  # type: ignore[no-untyped-def]
     app.dependency_overrides[get_session] = lambda: db_session
     app.dependency_overrides[get_current_user_id] = lambda: user_id
@@ -99,7 +118,10 @@ def test_super_admin_gets_200_on_review_queue_routes(db_session) -> None:  # typ
     match_id = _seed_pending_match(db_session)
     client = _client(db_session, admin_id)
     try:
-        r_list = client.get("/v1/admin/save/review-queue", params={"market": "DO"})
+        r_list = client.get(
+            "/v1/admin/save/review-queue",
+            params={"market": "DO", "provider_id": _provider_of(db_session, match_id)},
+        )
         assert r_list.status_code == 200, r_list.text
         assert any(row["match_id"] == match_id for row in r_list.json()["rows"])
 
@@ -239,3 +261,201 @@ def test_bulk_resolve_is_per_row_atomic_and_reports_partial_failure(db_session) 
         assert bad_row.status == "pending_review"  # sin cambios: el fallo no escribió nada
     finally:
         _clear()
+
+
+# ------------------------------------------------- clasificación en lote + override manual (D8) --
+
+def _seed_taxonomy_leaf(db_session, name: str = "Zarandaja") -> tuple[str, str]:  # type: ignore[no-untyped-def]
+    """(top_id, leaf_id) — la taxonomía es de DOS niveles y la clasificación guarda la HOJA,
+    mientras el badge de la cola muestra su TOPE."""
+    from src.contexts.save.infrastructure.models import TaxonomyNodeModel
+
+    top = TaxonomyNodeModel(name="Despensa", level=0, market_id="DO", parent_id=None)
+    db_session.add(top)
+    db_session.flush()
+    leaf = TaxonomyNodeModel(name=name, level=1, market_id="DO", parent_id=top.id)
+    db_session.add(leaf)
+    db_session.flush()
+    return str(top.id), str(leaf.id)
+
+
+def _store_product_of(db_session, match_id: str) -> str:  # type: ignore[no-untyped-def]
+    from src.contexts.save.infrastructure.models import ProductMatchModel
+
+    return str(db_session.get(ProductMatchModel, uuid.UUID(match_id)).store_product_id)
+
+
+class TestTaxonomyLeavesEndpoint:
+    """`GET /taxonomy` — las hojas CON su id.
+
+    Existe porque el endpoint público `/v1/save/categories` devuelve `slug` y `name`, NO ids, y
+    fijar una categoría necesita el `taxonomy_node_id`. Sin esto el combobox de la celda editable
+    no tendría qué mandar.
+    """
+
+    def test_returns_leaves_with_their_id_and_top_name(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        _top, leaf_id = _seed_taxonomy_leaf(db_session)
+        client = _client(db_session, admin_id)
+        try:
+            res = client.get("/v1/admin/save/taxonomy")
+        finally:
+            _clear()
+
+        assert res.status_code == 200, res.text
+        leaves = res.json()["leaves"]
+        hoja = next(x for x in leaves if x["id"] == leaf_id)
+        # El TOPE viaja con la hoja: "Arroz" solo es ambiguo entre categorías, y el operador elige
+        # mirando "Despensa › Arroz".
+        assert hoja["name"] == "Zarandaja"
+        assert hoja["top_name"] == "Despensa"
+
+
+class TestSetCategoryEndpoint:
+    """`PUT /store-products/{id}/category` — el override HUMANO que faltaba."""
+
+    def test_sets_the_category_and_the_queue_row_reflects_it(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Se prueba de punta a punta —fijar y volver a LEER la cola— porque lo que puede romperse
+        es el cableado: la cola deriva su badge de la clasificación `active` → hoja → TOPE, y un
+        override que escriba en otro sitio no aparecería nunca."""
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)
+        _top, leaf_id = _seed_taxonomy_leaf(db_session)
+        sp_id = _store_product_of(db_session, match_id)
+        client = _client(db_session, admin_id)
+        try:
+            res = client.put(
+                f"/v1/admin/save/store-products/{sp_id}/category",
+                json={"taxonomy_node_id": leaf_id, "decided_by": admin_id},
+            )
+            queue = client.get(
+                "/v1/admin/save/review-queue",
+                params={"provider_id": _provider_of(db_session, match_id)},
+            ).json()
+        finally:
+            _clear()
+
+        assert res.status_code == 200, res.text
+        row = next(r for r in queue["rows"] if r["match_id"] == match_id)
+        assert row["category"] is not None
+        assert row["category"]["name"] == "Despensa"  # el TOPE, no la hoja
+
+    def test_an_empty_category_is_rejected_not_silently_stored(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)
+        sp_id = _store_product_of(db_session, match_id)
+        client = _client(db_session, admin_id)
+        try:
+            res = client.put(
+                f"/v1/admin/save/store-products/{sp_id}/category",
+                json={"taxonomy_node_id": "", "decided_by": admin_id},
+            )
+        finally:
+            _clear()
+
+        assert res.status_code == 422
+
+    def test_requires_the_review_capability(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Es una MUTACIÓN sobre el catálogo: el gate va server-side (SACRED)."""
+        user_id = _seed_role_user(db_session, "normal_user")
+        match_id = _seed_pending_match(db_session)
+        sp_id = _store_product_of(db_session, match_id)
+        client = _client(db_session, user_id)
+        try:
+            res = client.put(
+                f"/v1/admin/save/store-products/{sp_id}/category",
+                json={"taxonomy_node_id": str(uuid.uuid4()), "decided_by": user_id},
+            )
+        finally:
+            _clear()
+
+        assert res.status_code == 403
+
+
+class TestBulkClassifyEndpoint:
+    """`POST /review-queue/bulk-classify` — clasifica lo seleccionado.
+
+    Corre SIN la etapa vectorial (la API no puede cargar BGE-M3: vive en el grupo `ingestion`), así
+    que resuelve por léxico + señal de ORIGEN. Lo que no resuelva queda sin decidir, y el resumen lo
+    DICE — un lote que clasifica 32 de 48 no se puede ver igual que uno que terminó.
+    """
+
+    def test_classifies_by_lexicon_without_any_model_loaded(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)
+        _top, leaf_id = _seed_taxonomy_leaf(db_session)
+        # El nombre del store_product sembrado contiene el token de la hoja → pega el léxico.
+        from src.contexts.save.infrastructure.models import StoreProductModel
+
+        sp = db_session.get(StoreProductModel, uuid.UUID(_store_product_of(db_session, match_id)))
+        sp.name = "Zarandaja Selecta Bisono 5 Lb"
+        db_session.flush()
+        client = _client(db_session, admin_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-classify",
+                json={"match_ids": [match_id]},
+            )
+        finally:
+            _clear()
+
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["classified"] == 1
+        assert body["undecided"] == 0
+        assert body["rows"][0]["taxonomy_node_id"] == leaf_id
+
+    def test_a_name_the_lexicon_cannot_resolve_is_reported_as_undecided_not_invented(
+        self, db_session,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """Sin etapa vectorial NO se inventa categoría: se cuenta como `undecided` para que el
+        operador sepa que le quedan filas por mirar."""
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)
+        _seed_taxonomy_leaf(db_session)
+        from src.contexts.save.infrastructure.models import StoreProductModel
+
+        sp = db_session.get(StoreProductModel, uuid.UUID(_store_product_of(db_session, match_id)))
+        sp.name = "Zzz Producto Sin Token Conocido"
+        sp.source_category = ""
+        db_session.flush()
+        client = _client(db_session, admin_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-classify",
+                json={"match_ids": [match_id]},
+            )
+        finally:
+            _clear()
+
+        body = res.json()
+        assert body["classified"] == 0
+        assert body["undecided"] == 1
+        assert body["rows"][0]["taxonomy_node_id"] is None
+
+    def test_a_match_that_no_longer_exists_is_failed_not_dropped(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        client = _client(db_session, admin_id)
+        ghost = str(uuid.uuid4())
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-classify", json={"match_ids": [ghost]}
+            )
+        finally:
+            _clear()
+
+        body = res.json()
+        assert body["classified"] == 0
+        assert [f["match_id"] for f in body["failed"]] == [ghost]
+
+    def test_requires_the_review_capability(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "normal_user")
+        client = _client(db_session, user_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-classify", json={"match_ids": []}
+            )
+        finally:
+            _clear()
+
+        assert res.status_code == 403

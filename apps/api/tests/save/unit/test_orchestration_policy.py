@@ -129,3 +129,21 @@ class TestProviderFlowInvariants:
     def test_a_provider_flow_policy_requires_a_flow_key(self) -> None:
         with pytest.raises(ValueError, match="flow_key"):
             _policy(flow_key=None)
+
+
+class TestQueryLimitWithoutGlobalConfig:
+    """`orchestration_global_config` existe desde F4 y NADIE la sembró: no hay fila en ningún
+    entorno. Así que "sin config global" no es un caso raro — es el estado REAL de hoy, y el dominio
+    tiene que poder expresarlo sin inventar un número."""
+
+    def test_no_override_and_no_config_means_NO_CAP_not_zero(self) -> None:
+        """`None` = sin tope. Devolver 0 sería un tope de CERO queries, o sea, detener la ingesta —
+        la diferencia entre 'no hay límite configurado' y 'el límite es no ingerir nada'."""
+        assert _policy(query_limit_override=None).query_limit_effective(None) is None
+
+    def test_the_override_still_wins_when_there_is_no_global_config(self) -> None:
+        assert _policy(query_limit_override=5).query_limit_effective(None) == 5
+
+    def test_an_override_of_zero_is_still_a_cap_of_zero(self) -> None:
+        """No se colapsa con `None`: 0 es una decisión explícita del operador."""
+        assert _policy(query_limit_override=0).query_limit_effective(None) == 0

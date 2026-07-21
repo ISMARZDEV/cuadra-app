@@ -1,4 +1,4 @@
-import { listProviders, listReviewQueue } from "@cuadra/api-client";
+import { listProviders, listReviewQueue, listTaxonomyLeaves } from "@cuadra/api-client";
 import { render } from "vike/abort";
 import type { PageContextServer } from "vike/types";
 
@@ -51,13 +51,24 @@ export async function data(
 
   // Proveedores del mercado para el combobox del modal de filtros — público (`listProviders`, sin
   // token, misma fuente que `ProvidersScreen`). No es crítico: si falla, el filtro cae a "Todos".
-  const providersRes = await listProviders({ client: apiClient, query: { market: params.market } });
+  // Proveedores y hojas de taxonomía se piden EN PARALELO: son independientes entre sí y del
+  // listado, y encadenarlas sumaría dos round-trips al primer paint sin ninguna razón.
+  const [providersRes, taxonomyRes] = await Promise.all([
+    listProviders({ client: apiClient, query: { market: params.market } }),
+    // Las hojas van CON su id (el endpoint público solo da slugs) y alimentan el selector de la
+    // celda de Categoría. Si falla, la celda queda no editable — la tabla sigue rindiendo.
+    listTaxonomyLeaves({
+      client: apiClient,
+      headers: token ? { authorization: `Bearer ${token}` } : undefined,
+    }),
+  ]);
 
   return {
     rows: res.data.rows,
     total: res.data.total,
     params,
     providers: providersRes.data ?? [],
+    taxonomyLeaves: taxonomyRes.data?.leaves ?? [],
     ...shell,
   };
 }

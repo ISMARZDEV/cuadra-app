@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 from ...domain.entities.orchestration import (
     ExecutionMode,
     FlowKey,
+    OrchestrationGlobalConfig,
     OrchestrationPolicy,
     PolicyScope,
 )
-from ..models import OrchestrationPolicyModel
+from ..models import OrchestrationGlobalConfigModel, OrchestrationPolicyModel
 
 
 def _to_entity(row: OrchestrationPolicyModel) -> OrchestrationPolicy:
@@ -107,3 +108,29 @@ class SqlOrchestrationPolicyRepository:
         row.enabled = policy.enabled
         row.deleted_at = policy.deleted_at
         self._s.flush()
+
+
+class SqlOrchestrationGlobalConfigRepository:
+    """Defaults por mercado. **Puede no haber fila**: la tabla existe desde F4 y nunca se sembró, así
+    que `None` es el estado normal de hoy y no un error. El dominio ya sabe expresarlo
+    (`query_limit_effective(None)` → sin tope)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def get(self, market_id: str) -> OrchestrationGlobalConfig | None:
+        row = self._s.scalars(
+            select(OrchestrationGlobalConfigModel).where(
+                OrchestrationGlobalConfigModel.market_id == market_id
+            )
+        ).first()
+        if row is None:
+            return None
+        return OrchestrationGlobalConfig(
+            id=str(row.id),
+            market_id=row.market_id,
+            default_query_limit=row.default_query_limit,
+            default_timezone=row.default_timezone,
+            default_sla_minutes=row.default_sla_minutes,
+            auto_runs_enabled=row.auto_runs_enabled,
+        )

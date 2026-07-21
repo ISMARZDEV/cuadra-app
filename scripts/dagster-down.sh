@@ -1,39 +1,93 @@
 #!/usr/bin/env bash
-# dagster-down.sh — Apaga la UI de ingesta de Dagster (puerto 3070) sin tocar el backend/web.
+# dagster-down.sh — Apaga el ÁRBOL de Dagster de ESTE repo (UI :3070 + daemon + code-server) sin
+# tocar el backend/web.
 #
-# `dagster dev` levanta un ÁRBOL de procesos (webserver + daemon + code-server), así que matar solo el
-# puerto 3070 deja huérfanos al daemon/code-server. Matamos por puerto Y por patrón para dejarlo limpio.
-set -euo pipefail
+# `dagster dev` levanta un árbol: wrapper `uv run` → `dagster dev` → webserver + daemon + code-server
+# (+ su `dagster api grpc`). Matar solo el puerto deja huérfanos al daemon y al code-server, y ESO es
+# lo que después rompe las corridas con "Another daemon is still sending heartbeats… multiple daemon
+# processes not supported" — un fallo que aparece mucho más tarde y no se parece a su causa.
+#
+# Historia de dos bugs que este script TENÍA (corregidos 2026-07-20), porque son instructivos:
+#
+#   1. El patrón era `dagster.daemon` y el proceso real es `dagster._daemon`. El `.` del regex se
+#      come el punto literal, y luego `daemon` no puede matchear `_daemon`: fallaba por UN carácter
+#      y NUNCA mató al daemon. Ahora los patrones son literales (`grep -F`).
+#   2. Verificaba el PUERTO 3070 y no el ÁRBOL. Como el webserver sí moría, el puerto quedaba libre
+#      y el script imprimía "✓ Dagster apagado" con 5 procesos vivos. El ✓ no era evidencia.
+#
+# Regla que hereda: **no se declara éxito sin verificar el estado final.**
+set -uo pipefail
 
-echo "▶ Apagando Dagster (UI de ingesta, puerto 3070)…"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+API_DIR="$REPO_ROOT/apps/api"
 
-killed=0
+# Patrones LITERALES (se buscan con `grep -F`, sin regex: ver bug 1). Acotados a este repo donde la
+# ruta aparece en la línea de comando, para no tocar otro checkout ni otro proyecto de la máquina.
+PATTERNS=(
+  "$API_DIR/.venv/bin/dagster"   # el proceso padre `dagster dev`
+  "dagster_webserver"            # la UI :3070
+  "dagster._daemon"              # el daemon (schedules/sensores) ← el que se escapaba
+  "dagster code-server"          # el code-server que carga las definitions
+  "dagster api grpc"             # el grpc del code location
+  "uv run --group ingestion"     # el wrapper que lanza dagster-dev.sh
+)
 
-# 1) Lo que escuche en 3070 (el webserver).
-pids="$(lsof -ti tcp:3070 2>/dev/null || true)"
-if [ -n "$pids" ]; then
-  echo "  · puerto 3070 → PIDs: $pids"
-  kill $pids 2>/dev/null || true
-  killed=1
-fi
+# PIDs vivos del árbol, excluyendo este propio script (y cualquier `dagster-down` en vuelo).
+tree_pids() {
+  local out="" pid cmd
+  while read -r pid cmd; do
+    [ -z "${pid:-}" ] && continue
+    [ "$pid" = "$$" ] && continue
+    case "$cmd" in *dagster-down.sh*) continue ;; esac
+    for p in "${PATTERNS[@]}"; do
+      if printf '%s' "$cmd" | grep -qF -- "$p"; then
+        out="$out $pid"
+        break
+      fi
+    done
+  done < <(ps -Ao pid=,command= 2>/dev/null)
+  printf '%s' "${out# }"
+}
 
-# 2) El resto del árbol: daemon, code-server y el proceso `dagster dev` de este repo.
-#    -f matchea la línea de comando completa; acotado a `dagster` para no tocar nada más.
-if pkill -f 'dagster dev' 2>/dev/null; then killed=1; fi
-if pkill -f 'dagster.daemon' 2>/dev/null; then killed=1; fi
-if pkill -f 'dagster api grpc' 2>/dev/null; then killed=1; fi
+echo "▶ Apagando Dagster (árbol completo de $REPO_ROOT)…"
 
-# 3) Gracia breve; si algo sigue en 3070, forzar.
-sleep 1
-pids="$(lsof -ti tcp:3070 2>/dev/null || true)"
-if [ -n "$pids" ]; then
-  echo "  · aún vivo en 3070 → kill -9 $pids"
-  kill -9 $pids 2>/dev/null || true
-  killed=1
-fi
-
-if [ "$killed" -eq 1 ]; then
-  echo "✓ Dagster apagado."
-else
+pids="$(tree_pids)"
+if [ -z "$pids" ] && [ -z "$(lsof -ti tcp:3070 2>/dev/null || true)" ]; then
   echo "✓ Dagster no estaba corriendo (nada que apagar)."
+  exit 0
 fi
+
+# 1) TERM al árbol + a quien ocupe el puerto (por si algo escucha sin matchear los patrones).
+port_pids="$(lsof -ti tcp:3070 2>/dev/null || true)"
+[ -n "$pids" ] && echo "  · árbol → PIDs:$( echo " $pids")"
+[ -n "$port_pids" ] && echo "  · puerto 3070 → PIDs: $(echo "$port_pids" | tr '\n' ' ')"
+# shellcheck disable=SC2086
+kill $pids $port_pids 2>/dev/null || true
+
+# 2) Gracia para que bajen ordenados (el daemon cierra su heartbeat al salir limpio).
+for _ in 1 2 3 4 5 6; do
+  [ -z "$(tree_pids)" ] && break
+  sleep 0.5
+done
+
+# 3) Lo que siga vivo, a la fuerza.
+pids="$(tree_pids)"
+if [ -n "$pids" ]; then
+  echo "  · resisten → kill -9:$(echo " $pids")"
+  # shellcheck disable=SC2086
+  kill -9 $pids 2>/dev/null || true
+  sleep 1
+fi
+
+# 4) VERIFICAR antes de declarar nada — el bug 2 de arriba.
+pids="$(tree_pids)"
+port_pids="$(lsof -ti tcp:3070 2>/dev/null || true)"
+if [ -n "$pids" ] || [ -n "$port_pids" ]; then
+  echo "✗ Dagster NO quedó limpio."
+  [ -n "$pids" ] && ps -o pid=,command= -p $pids 2>/dev/null | sed 's/^/    /'
+  [ -n "$port_pids" ] && echo "    puerto 3070 ocupado por: $(echo "$port_pids" | tr '\n' ' ')"
+  echo "  Relanzar dagster-dev.sh en este estado da 'multiple daemon processes not supported'."
+  exit 1
+fi
+
+echo "✓ Dagster apagado (árbol vacío, puerto 3070 libre)."

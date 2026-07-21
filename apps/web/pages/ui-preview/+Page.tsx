@@ -89,6 +89,8 @@ function Workspace({ locale, bare }: { locale: "es"; bare?: boolean }) {
         onViewChange={() => {}}
         selectedCount={selected.size}
         onBulkApprove={() => {}}
+        onBulkClassify={() => {}}
+        onBulkCanonize={() => {}}
         onBulkReject={() => {}}
         locale={locale}
       />

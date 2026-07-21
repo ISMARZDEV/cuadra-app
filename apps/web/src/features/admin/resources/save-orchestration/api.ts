@@ -1,12 +1,24 @@
 import {
   cancelRun as cancelRunRequest,
+  createProviderFlow as createProviderFlowRequest,
+  deletePolicy as deletePolicyRequest,
+  getProviderDetail as getProviderDetailRequest,
+  getRunEvents as getRunEventsRequest,
+  listAssets as listAssetsRequest,
+  listProviderRuns as listProviderRunsRequest,
   listProviderFlows as listProviderFlowsRequest,
   pausePolicy as pausePolicyRequest,
   resumePolicy as resumePolicyRequest,
   retryRun as retryRunRequest,
   runPolicyNow as runPolicyNowRequest,
+  updatePolicy as updatePolicyRequest,
 } from "@cuadra/api-client";
-import type { ProviderFlowDto } from "@cuadra/api-client";
+import type {
+  AssetAdminRowDto,
+  CreateProviderFlowRequest,
+  ProviderFlowDto,
+  UpdatePolicyRequest,
+} from "@cuadra/api-client";
 
 import { authHeaders } from "@/features/save/hooks/use-auth";
 import { apiClient } from "@/lib/api";
@@ -50,4 +62,87 @@ export async function retryRun(runId: string) {
 
 export async function cancelRun(runId: string) {
   return cancelRunRequest({ client: apiClient, headers: await authHeaders(), path: { run_id: runId } });
+}
+
+/** Soft-delete (`deleted_at`). NUNCA hard-delete: el histórico de corridas referencia esta policy
+ * y es append-only y sagrado (§5.3). El backend ya lo resuelve así; acá solo se expone. */
+export async function deletePolicy(policyId: string) {
+  return deletePolicyRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { policy_id: policyId },
+  });
+}
+
+export async function updatePolicy(policyId: string, body: UpdatePolicyRequest) {
+  return updatePolicyRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { policy_id: policyId },
+    body,
+  });
+}
+
+export async function createProviderFlow(body: CreateProviderFlowRequest) {
+  return createProviderFlowRequest({ client: apiClient, headers: await authHeaders(), body });
+}
+
+/** Assets del pipeline (§14 #9).
+ *
+ * NO se carga por SSR en `+data.ts` a propósito: los assets viven SOLO en Dagster, así que un runner
+ * caído responde 503 y eso tumbaría la consola ENTERA — incluidas las policies, que viven en nuestra
+ * DB y tienen que seguir visibles justo cuando el runner falla (SDD §8). Cargándolo al abrir la tab,
+ * un runner muerto degrada SOLO esta pestaña.
+ *
+ * Lanza `AssetsUnavailable` en vez de devolver `[]`: una lista vacía diría "el pipeline no tiene
+ * assets" cuando la verdad es "no pudimos preguntar".
+ */
+export class AssetsUnavailable extends Error {}
+
+export async function listPipelineAssets(): Promise<AssetAdminRowDto[]> {
+  const res = await listAssetsRequest({ client: apiClient, headers: await authHeaders() });
+  if (res.error || !res.data) throw new AssetsUnavailable("el orquestador no respondió");
+  return res.data.assets;
+}
+
+/** Detalle operativo de un provider-flow (#11). Lanza si el runner+DB no pudieron responder el
+ * mínimo (identidad + policy); el `+data.ts` lo traduce a 404/estado degradado. */
+export async function getProviderDetail(providerId: string) {
+  return getProviderDetailRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { provider_id: providerId },
+  });
+}
+
+/** Una tanda del histórico de corridas (US-OR-D6), paginada por cursor del lado del runner. */
+export async function listProviderRuns(
+  providerId: string,
+  cursor?: string | null,
+  limit = 50,
+) {
+  return listProviderRunsRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { provider_id: providerId },
+    query: { limit, ...(cursor ? { cursor } : {}) },
+  });
+}
+
+/** Línea de tiempo de UNA corrida (US-OR-D7), paginada hacia ADELANTE por cursor.
+ *
+ * La corrida va bajo su provider-flow y no suelta: sin la policy no hay a quién pertenece esa
+ * corrida, y un endpoint de logs sin dueño sería una puerta a los eventos de cualquier otra. */
+export async function getRunEvents(
+  providerId: string,
+  runId: string,
+  cursor?: string | null,
+  limit = 200,
+) {
+  return getRunEventsRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { provider_id: providerId, run_id: runId },
+    query: { limit, ...(cursor ? { cursor } : {}) },
+  });
 }
