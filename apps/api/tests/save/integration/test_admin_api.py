@@ -48,6 +48,25 @@ def _seed_pending_match(db_session) -> str:  # type: ignore[no-untyped-def]
     )
 
 
+def _provider_of(db_session, match_id: str) -> str:  # type: ignore[no-untyped-def]
+    """Proveedor de la fila sembrada, para ACOTAR la cola a ella.
+
+    Estos tests corren contra la DB de desarrollo (`settings.database_url`) dentro de una
+    transacción que se revierte: eso aísla lo que ESCRIBEN, no lo que ya había. La cola real
+    acumula matches pendientes de cada ingesta (155 al escribir esto), y la página por defecto
+    son 50 — así que asumir que la fila recién sembrada aparece en `rows` era depender de que
+    la base estuviera vacía. Lo estaba cuando se escribieron; dejó de estarlo al ingerir de
+    verdad, y el test empezó a fallar sin que nada del código se rompiera.
+
+    `_seed_provider_and_canonical` genera un `provider_id` nuevo por llamada, así que filtrar
+    por él deja la aserción determinista sin importar cuánto haya en la cola.
+    """
+    from src.contexts.save.infrastructure.models import ProductMatchModel, StoreProductModel
+
+    match = db_session.get(ProductMatchModel, uuid.UUID(match_id))
+    return str(db_session.get(StoreProductModel, match.store_product_id).provider_id)
+
+
 def _client(db_session, user_id: str) -> TestClient:  # type: ignore[no-untyped-def]
     app.dependency_overrides[get_session] = lambda: db_session
     app.dependency_overrides[get_current_user_id] = lambda: user_id
@@ -99,7 +118,10 @@ def test_super_admin_gets_200_on_review_queue_routes(db_session) -> None:  # typ
     match_id = _seed_pending_match(db_session)
     client = _client(db_session, admin_id)
     try:
-        r_list = client.get("/v1/admin/save/review-queue", params={"market": "DO"})
+        r_list = client.get(
+            "/v1/admin/save/review-queue",
+            params={"market": "DO", "provider_id": _provider_of(db_session, match_id)},
+        )
         assert r_list.status_code == 200, r_list.text
         assert any(row["match_id"] == match_id for row in r_list.json()["rows"])
 
@@ -306,7 +328,10 @@ class TestSetCategoryEndpoint:
                 f"/v1/admin/save/store-products/{sp_id}/category",
                 json={"taxonomy_node_id": leaf_id, "decided_by": admin_id},
             )
-            queue = client.get("/v1/admin/save/review-queue").json()
+            queue = client.get(
+                "/v1/admin/save/review-queue",
+                params={"provider_id": _provider_of(db_session, match_id)},
+            ).json()
         finally:
             _clear()
 
