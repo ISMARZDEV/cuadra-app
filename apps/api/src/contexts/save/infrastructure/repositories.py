@@ -60,6 +60,7 @@ from .models import (
     CollectionProductModel,
     PriceAlertModel,
     PriceModel,
+    ProductMatchModel,
     ProviderModel,
     PushTokenModel,
     StoreProductModel,
@@ -1257,6 +1258,44 @@ class SqlCategoryClassificationRepository:
                 source_category=("" if is_canonical else (r[4] or "")),
             )
             for r in rows
+        ]
+
+
+    def classifiable_for_matches(
+        self, match_ids: list[str]
+    ) -> list[tuple[str, ClassifiableProduct]]:
+        """Productos detrás de N matches de la cola, para clasificarlos en lote.
+
+        UNA sola query para todo el lote (no N+1): el operador puede seleccionar decenas de filas y
+        pedirlas de a una convertiría un clic en decenas de round-trips a Postgres.
+        """
+        if not match_ids:
+            return []
+        stmt = (
+            select(
+                ProductMatchModel.id,
+                StoreProductModel.id,
+                StoreProductModel.name,
+                StoreProductModel.brand,
+                StoreProductModel.size_text,
+                StoreProductModel.source_category,  # Etapa B: 2ª señal, independiente del nombre
+            )
+            .join(StoreProductModel, StoreProductModel.id == ProductMatchModel.store_product_id)
+            .where(ProductMatchModel.id.in_(match_ids))
+        )
+        return [
+            (
+                str(r[0]),
+                ClassifiableProduct(
+                    ref_id=str(r[1]),
+                    is_canonical=False,
+                    name=r[2] or "",
+                    brand=r[3] or "",
+                    size_text=r[4] or "",
+                    source_category=r[5] or "",
+                ),
+            )
+            for r in self._s.execute(stmt).all()
         ]
 
 

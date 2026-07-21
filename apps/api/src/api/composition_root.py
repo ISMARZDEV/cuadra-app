@@ -28,7 +28,11 @@ from src.contexts.save.application.basket_query import (
     RemoveBasketQuery,
     UpdateBasketQuery,
 )
+from src.contexts.save.application.bulk_classify_review import BulkClassifyReview
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
+from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
+from src.contexts.save.application.set_product_category import SetProductCategory
+from src.contexts.save.infrastructure.classification.lexicon import build_lexicon_index
 from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
@@ -90,6 +94,8 @@ from src.contexts.save.infrastructure.repositories import (
     SqlProviderRepository,
     SqlStoreProductRepository,
     SqlStoreRegistryRepository,
+    SqlCategoryCandidateRepository,
+    SqlCategoryClassificationRepository,
     SqlTaxonomyRepository,
 )
 
@@ -139,6 +145,11 @@ from src.contexts.insights.infrastructure.repositories import (
 )
 from src.config import settings
 from src.shared.db.base import SessionLocal
+
+
+# Mercado del admin — single-market, igual que el resto de la consola (`admin_orchestration.MARKET`).
+# Vive acá y no se importa del controller: el composition root no debe depender de la capa de API.
+SAVE_MARKET = "DO"
 
 
 def get_session() -> Iterator[Session]:
@@ -597,3 +608,45 @@ def get_bulk_resolve_review(session: Session = Depends(get_session)) -> BulkReso
         scope=session,
         resolver=ResolveReview(SqlProductMatchRepository(session), SqlStoreProductRepository(session)),
     )
+
+
+def get_bulk_classify_review(session: Session = Depends(get_session)) -> BulkClassifyReview:
+    """Clasificador en lote para la cola de revisión — **sin las etapas que necesitan modelo**.
+
+    `embedder=None` y `judge=None` NO son un recorte perezoso: `sentence-transformers` (BGE-M3) vive
+    en el grupo de dependencias `ingestion`, que la imagen de la API deliberadamente no lleva (misma
+    regla que `dagster`). Importarlo acá reventaría la API al arrancar en producción, con un fallo
+    que en local no se ve porque el grupo sí está instalado.
+
+    Que quede útil no es suerte: medido sobre la cola real (48 filas), las etapas deterministas
+    —léxico por nombre + señal de ORIGEN (`source_category`, que las tiendas sí mandan)— resolvieron
+    el 100%. Lo que el léxico no resuelva queda en banda gris para el humano, que es exactamente lo
+    que la regla sagrada del módulo manda: ante duda, no inventar.
+
+    El índice léxico se arma por request desde la taxonomía (120 hojas → 151 tokens): es una query
+    y un dict, no justifica un cache con invalidación que se desincronice al sembrar categorías.
+    """
+    tree = SqlTaxonomyRepository(session).list_tree(SAVE_MARKET)
+    leaves = [(child.id, child.name) for root in tree for child in root.children]
+    classifications = SqlCategoryClassificationRepository(session)
+    return BulkClassifyReview(
+        scope=session,
+        products=classifications,
+        classifier=ClassifyStoreProduct(
+            classifications,
+            SqlCategoryCandidateRepository(session),
+            None,
+            None,
+            build_lexicon_index(leaves),
+        ),
+    )
+
+
+def get_set_product_category(session: Session = Depends(get_session)) -> SetProductCategory:
+    return SetProductCategory(SqlCategoryClassificationRepository(session))
+
+
+def get_taxonomy_repo(session: Session = Depends(get_session)) -> SqlTaxonomyRepository:
+    """Repo de taxonomía crudo — el selector de categoría de la cola solo necesita listar hojas
+    con su id, sin la proyección pública (que expone slugs y esconde ids)."""
+    return SqlTaxonomyRepository(session)

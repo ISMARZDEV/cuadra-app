@@ -293,3 +293,54 @@ def test_lexicon_still_classifies_with_the_judge_off() -> None:
 
     assert result.taxonomy_node_id == "n-arroz" and result.method == "lexicon"
     assert emb.called is False, "el léxico ni siquiera embebe"
+
+
+class TestWithoutTheVectorStage:
+    """`embedder=None` — el proceso NO tiene el modelo (caso REAL: la API).
+
+    `sentence-transformers` (BGE-M3) vive en el grupo de dependencias `ingestion`, NO en las de la
+    API: importarlo desde el proceso web lo reventaría al arrancar en producción, con un fallo que
+    en local no se ve (ahí el grupo sí está instalado). Es la misma regla que impide importar
+    `dagster` en el adapter del orquestador.
+
+    La salida es SIMÉTRICA a `judge=None`, que ya existía: sin la etapa, no se inventa categoría —
+    el producto queda para el humano. Medido sobre la cola real (48 filas), las etapas deterministas
+    (léxico por nombre + señal de origen) resolvieron el 100%, así que esta rama es la excepción,
+    no el camino normal.
+    """
+
+    def test_lexicon_still_resolves_without_an_embedder(self) -> None:
+        classifications = _FakeClassifications()
+        use_case = ClassifyStoreProduct(
+            classifications,
+            _FakeCandidates(),
+            None,  # sin modelo
+            None,
+            {"arroz": "leaf-arroz"},
+        )
+
+        result = use_case.execute(_PRODUCT, "DO")
+
+        assert result.taxonomy_node_id == "leaf-arroz"
+        assert result.method == "lexicon"
+        assert len(classifications.saved) == 1
+
+    def test_a_name_the_lexicon_cannot_resolve_is_left_to_the_human_not_a_crash(self) -> None:
+        """Sin esta guarda la cascada llamaría `self._embedder.embed(...)` sobre `None` y tumbaría
+        el endpoint. Devolver "sin clasificar" es la respuesta honesta: no sabemos, y no inventamos."""
+        classifications = _FakeClassifications()
+        use_case = ClassifyStoreProduct(
+            classifications,
+            _FakeCandidates(vector=[CategoryCandidate("leaf-x", 0.9, "vector", "Arroz")]),
+            None,
+            None,
+            {},  # el léxico no resuelve nada
+        )
+
+        result = use_case.execute(
+            ClassifiableProduct(ref_id="sp-9", is_canonical=False, name="Xyz Marca Rara"), "DO"
+        )
+
+        assert result.taxonomy_node_id is None
+        assert result.band == "grey"
+        assert classifications.saved == []  # NUNCA persiste una categoría inventada

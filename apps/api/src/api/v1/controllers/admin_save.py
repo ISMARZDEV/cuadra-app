@@ -19,10 +19,13 @@ from pydantic import BaseModel
 
 from src.api.composition_root import (
     get_admin_audit_repo,
+    get_bulk_classify_review,
     get_bulk_resolve_review,
     get_create_basket_query,
     get_list_admin_providers,
     get_create_canonical_and_link,
+    get_set_product_category,
+    get_taxonomy_repo,
     get_create_provider,
     get_create_source,
     get_list_basket_queries,
@@ -50,7 +53,9 @@ from src.contexts.save.application.basket_query import (
     RemoveBasketQuery,
     UpdateBasketQuery,
 )
+from src.contexts.save.application.bulk_classify_review import BulkClassifyReview
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview, BulkResolveRow
+from src.contexts.save.application.set_product_category import SetProductCategory
 from src.contexts.save.application.create_canonical_and_link import (
     CreateCanonicalAndLink,
     NewCanonicalProduct,
@@ -90,8 +95,11 @@ from src.contexts.save.domain.entities import (
     StoreRegistry,
 )
 from src.contexts.save.domain.source_health import SourceHealth, SourceHealthRow
+from src.contexts.save.domain.taxonomy import slugify
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 from src.contexts.save.infrastructure.catalog_sources.source_auth import mask_auth
+
+MARKET = "DO"  # single-market, igual que el resto del admin
 
 router = APIRouter(
     prefix="/admin/save",
@@ -287,6 +295,151 @@ def bulk_resolve_review(
         {"count": len(body.rows), "match_ids": [r.match_id for r in body.rows]},
     )
     return BulkResolveResultDto.from_result(result)
+
+
+class TaxonomyLeafDto(BaseModel):
+    """Una HOJA de la taxonomía, con su id.
+
+    Existe porque el endpoint público `/v1/save/categories` devuelve `slug`+`name` y NO ids, pero
+    fijar una categoría necesita el `taxonomy_node_id`. El TOPE viaja con la hoja: "Arroz" solo es
+    ambiguo entre categorías, y el operador elige mirando "Despensa › Arroz".
+    """
+
+    id: str
+    name: str
+    top_name: str
+    # Slug del TOPE — el badge de la cola colorea por slug. Sin él, la celda optimista pintaría
+    # gris neutro y CAMBIARÍA de color al refrescar: un parpadeo que se lee como si algo hubiera
+    # fallado. Derivado en read-time con el mismo `slugify` que el listado público.
+    top_slug: str
+
+
+class TaxonomyLeavesDto(BaseModel):
+    leaves: list[TaxonomyLeafDto]
+
+
+@router.get("/taxonomy", response_model=TaxonomyLeavesDto)
+def list_taxonomy_leaves(
+    taxonomy=Depends(get_taxonomy_repo),  # type: ignore[no-untyped-def]
+) -> TaxonomyLeavesDto:
+    """Hojas de la taxonomía del mercado, para el selector de categoría de la cola.
+
+    Es una LECTURA: no se audita (T2 registra mutaciones; auditar lecturas ahogaría el registro).
+    """
+    tree = taxonomy.list_tree(MARKET)
+    return TaxonomyLeavesDto(
+        leaves=[
+            TaxonomyLeafDto(
+                id=child.id, name=child.name, top_name=root.name, top_slug=slugify(root.name)
+            )
+            for root in tree
+            for child in root.children
+        ]
+    )
+
+
+class SetCategoryRequest(BaseModel):
+    taxonomy_node_id: str
+    decided_by: str
+
+
+@router.put("/store-products/{store_product_id}/category")
+def set_product_category(
+    store_product_id: str,
+    body: SetCategoryRequest,
+    use_case: SetProductCategory = Depends(get_set_product_category),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> dict[str, str]:
+    """Override HUMANO de la categoría de un store_product.
+
+    `PUT` y no `PATCH`: la operación FIJA el valor completo del recurso "categoría del producto" y
+    es idempotente — mandarla dos veces deja el mismo estado. No hay campos parciales que parchear.
+
+    Es lo que hace posible editar la celda en la tabla, y con eso, que las excepciones se arreglen
+    donde el operador tiene la imagen, la marca y el tamaño delante — en vez de dentro de un modal.
+    """
+    try:
+        use_case.execute(
+            store_product_id=store_product_id,
+            taxonomy_node_id=body.taxonomy_node_id,
+            decided_by=body.decided_by,
+        )
+    except ValueError as exc:
+        # "Sin categoría" NO se persiste: la ausencia de fila activa ya significa eso.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    audit.record(
+        "review.set_category",
+        "store_product",
+        store_product_id,
+        {"taxonomy_node_id": body.taxonomy_node_id},
+        market_id=MARKET,
+    )
+    return {"store_product_id": store_product_id}
+
+
+class BulkClassifyRequest(BaseModel):
+    match_ids: list[str]
+
+
+class BulkClassifyRowDto(BaseModel):
+    match_id: str
+    # `None` = corrió y NO decidió. Es un resultado legítimo, no un error.
+    taxonomy_node_id: str | None
+    method: str
+
+
+class BulkClassifyFailureDto(BaseModel):
+    match_id: str
+    error: str
+
+
+class BulkClassifyResultDto(BaseModel):
+    """Resumen del lote, con TRES estados y no dos.
+
+    `classified` / `undecided` (corrió y no decidió → trabajo para el humano) / `failed` (no se pudo
+    ni intentar → problema). Fundir los dos últimos haría que un lote que resolvió 32 de 48 se
+    leyera como terminado, y el operador se iría creyendo que no le queda nada por mirar.
+    """
+
+    classified: int
+    undecided: int
+    rows: list[BulkClassifyRowDto]
+    failed: list[BulkClassifyFailureDto]
+
+
+@router.post("/review-queue/bulk-classify", response_model=BulkClassifyResultDto)
+def bulk_classify_review(
+    body: BulkClassifyRequest,
+    use_case: BulkClassifyReview = Depends(get_bulk_classify_review),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> BulkClassifyResultDto:
+    """Clasifica en lote las filas seleccionadas de la cola.
+
+    Corre SIN la etapa vectorial: `sentence-transformers` (BGE-M3) vive en el grupo de dependencias
+    `ingestion` y la API deliberadamente no lo lleva. Resuelve por léxico del nombre + señal de
+    ORIGEN — medido sobre la cola real, el 100%. Lo que no resuelva queda sin decidir, nunca
+    inventado.
+    """
+    result = use_case.execute(body.match_ids, market_id=MARKET)
+    # Una entrada AGREGADA por lote (evita inundar el registro con N filas), igual que bulk-resolve.
+    audit.record(
+        "review.bulk_classify",
+        "product_match",
+        "bulk",
+        {"count": len(body.match_ids), "classified": result.classified},
+        market_id=MARKET,
+    )
+    return BulkClassifyResultDto(
+        classified=result.classified,
+        undecided=result.undecided,
+        rows=[
+            BulkClassifyRowDto(
+                match_id=r.match_id, taxonomy_node_id=r.taxonomy_node_id, method=r.method
+            )
+            for r in result.rows
+        ],
+        failed=[BulkClassifyFailureDto(match_id=f.match_id, error=f.error) for f in result.failed],
+    )
 
 
 class ProviderDto(BaseModel):

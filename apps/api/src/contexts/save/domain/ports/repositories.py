@@ -179,6 +179,21 @@ class CategoryClassificationRepository(Protocol):
         """Productos del mercado SIN clasificación `active` (gate del backfill), orden estable por id."""
         ...
 
+    def classifiable_for_matches(
+        self, match_ids: list[str]
+    ) -> list[tuple[str, ClassifiableProduct]]:
+        """`(match_id, producto)` de los store_products detrás de esos matches — para clasificar en
+        lote lo que el operador seleccionó en la cola.
+
+        A diferencia de `list_unclassified` NO filtra por "sin clasificar": el operador puede pedir
+        reclasificar algo que ya tiene categoría, y quien decide si re-corre la cascada es el propio
+        `ClassifyStoreProduct` (que es idempotente). Filtrar acá duplicaría esa regla en dos sitios.
+
+        Omite los match_ids que ya no existen; el caso de uso los reporta como fallidos en vez de
+        dejarlos desaparecer del resumen.
+        """
+        ...
+
 
 class CategoryCandidateRepository(Protocol):
     """Búsqueda de hojas de taxonomía candidatas (nivel 1) para clasificar un producto."""
