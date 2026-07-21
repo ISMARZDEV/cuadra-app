@@ -29,6 +29,7 @@ from src.contexts.save.application.basket_query import (
     UpdateBasketQuery,
 )
 from src.contexts.save.application.bulk_classify_review import BulkClassifyReview
+from src.contexts.save.application.bulk_create_canonicals import BulkCreateCanonicals
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
 from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.set_product_category import SetProductCategory
@@ -644,6 +645,21 @@ def get_bulk_classify_review(session: Session = Depends(get_session)) -> BulkCla
 
 def get_set_product_category(session: Session = Depends(get_session)) -> SetProductCategory:
     return SetProductCategory(SqlCategoryClassificationRepository(session))
+
+
+def get_bulk_create_canonicals(
+    session: Session = Depends(get_session),
+    creator: CreateCanonicalAndLink = Depends(get_create_canonical_and_link),
+) -> BulkCreateCanonicals:
+    """Canonización en lote. Reusa `CreateCanonicalAndLink` tal cual: ese use case ya mantiene el
+    invariante de MISMA transacción (canónico + enlace + match en una sola escritura), y
+    reimplementarlo acá sería tener dos versiones de la regla más delicada del módulo."""
+    return BulkCreateCanonicals(
+        scope=session,
+        products=SqlCategoryClassificationRepository(session),
+        creator=creator,
+        market_id=SAVE_MARKET,
+    )
 
 
 def get_taxonomy_repo(session: Session = Depends(get_session)) -> SqlTaxonomyRepository:

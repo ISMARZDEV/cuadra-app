@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from src.api.composition_root import (
     get_admin_audit_repo,
     get_bulk_classify_review,
+    get_bulk_create_canonicals,
     get_bulk_resolve_review,
     get_create_basket_query,
     get_list_admin_providers,
@@ -54,6 +55,7 @@ from src.contexts.save.application.basket_query import (
     UpdateBasketQuery,
 )
 from src.contexts.save.application.bulk_classify_review import BulkClassifyReview
+from src.contexts.save.application.bulk_create_canonicals import BulkCreateCanonicals
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview, BulkResolveRow
 from src.contexts.save.application.set_product_category import SetProductCategory
 from src.contexts.save.application.create_canonical_and_link import (
@@ -438,6 +440,66 @@ def bulk_classify_review(
             )
             for r in result.rows
         ],
+        failed=[BulkClassifyFailureDto(match_id=f.match_id, error=f.error) for f in result.failed],
+    )
+
+
+class BulkCreateCanonicalsRequest(BaseModel):
+    match_ids: list[str]
+    # Categoría para las filas que NO tienen. `None` = no llenar huecos → esas filas se omiten.
+    # NUNCA pisa una categoría ya decidida (regla del operador, fijada en el use case).
+    fallback_taxonomy_node_id: str | None = None
+    # Categoría elegida a mano para filas concretas (`match_id` → hoja). Gana sobre la propia y
+    # sobre el fallback: es un acto deliberado del operador sobre ESA fila.
+    overrides: dict[str, str] = {}
+    decided_by: str
+
+
+class SkippedRowDto(BaseModel):
+    """Corrió y no se creó por falta de categoría. NO es un error: es un dato que nadie decidió."""
+
+    match_id: str
+    product_name: str
+
+
+class BulkCreateCanonicalsResultDto(BaseModel):
+    created: int
+    canonical_ids: list[str]
+    skipped: list[SkippedRowDto]
+    failed: list[BulkClassifyFailureDto]
+
+
+@router.post("/review-queue/bulk-create-canonical", response_model=BulkCreateCanonicalsResultDto)
+def bulk_create_canonicals(
+    body: BulkCreateCanonicalsRequest,
+    use_case: BulkCreateCanonicals = Depends(get_bulk_create_canonicals),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> BulkCreateCanonicalsResultDto:
+    """Convierte en canónicos las filas seleccionadas.
+
+    Es la acción que la cola en arranque en frío necesita: sin canónicos en el catálogo nada matchea
+    y "aprobar" (enlazar al candidato top) no tiene a qué enlazar. Nombre, marca y cantidad se
+    derivan del store_product en el SERVIDOR —incluida la conversión de unidades vía `parse_size`
+    del dominio— así que el navegador no manda N payloads ni conoce reglas de dominio.
+    """
+    result = use_case.execute(
+        body.match_ids,
+        fallback_taxonomy_node_id=body.fallback_taxonomy_node_id,
+        decided_by=body.decided_by,
+        overrides=body.overrides,
+    )
+    # Entrada AGREGADA por lote, igual que bulk-resolve (evita inundar el registro con N filas).
+    audit.record(
+        "review.bulk_create_canonical",
+        "canonical_product",
+        "bulk",
+        {"count": len(body.match_ids), "created": result.created},
+        market_id=MARKET,
+    )
+    return BulkCreateCanonicalsResultDto(
+        created=result.created,
+        canonical_ids=result.canonical_ids,
+        skipped=[SkippedRowDto(match_id=s.match_id, product_name=s.product_name) for s in result.skipped],
         failed=[BulkClassifyFailureDto(match_id=f.match_id, error=f.error) for f in result.failed],
     )
 
