@@ -1,4 +1,4 @@
-import type { AdminReviewQueueRowDto, ProviderRefDto } from "@cuadra/api-client";
+import type { AdminReviewQueueRowDto, ProviderRefDto, TaxonomyLeafDto } from "@cuadra/api-client";
 
 import type { Locale } from "@/i18n/config";
 
@@ -60,4 +60,8 @@ export interface ReviewQueueData {
   /** Proveedores del mercado para el combobox del modal de filtros. Cargados por SSR (`+data.ts`,
    * vía el público `listProviders`). Opcional: los mocks de test no lo setean. */
   providers?: ProviderRefDto[];
+  /** Hojas de la taxonomía CON su id, para el selector de la celda de Categoría. Por SSR (`+data.ts`):
+   * el endpoint público `/save/categories` solo da slugs, y fijar una categoría necesita el id.
+   * Opcional: los mocks de test no lo setean → la celda queda no editable, que es lo correcto. */
+  taxonomyLeaves?: TaxonomyLeafDto[];
 }

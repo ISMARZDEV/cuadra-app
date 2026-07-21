@@ -369,6 +369,27 @@ type MessageKey =
   | "admin.nav.footer.help"
   // Batch 3 — componentes de dominio (CategoryBadge / MethodBadge)
   | "admin.category.none"
+  | "admin.reviewQueue.category.edit"
+  | "admin.reviewQueue.category.search"
+  | "admin.reviewQueue.category.noMatch"
+  | "admin.toolbar.actions.classify"
+  | "admin.toolbar.actions.canonize"
+  | "admin.reviewQueue.canonize.title"
+  | "admin.reviewQueue.canonize.description"
+  | "admin.reviewQueue.canonize.confirm"
+  | "admin.reviewQueue.canonize.missing"
+  | "admin.reviewQueue.canonize.choose"
+  | "admin.reviewQueue.canonize.onlyFillsGaps"
+  | "admin.reviewQueue.canonize.done"
+  | "admin.reviewQueue.canonize.preview"
+  | "admin.reviewQueue.canonize.rowMissing"
+  | "admin.reviewQueue.canonize.perPage"
+  | "admin.reviewQueue.canonize.prev"
+  | "admin.reviewQueue.canonize.next"
+  | "admin.toolbar.actions.approve.noCandidates"
+  | "admin.reviewQueue.classify.done"
+  | "admin.reviewQueue.classify.undecided"
+  | "admin.reviewQueue.classify.failed"
   | "admin.method.ean"
   | "admin.method.trgm"
   | "admin.method.vector"
@@ -972,6 +993,27 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Ayuda",
     "admin.category.none": "Sin categoría",
+    "admin.reviewQueue.category.edit": "Cambiar categoría",
+    "admin.reviewQueue.category.search": "Buscar categoría...",
+    "admin.reviewQueue.category.noMatch": "Ninguna categoría coincide",
+    "admin.toolbar.actions.classify": "Clasificar seleccionados",
+    "admin.toolbar.actions.canonize": "Aprobar y crear canónico",
+    "admin.reviewQueue.canonize.title": "Crear canónicos",
+    "admin.reviewQueue.canonize.description": "Se crearán {n} productos canónicos nuevos y se enlazarán a estas filas. No se puede deshacer.",
+    "admin.reviewQueue.canonize.confirm": "Crear {n} canónicos",
+    "admin.reviewQueue.canonize.missing": "{n} sin categoría — elegí una para esas filas",
+    "admin.reviewQueue.canonize.choose": "Elegir categoría...",
+    "admin.reviewQueue.canonize.onlyFillsGaps": "Solo se aplica a las que no tienen. Las demás conservan la suya.",
+    "admin.reviewQueue.canonize.done": "{n} canónicos creados",
+    "admin.reviewQueue.canonize.preview": "Qué se va a crear",
+    "admin.reviewQueue.canonize.rowMissing": "Falta categoría",
+    "admin.reviewQueue.canonize.perPage": "Por página",
+    "admin.reviewQueue.canonize.prev": "Página anterior",
+    "admin.reviewQueue.canonize.next": "Página siguiente",
+    "admin.toolbar.actions.approve.noCandidates": "Ninguna de las filas seleccionadas tiene candidatos. Usá \"Aprobar y crear canónico\".",
+    "admin.reviewQueue.classify.done": "{n} clasificadas",
+    "admin.reviewQueue.classify.undecided": "{n} sin decidir",
+    "admin.reviewQueue.classify.failed": "{n} con error",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Similitud de texto",
     "admin.method.vector": "Vector",
@@ -1572,6 +1614,27 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Help",
     "admin.category.none": "No category",
+    "admin.reviewQueue.category.edit": "Change category",
+    "admin.reviewQueue.category.search": "Search category...",
+    "admin.reviewQueue.category.noMatch": "No category matches",
+    "admin.toolbar.actions.classify": "Classify selected",
+    "admin.toolbar.actions.canonize": "Approve and create canonical",
+    "admin.reviewQueue.canonize.title": "Create canonicals",
+    "admin.reviewQueue.canonize.description": "{n} new canonical products will be created and linked to these rows. This cannot be undone.",
+    "admin.reviewQueue.canonize.confirm": "Create {n} canonicals",
+    "admin.reviewQueue.canonize.missing": "{n} uncategorized — pick one for those rows",
+    "admin.reviewQueue.canonize.choose": "Choose category...",
+    "admin.reviewQueue.canonize.onlyFillsGaps": "Only applies to those without one. The rest keep theirs.",
+    "admin.reviewQueue.canonize.done": "{n} canonicals created",
+    "admin.reviewQueue.canonize.preview": "What will be created",
+    "admin.reviewQueue.canonize.rowMissing": "No category",
+    "admin.reviewQueue.canonize.perPage": "Per page",
+    "admin.reviewQueue.canonize.prev": "Previous page",
+    "admin.reviewQueue.canonize.next": "Next page",
+    "admin.toolbar.actions.approve.noCandidates": "None of the selected rows has candidates. Use \"Approve and create canonical\".",
+    "admin.reviewQueue.classify.done": "{n} classified",
+    "admin.reviewQueue.classify.undecided": "{n} undecided",
+    "admin.reviewQueue.classify.failed": "{n} failed",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Text similarity",
     "admin.method.vector": "Vector",
@@ -2172,6 +2235,27 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.footer.feedback": "Feedback",
     "admin.nav.footer.help": "Ajuda",
     "admin.category.none": "Sem categoria",
+    "admin.reviewQueue.category.edit": "Alterar categoria",
+    "admin.reviewQueue.category.search": "Buscar categoria...",
+    "admin.reviewQueue.category.noMatch": "Nenhuma categoria corresponde",
+    "admin.toolbar.actions.classify": "Classificar selecionados",
+    "admin.toolbar.actions.canonize": "Aprovar e criar canônico",
+    "admin.reviewQueue.canonize.title": "Criar canônicos",
+    "admin.reviewQueue.canonize.description": "Serão criados {n} produtos canônicos novos e vinculados a estas linhas. Não pode ser desfeito.",
+    "admin.reviewQueue.canonize.confirm": "Criar {n} canônicos",
+    "admin.reviewQueue.canonize.missing": "{n} sem categoria — escolha uma para essas linhas",
+    "admin.reviewQueue.canonize.choose": "Escolher categoria...",
+    "admin.reviewQueue.canonize.onlyFillsGaps": "Só se aplica às que não têm. As demais mantêm a sua.",
+    "admin.reviewQueue.canonize.done": "{n} canônicos criados",
+    "admin.reviewQueue.canonize.preview": "O que será criado",
+    "admin.reviewQueue.canonize.rowMissing": "Falta categoria",
+    "admin.reviewQueue.canonize.perPage": "Por página",
+    "admin.reviewQueue.canonize.prev": "Página anterior",
+    "admin.reviewQueue.canonize.next": "Próxima página",
+    "admin.toolbar.actions.approve.noCandidates": "Nenhuma das linhas selecionadas tem candidatos. Use \"Aprovar e criar canônico\".",
+    "admin.reviewQueue.classify.done": "{n} classificadas",
+    "admin.reviewQueue.classify.undecided": "{n} sem decidir",
+    "admin.reviewQueue.classify.failed": "{n} com erro",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Similaridade de texto",
     "admin.method.vector": "Vetor",

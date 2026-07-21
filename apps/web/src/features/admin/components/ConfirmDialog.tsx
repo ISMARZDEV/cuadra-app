@@ -18,6 +18,14 @@ export interface ConfirmDialogProps {
   destructive?: boolean;
   /** Mutación en vuelo: bloquea un segundo disparo y deja el diálogo abierto. */
   busy?: boolean;
+  /** Bloquea el confirmar por una PRECONDICIÓN sin cumplir (distinto de `busy`, que es "ya está
+   * corriendo"). Existe para acciones que necesitan un dato antes de poder ejecutarse — p.ej.
+   * canonizar en lote con filas sin categoría: dejar el botón activo y saltarlas en silencio sería
+   * la mentira que este módulo tiene prohibida. */
+  confirmDisabled?: boolean;
+  /** Cuerpo extra bajo la descripción. Va FUERA de `Dialog.Description` a propósito: esa renderiza
+   * un `<p>`, y meterle un dropdown adentro es HTML inválido. */
+  children?: ReactNode;
 }
 
 /**
@@ -40,6 +48,8 @@ export function ConfirmDialog({
   onConfirm,
   destructive = false,
   busy = false,
+  confirmDisabled = false,
+  children,
 }: ConfirmDialogProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -64,6 +74,7 @@ export function ConfirmDialog({
               <Dialog.Description className="mt-1.5 text-sm text-muted-foreground">
                 {description}
               </Dialog.Description>
+              {children ? <div className="mt-4">{children}</div> : null}
             </div>
           </div>
 
@@ -81,11 +92,11 @@ export function ConfirmDialog({
             <Button
               type="button"
               data-testid="confirm-accept"
-              disabled={busy}
+              disabled={busy || confirmDisabled}
               onClick={() => {
                 // La guarda vive acá y no solo en `disabled`: en jsdom (y con un doble clic real
                 // antes del re-render) un botón deshabilitado igual recibe el evento.
-                if (busy) return;
+                if (busy || confirmDisabled) return;
                 onConfirm();
               }}
               className={cn(

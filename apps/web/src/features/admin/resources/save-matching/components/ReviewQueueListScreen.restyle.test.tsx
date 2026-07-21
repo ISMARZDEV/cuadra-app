@@ -19,7 +19,15 @@ vi.mock("vike/client/router", () => ({ navigate: (...args: unknown[]) => navigat
 const bulkResolveReviewMatches = vi.fn();
 const fetchTopCandidateId = vi.fn();
 const fetchReviewQueue = vi.fn();
+// La celda de Categoría y la acción "Clasificar" también viven en `../api`: el mock del módulo es
+// TOTAL (no parcial), así que omitir un export rompe el import del screen, no solo la llamada.
+const setStoreProductCategory = vi.fn().mockResolvedValue(true);
+const classifySelected = vi.fn().mockResolvedValue(null);
+const createCanonicalsFromSelection = vi.fn().mockResolvedValue(null);
 vi.mock("../api", () => ({
+  setStoreProductCategory: (...args: unknown[]) => setStoreProductCategory(...args),
+  classifySelected: (...args: unknown[]) => classifySelected(...args),
+  createCanonicalsFromSelection: (...args: unknown[]) => createCanonicalsFromSelection(...args),
   bulkResolveReviewMatches: (...args: unknown[]) => bulkResolveReviewMatches(...args),
   fetchTopCandidateId: (...args: unknown[]) => fetchTopCandidateId(...args),
   fetchReviewQueue: (...args: unknown[]) => fetchReviewQueue(...args),

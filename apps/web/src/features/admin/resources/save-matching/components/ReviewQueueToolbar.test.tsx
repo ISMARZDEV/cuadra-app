@@ -22,6 +22,8 @@ function renderToolbar(overrides: Partial<Parameters<typeof ReviewQueueToolbar>[
     selectedCount: 0,
     onBulkApprove: vi.fn(),
     onBulkReject: vi.fn(),
+    onBulkClassify: vi.fn(),
+    onBulkCanonize: vi.fn(),
     locale: "es" as const,
     ...overrides,
   };
@@ -88,5 +90,21 @@ describe("ReviewQueueToolbar", () => {
     renderToolbar();
     fireEvent.click(screen.getByRole("button", { name: "Mostrar todos" }));
     expect(screen.getAllByText("Mostrar todos").length).toBeGreaterThan(0);
+  });
+});
+
+describe("ReviewQueueToolbar — contador de selección", () => {
+  it("shows the count NEXT TO the actions button, not far from it", () => {
+    // Vivía debajo de la tabla: al abrir el menú el número ya no estaba a la vista, y una acción en
+    // lote sin saber sobre cuántas filas aplica es la que no se debe ofrecer.
+    renderToolbar({ selectedCount: 3 });
+
+    expect(screen.getByTestId("review-selected-count")).toHaveTextContent("3");
+  });
+
+  it("hides the counter with nothing selected — a permanent '0' is fixed noise", () => {
+    renderToolbar({ selectedCount: 0 });
+
+    expect(screen.queryByTestId("review-selected-count")).not.toBeInTheDocument();
   });
 });

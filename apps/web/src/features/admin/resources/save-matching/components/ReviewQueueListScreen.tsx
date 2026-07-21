@@ -3,6 +3,7 @@ import { Info, RefreshCw, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { usePageContext } from "vike-react/usePageContext";
 import { useData } from "vike-react/useData";
+import { toast } from "sonner";
 import { navigate } from "vike/client/router";
 
 import {
@@ -19,14 +20,23 @@ import { providerLogoByName } from "@/features/save/lib/provider-logos";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE } from "@/i18n/config";
+import { format } from "@/i18n/messages";
 
-import { bulkResolveReviewMatches, fetchReviewQueue, fetchTopCandidateId } from "../api";
+import {
+  bulkResolveReviewMatches,
+  classifySelected,
+  createCanonicalsFromSelection,
+  fetchReviewQueue,
+  fetchTopCandidateId,
+  setStoreProductCategory,
+} from "../api";
 import { ADMIN_DECIDED_BY } from "../lib/decided-by";
 import { serializeReviewQueueParams } from "../lib/review-queue-params";
 import type { ReviewQueueData, ReviewQueueParams } from "../types";
 import { ReviewQueueKpis } from "./kpi/ReviewQueueKpis";
 import { ReasonCodeSelect } from "./ReasonCodeSelect";
 import { SelectCheckbox } from "./SelectCheckbox";
+import { CreateCanonicalsDialog } from "./CreateCanonicalsDialog";
 import { ReviewQueueToolbar, type ReviewQueueView } from "./ReviewQueueToolbar";
 import { ReviewRow } from "./ReviewRow";
 
@@ -49,6 +59,7 @@ export function ReviewQueueListScreen() {
     total,
     params,
     providers = [],
+    taxonomyLeaves = [],
     locale = DEFAULT_LOCALE,
   } = useData<ReviewQueueData>();
   const pageContext = usePageContext();
@@ -70,6 +81,64 @@ export function ReviewQueueListScreen() {
   const [bulkResult, setBulkResult] = useState<BulkOutcome | null>(null);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ReviewQueueView>("list");
+  const [showCanonize, setShowCanonize] = useState(false);
+
+  /** Crea los canónicos y refresca. El resumen dice los TRES estados; las omitidas se nombran
+   *  porque son trabajo que quedó pendiente, no un error. */
+  async function handleCanonize(
+    fallbackTaxonomyNodeId: string | null,
+    overrides: Record<string, string>,
+  ) {
+    const ids = [...selected];
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const result = await createCanonicalsFromSelection(ids, fallbackTaxonomyNodeId, overrides);
+      if (result) {
+        toast(format(locale, "admin.reviewQueue.canonize.done", { n: String(result.created) }));
+        // Las creadas ya salieron de la cola: la selección apunta a filas que ya no existen.
+        setSelected(new Set());
+      }
+      setShowCanonize(false);
+      await refresh();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  /** Clasifica lo seleccionado y REFRESCA: la tabla es donde el operador ve qué se llenó y qué no.
+   *  El resumen se muestra completo —clasificadas · sin decidir · con error— porque el clasificador
+   *  deja huecos a propósito, y un lote a medias no puede leerse como terminado. */
+  async function handleBulkClassify() {
+    const ids = [...selected];
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const result = await classifySelected(ids);
+      if (result) {
+        const parts = [format(locale, "admin.reviewQueue.classify.done", { n: String(result.classified) })];
+        if (result.undecided > 0) {
+          parts.push(format(locale, "admin.reviewQueue.classify.undecided", { n: String(result.undecided) }));
+        }
+        if (result.failed.length > 0) {
+          parts.push(format(locale, "admin.reviewQueue.classify.failed", { n: String(result.failed.length) }));
+        }
+        toast(parts.join(" · "));
+      }
+      await refresh();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // ¿Alguna fila SELECCIONADA tiene candidatos? "Aprobar seleccionados" enlaza cada fila a su
+  // candidato top; sobre filas sin candidatos no puede hacer nada y devuelve una lista de fallos.
+  // Misma doctrina que Orquestación: un ítem que no afectaría a nada NO se ofrece — prometer una
+  // acción que no ocurre es peor que no tenerla. En un catálogo en arranque en frío esto es el caso
+  // NORMAL (medido: 48 de 48 filas con 0 candidatos), no una rareza.
+  const hasCandidatesSelected = rows.some(
+    (r) => selected.has(r.match_id) && r.candidate_count > 0,
+  );
 
   const navigateWith = (patch: Partial<ReviewQueueParams>) => {
     const next: ReviewQueueParams = { ...params, ...patch };
@@ -264,6 +333,16 @@ export function ReviewQueueListScreen() {
 
       <ReviewQueueKpis locale={locale} />
 
+      <CreateCanonicalsDialog
+        open={showCanonize}
+        onOpenChange={setShowCanonize}
+        rows={rows.filter((r) => selected.has(r.match_id))}
+        leaves={taxonomyLeaves}
+        onConfirm={(fallback, overrides) => void handleCanonize(fallback, overrides)}
+        busy={bulkBusy}
+        locale={locale}
+      />
+
       <ReviewQueueToolbar
         params={params}
         onParamsChange={(patch) => navigateWith({ ...patch, offset: 0 })}
@@ -283,16 +362,13 @@ export function ReviewQueueListScreen() {
         onViewChange={setView}
         selectedCount={selected.size}
         onBulkApprove={() => void handleBulkApprove()}
+        hasCandidatesSelected={hasCandidatesSelected}
         onBulkReject={() => setShowBulkReject(true)}
+        onBulkClassify={() => void handleBulkClassify()}
+        onBulkCanonize={() => setShowCanonize(true)}
         bulkBusy={bulkBusy}
         locale={locale}
       />
-
-      {selected.size > 0 ? (
-        <p className="mb-2 text-xs text-muted-foreground">
-          {selected.size} {t("admin.reviewQueue.selectedSuffix")}
-        </p>
-      ) : null}
 
       {showBulkReject ? (
         <div className="mb-4" data-testid="bulk-reject-panel">
@@ -313,7 +389,13 @@ export function ReviewQueueListScreen() {
             <ul className="mt-1 list-disc pl-4 text-destructive">
               {bulkResult.failed.map((f) => (
                 <li key={f.match_id} data-testid="bulk-result-failure">
-                  {f.match_id} — {f.error}
+                  {/* El NOMBRE del producto, no el UUID: el operador no reconoce
+                      `20085201-29c5-…` como nada, así que una lista de uuids es una lista de
+                      errores que no puede ni leer. El id solo aparece si la fila ya no está
+                      cargada (paginó o se refrescó), donde es lo único que tenemos. */}
+                  {rows.find((r) => r.match_id === f.match_id)?.store_product_name ?? f.match_id}
+                  {" — "}
+                  {f.error}
                 </li>
               ))}
             </ul>
@@ -391,6 +473,8 @@ export function ReviewQueueListScreen() {
               selected={selected.has(r.match_id)}
               onToggleSelect={toggleSelect}
               onDelete={handleDeleteRow}
+              taxonomyLeaves={taxonomyLeaves}
+              onSetCategory={setStoreProductCategory}
             />
           ))}
         </TableBody>
