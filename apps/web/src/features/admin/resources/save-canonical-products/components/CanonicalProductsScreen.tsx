@@ -1,5 +1,5 @@
 import type { AdminCanonicalProductRowDto } from "@cuadra/api-client";
-import { Boxes, Eye, Search, X } from "lucide-react";
+import { Boxes, Eye, Plus, Search, X } from "lucide-react";
 import { useState } from "react";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
@@ -32,6 +32,7 @@ import {
 } from "../lib/canonical-products-params";
 import { listCanonicalProducts } from "../api";
 import { ProvidersModal } from "./ProvidersModal";
+import { CreateCanonicalModal } from "./CreateCanonicalModal";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
@@ -61,6 +62,7 @@ export function CanonicalProductsScreen() {
     productId: string;
     productName: string;
   }>({ open: false, productId: "", productName: "" });
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   async function updateParams(patch: Partial<CanonicalProductsParams>) {
     const newParams = { ...params, ...patch, offset: patch.offset ?? 0 };
@@ -100,10 +102,16 @@ export function CanonicalProductsScreen() {
             Catálogo de productos canónicos de Save con métricas de calidad y completitud.
           </p>
         </div>
-        <Badge variant="outline" className="text-sm">
-          <Boxes className="mr-1 h-4 w-4" />
-          {list.total} productos
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="text-sm">
+            <Boxes className="mr-1 h-4 w-4" />
+            {list.total} productos
+          </Badge>
+          <Button onClick={() => setCreateModalOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Añadir canónico
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -298,6 +306,15 @@ export function CanonicalProductsScreen() {
         canonicalProductName={providersModal.productName}
         open={providersModal.open}
         onOpenChange={(open) => setProvidersModal({ open, productId: "", productName: "" })}
+      />
+
+      <CreateCanonicalModal
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        onSuccess={() => {
+          // Refresh the list after creating a new canonical product
+          updateParams({});
+        }}
       />
     </div>
   );

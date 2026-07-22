@@ -16,15 +16,18 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.api.composition_root import get_session
-from src.api.extensions.security import require_capability
+from src.api.composition_root import get_admin_audit_repo, get_session
+from src.api.extensions.security import get_current_user_id, require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
+from src.contexts.save.application.admin_audit_recorder import AdminAuditRecorder
 from src.contexts.save.infrastructure.models import (
     BrandModel,
     CanonicalProductModel,
     StoreProductModel,
     TaxonomyNodeModel,
 )
+
+from .admin_save import get_admin_audit
 
 catalog_router = APIRouter(
     prefix="/admin/save",
@@ -347,6 +350,150 @@ def list_canonical_product_providers(
         ))
 
     return dtos
+
+
+# ----------------------------------------------------------------------------------------- POST --
+
+
+class CreateCanonicalProductRequest(BaseModel):
+    """Request para alta manual de canónico (US-CP-L7)."""
+
+    name: str
+    brand: str | None = None
+    size_amount: float
+    size_measure: str  # mass|volume|count
+    quality: str | None = None
+    display_size: str | None = None
+    image_url: str | None = None
+    taxonomy_node_id: str | None = None
+
+
+@catalog_router.post(
+    "/canonical-products",
+    response_model=AdminCanonicalProductRowDto,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_canonical_product(
+    body: CreateCanonicalProductRequest,
+    session: Session = Depends(get_session),
+    actor_user_id: str = Depends(get_current_user_id),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> AdminCanonicalProductRowDto:
+    """Alta manual de un producto canónico (US-CP-L7).
+
+    Crea un canónico con matched_provider_count=0 (sin proveedores matcheados aún).
+    El slug se genera automáticamente y se audita la creación.
+    """
+    import uuid
+    from decimal import Decimal
+
+    from src.contexts.save.domain.entities.product import CanonicalProduct
+    from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
+    from src.contexts.save.infrastructure.repositories import SqlCanonicalProductRepository
+
+    # Validar size_measure
+    try:
+        measure = UnitMeasure(body.size_measure)
+    except ValueError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"size_measure inválido: {body.size_measure}. Debe ser mass|volume|count",
+        )
+
+    # Crear entidad de dominio
+    product = CanonicalProduct(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        brand=body.brand or "",
+        quantity=Quantity(Decimal(str(body.size_amount)), measure),
+        taxonomy_node_id=body.taxonomy_node_id or "",
+        market_id=MARKET,
+        quality=body.quality,
+        display_size=body.display_size,
+        image_url=body.image_url,
+    )
+
+    # Persistir
+    repo = SqlCanonicalProductRepository(session)
+    repo.add(product)
+    session.flush()
+    session.commit()
+
+    # Obtener el ID generado (el repo lo asigna internamente)
+    # Necesitamos hacer una query para obtener el canónico recién creado
+    from sqlalchemy import select as sa_select
+
+    result = session.execute(
+        sa_select(CanonicalProductModel)
+        .where(
+            CanonicalProductModel.name == body.name,
+            CanonicalProductModel.market_id == MARKET,
+        )
+        .order_by(CanonicalProductModel.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    if result is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "No se pudo crear el canónico")
+
+    # Obtener datos derivados (brand, category, etc.)
+    from src.contexts.save.infrastructure.models import BrandModel, TaxonomyNodeModel
+
+    brand_name = ""
+    if result.brand_id:
+        brand = session.get(BrandModel, result.brand_id)
+        brand_name = brand.name if brand else ""
+
+    category_name = None
+    if result.taxonomy_node_id:
+        taxonomy = session.get(TaxonomyNodeModel, result.taxonomy_node_id)
+        category_name = taxonomy.name if taxonomy else None
+
+    # Derivar quality_statuses y completeness_score
+    statuses = _derive_quality_statuses(
+        image_url=result.image_url,
+        category=category_name,
+        matched_count=0,  # Recién creado, sin proveedores
+        quality=result.quality,
+    )
+    score = _derive_completeness_score(
+        image_url=result.image_url,
+        category=category_name,
+        matched_count=0,
+        brand=brand_name,
+        display_size=result.display_size,
+        quality=result.quality,
+    )
+
+    # Auditar
+    audit.record(
+        "canonical_product.create",
+        "canonical_product",
+        str(result.id),
+        {
+            "name": result.name,
+            "brand": brand_name,
+            "origin": "manual_admin",
+        },
+    )
+
+    return AdminCanonicalProductRowDto(
+        canonical_product_id=str(result.id),
+        slug=result.slug,
+        name=result.name,
+        brand=brand_name,
+        display_size=result.display_size,
+        size_amount=result.size_amount,
+        size_measure=result.size_measure,
+        image_url=result.image_url,
+        category=category_name,
+        ean_reachable=False,  # Recién creado, sin proveedores
+        origin_run_id=result.origin_run_id,
+        matched_provider_count=0,
+        last_price_seen_at=None,
+        quality_statuses=statuses,
+        completeness_score=score,
+    )
 
 
 @catalog_router.get(

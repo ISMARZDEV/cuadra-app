@@ -2,6 +2,7 @@ import type {
   AdminCanonicalProductListDto,
   AdminCanonicalProductRowDto,
   AdminCanonicalProviderPriceDto,
+  CreateCanonicalProductRequest,
 } from "@cuadra/api-client";
 
 import { authHeaders } from "@/features/save/hooks/use-auth";
@@ -11,6 +12,7 @@ import {
   getCanonicalProductBySlug as getCanonicalProductBySlugRequest,
   listCanonicalProducts as listCanonicalProductsRequest,
   listCanonicalProductProviders as listCanonicalProductProvidersRequest,
+  createCanonicalProduct as createCanonicalProductRequest,
 } from "@cuadra/api-client";
 
 export async function listCanonicalProducts(params?: {
@@ -48,6 +50,17 @@ export async function listCanonicalProductProviders(
     client: apiClient,
     headers: await authHeaders(),
     path: { canonical_product_id: canonicalProductId },
+  });
+  return res.data ?? null;
+}
+
+export async function createCanonicalProduct(
+  payload: CreateCanonicalProductRequest,
+): Promise<AdminCanonicalProductRowDto | null> {
+  const res = await createCanonicalProductRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: payload,
   });
   return res.data ?? null;
 }

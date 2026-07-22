@@ -426,3 +426,106 @@ class TestCanonicalProductProviders:
         res = self._get(db_session, user_id, "00000000-0000-4000-8000-000000000000")
 
         assert res.status_code == 404
+
+
+class TestCreateCanonicalProduct:
+    """POST /admin/save/canonical-products — alta manual (US-CP-L7)."""
+
+    MARKET_ID = "DO"
+
+    def _post(self, db_session, user_id, body):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                return c.post("/v1/admin/save/canonical-products", json=body)
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_creates_canonical_with_required_fields(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Alta manual con campos obligatorios (name, size_amount, size_measure)."""
+        user_id = _seed_role_user(db_session, "super_admin")
+
+        body = {
+            "name": "Leche Entera Test",
+            "brand": "GLORIA",
+            "size_amount": 1.0,
+            "size_measure": "volume",
+            "quality": "premium",
+            "display_size": "1 L",
+        }
+
+        res = self._post(db_session, user_id, body)
+
+        assert res.status_code == 201, res.text
+        data = res.json()
+        assert data["name"] == "Leche Entera Test"
+        assert data["brand"] == "GLORIA"
+        assert float(data["size_amount"]) == 1.0
+        assert data["size_measure"] == "volume"
+        assert data["slug"]  # Slug generado automáticamente
+        assert data["canonical_product_id"]  # UUID generado
+
+    def test_creates_canonical_with_optional_fields(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Alta manual con campos opcionales (taxonomy_node_id, image_url)."""
+        user_id = _seed_role_user(db_session, "super_admin")
+
+        body = {
+            "name": "Arroz Blanco Test",
+            "brand": "COSTA",
+            "size_amount": 5.0,
+            "size_measure": "mass",
+            "quality": "standard",
+            "display_size": "5 KG",
+            "image_url": "https://example.com/arroz.jpg",
+        }
+
+        res = self._post(db_session, user_id, body)
+
+        assert res.status_code == 201, res.text
+        data = res.json()
+        assert data["image_url"] == "https://example.com/arroz.jpg"
+        # quality se usa internamente para derivar quality_statuses, no se expone en el DTO
+
+    def test_missing_required_fields_returns_422(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Faltan campos obligatorios (name, size_amount, size_measure)."""
+        user_id = _seed_role_user(db_session, "super_admin")
+
+        body = {
+            "name": "Producto Incompleto",
+            # Falta size_amount y size_measure
+        }
+
+        res = self._post(db_session, user_id, body)
+
+        assert res.status_code == 422
+
+    def test_slug_is_unique_per_market(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Si el slug ya existe, se genera uno único (sufijo -2, -3, etc.)."""
+        user_id = _seed_role_user(db_session, "super_admin")
+
+        # Crear primer canónico
+        body1 = {
+            "name": "Producto Duplicado",
+            "brand": "MARCA",
+            "size_amount": 1.0,
+            "size_measure": "count",
+        }
+        res1 = self._post(db_session, user_id, body1)
+        assert res1.status_code == 201
+        slug1 = res1.json()["slug"]
+
+        # Crear segundo canónico con mismo nombre/marca/tamaño
+        body2 = {
+            "name": "Producto Duplicado",
+            "brand": "MARCA",
+            "size_amount": 1.0,
+            "size_measure": "count",
+        }
+        res2 = self._post(db_session, user_id, body2)
+        assert res2.status_code == 201
+        slug2 = res2.json()["slug"]
+
+        # Los slugs deben ser diferentes
+        assert slug1 != slug2
+        assert slug2.endswith("-2")
