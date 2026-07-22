@@ -54,3 +54,7 @@ class CapabilityKey(StrEnum):
     # provider, y Dagster OSS no tiene auth propia: esta capability es el ÚNICO control de acceso
     # real sobre el runner (SDD §7).
     ADMIN_SAVE_ORCHESTRATION_OPS = "admin_save_orchestration_ops"
+    # F5: catálogo de Productos Canónicos. Capability PROPIA — archivar canónicos e importar en
+    # lote afecta el catálogo público y el histórico de matches, que es más sensible que editar un
+    # provider. Reusar `ingestion_ops` mezclaría permisos de fuentes con permisos de catálogo.
+    ADMIN_SAVE_CATALOG_OPS = "admin_save_catalog_ops"

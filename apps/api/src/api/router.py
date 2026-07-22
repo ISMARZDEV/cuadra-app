@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from src.api.v1.controllers import admin_orchestration, admin_save, aispace, health, identity, insights, save
+from src.api.v1.controllers import admin_catalog, admin_orchestration, admin_save, aispace, health, identity, insights, save
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -18,3 +18,4 @@ api_router.include_router(save.router)
 api_router.include_router(admin_save.router)
 api_router.include_router(admin_save.ingestion_router)
 api_router.include_router(admin_orchestration.orchestration_router)
+api_router.include_router(admin_catalog.catalog_router)
