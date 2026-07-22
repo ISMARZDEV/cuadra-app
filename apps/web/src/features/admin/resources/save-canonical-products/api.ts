@@ -12,6 +12,8 @@ export async function listCanonicalProducts(params?: {
   search?: string | null;
   brand_id?: string | null;
   taxonomy_node_id?: string | null;
+  quality_status?: string | null;
+  ean_reachable?: boolean | null;
   limit?: number;
   offset?: number;
 }): Promise<AdminCanonicalProductListDto | null> {

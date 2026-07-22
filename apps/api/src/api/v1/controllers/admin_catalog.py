@@ -131,6 +131,11 @@ def list_canonical_products(
     search: str | None = Query(None, description="Search por nombre (ILIKE)"),
     brand_id: str | None = Query(None, description="Filtro por brand_id"),
     taxonomy_node_id: str | None = Query(None, description="Filtro por taxonomy_node_id"),
+    quality_status: str | None = Query(
+        None,
+        description="Filtro por quality_status (complete, no_image, no_category, no_providers, no_quality)",
+    ),
+    ean_reachable: bool | None = Query(None, description="Filtro por ean_reachable (true/false)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
@@ -153,7 +158,7 @@ def list_canonical_products(
     )
 
     # Subquery: ean_reachable (al menos 1 store_product con EAN)
-    ean_reachable = (
+    ean_reachable_subq = (
         select(StoreProductModel.canonical_product_id)
         .where(
             StoreProductModel.canonical_product_id.isnot(None),
@@ -172,7 +177,7 @@ def list_canonical_products(
             TaxonomyNodeModel.name.label("category_name"),
             func.coalesce(provider_counts.c.provider_count, 0).label("provider_count"),
             provider_counts.c.last_seen.label("last_seen"),
-            ean_reachable.c.canonical_product_id.isnot(None).label("has_ean"),
+            ean_reachable_subq.c.canonical_product_id.isnot(None).label("has_ean"),
         )
         .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
         .outerjoin(TaxonomyNodeModel, CanonicalProductModel.taxonomy_node_id == TaxonomyNodeModel.id)
@@ -181,8 +186,8 @@ def list_canonical_products(
             CanonicalProductModel.id == provider_counts.c.canonical_product_id,
         )
         .outerjoin(
-            ean_reachable,
-            CanonicalProductModel.id == ean_reachable.c.canonical_product_id,
+            ean_reachable_subq,
+            CanonicalProductModel.id == ean_reachable_subq.c.canonical_product_id,
         )
         .where(CanonicalProductModel.market_id == MARKET)
     )
@@ -194,6 +199,31 @@ def list_canonical_products(
         query = query.where(CanonicalProductModel.brand_id == brand_id)
     if taxonomy_node_id:
         query = query.where(CanonicalProductModel.taxonomy_node_id == taxonomy_node_id)
+    if quality_status:
+        # Filtrar por quality_status derivado (condiciones SQL que espejan _derive_quality_statuses)
+        if quality_status == "complete":
+            query = query.where(
+                CanonicalProductModel.image_url.isnot(None),
+                CanonicalProductModel.taxonomy_node_id.isnot(None),
+                provider_counts.c.provider_count > 0,
+                CanonicalProductModel.quality.isnot(None),
+            )
+        elif quality_status == "no_image":
+            query = query.where(CanonicalProductModel.image_url.is_(None))
+        elif quality_status == "no_category":
+            query = query.where(CanonicalProductModel.taxonomy_node_id.is_(None))
+        elif quality_status == "no_providers":
+            query = query.where(
+                (provider_counts.c.provider_count == 0) | provider_counts.c.provider_count.is_(None)
+            )
+        elif quality_status == "no_quality":
+            query = query.where(CanonicalProductModel.quality.is_(None))
+    if ean_reachable is not None:
+        # Filtrar por ean_reachable derivado (presencia en subquery ean_reachable_subq)
+        if ean_reachable:
+            query = query.where(ean_reachable_subq.c.canonical_product_id.isnot(None))
+        else:
+            query = query.where(ean_reachable_subq.c.canonical_product_id.is_(None))
 
     # Count total (sin limit/offset)
     count_query = select(func.count()).select_from(query.subquery())
