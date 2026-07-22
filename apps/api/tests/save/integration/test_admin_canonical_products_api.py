@@ -286,3 +286,143 @@ class TestListCanonicalProducts:
         # El canónico sembrado tiene la mayoría de los campos → score razonable
         # (6 campos ponderados: image, category, providers, brand, display_size, quality)
         assert row["completeness_score"] >= 50
+
+
+class TestCanonicalProductProviders:
+    """GET /admin/save/canonical-products/{id}/providers — modal de proveedores (US-CP-L4)."""
+
+    MARKET_ID = "DO"
+    PROVIDER_ID = "66666666-6666-4666-8666-666666666666"
+    BRAND_ID = "77777777-7777-4777-8777-777777777777"
+    TAXONOMY_ID = "88888888-8888-4888-8888-888888888888"
+    CANONICAL_ID = "99999999-9999-4999-8999-999999999999"
+    STORE_PRODUCT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+
+    def _seed_catalog(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Siembra un canónico con 1 store_product para verificar el modal de proveedores."""
+        from sqlalchemy import select as sa_select
+
+        # Provider
+        existing = db_session.scalars(
+            sa_select(ProviderModel).where(ProviderModel.id == self.PROVIDER_ID)
+        ).first()
+        if not existing:
+            db_session.add(
+                ProviderModel(
+                    id=self.PROVIDER_ID, name="Sirena Providers Test", type="supermarket",
+                    platform="vtex", market_id=self.MARKET_ID,
+                )
+            )
+            db_session.flush()
+
+        # Brand
+        existing_brand = db_session.scalars(
+            sa_select(BrandModel).where(
+                BrandModel.market_id == self.MARKET_ID,
+                BrandModel.name == "GOYA_PROVIDERS_TEST",
+            )
+        ).first()
+        if existing_brand:
+            brand_id = existing_brand.id
+        else:
+            brand = BrandModel(
+                id=self.BRAND_ID, name="GOYA_PROVIDERS_TEST", market_id=self.MARKET_ID,
+            )
+            db_session.add(brand)
+            db_session.flush()
+            brand_id = brand.id
+
+        # Taxonomy leaf
+        existing_tax = db_session.scalars(
+            sa_select(TaxonomyNodeModel).where(TaxonomyNodeModel.id == self.TAXONOMY_ID)
+        ).first()
+        if not existing_tax:
+            db_session.add(
+                TaxonomyNodeModel(
+                    id=self.TAXONOMY_ID, name="Arroz Providers Test", level=1,
+                    market_id=self.MARKET_ID, parent_id=None,
+                )
+            )
+            db_session.flush()
+
+        # Canonical product
+        existing_cp = db_session.scalars(
+            sa_select(CanonicalProductModel).where(CanonicalProductModel.id == self.CANONICAL_ID)
+        ).first()
+        if not existing_cp:
+            db_session.add(
+                CanonicalProductModel(
+                    id=self.CANONICAL_ID,
+                    slug="arroz-goya-providers-test",
+                    name="Arroz Goya Providers Test",
+                    brand_id=brand_id,
+                    quality="premium",
+                    display_size="10 LB",
+                    image_url="https://example.com/arroz.jpg",
+                    size_amount=Decimal("10.0"),
+                    size_measure="mass",
+                    taxonomy_node_id=self.TAXONOMY_ID,
+                    market_id=self.MARKET_ID,
+                )
+            )
+            db_session.flush()
+
+        # Store product
+        existing_sp = db_session.scalars(
+            sa_select(StoreProductModel).where(StoreProductModel.id == self.STORE_PRODUCT_ID)
+        ).first()
+        if not existing_sp:
+            db_session.add(
+                StoreProductModel(
+                    id=self.STORE_PRODUCT_ID,
+                    provider_id=self.PROVIDER_ID,
+                    canonical_product_id=self.CANONICAL_ID,
+                    external_id="ext-providers-test-123",
+                    current_price_minor=15000,  # RD$ 150.00
+                    currency="DOP",
+                    url="https://sirena.do/arroz-goya",
+                    ean="041383001234",
+                    last_seen_at=datetime.now(UTC),
+                    is_available=True,
+                    name="Arroz Goya 10 LB",
+                    brand="GOYA_PROVIDERS_TEST",
+                    size_text="10 LB",
+                )
+            )
+            db_session.flush()
+
+    def _get(self, db_session, user_id, canonical_id):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                return c.get(f"/v1/admin/save/canonical-products/{canonical_id}/providers")
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_returns_providers_with_prices(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """El modal devuelve la lista de proveedores con precios ordenados por precio ascendente."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed_catalog(db_session)
+
+        res = self._get(db_session, user_id, self.CANONICAL_ID)
+
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert len(body) >= 1
+        # Encontrar nuestro provider específico
+        provider = next((p for p in body if p["provider_id"] == self.PROVIDER_ID), None)
+        assert provider is not None, "El provider sembrado no aparece en los resultados"
+        assert provider["provider_name"] == "Sirena Providers Test"
+        assert provider["price_minor"] == 15000
+        assert provider["currency"] == "DOP"
+        assert provider["url"] == "https://sirena.do/arroz-goya"
+        assert provider["is_cheapest"] is True  # Solo hay 1 provider, así que es el más barato
+
+    def test_unknown_canonical_returns_404(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Un canónico inexistente devuelve 404."""
+        user_id = _seed_role_user(db_session, "super_admin")
+
+        res = self._get(db_session, user_id, "00000000-0000-4000-8000-000000000000")
+
+        assert res.status_code == 404

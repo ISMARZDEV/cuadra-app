@@ -77,6 +77,21 @@ class AdminCanonicalProductListDto(BaseModel):
     total: int
 
 
+class AdminCanonicalProviderPriceDto(BaseModel):
+    """Una fila del modal de proveedores (US-CP-L4).
+
+    Lista de tiendas que tienen este canónico, ordenadas por precio ascendente.
+    """
+
+    provider_id: str
+    provider_name: str
+    provider_logo_url: str | None = None
+    price_minor: int
+    currency: str
+    url: str | None = None
+    is_cheapest: bool = False
+
+
 # ----------------------------------------------------------------------------------- derivations --
 
 def _derive_quality_statuses(
@@ -277,6 +292,61 @@ def list_canonical_products(
         ))
 
     return AdminCanonicalProductListDto(rows=dtos, total=total)
+
+
+@catalog_router.get(
+    "/canonical-products/{canonical_product_id}/providers",
+    response_model=list[AdminCanonicalProviderPriceDto],
+)
+def list_canonical_product_providers(
+    canonical_product_id: str,
+    session: Session = Depends(get_session),
+) -> list[AdminCanonicalProviderPriceDto]:
+    """Proveedores matcheados de un canónico con precios (US-CP-L4).
+
+    Ordenados por precio ascendente. El más barato se marca con `is_cheapest=True`.
+    """
+    from src.contexts.save.infrastructure.models import ProviderModel
+
+    # Verificar que el canónico existe
+    cp = session.get(CanonicalProductModel, canonical_product_id)
+    if cp is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+
+    # Query: store_products con provider info, ordenados por precio
+    query = (
+        select(
+            StoreProductModel.provider_id,
+            ProviderModel.name.label("provider_name"),
+            ProviderModel.logo_url.label("provider_logo_url"),
+            StoreProductModel.current_price_minor,
+            StoreProductModel.currency,
+            StoreProductModel.url,
+        )
+        .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+        .where(StoreProductModel.canonical_product_id == canonical_product_id)
+        .order_by(StoreProductModel.current_price_minor.asc())
+    )
+
+    rows = session.execute(query).all()
+
+    if not rows:
+        return []
+
+    # Marcar el más barato
+    dtos: list[AdminCanonicalProviderPriceDto] = []
+    for i, row in enumerate(rows):
+        dtos.append(AdminCanonicalProviderPriceDto(
+            provider_id=str(row[0]),
+            provider_name=row[1],
+            provider_logo_url=row[2],
+            price_minor=row[3],
+            currency=row[4],
+            url=row[5],
+            is_cheapest=(i == 0),
+        ))
+
+    return dtos
 
 
 @catalog_router.get(

@@ -1,5 +1,5 @@
 import type { AdminCanonicalProductRowDto } from "@cuadra/api-client";
-import { Boxes, Search, X } from "lucide-react";
+import { Boxes, Eye, Search, X } from "lucide-react";
 import { useState } from "react";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
@@ -31,6 +31,7 @@ import {
   serializeCanonicalProductsParams,
 } from "../lib/canonical-products-params";
 import { listCanonicalProducts } from "../api";
+import { ProvidersModal } from "./ProvidersModal";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
@@ -55,6 +56,11 @@ export function CanonicalProductsScreen() {
   const [list, setList] = useState(initialList);
   const [params, setParams] = useState(initialParams);
   const [loading, setLoading] = useState(false);
+  const [providersModal, setProvidersModal] = useState<{
+    open: boolean;
+    productId: string;
+    productName: string;
+  }>({ open: false, productId: "", productName: "" });
 
   async function updateParams(patch: Partial<CanonicalProductsParams>) {
     const newParams = { ...params, ...patch, offset: patch.offset ?? 0 };
@@ -226,18 +232,29 @@ export function CanonicalProductsScreen() {
                 <TableHead className="text-right">Proveedores</TableHead>
                 <TableHead className="text-right">Completitud</TableHead>
                 <TableHead>Calidad</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {list.rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground">
                     No se encontraron productos
                   </TableCell>
                 </TableRow>
               ) : (
                 list.rows.map((row) => (
-                  <CanonicalProductRow key={row.canonical_product_id} row={row} />
+                  <CanonicalProductRow
+                    key={row.canonical_product_id}
+                    row={row}
+                    onViewProviders={() =>
+                      setProvidersModal({
+                        open: true,
+                        productId: row.canonical_product_id,
+                        productName: row.name,
+                      })
+                    }
+                  />
                 ))
               )}
             </TableBody>
@@ -275,11 +292,24 @@ export function CanonicalProductsScreen() {
           )}
         </CardContent>
       </Card>
+
+      <ProvidersModal
+        canonicalProductId={providersModal.productId}
+        canonicalProductName={providersModal.productName}
+        open={providersModal.open}
+        onOpenChange={(open) => setProvidersModal({ open, productId: "", productName: "" })}
+      />
     </div>
   );
 }
 
-function CanonicalProductRow({ row }: { row: AdminCanonicalProductRowDto }) {
+function CanonicalProductRow({
+  row,
+  onViewProviders,
+}: {
+  row: AdminCanonicalProductRowDto;
+  onViewProviders: () => void;
+}) {
   return (
     <TableRow>
       <TableCell>
@@ -332,6 +362,18 @@ function CanonicalProductRow({ row }: { row: AdminCanonicalProductRowDto }) {
             </Badge>
           ))}
         </div>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onViewProviders}
+          disabled={(row.matched_provider_count ?? 0) === 0}
+          className="h-8"
+        >
+          <Eye className="mr-1 size-3" />
+          Ver proveedores
+        </Button>
       </TableCell>
     </TableRow>
   );
