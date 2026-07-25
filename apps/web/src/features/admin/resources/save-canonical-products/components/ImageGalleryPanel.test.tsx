@@ -25,6 +25,7 @@ const PROVIDERS = [
     currency: "DOP",
     provider_logo_url: null,
     store_product_image_url: "https://cdn/sirena.jpg",
+    store_product_image_urls: ["https://cdn/sirena.jpg", "https://cdn/sirena-nutricional.jpg"],
     url: null,
     last_seen_at: null,
     is_cheapest: true,
@@ -107,10 +108,25 @@ describe("ImageGalleryPanel", () => {
     renderPanel([]);
 
     await act(async () => {
-      screen.getByRole("button", { name: /Agregar/ }).click();
+      // Ahora hay una candidata por IMAGEN: la primera es la bolsa de Sirena.
+      screen.getAllByRole("button", { name: /Agregar/ })[0].click();
     });
 
     expect(add).toHaveBeenCalledWith("cp-1", "https://cdn/sirena.jpg", "sp-1");
+  });
+
+  it("ofrece TODAS las imágenes de una tienda, no sólo la primera", () => {
+    // El caso Sirena: bolsa + etiqueta nutricional. Con una candidata por tienda, la segunda
+    // quedaba inalcanzable desde el admin.
+    renderPanel([]);
+    expect(screen.getAllByRole("button", { name: /Agregar/ })).toHaveLength(2);
+  });
+
+  it("numera las candidatas sólo cuando la tienda publica más de una", () => {
+    // "Sirena 1/1" sería ruido; "1/2" y "2/2" dicen algo.
+    renderPanel([]);
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("2/2")).toBeInTheDocument();
   });
 
   it("galería vacía lo dice en vez de dejar un hueco", () => {

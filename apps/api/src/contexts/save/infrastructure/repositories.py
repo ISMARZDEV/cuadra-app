@@ -64,6 +64,7 @@ from ..domain.admin_audit import AdminAuditEntry
 from .models import (
     AdminAuditLogModel,
     CanonicalProductImageModel,
+    StoreProductImageModel,
     AlertNotificationModel,
     BasketQueryModel,
     BrandModel,
@@ -563,6 +564,48 @@ class SqlStoreProductRepository:
     def __init__(self, session: Session) -> None:
         self._s = session
 
+    def _replace_store_images(self, store_product_id: uuid.UUID, urls: tuple[str, ...]) -> None:
+        """Reemplaza ENTERA la galería de la tienda (F5, tarea 9).
+
+        Reemplazo total y no merge: la tienda puede agregar, quitar o REORDENAR sus fotos, y
+        conservar las viejas mostraría imágenes que ya no publica. Si la observación no trae
+        ninguna (adapters que aún no las mandan), no se toca lo que había — borrar por omisión
+        vaciaría la galería en cada corrida parcial.
+        """
+        if not urls:
+            return
+        current = self._s.scalars(
+            select(StoreProductImageModel)
+            .where(StoreProductImageModel.store_product_id == store_product_id)
+            .order_by(StoreProductImageModel.position)
+        ).all()
+        if [m.url for m in current] == list(urls):
+            return  # sin cambios: no reescribir en cada corrida
+
+        for model in current:
+            self._s.delete(model)
+        self._s.flush()  # antes del insert: si no, choca `UNIQUE(store_product, position)`
+        for index, url in enumerate(urls, start=1):
+            self._s.add(
+                StoreProductImageModel(
+                    store_product_id=store_product_id, url=url, position=index
+                )
+            )
+        self._s.flush()
+
+    def list_store_images(self, store_product_id: str) -> list[str]:
+        """URLs que publica la tienda, en su orden. Alimentan las candidatas de la galería."""
+        pid = _parse_uuid(store_product_id)
+        if pid is None:
+            return []
+        return list(
+            self._s.scalars(
+                select(StoreProductImageModel.url)
+                .where(StoreProductImageModel.store_product_id == pid)
+                .order_by(StoreProductImageModel.position)
+            ).all()
+        )
+
     def _find(self, provider_id: str, external_id: str) -> StoreProductModel | None:
         return self._s.scalars(
             select(StoreProductModel).where(
@@ -612,12 +655,16 @@ class SqlStoreProductRepository:
         name: str | None = None,
         brand: str | None = None,
         size_text: str | None = None,
-        image_url: str | None = None,
+        image_urls: tuple[str, ...] = (),
+        description: str | None = None,
         source_category: str | None = None,
         source_ref: dict | None = None,
     ) -> str:
         # Unidades canónicas desde la FUENTE: el tamaño se guarda ya normalizado ("20 Lbs" → "20 Lb").
         size_text = normalize_size_text(size_text)
+        # La principal es la PRIMERA de la tienda; se denormaliza en `store_product.image_url`
+        # para no romper a quien ya la lee (cola de revisión, comparación, candidatas).
+        image_url = image_urls[0] if image_urls else None
         sp = self._find(provider_id, external_id)
         changed = False
         if sp is None:
@@ -635,6 +682,7 @@ class SqlStoreProductRepository:
                 brand=brand,
                 size_text=size_text,
                 image_url=image_url,
+                description=description,
                 source_category=source_category,
                 source_ref=source_ref,
                 last_seen_at=captured_at,
@@ -656,6 +704,8 @@ class SqlStoreProductRepository:
                 sp.size_text = size_text
             if image_url is not None:
                 sp.image_url = image_url
+            if description is not None:
+                sp.description = description
             if source_category is not None:
                 sp.source_category = source_category
             if source_ref is not None:  # §15.3: se refresca el localizador de detalle cuando llega
@@ -682,6 +732,7 @@ class SqlStoreProductRepository:
                 )
             )
         self._s.flush()
+        self._replace_store_images(sp.id, image_urls)
         return str(sp.id)
 
     def set_availability(self, store_product_id: str, available: bool) -> None:
@@ -1956,6 +2007,16 @@ class SqlAdminCanonicalCatalogRepository:
         if not rows:
             return []
         cheapest = min(r[4] for r in rows)
+        # Galería de cada tienda en UNA query: pedirla por fila sería N+1 sobre un panel que se
+        # abre en cada detalle.
+        galleries: dict[str, list[str]] = {}
+        for sp_id, url in self._s.execute(
+            select(StoreProductImageModel.store_product_id, StoreProductImageModel.url)
+            .where(StoreProductImageModel.store_product_id.in_([r[0] for r in rows]))
+            .order_by(StoreProductImageModel.position)
+        ).all():
+            galleries.setdefault(str(sp_id), []).append(url)
+
         return [
             CanonicalProviderPriceRow(
                 store_product_id=str(r[0]),
@@ -1967,6 +2028,7 @@ class SqlAdminCanonicalCatalogRepository:
                 url=r[6],
                 last_seen_at=r[7],
                 store_product_image_url=r[8],
+                store_product_image_urls=galleries.get(str(r[0]), []),
                 is_cheapest=(r[4] == cheapest),
             )
             for r in rows

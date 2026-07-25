@@ -37,6 +37,30 @@ def _first_price_major(item: dict) -> float | int | str:
     raise ValueError(f"Producto VTEX sin precio: {item.get('productId')!r}")
 
 
+def _image_urls(first_item: dict) -> tuple[str, ...]:
+    """TODAS las imágenes del item, en el orden de la tienda (F5).
+
+    VTEX repite la misma foto en varios tamaños dentro del mismo item, así que se deduplica
+    preservando el orden: dos posiciones con la misma imagen no es una galería.
+    """
+    urls = [
+        image.get("imageUrl")
+        for image in (first_item.get("images") or [])
+        if image.get("imageUrl")
+    ]
+    return tuple(dict.fromkeys(urls))
+
+
+def _description(item: dict) -> str | None:
+    """Descripción de la tienda. `description` primero; algunas tiendas VTEX lo dejan vacío y sólo
+    llenan el meta tag. `None` (y no cadena vacía) si no trae ninguna."""
+    for key in ("description", "metaTagDescription"):
+        value = (item.get(key) or "").strip()
+        if value:
+            return value
+    return None
+
+
 def map_vtex_product(item: dict, provider_id: str, market_id: str) -> RawCatalogEntry:
     """Mapea un producto del JSON VTEX a `RawCatalogEntry`. Levanta ValueError si no hay precio."""
     currency = Currency(primary_currency_for_market(market_id))
@@ -44,7 +68,6 @@ def map_vtex_product(item: dict, provider_id: str, market_id: str) -> RawCatalog
 
     items = item.get("items") or []
     first = items[0] if items else {}
-    images = first.get("images") or []
     categories = item.get("categories") or []
     name = item.get("productName", "")
 
@@ -64,7 +87,8 @@ def map_vtex_product(item: dict, provider_id: str, market_id: str) -> RawCatalog
         # Escribirlo crudo alimentaba la etapa que auto-enlaza a 1.0 sin revisión humana.
         ean=pick_global_ean([first.get("ean")]),
         url=item.get("link"),
-        image_url=images[0].get("imageUrl") if images else None,
+        image_urls=_image_urls(first),
+        description=_description(item),
     )
 
 

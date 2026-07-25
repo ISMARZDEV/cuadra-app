@@ -190,6 +190,9 @@ class AdminCanonicalProviderPriceDto(BaseModel):
     currency: str
     provider_logo_url: str | None = None
     store_product_image_url: str | None = None
+    # TODAS las imágenes que publica esa tienda, en su orden. Son las candidatas de la galería
+    # del canónico: la etiqueta nutricional de Sirena vive acá, no en `store_product_image_url`.
+    store_product_image_urls: list[str] = []
     url: str | None = None
     last_seen_at: datetime | None = None
     is_cheapest: bool = False
@@ -542,6 +545,7 @@ def list_canonical_product_providers(
             currency=p.currency,
             provider_logo_url=p.provider_logo_url,
             store_product_image_url=p.store_product_image_url,
+            store_product_image_urls=p.store_product_image_urls,
             url=p.url,
             last_seen_at=p.last_seen_at,
             is_cheapest=p.is_cheapest,

@@ -178,6 +178,9 @@ class CanonicalProviderPriceRow:
     currency: str
     provider_logo_url: str | None = None
     store_product_image_url: str | None = None
+    # TODAS las que publica la tienda, en su orden (F5, tarea 9). Son las candidatas reales de la
+    # galería: con una sola por tienda no hay galería que armar. La primera == `store_product_image_url`.
+    store_product_image_urls: list[str] = field(default_factory=list)
     url: str | None = None
     last_seen_at: datetime | None = None
     price_type: str | None = None

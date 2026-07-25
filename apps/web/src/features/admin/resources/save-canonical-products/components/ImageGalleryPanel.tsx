@@ -46,7 +46,23 @@ export function ImageGalleryPanel({
   const [uploadNotice, setUploadNotice] = useState(false);
 
   const usedUrls = new Set(images.map((i) => i.url));
-  const candidates = providers.filter((p) => Boolean(p.store_product_image_url));
+  // Una entrada por IMAGEN, no por tienda: Sirena publica la bolsa y la etiqueta nutricional, y
+  // ofrecer sólo la primera dejaría la segunda inalcanzable desde el admin.
+  const candidates = providers.flatMap((p) => {
+    const urls = p.store_product_image_urls?.length
+      ? p.store_product_image_urls
+      : p.store_product_image_url
+        ? [p.store_product_image_url]
+        : [];
+    return urls.map((url, index) => ({
+      key: `${p.store_product_id}-${index}`,
+      url,
+      providerName: p.provider_name,
+      storeProductId: p.store_product_id,
+      // Numerar sólo cuando la tienda publica más de una: "Sirena 1/1" sería ruido.
+      badge: urls.length > 1 ? `${index + 1}/${urls.length}` : null,
+    }));
+  });
 
   const move = async (index: number, delta: number) => {
     const target = index + delta;
@@ -179,24 +195,30 @@ export function ImageGalleryPanel({
         ) : (
           <>
             <ul className="flex flex-wrap gap-3">
-              {candidates.map((p) => {
-                const url = p.store_product_image_url as string;
-                const already = usedUrls.has(url);
+              {candidates.map((c) => {
+                const already = usedUrls.has(c.url);
                 return (
-                  <li key={p.store_product_id} className="w-28 space-y-1.5">
-                    <img
-                      src={url}
-                      alt={p.provider_name}
-                      className={cn(
-                        "size-28 w-full rounded-xl border bg-white object-contain",
-                        already ? "border-brand-lime opacity-60" : "border-border",
-                      )}
-                    />
-                    <p className="truncate text-xs text-muted-foreground">{p.provider_name}</p>
+                  <li key={c.key} className="w-28 space-y-1.5">
+                    <div className="relative">
+                      <img
+                        src={c.url}
+                        alt={c.providerName}
+                        className={cn(
+                          "size-28 w-full rounded-xl border bg-white object-contain",
+                          already ? "border-brand-lime opacity-60" : "border-border",
+                        )}
+                      />
+                      {c.badge ? (
+                        <span className="absolute top-1 right-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                          {c.badge}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">{c.providerName}</p>
                     <button
                       type="button"
                       disabled={already || busy}
-                      onClick={() => void add(url, p.store_product_id)}
+                      onClick={() => void add(c.url, c.storeProductId)}
                       className={cn(
                         "inline-flex h-7 w-full items-center justify-center gap-1 rounded-full text-xs font-semibold",
                         already

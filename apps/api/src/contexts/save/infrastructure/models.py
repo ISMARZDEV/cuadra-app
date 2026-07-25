@@ -346,10 +346,45 @@ class StoreProductModel(Base):
     # Etapa B (save-category-classification): categoría CRUDA de la fuente (path del adapter, ej.
     # "Despensa > Arroz y Granos"). Segunda señal — la cascada la cruza con el nombre para clasificar.
     source_category: Mapped[str | None] = mapped_column(Text)
+    # Descripción publicada por la TIENDA (F5, tarea 9). Es dato crudo de la tienda, igual que
+    # `name`/`brand`: el canónico tiene la suya propia (`canonical_product.description`), curada.
+    description: Mapped[str | None] = mapped_column(Text)
     # §15.3: localizador(es) extra para el re-fetch por-producto (camino A) cuando `external_id` no
     # alcanza — p.ej. Bravo {"id_articulo": "29866"} (el /get usa idArticulo, no idexterno). NULL salvo
     # las fuentes que lo necesitan.
     source_ref: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class StoreProductImageModel(Base):
+    """Imágenes que publica la TIENDA para un producto, en SU orden (F5, tarea 9).
+
+    Antes se guardaba una sola y el resto se descartaba, aunque el payload ya las traía. Éstas son
+    las CANDIDATAS que alimentan la galería del canónico: sin ellas, la galería sólo puede ofrecer
+    una foto por tienda.
+
+    Se reemplazan enteras en cada observación: la tienda puede agregar, quitar o reordenar sus
+    fotos, y conservar las viejas mostraría imágenes que ya no publica.
+    """
+
+    __tablename__ = "store_product_image"
+    __table_args__ = (
+        UniqueConstraint(
+            "store_product_id", "position", name="uq_store_product_image_position"
+        ),
+        Index("ix_store_product_image_store_product", "store_product_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    store_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("save.store_product.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 = la principal de la tienda
 
 
 class PriceAlertModel(Base):

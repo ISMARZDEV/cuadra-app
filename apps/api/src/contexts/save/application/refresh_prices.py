@@ -148,7 +148,8 @@ class RefreshCatalogPrices:
                     name=entry.name,
                     brand=entry.brand,
                     size_text=entry.size_text,
-                    image_url=entry.image_url,
+                    image_urls=entry.image_urls,
+                    description=entry.description,
                     source_category=" > ".join(entry.category_path) or None,
                     source_ref=entry.source_ref,
                 )
@@ -186,7 +187,8 @@ class RefreshCatalogPrices:
                 name=entry.name,
                 brand=entry.brand,
                 size_text=entry.size_text,
-                image_url=entry.image_url,
+                image_urls=entry.image_urls,
+                    description=entry.description,
                 source_category=" > ".join(entry.category_path) or None,
                 source_ref=entry.source_ref,
             )

@@ -59,7 +59,7 @@ def test_map_vtex_product_full_fields() -> None:
         # afirmaba `ean="2100003063755"`: consagraba el bug. Ver el bloque de abajo.
         ean=None,
         url="https://www.sirena.do/wala-arroz-selecto-5lb-2010029/p",
-        image_url="https://gruporamos.vteximg.com.br/arquivos/ids/172051/1-und.webp",
+        image_urls=("https://gruporamos.vteximg.com.br/arquivos/ids/172051/1-und.webp",),
     )
 
 

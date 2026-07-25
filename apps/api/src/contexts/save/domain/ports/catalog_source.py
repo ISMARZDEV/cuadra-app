@@ -30,11 +30,25 @@ class RawCatalogEntry:
     category_path: tuple[str, ...] = ()
     ean: str | None = None
     url: str | None = None
-    image_url: str | None = None
+    # TODAS las imágenes que publica la tienda, EN SU ORDEN (F5, tarea 9). Antes se guardaba una
+    # sola y el resto se descartaba, aunque el payload ya las traía: la galería del canónico
+    # (1ª, 2ª, 3ª) se alimenta de acá, y con una sola foto por tienda no hay galería que armar.
+    #
+    # El orden de la tienda se PRESERVA: pone la foto del producto primero y la etiqueta
+    # nutricional después; invertirlo pondría la tabla de nutrición como imagen principal.
+    image_urls: tuple[str, ...] = ()
+    # Descripción publicada por la tienda. `None` = no la trae (distinto de traerla vacía).
+    description: str | None = None
     # §15.3: localizador(es) extra para el re-fetch por-producto (camino A) cuando `external_id` no
     # alcanza. Bravo → {"id_articulo": "29866"} (el `/get` usa idArticulo, no idexterno). Casi
     # siempre None (external_id = productId/SKU ya es el localizador).
     source_ref: dict[str, str] | None = None
+
+    @property
+    def primary_image_url(self) -> str | None:
+        """La imagen principal = la PRIMERA de la tienda. Una sola fuente de verdad: derivarla
+        evita que `image_url` y la galería puedan discrepar."""
+        return self.image_urls[0] if self.image_urls else None
 
 
 class CatalogSource(Protocol):

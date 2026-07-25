@@ -10,6 +10,8 @@ Paginación `pageSize`/`currentPage` guiada por `page_info.total_pages`.
 """
 from __future__ import annotations
 
+import re
+
 from collections.abc import Callable, Iterator
 
 from src.shared.money import Currency, Money
@@ -47,6 +49,8 @@ query CuadraSaveCatalog($search: String!, $pageSize: Int!, $currentPage: Int!) {
       url_key
       price_range { minimum_price { final_price { value currency } } }
       small_image { url }
+      media_gallery { url position }
+      description { html }
       categories { name level }
     }
   }
@@ -54,6 +58,38 @@ query CuadraSaveCatalog($search: String!, $pageSize: Int!, $currentPage: Int!) {
 """
 
 HttpPost = Callable[[str, dict, dict[str, str]], dict]
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _image_urls(item: dict) -> tuple[str, ...]:
+    """Galería completa, ordenada por la POSICIÓN que declara Magento (F5).
+
+    El array de `media_gallery` no viene ordenado garantizado; el orden real está en `position`.
+    Si la tienda no publica galería se cae a `small_image`: que no haya galería no puede dejar al
+    producto SIN imagen, porque la que ya teníamos sigue siendo válida.
+    """
+    gallery = item.get("media_gallery") or []
+    urls = [
+        entry.get("url")
+        for entry in sorted(gallery, key=lambda e: e.get("position") or 0)
+        if entry.get("url")
+    ]
+    if not urls:
+        fallback = (item.get("small_image") or {}).get("url")
+        return (fallback,) if fallback else ()
+    return tuple(dict.fromkeys(urls))
+
+
+def _description(item: dict) -> str | None:
+    """Descripción de la tienda, SIN markup: va a una UI que no renderiza HTML ajeno, y dejar las
+    etiquetas la mostraría cruda. `None` si la tienda no la trae."""
+    raw = ((item.get("description") or {}).get("html") or "").strip()
+    if not raw:
+        return None
+    text = _TAG_RE.sub("", raw).strip()
+    return text or None
 
 
 def _final_price(item: dict) -> tuple[float | int | str, str]:
@@ -74,8 +110,6 @@ def map_magento_product(
     name = item.get("name", "")
     categories = sorted(item.get("categories") or [], key=lambda c: c.get("level", 0))
     url_key = item.get("url_key")
-    image = item.get("small_image") or {}
-
     return RawCatalogEntry(
         provider_id=provider_id,
         market_id=market_id,
@@ -89,7 +123,8 @@ def map_magento_product(
         category_path=tuple(c["name"] for c in categories if c.get("name")),
         ean=None,  # no expuesto por la API
         url=f"{base_url.rstrip('/')}/{url_key}" if url_key else None,
-        image_url=image.get("url"),
+        image_urls=_image_urls(item),
+        description=_description(item),
     )
 
 
@@ -176,6 +211,8 @@ query CuadraSaveDetail($sku: String!) {
       url_key
       price_range { minimum_price { final_price { value currency } } }
       small_image { url }
+      media_gallery { url position }
+      description { html }
       categories { name level }
     }
   }

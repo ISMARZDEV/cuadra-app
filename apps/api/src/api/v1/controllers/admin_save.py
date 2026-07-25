@@ -849,7 +849,7 @@ def test_source(
             currency=str(entry.price.currency),
             ean=entry.ean,
             url=entry.url,
-            image_url=entry.image_url,
+            image_url=entry.primary_image_url,
         )
         for entry in sample
     ]
@@ -891,7 +891,7 @@ def preview_basket_query(
                     currency=str(e.price.currency),
                     ean=e.ean,
                     url=e.url,
-                    image_url=e.image_url,
+                    image_url=e.primary_image_url,
                 )
                 for e in g.entries
             ],

@@ -131,7 +131,7 @@ def test_record_observation_persists_raw_attributes(db_session) -> None:  # type
         price=Money(42400, DOP), captured_at=datetime(2026, 7, 1, 8),
         price_type=PriceType.ONLINE, source="vtex",
         name="Arroz La Garza 10 Lbs", brand="LA GARZA", size_text="10 Lbs",
-        image_url="https://cdn.example.com/arroz.jpg",
+        image_urls=("https://cdn.example.com/arroz.jpg",),
     )
 
     row = db_session.get(StoreProductModel, uuid.UUID(sp_id))
@@ -151,7 +151,8 @@ def test_record_observation_refreshes_raw_attributes_without_erasing_on_none(db_
     )
     sp_id = sp.record_observation(
         price=Money(100, DOP), captured_at=datetime(2026, 7, 1), name="Nombre viejo",
-        brand="Marca vieja", size_text="1kg", image_url="https://old.example.com/a.jpg", **kw,
+        brand="Marca vieja", size_text="1kg",
+        image_urls=("https://old.example.com/a.jpg",), **kw,
     )
     # observación posterior SIN estos campos (None) -> no debe borrar lo ya conocido
     sp.record_observation(price=Money(150, DOP), captured_at=datetime(2026, 7, 5), **kw)
