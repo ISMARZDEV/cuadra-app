@@ -1999,6 +1999,7 @@ class SqlAdminCanonicalCatalogRepository:
                 StoreProductModel.url,
                 StoreProductModel.last_seen_at,
                 StoreProductModel.image_url,
+                StoreProductModel.description,
             )
             .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
             .where(StoreProductModel.canonical_product_id == pid)
@@ -2029,6 +2030,7 @@ class SqlAdminCanonicalCatalogRepository:
                 last_seen_at=r[7],
                 store_product_image_url=r[8],
                 store_product_image_urls=galleries.get(str(r[0]), []),
+                store_product_description=r[9],
                 is_cheapest=(r[4] == cheapest),
             )
             for r in rows

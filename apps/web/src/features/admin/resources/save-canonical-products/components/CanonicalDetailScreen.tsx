@@ -59,6 +59,7 @@ import {
 } from "../lib/quality-status";
 import { CanonicalFormModal, type CanonicalFormState } from "./CanonicalFormModal";
 import { CategoryPicker } from "./CategoryPicker";
+import { DescriptionPanel } from "./DescriptionPanel";
 import { ImageGalleryPanel } from "./ImageGalleryPanel";
 import { PriceHistoryChart } from "./PriceHistoryChart";
 
@@ -309,9 +310,6 @@ export function CanonicalDetailScreen() {
               </span>
             </Row>
             <Row label={t("admin.canonicalDetail.info.quality")}>{product.quality || "—"}</Row>
-            <Row label={t("admin.canonicalDetail.info.description")}>
-              {product.description || "—"}
-            </Row>
             <Row label={t("admin.canonicalDetail.info.created")}>
               {formatCatalogDate(product.created_at, locale)}
             </Row>
@@ -482,6 +480,17 @@ export function CanonicalDetailScreen() {
           leaves={taxonomyLeaves}
           onPick={(nodeId) => void pickCategory(nodeId)}
           busy={busy}
+          t={t}
+        />
+      </Panel>
+
+      {/* ── Descripción con las de cada tienda como candidatas (US-CP-D2) ──── */}
+      <Panel title={t("admin.canonicalDetail.description.title")}>
+        <DescriptionPanel
+          canonicalProductId={id}
+          description={product.description ?? null}
+          providers={providers}
+          onSaved={setProduct}
           t={t}
         />
       </Panel>

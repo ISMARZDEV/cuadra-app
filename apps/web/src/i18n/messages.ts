@@ -875,7 +875,20 @@ type MessageKey =
   | "admin.canonicalDetail.image.upload"
   | "admin.canonicalDetail.image.uploadSoon"
   | "admin.canonicalDetail.image.uploadSoonTitle"
-  | "admin.canonicalDetail.image.understood";
+  | "admin.canonicalDetail.image.understood"
+  | "admin.canonicalDetail.description.title"
+  | "admin.canonicalDetail.description.current"
+  | "admin.canonicalDetail.description.hint"
+  | "admin.canonicalDetail.description.placeholder"
+  | "admin.canonicalDetail.description.candidates"
+  | "admin.canonicalDetail.description.use"
+  | "admin.canonicalDetail.description.inUse"
+  | "admin.canonicalDetail.description.empty"
+  | "admin.canonicalDetail.description.save"
+  | "admin.canonicalDetail.description.saving"
+  | "admin.canonicalDetail.description.saved"
+  | "admin.canonicalDetail.description.copyHint"
+  | "admin.canonicalDetail.description.unsaved";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1747,6 +1760,19 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.uploadSoon": "Subir desde el ordenador todavía no está disponible: falta definir dónde se guardarán los archivos. Por ahora se toman de las tiendas o se pega una URL desde Editar.",
     "admin.canonicalDetail.image.uploadSoonTitle": "Subida de imágenes: próximamente",
     "admin.canonicalDetail.image.understood": "Entendido",
+    "admin.canonicalDetail.description.title": "Descripción",
+    "admin.canonicalDetail.description.current": "Descripción del canónico",
+    "admin.canonicalDetail.description.hint": "Es la que se publica. Elegí una de las tiendas y ajustala si hace falta.",
+    "admin.canonicalDetail.description.placeholder": "Sin descripción. Tomá una de las tiendas o escribila.",
+    "admin.canonicalDetail.description.candidates": "Descripciones de las tiendas",
+    "admin.canonicalDetail.description.use": "Usar esta",
+    "admin.canonicalDetail.description.inUse": "En uso",
+    "admin.canonicalDetail.description.empty": "Ninguna tienda enlazada publica descripción.",
+    "admin.canonicalDetail.description.save": "Guardar descripción",
+    "admin.canonicalDetail.description.saving": "Guardando…",
+    "admin.canonicalDetail.description.saved": "Descripción guardada",
+    "admin.canonicalDetail.description.copyHint": "Copia el texto de la tienda al canónico. No modifica el producto de la tienda.",
+    "admin.canonicalDetail.description.unsaved": "Cambios sin guardar",
   },
   en: {
     "nav.save": "Save",
@@ -2616,6 +2642,19 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.uploadSoon": "Uploading from your computer is not available yet: we still need to decide where files will be stored. For now, take them from the stores or paste a URL from Edit.",
     "admin.canonicalDetail.image.uploadSoonTitle": "Image upload: coming soon",
     "admin.canonicalDetail.image.understood": "Got it",
+    "admin.canonicalDetail.description.title": "Description",
+    "admin.canonicalDetail.description.current": "Canonical description",
+    "admin.canonicalDetail.description.hint": "This is what gets published. Pick one from the stores and adjust it if needed.",
+    "admin.canonicalDetail.description.placeholder": "No description. Take one from the stores or write it.",
+    "admin.canonicalDetail.description.candidates": "Store descriptions",
+    "admin.canonicalDetail.description.use": "Use this",
+    "admin.canonicalDetail.description.inUse": "In use",
+    "admin.canonicalDetail.description.empty": "No linked store publishes a description.",
+    "admin.canonicalDetail.description.save": "Save description",
+    "admin.canonicalDetail.description.saving": "Saving…",
+    "admin.canonicalDetail.description.saved": "Description saved",
+    "admin.canonicalDetail.description.copyHint": "Copies the store text onto the canonical. It does not modify the store product.",
+    "admin.canonicalDetail.description.unsaved": "Unsaved changes",
   },
   pt: {
     "nav.save": "Save",
@@ -3485,6 +3524,19 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.uploadSoon": "Enviar do computador ainda não está disponível: falta definir onde os arquivos serão guardados. Por enquanto, pegue das lojas ou cole uma URL em Editar.",
     "admin.canonicalDetail.image.uploadSoonTitle": "Envio de imagens: em breve",
     "admin.canonicalDetail.image.understood": "Entendido",
+    "admin.canonicalDetail.description.title": "Descrição",
+    "admin.canonicalDetail.description.current": "Descrição do canônico",
+    "admin.canonicalDetail.description.hint": "É a que se publica. Escolha uma das lojas e ajuste se necessário.",
+    "admin.canonicalDetail.description.placeholder": "Sem descrição. Pegue uma das lojas ou escreva.",
+    "admin.canonicalDetail.description.candidates": "Descrições das lojas",
+    "admin.canonicalDetail.description.use": "Usar esta",
+    "admin.canonicalDetail.description.inUse": "Em uso",
+    "admin.canonicalDetail.description.empty": "Nenhuma loja vinculada publica descrição.",
+    "admin.canonicalDetail.description.save": "Salvar descrição",
+    "admin.canonicalDetail.description.saving": "Salvando…",
+    "admin.canonicalDetail.description.saved": "Descrição salva",
+    "admin.canonicalDetail.description.copyHint": "Copia o texto da loja para o canônico. Não modifica o produto da loja.",
+    "admin.canonicalDetail.description.unsaved": "Alterações não salvas",
   },
 };
 

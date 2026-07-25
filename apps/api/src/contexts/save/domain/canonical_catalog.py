@@ -181,6 +181,9 @@ class CanonicalProviderPriceRow:
     # TODAS las que publica la tienda, en su orden (F5, tarea 9). Son las candidatas reales de la
     # galería: con una sola por tienda no hay galería que armar. La primera == `store_product_image_url`.
     store_product_image_urls: list[str] = field(default_factory=list)
+    # Descripción que publica ESA tienda. Es una CANDIDATA: el operador elige cuál representa al
+    # canónico (o la ajusta). Copiarla nunca modifica la de la tienda.
+    store_product_description: str | None = None
     url: str | None = None
     last_seen_at: datetime | None = None
     price_type: str | None = None
