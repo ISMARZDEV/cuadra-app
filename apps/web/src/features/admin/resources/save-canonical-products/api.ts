@@ -9,16 +9,21 @@ import {
   type ImportPreviewDto,
   type ImportRequest,
   type UpdateCanonicalProductRequest,
+  type AdminCanonicalAuditEventDto,
+  type AdminCanonicalPriceHistoryDto,
   archiveCanonicalProduct as archiveCanonicalProductRequest,
   commitCanonicalImport as commitCanonicalImportRequest,
   createCanonicalProduct as createCanonicalProductRequest,
   listCanonicalProductDuplicates as listCanonicalProductDuplicatesRequest,
   listCanonicalProductEvidence as listCanonicalProductEvidenceRequest,
   listCanonicalProductProviders as listCanonicalProductProvidersRequest,
+  getCanonicalProductHistory as getCanonicalProductHistoryRequest,
+  listCanonicalProductAuditLog as listCanonicalProductAuditLogRequest,
   listCanonicalProducts as listCanonicalProductsRequest,
   previewCanonicalImport as previewCanonicalImportRequest,
   unarchiveCanonicalProduct as unarchiveCanonicalProductRequest,
   updateCanonicalProduct as updateCanonicalProductRequest,
+  updateInternalNote as updateInternalNoteRequest,
 } from "@cuadra/api-client";
 
 import { authHeaders } from "@/features/save/hooks/use-auth";
@@ -153,6 +158,46 @@ export async function unarchiveCanonicalProduct(
     client: apiClient,
     headers: await authHeaders(),
     path: { canonical_product_id: canonicalProductId },
+  });
+  return res.data ?? null;
+}
+
+/** Histórico + KPIs del rango. `providerIds` vacío = todas las tiendas (US-CP-D6/D7). */
+export async function getCanonicalProductHistory(
+  canonicalProductId: string,
+  range: string,
+  providerIds?: string[],
+): Promise<AdminCanonicalPriceHistoryDto | null> {
+  const res = await getCanonicalProductHistoryRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+    query: { range, provider_ids: providerIds?.length ? providerIds : undefined } as never,
+  });
+  return res.data ?? null;
+}
+
+export async function listCanonicalProductAuditLog(
+  canonicalProductId: string,
+): Promise<AdminCanonicalAuditEventDto[] | null> {
+  const res = await listCanonicalProductAuditLogRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+  });
+  return res.data ?? null;
+}
+
+/** Nota interna (US-CP-D10). Nunca sale por un DTO público. */
+export async function updateInternalNote(
+  canonicalProductId: string,
+  note: string | null,
+): Promise<AdminCanonicalProductRowDto | null> {
+  const res = await updateInternalNoteRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+    body: { internal_note: note },
   });
   return res.data ?? null;
 }

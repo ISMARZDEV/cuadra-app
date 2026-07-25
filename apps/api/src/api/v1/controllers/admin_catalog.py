@@ -24,9 +24,11 @@ from pydantic import BaseModel, Field
 
 from src.api.composition_root import (
     get_archive_canonical_product,
+    get_canonical_price_history,
     get_commit_canonical_import,
     get_create_canonical_product,
     get_get_canonical_product,
+    get_list_canonical_audit_log,
     get_list_canonical_duplicates,
     get_list_canonical_evidence,
     get_list_canonical_products,
@@ -42,8 +44,11 @@ from src.contexts.save.application.canonical_catalog import (
     ArchiveCanonicalProduct,
     CommitCanonicalImport,
     CreateCanonicalProduct,
+    GetCanonicalPriceHistory,
     GetCanonicalProduct,
     InvalidMeasureError,
+    MixedCurrencyHistoryError,
+    ListCanonicalAuditLog,
     ListCanonicalDuplicates,
     ListCanonicalEvidence,
     ListCanonicalProducts,
@@ -53,6 +58,7 @@ from src.contexts.save.application.canonical_catalog import (
     UpdateInternalNote,
     derive_row_quality,
 )
+from src.contexts.save.domain.canonical_history import CanonicalHistoryRange
 from src.contexts.save.domain.canonical_catalog import (
     CanonicalCatalogFilters,
     CanonicalCatalogRow,
@@ -655,3 +661,135 @@ def update_internal_note(
         {"name": row.name, "has_note": row.internal_note is not None, "origin": "manual_admin"},
     )
     return AdminCanonicalProductRowDto.from_row(row)
+
+
+class PricePointDto(BaseModel):
+    """Un punto de CAMBIO de precio. `price_minor` en minor units — el chart formatea, no calcula."""
+
+    captured_at: datetime
+    price_minor: int
+    price_type: str
+
+
+class ProviderSeriesDto(BaseModel):
+    provider_id: str
+    provider_name: str
+    points: list[PricePointDto]
+
+
+class CanonicalPriceKpisDto(BaseModel):
+    """KPIs del rango (US-CP-D6). Los `None` significan SIN DATOS, no cero: cero pesos es un
+    precio válido y pintarlo donde no hay histórico sería mentirle al operador."""
+
+    min_price_minor: int | None = None
+    max_price_minor: int | None = None
+    spread_minor: int | None = None
+    active_provider_count: int = 0
+    last_updated_at: datetime | None = None
+    change_in_range_minor: int | None = None
+    price_change_count: int = 0
+
+
+class AdminCanonicalPriceHistoryDto(BaseModel):
+    canonical_product_id: str
+    name: str
+    currency: str
+    range: str
+    series: list[ProviderSeriesDto]
+    kpis: CanonicalPriceKpisDto
+
+
+@catalog_router.get(
+    "/canonical-products/{canonical_product_id}/history",
+    response_model=AdminCanonicalPriceHistoryDto,
+)
+def get_canonical_product_history(
+    canonical_product_id: str,
+    range: CanonicalHistoryRange = Query(
+        CanonicalHistoryRange.ONE_MONTH, description="15d|1m|3m|6m|1y|all"
+    ),
+    provider_ids: list[str] | None = Query(
+        None, description="Acota el chart a estas tiendas; vacío = todas"
+    ),
+    use_case: GetCanonicalPriceHistory = Depends(get_canonical_price_history),
+) -> AdminCanonicalPriceHistoryDto:
+    """Histórico multi-tienda + KPIs (US-CP-D6/D7).
+
+    Cada serie arranca con el precio VIGENTE al comenzar el rango (baseline carry-in): la tabla
+    `price` es change-only, así que una tienda que no movió su precio no tiene puntos adentro y
+    su línea aparecería vacía — que no es lo mismo que "el precio no cambió".
+    """
+    try:
+        history = use_case.execute(
+            market_id=MARKET,
+            canonical_product_id=canonical_product_id,
+            range_=range,
+            provider_ids=provider_ids,
+        )
+    except MixedCurrencyHistoryError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+    if history is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+
+    return AdminCanonicalPriceHistoryDto(
+        canonical_product_id=history.canonical_product_id,
+        name=history.name,
+        currency=history.currency,
+        range=history.range,
+        series=[
+            ProviderSeriesDto(
+                provider_id=provider_id,
+                provider_name=points[0].provider_name if points else provider_id,
+                points=[
+                    PricePointDto(
+                        captured_at=p.captured_at,
+                        price_minor=p.price.amount_minor,
+                        price_type=p.price_type.value,
+                    )
+                    for p in points
+                ],
+            )
+            for provider_id, points in history.series.items()
+        ],
+        kpis=CanonicalPriceKpisDto(**asdict(history.kpis)),
+    )
+
+
+class AdminCanonicalAuditEventDto(BaseModel):
+    """Un evento del audit log del canónico (US-CP-D9).
+
+    `payload_summary` es un resumen, no el diff completo: nunca lleva secretos ni el contenido de
+    la nota interna (ver `update_internal_note`).
+    """
+
+    id: str
+    action: str
+    actor_user_id: str
+    payload_summary: dict = {}
+    created_at: datetime
+
+
+@catalog_router.get(
+    "/canonical-products/{canonical_product_id}/audit-log",
+    response_model=list[AdminCanonicalAuditEventDto],
+)
+def list_canonical_product_audit_log(
+    canonical_product_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    use_case: ListCanonicalAuditLog = Depends(get_list_canonical_audit_log),
+) -> list[AdminCanonicalAuditEventDto]:
+    """Actividad del canónico, más reciente primero (US-CP-D9). Estado vacío si nunca se tocó —
+    un canónico creado por la cascada y no editado no tiene eventos, y eso no es un error."""
+    return [
+        AdminCanonicalAuditEventDto(
+            id=e.id,
+            action=e.action,
+            actor_user_id=e.actor_user_id,
+            payload_summary=e.payload_summary,
+            created_at=e.created_at,
+        )
+        for e in use_case.execute(
+            market_id=MARKET, canonical_product_id=canonical_product_id, limit=limit
+        )
+    ]

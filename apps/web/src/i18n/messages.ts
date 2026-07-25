@@ -753,7 +753,65 @@ type MessageKey =
   | "admin.canonicalProducts.archive.badge"
   | "admin.canonicalProducts.filters.includeArchived"
   | "admin.canonicalProducts.form.description"
-  | "admin.nav.save.canonicalProducts";
+  | "admin.nav.save.canonicalProducts"
+  | "admin.canonicalDetail.back"
+  | "admin.canonicalDetail.notFound"
+  | "admin.canonicalDetail.section.info"
+  | "admin.canonicalDetail.section.providers"
+  | "admin.canonicalDetail.section.history"
+  | "admin.canonicalDetail.section.evidence"
+  | "admin.canonicalDetail.section.duplicates"
+  | "admin.canonicalDetail.section.activity"
+  | "admin.canonicalDetail.info.slug"
+  | "admin.canonicalDetail.info.size"
+  | "admin.canonicalDetail.info.quality"
+  | "admin.canonicalDetail.info.category"
+  | "admin.canonicalDetail.info.description"
+  | "admin.canonicalDetail.info.created"
+  | "admin.canonicalDetail.info.originRun"
+  | "admin.canonicalDetail.info.originRunNone"
+  | "admin.canonicalDetail.info.lastMatch"
+  | "admin.canonicalDetail.info.lastPrice"
+  | "admin.canonicalDetail.info.empty"
+  | "admin.canonicalDetail.kpi.min"
+  | "admin.canonicalDetail.kpi.max"
+  | "admin.canonicalDetail.kpi.spread"
+  | "admin.canonicalDetail.kpi.providers"
+  | "admin.canonicalDetail.kpi.change"
+  | "admin.canonicalDetail.kpi.changes"
+  | "admin.canonicalDetail.kpi.updated"
+  | "admin.canonicalDetail.kpi.noData"
+  | "admin.canonicalDetail.range.15d"
+  | "admin.canonicalDetail.range.1m"
+  | "admin.canonicalDetail.range.3m"
+  | "admin.canonicalDetail.range.6m"
+  | "admin.canonicalDetail.range.1y"
+  | "admin.canonicalDetail.range.all"
+  | "admin.canonicalDetail.chart.empty"
+  | "admin.canonicalDetail.chart.carryIn"
+  | "admin.canonicalDetail.evidence.col.provider"
+  | "admin.canonicalDetail.evidence.col.raw"
+  | "admin.canonicalDetail.evidence.col.ean"
+  | "admin.canonicalDetail.evidence.col.method"
+  | "admin.canonicalDetail.evidence.col.confidence"
+  | "admin.canonicalDetail.evidence.empty"
+  | "admin.canonicalDetail.evidence.human"
+  | "admin.canonicalDetail.evidence.auto"
+  | "admin.canonicalDetail.duplicates.empty"
+  | "admin.canonicalDetail.duplicates.eanCollision"
+  | "admin.canonicalDetail.duplicates.eanCollisionHint"
+  | "admin.canonicalDetail.duplicates.sameBrandSize"
+  | "admin.canonicalDetail.duplicates.readOnly"
+  | "admin.canonicalDetail.activity.empty"
+  | "admin.canonicalDetail.note.title"
+  | "admin.canonicalDetail.note.hint"
+  | "admin.canonicalDetail.note.placeholder"
+  | "admin.canonicalDetail.note.save"
+  | "admin.canonicalDetail.note.saving"
+  | "admin.canonicalDetail.note.saved"
+  | "admin.canonicalDetail.action.audit"
+  | "admin.canonicalDetail.chart.loading"
+  | "admin.canonicalDetail.chart.error";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1503,6 +1561,64 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.filters.includeArchived": "Mostrar archivados",
     "admin.canonicalProducts.form.description": "Descripción",
     "admin.nav.save.canonicalProducts": "Productos canónicos",
+    "admin.canonicalDetail.back": "Volver al catálogo",
+    "admin.canonicalDetail.notFound": "Este producto canónico no existe.",
+    "admin.canonicalDetail.section.info": "Información canónica",
+    "admin.canonicalDetail.section.providers": "Proveedores matcheados",
+    "admin.canonicalDetail.section.history": "Histórico y KPIs",
+    "admin.canonicalDetail.section.evidence": "Evidencia",
+    "admin.canonicalDetail.section.duplicates": "Duplicados posibles",
+    "admin.canonicalDetail.section.activity": "Actividad y notas",
+    "admin.canonicalDetail.info.slug": "Slug público",
+    "admin.canonicalDetail.info.size": "Tamaño",
+    "admin.canonicalDetail.info.quality": "Calidad",
+    "admin.canonicalDetail.info.category": "Categoría",
+    "admin.canonicalDetail.info.description": "Descripción",
+    "admin.canonicalDetail.info.created": "Creado",
+    "admin.canonicalDetail.info.originRun": "Descubierto en la corrida",
+    "admin.canonicalDetail.info.originRunNone": "Alta manual o anterior a la orquestación",
+    "admin.canonicalDetail.info.lastMatch": "Último match",
+    "admin.canonicalDetail.info.lastPrice": "Último precio visto",
+    "admin.canonicalDetail.info.empty": "—",
+    "admin.canonicalDetail.kpi.min": "Precio mínimo",
+    "admin.canonicalDetail.kpi.max": "Precio máximo",
+    "admin.canonicalDetail.kpi.spread": "Diferencia",
+    "admin.canonicalDetail.kpi.providers": "Tiendas activas",
+    "admin.canonicalDetail.kpi.change": "Variación del rango",
+    "admin.canonicalDetail.kpi.changes": "Cambios de precio",
+    "admin.canonicalDetail.kpi.updated": "Actualizado",
+    "admin.canonicalDetail.kpi.noData": "Sin histórico suficiente para calcular KPIs.",
+    "admin.canonicalDetail.range.15d": "15 días",
+    "admin.canonicalDetail.range.1m": "1 mes",
+    "admin.canonicalDetail.range.3m": "3 meses",
+    "admin.canonicalDetail.range.6m": "6 meses",
+    "admin.canonicalDetail.range.1y": "1 año",
+    "admin.canonicalDetail.range.all": "Todo",
+    "admin.canonicalDetail.chart.empty": "Todavía no hay histórico de precios para este producto.",
+    "admin.canonicalDetail.chart.carryIn": "El primer punto de cada línea es el precio que ya venía vigente al empezar el rango.",
+    "admin.canonicalDetail.evidence.col.provider": "Tienda",
+    "admin.canonicalDetail.evidence.col.raw": "Nombre en la tienda",
+    "admin.canonicalDetail.evidence.col.ean": "EAN / SKU",
+    "admin.canonicalDetail.evidence.col.method": "Cómo se enlazó",
+    "admin.canonicalDetail.evidence.col.confidence": "Confianza",
+    "admin.canonicalDetail.evidence.empty": "Ninguna tienda está enlazada a este canónico.",
+    "admin.canonicalDetail.evidence.human": "Decidido por una persona",
+    "admin.canonicalDetail.evidence.auto": "Enlace automático",
+    "admin.canonicalDetail.duplicates.empty": "No se detectaron duplicados posibles.",
+    "admin.canonicalDetail.duplicates.eanCollision": "Mismo EAN",
+    "admin.canonicalDetail.duplicates.eanCollisionHint": "Otro canónico comparte código de barras con este: es la señal más fuerte de que son el mismo producto.",
+    "admin.canonicalDetail.duplicates.sameBrandSize": "Misma marca y tamaño",
+    "admin.canonicalDetail.duplicates.readOnly": "Sólo alerta: unir o separar canónicos no está disponible todavía.",
+    "admin.canonicalDetail.activity.empty": "Todavía nadie modificó este canónico.",
+    "admin.canonicalDetail.note.title": "Nota interna",
+    "admin.canonicalDetail.note.hint": "Sólo visible en el admin. Nunca aparece en la página pública.",
+    "admin.canonicalDetail.note.placeholder": "Coordinación del equipo sobre este producto…",
+    "admin.canonicalDetail.note.save": "Guardar nota",
+    "admin.canonicalDetail.note.saving": "Guardando…",
+    "admin.canonicalDetail.note.saved": "Nota guardada",
+    "admin.canonicalDetail.action.audit": "Actividad",
+    "admin.canonicalDetail.chart.loading": "Cargando histórico…",
+    "admin.canonicalDetail.chart.error": "No se pudo cargar el histórico de precios. Reintentá en un momento.",
   },
   en: {
     "nav.save": "Save",
@@ -2250,6 +2366,64 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.filters.includeArchived": "Show archived",
     "admin.canonicalProducts.form.description": "Description",
     "admin.nav.save.canonicalProducts": "Canonical products",
+    "admin.canonicalDetail.back": "Back to catalog",
+    "admin.canonicalDetail.notFound": "This canonical product does not exist.",
+    "admin.canonicalDetail.section.info": "Canonical information",
+    "admin.canonicalDetail.section.providers": "Matched providers",
+    "admin.canonicalDetail.section.history": "History and KPIs",
+    "admin.canonicalDetail.section.evidence": "Evidence",
+    "admin.canonicalDetail.section.duplicates": "Possible duplicates",
+    "admin.canonicalDetail.section.activity": "Activity and notes",
+    "admin.canonicalDetail.info.slug": "Public slug",
+    "admin.canonicalDetail.info.size": "Size",
+    "admin.canonicalDetail.info.quality": "Quality",
+    "admin.canonicalDetail.info.category": "Category",
+    "admin.canonicalDetail.info.description": "Description",
+    "admin.canonicalDetail.info.created": "Created",
+    "admin.canonicalDetail.info.originRun": "Discovered in run",
+    "admin.canonicalDetail.info.originRunNone": "Manual entry or predates orchestration",
+    "admin.canonicalDetail.info.lastMatch": "Last match",
+    "admin.canonicalDetail.info.lastPrice": "Last price seen",
+    "admin.canonicalDetail.info.empty": "—",
+    "admin.canonicalDetail.kpi.min": "Lowest price",
+    "admin.canonicalDetail.kpi.max": "Highest price",
+    "admin.canonicalDetail.kpi.spread": "Spread",
+    "admin.canonicalDetail.kpi.providers": "Active stores",
+    "admin.canonicalDetail.kpi.change": "Range variation",
+    "admin.canonicalDetail.kpi.changes": "Price changes",
+    "admin.canonicalDetail.kpi.updated": "Updated",
+    "admin.canonicalDetail.kpi.noData": "Not enough history to compute KPIs.",
+    "admin.canonicalDetail.range.15d": "15 days",
+    "admin.canonicalDetail.range.1m": "1 month",
+    "admin.canonicalDetail.range.3m": "3 months",
+    "admin.canonicalDetail.range.6m": "6 months",
+    "admin.canonicalDetail.range.1y": "1 year",
+    "admin.canonicalDetail.range.all": "All",
+    "admin.canonicalDetail.chart.empty": "There is no price history for this product yet.",
+    "admin.canonicalDetail.chart.carryIn": "The first point of each line is the price already in effect when the range began.",
+    "admin.canonicalDetail.evidence.col.provider": "Store",
+    "admin.canonicalDetail.evidence.col.raw": "Name in store",
+    "admin.canonicalDetail.evidence.col.ean": "EAN / SKU",
+    "admin.canonicalDetail.evidence.col.method": "How it was linked",
+    "admin.canonicalDetail.evidence.col.confidence": "Confidence",
+    "admin.canonicalDetail.evidence.empty": "No store is linked to this canonical.",
+    "admin.canonicalDetail.evidence.human": "Decided by a person",
+    "admin.canonicalDetail.evidence.auto": "Automatic link",
+    "admin.canonicalDetail.duplicates.empty": "No possible duplicates detected.",
+    "admin.canonicalDetail.duplicates.eanCollision": "Same EAN",
+    "admin.canonicalDetail.duplicates.eanCollisionHint": "Another canonical shares a barcode with this one: the strongest signal that they are the same product.",
+    "admin.canonicalDetail.duplicates.sameBrandSize": "Same brand and size",
+    "admin.canonicalDetail.duplicates.readOnly": "Alert only: merging or splitting canonicals is not available yet.",
+    "admin.canonicalDetail.activity.empty": "Nobody has modified this canonical yet.",
+    "admin.canonicalDetail.note.title": "Internal note",
+    "admin.canonicalDetail.note.hint": "Admin-only. It never appears on the public page.",
+    "admin.canonicalDetail.note.placeholder": "Team coordination about this product…",
+    "admin.canonicalDetail.note.save": "Save note",
+    "admin.canonicalDetail.note.saving": "Saving…",
+    "admin.canonicalDetail.note.saved": "Note saved",
+    "admin.canonicalDetail.action.audit": "Activity",
+    "admin.canonicalDetail.chart.loading": "Loading history…",
+    "admin.canonicalDetail.chart.error": "Could not load the price history. Try again in a moment.",
   },
   pt: {
     "nav.save": "Save",
@@ -2997,6 +3171,64 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.filters.includeArchived": "Mostrar arquivados",
     "admin.canonicalProducts.form.description": "Descrição",
     "admin.nav.save.canonicalProducts": "Produtos canônicos",
+    "admin.canonicalDetail.back": "Voltar ao catálogo",
+    "admin.canonicalDetail.notFound": "Este produto canônico não existe.",
+    "admin.canonicalDetail.section.info": "Informação canônica",
+    "admin.canonicalDetail.section.providers": "Fornecedores correspondidos",
+    "admin.canonicalDetail.section.history": "Histórico e KPIs",
+    "admin.canonicalDetail.section.evidence": "Evidência",
+    "admin.canonicalDetail.section.duplicates": "Possíveis duplicados",
+    "admin.canonicalDetail.section.activity": "Atividade e notas",
+    "admin.canonicalDetail.info.slug": "Slug público",
+    "admin.canonicalDetail.info.size": "Tamanho",
+    "admin.canonicalDetail.info.quality": "Qualidade",
+    "admin.canonicalDetail.info.category": "Categoria",
+    "admin.canonicalDetail.info.description": "Descrição",
+    "admin.canonicalDetail.info.created": "Criado",
+    "admin.canonicalDetail.info.originRun": "Descoberto na execução",
+    "admin.canonicalDetail.info.originRunNone": "Cadastro manual ou anterior à orquestração",
+    "admin.canonicalDetail.info.lastMatch": "Último match",
+    "admin.canonicalDetail.info.lastPrice": "Último preço visto",
+    "admin.canonicalDetail.info.empty": "—",
+    "admin.canonicalDetail.kpi.min": "Preço mínimo",
+    "admin.canonicalDetail.kpi.max": "Preço máximo",
+    "admin.canonicalDetail.kpi.spread": "Diferença",
+    "admin.canonicalDetail.kpi.providers": "Lojas ativas",
+    "admin.canonicalDetail.kpi.change": "Variação do período",
+    "admin.canonicalDetail.kpi.changes": "Mudanças de preço",
+    "admin.canonicalDetail.kpi.updated": "Atualizado",
+    "admin.canonicalDetail.kpi.noData": "Histórico insuficiente para calcular KPIs.",
+    "admin.canonicalDetail.range.15d": "15 dias",
+    "admin.canonicalDetail.range.1m": "1 mês",
+    "admin.canonicalDetail.range.3m": "3 meses",
+    "admin.canonicalDetail.range.6m": "6 meses",
+    "admin.canonicalDetail.range.1y": "1 ano",
+    "admin.canonicalDetail.range.all": "Tudo",
+    "admin.canonicalDetail.chart.empty": "Ainda não há histórico de preços para este produto.",
+    "admin.canonicalDetail.chart.carryIn": "O primeiro ponto de cada linha é o preço que já vigorava no início do período.",
+    "admin.canonicalDetail.evidence.col.provider": "Loja",
+    "admin.canonicalDetail.evidence.col.raw": "Nome na loja",
+    "admin.canonicalDetail.evidence.col.ean": "EAN / SKU",
+    "admin.canonicalDetail.evidence.col.method": "Como foi vinculado",
+    "admin.canonicalDetail.evidence.col.confidence": "Confiança",
+    "admin.canonicalDetail.evidence.empty": "Nenhuma loja está vinculada a este canônico.",
+    "admin.canonicalDetail.evidence.human": "Decidido por uma pessoa",
+    "admin.canonicalDetail.evidence.auto": "Vínculo automático",
+    "admin.canonicalDetail.duplicates.empty": "Nenhum possível duplicado detectado.",
+    "admin.canonicalDetail.duplicates.eanCollision": "Mesmo EAN",
+    "admin.canonicalDetail.duplicates.eanCollisionHint": "Outro canônico compartilha código de barras com este: o sinal mais forte de que são o mesmo produto.",
+    "admin.canonicalDetail.duplicates.sameBrandSize": "Mesma marca e tamanho",
+    "admin.canonicalDetail.duplicates.readOnly": "Somente alerta: unir ou separar canônicos ainda não está disponível.",
+    "admin.canonicalDetail.activity.empty": "Ninguém modificou este canônico ainda.",
+    "admin.canonicalDetail.note.title": "Nota interna",
+    "admin.canonicalDetail.note.hint": "Visível apenas no admin. Nunca aparece na página pública.",
+    "admin.canonicalDetail.note.placeholder": "Coordenação da equipe sobre este produto…",
+    "admin.canonicalDetail.note.save": "Salvar nota",
+    "admin.canonicalDetail.note.saving": "Salvando…",
+    "admin.canonicalDetail.note.saved": "Nota salva",
+    "admin.canonicalDetail.action.audit": "Atividade",
+    "admin.canonicalDetail.chart.loading": "Carregando histórico…",
+    "admin.canonicalDetail.chart.error": "Não foi possível carregar o histórico de preços. Tente novamente em instantes.",
   },
 };
 

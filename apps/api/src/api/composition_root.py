@@ -42,7 +42,9 @@ from src.contexts.save.application.canonical_catalog import (
     ArchiveCanonicalProduct,
     CommitCanonicalImport,
     CreateCanonicalProduct,
+    GetCanonicalPriceHistory,
     GetCanonicalProduct,
+    ListCanonicalAuditLog,
     ListCanonicalDuplicates,
     ListCanonicalEvidence,
     ListCanonicalProducts,
@@ -766,3 +768,17 @@ def get_update_internal_note(session: Session = Depends(get_session)) -> UpdateI
     return UpdateInternalNote(
         SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
     )
+
+
+def get_canonical_price_history(
+    session: Session = Depends(get_session),
+) -> GetCanonicalPriceHistory:
+    return GetCanonicalPriceHistory(
+        SqlAdminCanonicalCatalogRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_list_canonical_audit_log(
+    session: Session = Depends(get_session),
+) -> ListCanonicalAuditLog:
+    return ListCanonicalAuditLog(SqlAdminAuditRepository(session))

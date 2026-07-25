@@ -11,7 +11,10 @@ auditaba el target equivocado.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
+
+from src.shared.money import primary_currency_for_market
 
 from ..domain.canonical_catalog import (
     CanonicalCatalogFilters,
@@ -24,6 +27,13 @@ from ..domain.canonical_catalog import (
     derive_completeness_score,
     derive_quality_statuses,
 )
+from ..domain.canonical_history import (
+    CanonicalHistoryRange,
+    CanonicalPriceKpis,
+    derive_price_kpis,
+    range_since,
+    window_with_carry_in,
+)
 from ..domain.canonical_import import (
     ImportPreview,
     ImportRowInput,
@@ -34,6 +44,7 @@ from ..domain.canonical_import import (
     validate_import_row,
 )
 from ..domain.entities import CanonicalProduct
+from ..domain.history import PricePoint
 from ..domain.value_objects import Quantity, UnitMeasure
 
 
@@ -422,3 +433,101 @@ def derive_row_quality(
         quality=row.quality,
     )
     return statuses, score
+
+
+class ListCanonicalAuditLog:
+    """Actividad del canónico (US-CP-D9): quién cambió qué y cuándo.
+
+    Lee del audit log append-only que ya escribe cada mutación en el borde del controller (T2).
+    No hay una tabla de historial propia del producto — hacerla sería duplicar la fuente de verdad.
+    """
+
+    def __init__(self, audit_repo) -> None:  # type: ignore[no-untyped-def]
+        self._repo = audit_repo
+
+    def execute(self, *, market_id: str, canonical_product_id: str, limit: int = 50):  # type: ignore[no-untyped-def]
+        return self._repo.list_recent(
+            market_id=market_id,
+            target_type="canonical_product",
+            target_id=canonical_product_id,
+            limit=limit,
+        )
+
+
+# --------------------------------------------------------------------------------- histórico --
+
+
+class MixedCurrencyHistoryError(ValueError):
+    """El histórico trae más de una moneda. Regla SAGRADA de Save: jamás mezclarlas en un chart —
+    dos series en monedas distintas sobre el mismo eje es una comparación falsa."""
+
+
+class GetCanonicalPriceHistory:
+    """Histórico + KPIs del canónico para el detalle admin (US-CP-D6/D7).
+
+    Rangos `15d|1m|3m|6m|1y|all` — el histórico PÚBLICO sólo soporta `1m/3m/all`, y no se toca
+    para no cambiar su contrato. El baseline carry-in se comporta igual que el público: si una
+    tienda no cambió su precio dentro del rango, su línea arranca con el precio que ya venía
+    vigente en vez de aparecer vacía.
+    """
+
+    def __init__(self, catalog_repo, store_repo) -> None:  # type: ignore[no-untyped-def]
+        self._catalog = catalog_repo
+        self._store = store_repo
+
+    def execute(
+        self,
+        *,
+        market_id: str,
+        canonical_product_id: str,
+        range_: CanonicalHistoryRange = CanonicalHistoryRange.ALL,
+        provider_ids: list[str] | None = None,
+        now: datetime | None = None,
+    ) -> CanonicalPriceHistory | None:
+        row = self._catalog.get_catalog_row(
+            market_id=market_id, canonical_product_id=canonical_product_id
+        )
+        if row is None:
+            return None
+
+        now = now or datetime.now(timezone.utc)
+        since = range_since(range_, now=now)
+
+        by_provider: dict[str, list[PricePoint]] = {}
+        wanted = set(provider_ids) if provider_ids else None
+        for point in self._store.list_price_history(canonical_product_id):
+            if wanted is not None and point.provider_id not in wanted:
+                continue
+            by_provider.setdefault(point.provider_id, []).append(point)
+
+        series = {
+            pid: window_with_carry_in(points, since=since)
+            for pid, points in by_provider.items()
+        }
+
+        currencies = {p.price.currency.code for pts in series.values() for p in pts}
+        if len(currencies) > 1:
+            raise MixedCurrencyHistoryError(
+                f"Histórico con monedas mezcladas: {sorted(currencies)}"
+            )
+
+        return CanonicalPriceHistory(
+            canonical_product_id=row.canonical_product_id,
+            name=row.name,
+            currency=next(iter(currencies), primary_currency_for_market(market_id)),
+            range=range_.value,
+            series=series,
+            kpis=derive_price_kpis(series, now=now, since=since),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalPriceHistory:
+    """Resultado del histórico admin: las series por tienda + los KPIs del rango."""
+
+    canonical_product_id: str
+    name: str
+    currency: str
+    range: str
+    series: dict[str, list[PricePoint]]
+    kpis: CanonicalPriceKpis
