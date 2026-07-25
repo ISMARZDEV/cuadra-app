@@ -10,10 +10,13 @@ import {
   type ImportRequest,
   type UpdateCanonicalProductRequest,
   type AdminCanonicalAuditEventDto,
+  type BulkCategoryAdviceDto,
+  type BulkSetCategoryResultDto,
   type CategorySuggestionDto,
   type SlugPreviewDto,
   type AdminCanonicalPriceHistoryDto,
   archiveCanonicalProduct as archiveCanonicalProductRequest,
+  bulkSetCanonicalCategory as bulkSetCanonicalCategoryRequest,
   commitCanonicalImport as commitCanonicalImportRequest,
   createCanonicalProduct as createCanonicalProductRequest,
   listCanonicalProductDuplicates as listCanonicalProductDuplicatesRequest,
@@ -26,6 +29,7 @@ import {
   previewCanonicalSlug as previewCanonicalSlugRequest,
   regenerateCanonicalSlug as regenerateCanonicalSlugRequest,
   setCanonicalCategory as setCanonicalCategoryRequest,
+  suggestBulkCategories as suggestBulkCategoriesRequest,
   suggestCanonicalCategories as suggestCanonicalCategoriesRequest,
   unarchiveCanonicalProduct as unarchiveCanonicalProductRequest,
   updateCanonicalProduct as updateCanonicalProductRequest,
@@ -254,6 +258,35 @@ export async function setCanonicalCategory(
     headers: await authHeaders(),
     path: { canonical_product_id: canonicalProductId },
     body: { taxonomy_node_id: taxonomyNodeId },
+  });
+  return res.data ?? null;
+}
+
+/** Sugerencias calculadas sobre el CONJUNTO seleccionado, con la advertencia de heterogeneidad
+ * (US-CP-L10). No persiste nada. */
+export async function suggestBulkCategories(
+  canonicalProductIds: string[],
+): Promise<BulkCategoryAdviceDto | null> {
+  const res = await suggestBulkCategoriesRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: { canonical_product_ids: canonicalProductIds },
+  });
+  return res.data ?? null;
+}
+
+/** Asigna la categoría a N canónicos. Cada uno se registra como decisión HUMANA por separado. */
+export async function bulkSetCanonicalCategory(
+  canonicalProductIds: string[],
+  taxonomyNodeId: string,
+): Promise<BulkSetCategoryResultDto | null> {
+  const res = await bulkSetCanonicalCategoryRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: {
+      canonical_product_ids: canonicalProductIds,
+      taxonomy_node_id: taxonomyNodeId,
+    },
   });
   return res.data ?? null;
 }

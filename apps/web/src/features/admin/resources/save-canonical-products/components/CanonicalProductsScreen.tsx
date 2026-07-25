@@ -1,5 +1,5 @@
 import type { AdminCanonicalProductRowDto } from "@cuadra/api-client";
-import { Plus, Search, Upload } from "lucide-react";
+import { ChevronDown, ListChecks, Plus, Search, Tags, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
@@ -20,7 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui-base/dropdown-menu";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
+import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 import { FunnelIcon } from "@/features/admin/resources/save-matching/components/toolbar-icons";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE } from "@/i18n/config";
@@ -38,6 +45,7 @@ import {
 } from "../lib/canonical-products-params";
 import { CanonicalFiltersModal } from "./CanonicalFiltersModal";
 import { CanonicalFormModal, type CanonicalFormState } from "./CanonicalFormModal";
+import { BulkCategoryModal } from "./BulkCategoryModal";
 import { CanonicalProductRow } from "./CanonicalProductRow";
 import { ImportCanonicalModal } from "./ImportCanonicalModal";
 import { ProvidersModal } from "./ProvidersModal";
@@ -53,6 +61,7 @@ export function CanonicalProductsScreen() {
   const {
     list: initialList,
     params: initialParams,
+    taxonomyLeaves = [],
     locale = DEFAULT_LOCALE,
   } = useData<CanonicalProductsData>();
   const { t } = useAdminI18n(locale);
@@ -68,6 +77,9 @@ export function CanonicalProductsScreen() {
   // Archivar SIEMPRE pasa por confirmación fuerte: saca el producto del sitio público.
   const [archiveTarget, setArchiveTarget] = useState<AdminCanonicalProductRowDto | null>(null);
   const [archiving, setArchiving] = useState(false);
+  // Selección para acciones en lote (US-CP-L10), mismo patrón que la Cola de revisión.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCategoryOpen, setBulkCategoryOpen] = useState(false);
 
   // El primer render ya trae los datos del SSR: refetchear ahí sería pedir dos veces lo mismo.
   const hydrated = useRef(false);
@@ -122,6 +134,29 @@ export function CanonicalProductsScreen() {
   const hasQuery = Boolean(params.search) || activeFilters > 0;
 
   const refresh = () => void applyParams({ offset: params.offset });
+
+  const pageIds = list.rows.map((r) => r.canonical_product_id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleSelectAll = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      // Sólo se toca la página ACTUAL: vaciar una selección hecha en otra página sin avisar
+      // sería perder trabajo del operador en silencio.
+      if (allPageSelected) {
+        pageIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      pageIds.forEach((id) => next.add(id));
+      return next;
+    });
 
   const confirmArchive = async () => {
     if (!archiveTarget) return;
@@ -186,6 +221,25 @@ export function CanonicalProductsScreen() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={selected.size === 0}
+                className="flex h-9 items-center gap-1.5 rounded-full bg-brand-forest px-4 text-sm font-semibold text-brand-lime disabled:opacity-50"
+              >
+                <ListChecks className="size-[18px]" />
+                {t("admin.canonicalProducts.bulk.actions")}
+                <ChevronDown className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => setBulkCategoryOpen(true)}>
+                  <Tags />
+                  {format(locale, "admin.canonicalProducts.bulk.assignCategory", {
+                    count: String(selected.size),
+                  })}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <button
               type="button"
               onClick={() => setImportOpen(true)}
@@ -213,6 +267,15 @@ export function CanonicalProductsScreen() {
           <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent [&>th]:h-11 [&>th]:text-sm [&>th]:font-semibold [&>th]:text-muted-foreground">
+                  <TableHead className="w-10">
+                    <SelectCheckbox
+                      data-testid="select-all"
+                      aria-label={t("admin.canonicalProducts.bulk.selectAll")}
+                      checked={allPageSelected}
+                      disabled={pageIds.length === 0}
+                      onChange={toggleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead className="w-16">{t("admin.canonicalProducts.col.image")}</TableHead>
                   <SortableHead
                     label={t("admin.canonicalProducts.col.product")}
@@ -257,6 +320,8 @@ export function CanonicalProductsScreen() {
                     key={row.canonical_product_id}
                     row={row}
                     locale={locale}
+                    selected={selected.has(row.canonical_product_id)}
+                    onToggleSelect={toggleSelect}
                     onViewProviders={setProvidersFor}
                     onEdit={(r) => setFormState({ mode: "edit", row: r })}
                     onArchive={setArchiveTarget}
@@ -376,6 +441,20 @@ export function CanonicalProductsScreen() {
         onConfirm={() => void confirmArchive()}
         busy={archiving}
         destructive
+      />
+
+      <BulkCategoryModal
+        selected={bulkCategoryOpen ? [...selected] : []}
+        leaves={taxonomyLeaves}
+        onClose={() => setBulkCategoryOpen(false)}
+        onApplied={() => {
+          // La selección se vacía tras aplicar: dejarla viva invitaría a re-asignar por error
+          // el mismo lote que ya se acaba de tocar.
+          setSelected(new Set());
+          refresh();
+        }}
+        t={t}
+        locale={locale}
       />
 
       <ProvidersModal

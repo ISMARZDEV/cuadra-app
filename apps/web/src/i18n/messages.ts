@@ -845,7 +845,21 @@ type MessageKey =
   | "admin.canonicalDetail.category.search"
   | "admin.canonicalDetail.category.assign"
   | "admin.canonicalDetail.category.current"
-  | "admin.canonicalDetail.category.signal.lexicon";
+  | "admin.canonicalDetail.category.signal.lexicon"
+  | "admin.canonicalProducts.bulk.actions"
+  | "admin.canonicalProducts.bulk.assignCategory"
+  | "admin.canonicalProducts.bulk.selectAll"
+  | "admin.canonicalProducts.bulk.title"
+  | "admin.canonicalProducts.bulk.subtitle"
+  | "admin.canonicalProducts.bulk.heterogeneous"
+  | "admin.canonicalProducts.bulk.withoutSignal"
+  | "admin.canonicalProducts.bulk.supportedBy"
+  | "admin.canonicalProducts.bulk.apply"
+  | "admin.canonicalProducts.bulk.applying"
+  | "admin.canonicalProducts.bulk.done"
+  | "admin.canonicalProducts.bulk.someFailed"
+  | "admin.canonicalProducts.bulk.error"
+  | "admin.canonicalProducts.bulk.close";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1687,6 +1701,20 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.assign": "Asignar",
     "admin.canonicalDetail.category.current": "Actual",
     "admin.canonicalDetail.category.signal.lexicon": "léxico",
+    "admin.canonicalProducts.bulk.actions": "Acciones",
+    "admin.canonicalProducts.bulk.assignCategory": "Asignar categoría ({count})",
+    "admin.canonicalProducts.bulk.selectAll": "Seleccionar todo",
+    "admin.canonicalProducts.bulk.title": "Asignar categoría en lote",
+    "admin.canonicalProducts.bulk.subtitle": "Se aplicará a {count} productos seleccionados.",
+    "admin.canonicalProducts.bulk.heterogeneous": "Ojo: los seleccionados parecen de categorías distintas. Asignar una sola los agruparía mal.",
+    "admin.canonicalProducts.bulk.withoutSignal": "{count} sin señal para sugerir: se clasificarían a ciegas.",
+    "admin.canonicalProducts.bulk.supportedBy": "{count} de los seleccionados",
+    "admin.canonicalProducts.bulk.apply": "Asignar",
+    "admin.canonicalProducts.bulk.applying": "Asignando…",
+    "admin.canonicalProducts.bulk.done": "{count} productos actualizados.",
+    "admin.canonicalProducts.bulk.someFailed": "{count} no se pudieron actualizar.",
+    "admin.canonicalProducts.bulk.error": "No se pudo aplicar la asignación.",
+    "admin.canonicalProducts.bulk.close": "Cerrar",
   },
   en: {
     "nav.save": "Save",
@@ -2526,6 +2554,20 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.assign": "Assign",
     "admin.canonicalDetail.category.current": "Current",
     "admin.canonicalDetail.category.signal.lexicon": "lexicon",
+    "admin.canonicalProducts.bulk.actions": "Actions",
+    "admin.canonicalProducts.bulk.assignCategory": "Assign category ({count})",
+    "admin.canonicalProducts.bulk.selectAll": "Select all",
+    "admin.canonicalProducts.bulk.title": "Assign category in bulk",
+    "admin.canonicalProducts.bulk.subtitle": "It will apply to {count} selected products.",
+    "admin.canonicalProducts.bulk.heterogeneous": "Careful: the selected products look like they belong to different categories. Assigning a single one would group them wrong.",
+    "admin.canonicalProducts.bulk.withoutSignal": "{count} without a signal to suggest from: they would be classified blindly.",
+    "admin.canonicalProducts.bulk.supportedBy": "{count} of the selected",
+    "admin.canonicalProducts.bulk.apply": "Assign",
+    "admin.canonicalProducts.bulk.applying": "Assigning…",
+    "admin.canonicalProducts.bulk.done": "{count} products updated.",
+    "admin.canonicalProducts.bulk.someFailed": "{count} could not be updated.",
+    "admin.canonicalProducts.bulk.error": "Could not apply the assignment.",
+    "admin.canonicalProducts.bulk.close": "Close",
   },
   pt: {
     "nav.save": "Save",
@@ -3365,6 +3407,20 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.assign": "Atribuir",
     "admin.canonicalDetail.category.current": "Atual",
     "admin.canonicalDetail.category.signal.lexicon": "léxico",
+    "admin.canonicalProducts.bulk.actions": "Ações",
+    "admin.canonicalProducts.bulk.assignCategory": "Atribuir categoria ({count})",
+    "admin.canonicalProducts.bulk.selectAll": "Selecionar tudo",
+    "admin.canonicalProducts.bulk.title": "Atribuir categoria em lote",
+    "admin.canonicalProducts.bulk.subtitle": "Será aplicado a {count} produtos selecionados.",
+    "admin.canonicalProducts.bulk.heterogeneous": "Atenção: os selecionados parecem de categorias diferentes. Atribuir uma só os agruparia mal.",
+    "admin.canonicalProducts.bulk.withoutSignal": "{count} sem sinal para sugerir: seriam classificados às cegas.",
+    "admin.canonicalProducts.bulk.supportedBy": "{count} dos selecionados",
+    "admin.canonicalProducts.bulk.apply": "Atribuir",
+    "admin.canonicalProducts.bulk.applying": "Atribuindo…",
+    "admin.canonicalProducts.bulk.done": "{count} produtos atualizados.",
+    "admin.canonicalProducts.bulk.someFailed": "{count} não puderam ser atualizados.",
+    "admin.canonicalProducts.bulk.error": "Não foi possível aplicar a atribuição.",
+    "admin.canonicalProducts.bulk.close": "Fechar",
   },
 };
 

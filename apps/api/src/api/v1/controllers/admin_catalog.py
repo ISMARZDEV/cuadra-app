@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from src.api.composition_root import (
     get_archive_canonical_product,
+    get_bulk_set_canonical_category,
     get_canonical_price_history,
     get_commit_canonical_import,
     get_create_canonical_product,
@@ -37,6 +38,7 @@ from src.api.composition_root import (
     get_preview_canonical_slug,
     get_regenerate_canonical_slug,
     get_set_canonical_category,
+    get_suggest_bulk_categories,
     get_suggest_canonical_categories,
     get_update_canonical_product,
     get_update_internal_note,
@@ -46,6 +48,7 @@ from src.contexts.identity.domain.enums import CapabilityKey
 from src.contexts.save.application.admin_audit_recorder import AdminAuditRecorder
 from src.contexts.save.application.canonical_catalog import (
     ArchiveCanonicalProduct,
+    BulkSetCanonicalCategory,
     CommitCanonicalImport,
     CreateCanonicalProduct,
     GetCanonicalPriceHistory,
@@ -61,6 +64,7 @@ from src.contexts.save.application.canonical_catalog import (
     PreviewCanonicalSlug,
     RegenerateCanonicalSlug,
     SetCanonicalCategory,
+    SuggestBulkCategories,
     SuggestCanonicalCategories,
     UpdateCanonicalProduct,
     UpdateInternalNote,
@@ -941,3 +945,125 @@ def set_canonical_category(
         },
     )
     return AdminCanonicalProductRowDto.from_row(row)
+
+
+class BulkCategorySuggestionsRequest(BaseModel):
+    canonical_product_ids: list[str]
+
+
+class BulkCategorySuggestionDto(BaseModel):
+    """Hoja propuesta para el LOTE, con cuántos de los seleccionados la apoyan."""
+
+    taxonomy_node_id: str
+    name: str
+    product_count: int
+    matched_tokens: list[str]
+    signal: str
+
+
+class BulkCategoryAdviceDto(BaseModel):
+    """Qué proponer para el lote y qué advertir ANTES de aplicarlo (US-CP-L10).
+
+    `heterogeneous` es el dato que evita el peor caso: asignar una sola categoría a productos que
+    el léxico ve como distintos ensucia varios de un saque, y deshacerlo cuesta más que evitarlo.
+    """
+
+    suggestions: list[BulkCategorySuggestionDto]
+    heterogeneous: bool
+    without_signal: int
+    selected_count: int
+
+
+@catalog_router.post(
+    "/canonical-products/bulk-category-suggestions", response_model=BulkCategoryAdviceDto
+)
+def suggest_bulk_categories(
+    body: BulkCategorySuggestionsRequest,
+    use_case: SuggestBulkCategories = Depends(get_suggest_bulk_categories),
+) -> BulkCategoryAdviceDto:
+    """Sugerencias calculadas sobre el CONJUNTO seleccionado. No persiste nada."""
+    advice, names = use_case.execute(
+        market_id=MARKET, canonical_product_ids=body.canonical_product_ids
+    )
+    return BulkCategoryAdviceDto(
+        suggestions=[
+            BulkCategorySuggestionDto(
+                taxonomy_node_id=s.taxonomy_node_id,
+                name=names.get(s.taxonomy_node_id, ""),
+                product_count=s.product_count,
+                matched_tokens=s.matched_tokens,
+                signal=s.signal,
+            )
+            for s in advice.suggestions
+        ],
+        heterogeneous=advice.heterogeneous,
+        without_signal=advice.without_signal,
+        selected_count=len(body.canonical_product_ids),
+    )
+
+
+class BulkSetCategoryRequest(BaseModel):
+    canonical_product_ids: list[str]
+    taxonomy_node_id: str
+
+
+class BulkCategoryFailureDto(BaseModel):
+    canonical_product_id: str
+    error: str
+
+
+class BulkSetCategoryResultDto(BaseModel):
+    """Éxito PARCIAL explícito: qué entró y qué no. Abortar el lote entero por una fila obligaría
+    al operador a rehacer la selección completa."""
+
+    succeeded: list[str]
+    failed: list[BulkCategoryFailureDto]
+    succeeded_count: int
+    failed_count: int
+    category_name: str | None = None
+
+
+@catalog_router.post(
+    "/canonical-products/bulk-set-category", response_model=BulkSetCategoryResultDto
+)
+def bulk_set_canonical_category(
+    body: BulkSetCategoryRequest,
+    use_case: BulkSetCanonicalCategory = Depends(get_bulk_set_canonical_category),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> BulkSetCategoryResultDto:
+    """Asigna una categoría a N canónicos (US-CP-L10).
+
+    Cada asignación se audita POR SEPARADO: el SDD lo pide explícito, y una sola fila de "cambié
+    40 productos" no permitiría reconstruir qué le pasó a uno en particular.
+    """
+    if not body.taxonomy_node_id.strip():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "taxonomy_node_id es obligatorio para fijar una categoría",
+        )
+
+    result = use_case.execute(
+        market_id=MARKET,
+        canonical_product_ids=body.canonical_product_ids,
+        taxonomy_node_id=body.taxonomy_node_id,
+    )
+
+    for product_id in result.succeeded:
+        audit.record(
+            "canonical_product.set_category",
+            "canonical_product",
+            product_id,
+            {
+                "new_category": result.category_name,
+                "method": "human",
+                "origin": "bulk_admin",
+            },
+        )
+
+    return BulkSetCategoryResultDto(
+        succeeded=result.succeeded,
+        failed=[BulkCategoryFailureDto(**asdict(f)) for f in result.failed],
+        succeeded_count=len(result.succeeded),
+        failed_count=len(result.failed),
+        category_name=result.category_name,
+    )

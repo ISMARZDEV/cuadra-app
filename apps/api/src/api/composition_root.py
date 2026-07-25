@@ -40,6 +40,7 @@ from src.contexts.save.application.create_canonical_and_link import CreateCanoni
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.canonical_catalog import (
     ArchiveCanonicalProduct,
+    BulkSetCanonicalCategory,
     CommitCanonicalImport,
     CreateCanonicalProduct,
     GetCanonicalPriceHistory,
@@ -53,6 +54,7 @@ from src.contexts.save.application.canonical_catalog import (
     PreviewCanonicalSlug,
     RegenerateCanonicalSlug,
     SetCanonicalCategory,
+    SuggestBulkCategories,
     SuggestCanonicalCategories,
     UpdateCanonicalProduct,
     UpdateInternalNote,
@@ -816,3 +818,17 @@ def get_set_canonical_category(session: Session = Depends(get_session)) -> SetCa
         SqlAdminCanonicalCatalogRepository(session),
         SqlCategoryClassificationRepository(session),
     )
+
+
+def get_suggest_bulk_categories(session: Session = Depends(get_session)) -> SuggestBulkCategories:
+    return SuggestBulkCategories(
+        SqlAdminCanonicalCatalogRepository(session), SqlTaxonomyRepository(session)
+    )
+
+
+def get_bulk_set_canonical_category(
+    session: Session = Depends(get_session),
+) -> BulkSetCanonicalCategory:
+    """La Session entra al use case por los SAVEPOINTS: una fila que falla no puede arrastrar
+    a las que ya se confirmaron en el mismo lote."""
+    return BulkSetCanonicalCategory(get_set_canonical_category(session), session)

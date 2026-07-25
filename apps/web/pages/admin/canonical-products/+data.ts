@@ -1,4 +1,4 @@
-import { listCanonicalProducts } from "@cuadra/api-client";
+import { listCanonicalProducts, listTaxonomyLeaves } from "@cuadra/api-client";
 import { render } from "vike/abort";
 import type { PageContextServer } from "vike/types";
 
@@ -39,6 +39,10 @@ export async function data(pageContext: PageContextServer) {
     } as never,
   });
 
+  // Hojas para el picker de la asignación en lote (US-CP-L10). Van en el SSR porque el modal
+  // debe abrir con el árbol ya disponible, no pedirlo al hacer clic.
+  const taxonomy = await listTaxonomyLeaves({ client: apiClient, headers: auth });
+
   if (res.error || !res.data) {
     throw render(500, "No se pudo cargar el listado de productos canónicos.");
   }
@@ -46,6 +50,7 @@ export async function data(pageContext: PageContextServer) {
   return {
     list: res.data,
     params,
+    taxonomyLeaves: taxonomy.data?.leaves ?? [],
     ...shell,
   };
 }

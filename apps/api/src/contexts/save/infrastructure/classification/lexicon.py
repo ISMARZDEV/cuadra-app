@@ -11,8 +11,7 @@ PURO: sin DB ni I/O. `build_lexicon_index` recibe las hojas ya cargadas (composi
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+from ...domain.category_suggestion import CategorySuggestion
 from ...domain.taxonomy import slugify
 
 LexiconIndex = dict[str, str]  # token -> taxonomy_node_id (hoja)
@@ -61,24 +60,6 @@ def lexicon_match_path(source_category: str, index: LexiconIndex) -> tuple[str, 
         if hit is not None:
             return hit
     return None
-
-
-@dataclass(frozen=True, slots=True)
-class CategorySuggestion:
-    """Una hoja propuesta al operador, CON la evidencia que la sostiene (US-CP-D2c).
-
-    `matched_tokens` no es decorativo: es la "señal de origen" que el SDD exige para que la
-    sugerencia sea una decisión informada y no una caja negra.
-    """
-
-    taxonomy_node_id: str
-    matched_tokens: list[str]
-    signal: str = "lexicon"
-
-    @property
-    def strength(self) -> int:
-        """Cuántos tokens distintos del índice apuntan a esta hoja."""
-        return len(self.matched_tokens)
 
 
 def lexicon_suggestions(

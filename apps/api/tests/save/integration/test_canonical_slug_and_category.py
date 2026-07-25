@@ -302,3 +302,172 @@ class TestSetCategoryRecordsTheHuman:
             {"taxonomy_node_id": ""},
         )
         assert res.status_code == 422
+
+
+class TestBulkCategory:
+    """US-CP-L10 — asignar categoría en lote. El flujo previsto es «filtro Sin categoría →
+    seleccionar el grupo homogéneo → asignar → repetir»."""
+
+    @pytest.fixture
+    def leaf(self, db_session):  # type: ignore[no-untyped-def]
+        parent = TaxonomyNodeModel(name="Despensa Bulk", level=0, market_id=MARKET, parent_id=None)
+        db_session.add(parent)
+        db_session.flush()
+        node = TaxonomyNodeModel(name="Granos Bulk", level=1, market_id=MARKET, parent_id=parent.id)
+        db_session.add(node)
+        db_session.flush()
+        return node
+
+    @pytest.fixture
+    def three(self, db_session):  # type: ignore[no-untyped-def]
+        rows = []
+        for i in range(3):
+            cp = CanonicalProductModel(
+                slug=f"bulk-cat-{i}", name=f"Producto Bulk Cat {i}",
+                size_amount=Decimal("1"), size_measure="count", market_id=MARKET,
+            )
+            db_session.add(cp)
+            rows.append(cp)
+        db_session.flush()
+        return rows
+
+    def test_it_assigns_the_category_to_every_selected_product(self, db_session, three, leaf) -> None:  # type: ignore[no-untyped-def]
+        user_id = _admin(db_session)
+        res = _call(
+            db_session, user_id, "post", "/canonical-products/bulk-set-category",
+            {
+                "canonical_product_ids": [str(c.id) for c in three],
+                "taxonomy_node_id": str(leaf.id),
+            },
+        )
+
+        assert res.status_code == 200, res.text
+        assert res.json()["succeeded_count"] == 3
+        assert res.json()["failed_count"] == 0
+        for cp in three:
+            db_session.refresh(cp)
+            assert str(cp.taxonomy_node_id) == str(leaf.id)
+
+    def test_each_assignment_is_recorded_as_HUMAN_individually(self, db_session, three, leaf) -> None:  # type: ignore[no-untyped-def]
+        """El SDD lo pide explícito: "cada asignación se registra individualmente con
+        method='human'". Una sola fila diciendo "cambié 3" no permitiría reconstruir qué le pasó
+        a uno en particular."""
+        user_id = _admin(db_session)
+        _call(
+            db_session, user_id, "post", "/canonical-products/bulk-set-category",
+            {
+                "canonical_product_ids": [str(c.id) for c in three],
+                "taxonomy_node_id": str(leaf.id),
+            },
+        )
+
+        rows = db_session.scalars(
+            select(CategoryClassificationModel).where(
+                CategoryClassificationModel.canonical_product_id.in_([c.id for c in three]),
+                CategoryClassificationModel.status == "active",
+            )
+        ).all()
+        assert len(rows) == 3
+        assert {r.method for r in rows} == {"human"}
+
+    def test_each_one_gets_its_own_audit_row(self, db_session, three, leaf) -> None:  # type: ignore[no-untyped-def]
+        user_id = _admin(db_session)
+        _call(
+            db_session, user_id, "post", "/canonical-products/bulk-set-category",
+            {
+                "canonical_product_ids": [str(c.id) for c in three],
+                "taxonomy_node_id": str(leaf.id),
+            },
+        )
+
+        rows = db_session.scalars(
+            select(AdminAuditLogModel).where(
+                AdminAuditLogModel.action == "canonical_product.set_category",
+                AdminAuditLogModel.target_id.in_([str(c.id) for c in three]),
+            )
+        ).all()
+        assert len(rows) == 3
+        assert {r.payload_summary["origin"] for r in rows} == {"bulk_admin"}
+
+    def test_a_bad_id_does_not_drag_the_others_down(self, db_session, three, leaf) -> None:  # type: ignore[no-untyped-def]
+        """Éxito PARCIAL explícito: abortar el lote entero por una fila obligaría al operador a
+        rehacer toda la selección."""
+        user_id = _admin(db_session)
+        res = _call(
+            db_session, user_id, "post", "/canonical-products/bulk-set-category",
+            {
+                "canonical_product_ids": [
+                    str(three[0].id),
+                    "99999999-9999-4999-8999-999999999999",
+                    str(three[1].id),
+                ],
+                "taxonomy_node_id": str(leaf.id),
+            },
+        )
+
+        assert res.status_code == 200, res.text
+        assert res.json()["succeeded_count"] == 2
+        assert res.json()["failed_count"] == 1
+
+    def test_an_empty_category_is_rejected(self, db_session, three) -> None:  # type: ignore[no-untyped-def]
+        user_id = _admin(db_session)
+        res = _call(
+            db_session, user_id, "post", "/canonical-products/bulk-set-category",
+            {"canonical_product_ids": [str(three[0].id)], "taxonomy_node_id": "  "},
+        )
+        assert res.status_code == 422
+
+
+class TestBulkSuggestions:
+    @pytest.fixture
+    def leaf(self, db_session):  # type: ignore[no-untyped-def]
+        parent = TaxonomyNodeModel(name="Despensa BSug", level=0, market_id=MARKET, parent_id=None)
+        db_session.add(parent)
+        db_session.flush()
+        node = TaxonomyNodeModel(
+            name="Chinola", level=1, market_id=MARKET, parent_id=parent.id
+        )
+        db_session.add(node)
+        db_session.flush()
+        return node
+
+    def test_it_suggests_the_leaf_that_the_whole_set_points_at(self, db_session, leaf) -> None:  # type: ignore[no-untyped-def]
+        rows = []
+        for i in range(2):
+            cp = CanonicalProductModel(
+                slug=f"chinola-bulk-{i}", name=f"Chinola Bulk {i}",
+                size_amount=Decimal("1"), size_measure="count", market_id=MARKET,
+            )
+            db_session.add(cp)
+            rows.append(cp)
+        db_session.flush()
+        user_id = _admin(db_session)
+
+        res = _call(
+            db_session, user_id, "post", "/canonical-products/bulk-category-suggestions",
+            {"canonical_product_ids": [str(c.id) for c in rows]},
+        )
+
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["suggestions"][0]["taxonomy_node_id"] == str(leaf.id)
+        assert body["suggestions"][0]["product_count"] == 2
+        assert body["heterogeneous"] is False
+        assert body["selected_count"] == 2
+
+    def test_it_reports_how_many_have_no_signal(self, db_session, leaf) -> None:  # type: ignore[no-untyped-def]
+        cp = CanonicalProductModel(
+            slug="zzz-bulk-sin-senal", name="Zzz Bulk Sin Senal",
+            size_amount=Decimal("1"), size_measure="count", market_id=MARKET,
+        )
+        db_session.add(cp)
+        db_session.flush()
+        user_id = _admin(db_session)
+
+        res = _call(
+            db_session, user_id, "post", "/canonical-products/bulk-category-suggestions",
+            {"canonical_product_ids": [str(cp.id)]},
+        )
+
+        assert res.json()["without_signal"] == 1
+        assert res.json()["suggestions"] == []

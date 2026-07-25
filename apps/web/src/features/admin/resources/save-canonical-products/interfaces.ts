@@ -15,6 +15,8 @@ import type { CanonicalProductsParams } from "./lib/canonical-products-params";
 export interface CanonicalProductsData {
   list: AdminCanonicalProductListDto;
   params: CanonicalProductsParams;
+  /** Hojas de taxonomía para el picker de la asignación en lote (US-CP-L10). */
+  taxonomyLeaves?: TaxonomyLeafDto[];
   locale?: Locale;
 }
 

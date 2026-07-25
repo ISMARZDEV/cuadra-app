@@ -11,7 +11,7 @@ auditaba el target equivocado.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from src.shared.money import primary_currency_for_market
@@ -26,6 +26,10 @@ from ..domain.canonical_catalog import (
     CanonicalQualityStatus,
     derive_completeness_score,
     derive_quality_statuses,
+)
+from ..domain.canonical_bulk_category import (
+    BulkCategoryAdvice,
+    aggregate_category_suggestions,
 )
 from ..domain.canonical_history import (
     CanonicalHistoryRange,
@@ -671,3 +675,95 @@ class SetCanonicalCategory:
             market_id=market_id, canonical_product_id=canonical_product_id
         )
         return (row, previous.category) if row is not None else None
+
+
+class SuggestBulkCategories:
+    """Sugerencias sobre un CONJUNTO de canónicos + advertencia de heterogeneidad (US-CP-L10).
+
+    El índice léxico se arma UNA vez para todo el lote, no por producto: son 120 hojas y un dict,
+    y rearmarlo N veces sería trabajo idéntico repetido.
+    """
+
+    def __init__(self, catalog_repo, taxonomy_repo) -> None:  # type: ignore[no-untyped-def]
+        self._catalog = catalog_repo
+        self._taxonomy = taxonomy_repo
+
+    def execute(
+        self, *, market_id: str, canonical_product_ids: list[str], limit: int = 5
+    ) -> tuple[BulkCategoryAdvice, dict[str, str]]:
+        """`(consejo del lote, nombres de las hojas)`."""
+        tree = self._taxonomy.list_tree(market_id)
+        leaves = [(child.id, child.name) for root in tree for child in root.children]
+        index = build_lexicon_index(leaves)
+
+        per_product: dict[str, list] = {}
+        for product_id in canonical_product_ids:
+            row = self._catalog.get_catalog_row(
+                market_id=market_id, canonical_product_id=product_id
+            )
+            # Un id inexistente no rompe el lote: simplemente no aporta señal.
+            per_product[product_id] = (
+                lexicon_suggestions(row.name, index, brand=row.brand, limit=limit)
+                if row is not None
+                else []
+            )
+
+        return aggregate_category_suggestions(per_product, limit=limit), dict(leaves)
+
+
+@dataclass(frozen=True, slots=True)
+class BulkCategoryFailure:
+    canonical_product_id: str
+    error: str
+
+
+@dataclass(frozen=True, slots=True)
+class BulkCategoryResult:
+    succeeded: list[str] = field(default_factory=list)
+    failed: list[BulkCategoryFailure] = field(default_factory=list)
+    category_name: str | None = None
+
+
+class BulkSetCanonicalCategory:
+    """Asigna una categoría a N canónicos (US-CP-L10).
+
+    Cada fila va en su propio SAVEPOINT y se registra INDIVIDUALMENTE como decisión humana: el
+    SDD lo pide explícito. Un id inexistente no puede arrastrar ni silenciar a los demás — se
+    reporta éxito parcial, que es lo que el operador necesita para saber qué reintentar.
+    """
+
+    def __init__(self, setter: SetCanonicalCategory, session) -> None:  # type: ignore[no-untyped-def]
+        self._setter = setter
+        self._s = session
+
+    def execute(
+        self, *, market_id: str, canonical_product_ids: list[str], taxonomy_node_id: str
+    ) -> BulkCategoryResult:
+        succeeded: list[str] = []
+        failed: list[BulkCategoryFailure] = []
+        category_name: str | None = None
+
+        for product_id in canonical_product_ids:
+            try:
+                with self._s.begin_nested():
+                    result = self._setter.execute(
+                        market_id=market_id,
+                        canonical_product_id=product_id,
+                        taxonomy_node_id=taxonomy_node_id,
+                    )
+                if result is None:
+                    failed.append(
+                        BulkCategoryFailure(product_id, "Producto canónico no encontrado.")
+                    )
+                    continue
+                row, _ = result
+                category_name = row.category
+                succeeded.append(product_id)
+            except Exception:  # noqa: BLE001 — la fila se reporta, el lote sigue
+                failed.append(
+                    BulkCategoryFailure(product_id, "No se pudo asignar la categoría.")
+                )
+
+        return BulkCategoryResult(
+            succeeded=succeeded, failed=failed, category_name=category_name
+        )
