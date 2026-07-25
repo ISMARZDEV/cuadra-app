@@ -752,7 +752,8 @@ type MessageKey =
   | "admin.canonicalProducts.archive.cancel"
   | "admin.canonicalProducts.archive.badge"
   | "admin.canonicalProducts.filters.includeArchived"
-  | "admin.canonicalProducts.form.description";
+  | "admin.canonicalProducts.form.description"
+  | "admin.nav.save.canonicalProducts";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1501,6 +1502,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.archive.badge": "Archivado",
     "admin.canonicalProducts.filters.includeArchived": "Mostrar archivados",
     "admin.canonicalProducts.form.description": "Descripción",
+    "admin.nav.save.canonicalProducts": "Productos canónicos",
   },
   en: {
     "nav.save": "Save",
@@ -2247,6 +2249,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.archive.badge": "Archived",
     "admin.canonicalProducts.filters.includeArchived": "Show archived",
     "admin.canonicalProducts.form.description": "Description",
+    "admin.nav.save.canonicalProducts": "Canonical products",
   },
   pt: {
     "nav.save": "Save",
@@ -2993,6 +2996,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.archive.badge": "Arquivado",
     "admin.canonicalProducts.filters.includeArchived": "Mostrar arquivados",
     "admin.canonicalProducts.form.description": "Descrição",
+    "admin.nav.save.canonicalProducts": "Produtos canônicos",
   },
 };
 
