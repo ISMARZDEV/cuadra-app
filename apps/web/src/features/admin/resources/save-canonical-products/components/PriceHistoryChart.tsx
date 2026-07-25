@@ -9,6 +9,9 @@ import { formatCatalogDate } from "../lib/format-date";
 
 // Paleta por serie. Fija y en orden: que una tienda cambie de color entre rangos haría imposible
 // seguirla de un vistazo.
+// Márgenes del área de dibujo. Constante de módulo: no dependen de nada del render.
+const PAD = { top: 16, right: 16, bottom: 28, left: 72 };
+
 const SERIES_COLORS = [
   "#1c614e",
   "#bbec6c",
@@ -70,7 +73,6 @@ export function PriceHistoryChart({
   const flat = maxPrice === minPrice;
   const W = 900;
   const H = flat ? 140 : 260;
-  const PAD = { top: 16, right: 16, bottom: 28, left: 72 };
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
 
