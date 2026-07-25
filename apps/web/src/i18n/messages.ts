@@ -637,7 +637,114 @@ type MessageKey =
   | "admin.sources.modal.probeBtn"
   | "admin.sources.modal.probeErrConfig"
   | "admin.sources.modal.probeErrUpstream"
-  | "admin.sources.modal.probeNoResults";
+  | "admin.sources.modal.probeNoResults"
+  | "admin.canonicalProducts.title"
+  | "admin.canonicalProducts.subtitle"
+  | "admin.canonicalProducts.search.aria"
+  | "admin.canonicalProducts.search.placeholder"
+  | "admin.canonicalProducts.empty"
+  | "admin.canonicalProducts.emptySearch"
+  | "admin.canonicalProducts.add"
+  | "admin.canonicalProducts.import"
+  | "admin.canonicalProducts.filters.button"
+  | "admin.canonicalProducts.filters.title"
+  | "admin.canonicalProducts.filters.clear"
+  | "admin.canonicalProducts.filters.apply"
+  | "admin.canonicalProducts.filters.quality"
+  | "admin.canonicalProducts.filters.ean"
+  | "admin.canonicalProducts.filters.minProviders"
+  | "admin.canonicalProducts.filters.minProvidersHint"
+  | "admin.canonicalProducts.filters.updatedSince"
+  | "admin.canonicalProducts.filters.all"
+  | "admin.canonicalProducts.filters.eanYes"
+  | "admin.canonicalProducts.filters.eanNo"
+  | "admin.canonicalProducts.col.image"
+  | "admin.canonicalProducts.col.product"
+  | "admin.canonicalProducts.col.brand"
+  | "admin.canonicalProducts.col.size"
+  | "admin.canonicalProducts.col.measure"
+  | "admin.canonicalProducts.col.category"
+  | "admin.canonicalProducts.col.providers"
+  | "admin.canonicalProducts.col.completeness"
+  | "admin.canonicalProducts.col.quality"
+  | "admin.canonicalProducts.col.lastPrice"
+  | "admin.canonicalProducts.col.actions"
+  | "admin.canonicalProducts.measure.mass"
+  | "admin.canonicalProducts.measure.volume"
+  | "admin.canonicalProducts.measure.count"
+  | "admin.canonicalProducts.status.complete"
+  | "admin.canonicalProducts.status.no_image"
+  | "admin.canonicalProducts.status.no_category"
+  | "admin.canonicalProducts.status.no_providers"
+  | "admin.canonicalProducts.status.no_quality"
+  | "admin.canonicalProducts.status.stale_price"
+  | "admin.canonicalProducts.status.possible_duplicate"
+  | "admin.canonicalProducts.statusHint.complete"
+  | "admin.canonicalProducts.statusHint.no_image"
+  | "admin.canonicalProducts.statusHint.no_category"
+  | "admin.canonicalProducts.statusHint.no_providers"
+  | "admin.canonicalProducts.statusHint.no_quality"
+  | "admin.canonicalProducts.statusHint.stale_price"
+  | "admin.canonicalProducts.statusHint.possible_duplicate"
+  | "admin.canonicalProducts.ean.reachable"
+  | "admin.canonicalProducts.ean.reachableHint"
+  | "admin.canonicalProducts.actions.menuLabel"
+  | "admin.canonicalProducts.actions.view"
+  | "admin.canonicalProducts.actions.edit"
+  | "admin.canonicalProducts.actions.providers"
+  | "admin.canonicalProducts.actions.public"
+  | "admin.canonicalProducts.actions.archive"
+  | "admin.canonicalProducts.actions.archiveBlocked"
+  | "admin.canonicalProducts.pagination.show"
+  | "admin.canonicalProducts.pagination.perPage"
+  | "admin.canonicalProducts.pagination.of"
+  | "admin.canonicalProducts.providers.title"
+  | "admin.canonicalProducts.providers.col.provider"
+  | "admin.canonicalProducts.providers.col.price"
+  | "admin.canonicalProducts.providers.col.lastSeen"
+  | "admin.canonicalProducts.providers.col.action"
+  | "admin.canonicalProducts.providers.cheapest"
+  | "admin.canonicalProducts.providers.open"
+  | "admin.canonicalProducts.providers.empty"
+  | "admin.canonicalProducts.providers.loading"
+  | "admin.canonicalProducts.form.name"
+  | "admin.canonicalProducts.form.brand"
+  | "admin.canonicalProducts.form.brandHint"
+  | "admin.canonicalProducts.form.amount"
+  | "admin.canonicalProducts.form.measure"
+  | "admin.canonicalProducts.form.displaySize"
+  | "admin.canonicalProducts.form.quality"
+  | "admin.canonicalProducts.form.imageUrl"
+  | "admin.canonicalProducts.form.cancel"
+  | "admin.canonicalProducts.create.title"
+  | "admin.canonicalProducts.create.subtitle"
+  | "admin.canonicalProducts.create.submit"
+  | "admin.canonicalProducts.create.submitting"
+  | "admin.canonicalProducts.create.error"
+  | "admin.canonicalProducts.edit.title"
+  | "admin.canonicalProducts.edit.subtitle"
+  | "admin.canonicalProducts.edit.submit"
+  | "admin.canonicalProducts.edit.submitting"
+  | "admin.canonicalProducts.edit.error"
+  | "admin.canonicalProducts.import.title"
+  | "admin.canonicalProducts.import.subtitle"
+  | "admin.canonicalProducts.import.step1"
+  | "admin.canonicalProducts.import.step2"
+  | "admin.canonicalProducts.import.step3"
+  | "admin.canonicalProducts.import.columns"
+  | "admin.canonicalProducts.import.placeholder"
+  | "admin.canonicalProducts.import.preview"
+  | "admin.canonicalProducts.import.back"
+  | "admin.canonicalProducts.import.confirm"
+  | "admin.canonicalProducts.import.confirming"
+  | "admin.canonicalProducts.import.valid"
+  | "admin.canonicalProducts.import.invalid"
+  | "admin.canonicalProducts.import.warnings"
+  | "admin.canonicalProducts.import.noValidRows"
+  | "admin.canonicalProducts.import.row"
+  | "admin.canonicalProducts.import.done"
+  | "admin.canonicalProducts.import.close"
+  | "admin.canonicalProducts.import.error";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1271,6 +1378,113 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.sources.modal.probeErrConfig": "Configuración inválida: {message}",
     "admin.sources.modal.probeErrUpstream": "La tienda no respondió: {message}",
     "admin.sources.modal.probeNoResults": "Sin resultados para esa query.",
+    "admin.canonicalProducts.title": "Productos Canónicos (Save)",
+    "admin.canonicalProducts.subtitle": "Catálogo canónico: qué existe, con cuántas tiendas está enlazado y qué le falta para estar completo.",
+    "admin.canonicalProducts.search.aria": "Buscar productos canónicos",
+    "admin.canonicalProducts.search.placeholder": "Buscar por nombre, marca o slug…",
+    "admin.canonicalProducts.empty": "Todavía no hay productos canónicos.",
+    "admin.canonicalProducts.emptySearch": "Ningún producto coincide con esa búsqueda.",
+    "admin.canonicalProducts.add": "Añadir canónico",
+    "admin.canonicalProducts.import": "Importar",
+    "admin.canonicalProducts.filters.button": "Filtros",
+    "admin.canonicalProducts.filters.title": "Filtrar catálogo",
+    "admin.canonicalProducts.filters.clear": "Limpiar",
+    "admin.canonicalProducts.filters.apply": "Aplicar",
+    "admin.canonicalProducts.filters.quality": "Estado",
+    "admin.canonicalProducts.filters.ean": "EAN",
+    "admin.canonicalProducts.filters.minProviders": "Cobertura mínima",
+    "admin.canonicalProducts.filters.minProvidersHint": "Sólo canónicos con al menos esta cantidad de tiendas enlazadas.",
+    "admin.canonicalProducts.filters.updatedSince": "Precio visto desde",
+    "admin.canonicalProducts.filters.all": "Todos",
+    "admin.canonicalProducts.filters.eanYes": "Con EAN",
+    "admin.canonicalProducts.filters.eanNo": "Sin EAN",
+    "admin.canonicalProducts.col.image": "Imagen",
+    "admin.canonicalProducts.col.product": "Producto",
+    "admin.canonicalProducts.col.brand": "Marca",
+    "admin.canonicalProducts.col.size": "Tamaño",
+    "admin.canonicalProducts.col.measure": "Unidad",
+    "admin.canonicalProducts.col.category": "Categoría",
+    "admin.canonicalProducts.col.providers": "Tiendas",
+    "admin.canonicalProducts.col.completeness": "Completitud",
+    "admin.canonicalProducts.col.quality": "Estado",
+    "admin.canonicalProducts.col.lastPrice": "Último precio",
+    "admin.canonicalProducts.col.actions": "Acciones",
+    "admin.canonicalProducts.measure.mass": "Masa",
+    "admin.canonicalProducts.measure.volume": "Volumen",
+    "admin.canonicalProducts.measure.count": "Unidades",
+    "admin.canonicalProducts.status.complete": "Completo",
+    "admin.canonicalProducts.status.no_image": "Sin imagen",
+    "admin.canonicalProducts.status.no_category": "Sin categoría",
+    "admin.canonicalProducts.status.no_providers": "Sin tiendas",
+    "admin.canonicalProducts.status.no_quality": "Sin calidad",
+    "admin.canonicalProducts.status.stale_price": "Precio viejo",
+    "admin.canonicalProducts.status.possible_duplicate": "Duplicado posible",
+    "admin.canonicalProducts.statusHint.complete": "No le falta nada: tiene imagen, categoría, calidad, tiendas enlazadas y precio fresco.",
+    "admin.canonicalProducts.statusHint.no_image": "Falta la imagen. Se puede tomar de una tienda enlazada desde el detalle.",
+    "admin.canonicalProducts.statusHint.no_category": "Sin categoría asignada: no aparece en el árbol de navegación público.",
+    "admin.canonicalProducts.statusHint.no_providers": "Ninguna tienda está enlazada a este canónico, así que no tiene precio que comparar.",
+    "admin.canonicalProducts.statusHint.no_quality": "Falta el nivel de calidad (premium, selecto…).",
+    "admin.canonicalProducts.statusHint.stale_price": "Ninguna corrida actualizó el precio de este producto en más de una semana.",
+    "admin.canonicalProducts.statusHint.possible_duplicate": "Otro canónico comparte EAN o marca y tamaño con este. Revisalo antes de que contamine las comparaciones.",
+    "admin.canonicalProducts.ean.reachable": "Alcanzable por EAN",
+    "admin.canonicalProducts.ean.reachableHint": "Al menos una tienda enlazada trae EAN: el matcheo por código de barras puede cubrirlo.",
+    "admin.canonicalProducts.actions.menuLabel": "Acciones del producto",
+    "admin.canonicalProducts.actions.view": "Ver detalle",
+    "admin.canonicalProducts.actions.edit": "Editar",
+    "admin.canonicalProducts.actions.providers": "Ver proveedores",
+    "admin.canonicalProducts.actions.public": "Ver página pública",
+    "admin.canonicalProducts.actions.archive": "Archivar",
+    "admin.canonicalProducts.actions.archiveBlocked": "Archivar todavía no está disponible: requiere una migración del modelo (archived_at).",
+    "admin.canonicalProducts.pagination.show": "Mostrar",
+    "admin.canonicalProducts.pagination.perPage": "por página",
+    "admin.canonicalProducts.pagination.of": "{from}–{to} de {total}",
+    "admin.canonicalProducts.providers.title": "Proveedores matcheados",
+    "admin.canonicalProducts.providers.col.provider": "Tienda",
+    "admin.canonicalProducts.providers.col.price": "Precio",
+    "admin.canonicalProducts.providers.col.lastSeen": "Actualizado",
+    "admin.canonicalProducts.providers.col.action": "Tienda online",
+    "admin.canonicalProducts.providers.cheapest": "Mejor precio",
+    "admin.canonicalProducts.providers.open": "Abrir",
+    "admin.canonicalProducts.providers.empty": "Ninguna tienda está enlazada a este producto.",
+    "admin.canonicalProducts.providers.loading": "Cargando…",
+    "admin.canonicalProducts.form.name": "Nombre",
+    "admin.canonicalProducts.form.brand": "Marca",
+    "admin.canonicalProducts.form.brandHint": "Se guarda en MAYÚSCULA para que no convivan variantes de la misma marca.",
+    "admin.canonicalProducts.form.amount": "Cantidad",
+    "admin.canonicalProducts.form.measure": "Unidad",
+    "admin.canonicalProducts.form.displaySize": "Tamaño de empaque",
+    "admin.canonicalProducts.form.quality": "Calidad",
+    "admin.canonicalProducts.form.imageUrl": "URL de imagen",
+    "admin.canonicalProducts.form.cancel": "Cancelar",
+    "admin.canonicalProducts.create.title": "Añadir producto canónico",
+    "admin.canonicalProducts.create.subtitle": "Nace sin tiendas enlazadas. El slug público se genera solo y no cambia después.",
+    "admin.canonicalProducts.create.submit": "Crear producto",
+    "admin.canonicalProducts.create.submitting": "Creando…",
+    "admin.canonicalProducts.create.error": "No se pudo crear el producto.",
+    "admin.canonicalProducts.edit.title": "Editar producto canónico",
+    "admin.canonicalProducts.edit.subtitle": "El slug público NO cambia al editar: es la dirección del producto y romperla rompería los enlaces compartidos.",
+    "admin.canonicalProducts.edit.submit": "Guardar cambios",
+    "admin.canonicalProducts.edit.submitting": "Guardando…",
+    "admin.canonicalProducts.edit.error": "No se pudieron guardar los cambios.",
+    "admin.canonicalProducts.import.title": "Importar canónicos",
+    "admin.canonicalProducts.import.subtitle": "Pegá el CSV, revisá qué va a pasar y recién ahí confirmá.",
+    "admin.canonicalProducts.import.step1": "1. Pegar",
+    "admin.canonicalProducts.import.step2": "2. Previsualizar",
+    "admin.canonicalProducts.import.step3": "3. Confirmar",
+    "admin.canonicalProducts.import.columns": "Columnas: name, brand, size_amount, size_measure, display_size, quality, image_url",
+    "admin.canonicalProducts.import.placeholder": "name,brand,size_amount,size_measure\nArroz Blanco,GOYA,5,mass",
+    "admin.canonicalProducts.import.preview": "Previsualizar",
+    "admin.canonicalProducts.import.back": "Volver",
+    "admin.canonicalProducts.import.confirm": "Importar {count}",
+    "admin.canonicalProducts.import.confirming": "Importando…",
+    "admin.canonicalProducts.import.valid": "{count} listas para importar",
+    "admin.canonicalProducts.import.invalid": "{count} con error",
+    "admin.canonicalProducts.import.warnings": "{count} avisos",
+    "admin.canonicalProducts.import.noValidRows": "Ninguna fila del archivo es válida. Corregí los errores y volvé a previsualizar.",
+    "admin.canonicalProducts.import.row": "Fila {n}",
+    "admin.canonicalProducts.import.done": "Se importaron {count} productos.",
+    "admin.canonicalProducts.import.close": "Cerrar",
+    "admin.canonicalProducts.import.error": "No se pudo procesar la importación.",
   },
   en: {
     "nav.save": "Save",
@@ -1902,6 +2116,113 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.sources.modal.probeErrConfig": "Invalid configuration: {message}",
     "admin.sources.modal.probeErrUpstream": "The store did not respond: {message}",
     "admin.sources.modal.probeNoResults": "No results for that query.",
+    "admin.canonicalProducts.title": "Canonical Products (Save)",
+    "admin.canonicalProducts.subtitle": "Canonical catalog: what exists, how many stores it is linked to, and what it needs to be complete.",
+    "admin.canonicalProducts.search.aria": "Search canonical products",
+    "admin.canonicalProducts.search.placeholder": "Search by name, brand or slug…",
+    "admin.canonicalProducts.empty": "No canonical products yet.",
+    "admin.canonicalProducts.emptySearch": "No product matches that search.",
+    "admin.canonicalProducts.add": "Add canonical",
+    "admin.canonicalProducts.import": "Import",
+    "admin.canonicalProducts.filters.button": "Filters",
+    "admin.canonicalProducts.filters.title": "Filter catalog",
+    "admin.canonicalProducts.filters.clear": "Clear",
+    "admin.canonicalProducts.filters.apply": "Apply",
+    "admin.canonicalProducts.filters.quality": "Status",
+    "admin.canonicalProducts.filters.ean": "EAN",
+    "admin.canonicalProducts.filters.minProviders": "Minimum coverage",
+    "admin.canonicalProducts.filters.minProvidersHint": "Only canonicals linked to at least this many stores.",
+    "admin.canonicalProducts.filters.updatedSince": "Price seen since",
+    "admin.canonicalProducts.filters.all": "All",
+    "admin.canonicalProducts.filters.eanYes": "With EAN",
+    "admin.canonicalProducts.filters.eanNo": "Without EAN",
+    "admin.canonicalProducts.col.image": "Image",
+    "admin.canonicalProducts.col.product": "Product",
+    "admin.canonicalProducts.col.brand": "Brand",
+    "admin.canonicalProducts.col.size": "Size",
+    "admin.canonicalProducts.col.measure": "Unit",
+    "admin.canonicalProducts.col.category": "Category",
+    "admin.canonicalProducts.col.providers": "Stores",
+    "admin.canonicalProducts.col.completeness": "Completeness",
+    "admin.canonicalProducts.col.quality": "Status",
+    "admin.canonicalProducts.col.lastPrice": "Last price",
+    "admin.canonicalProducts.col.actions": "Actions",
+    "admin.canonicalProducts.measure.mass": "Mass",
+    "admin.canonicalProducts.measure.volume": "Volume",
+    "admin.canonicalProducts.measure.count": "Count",
+    "admin.canonicalProducts.status.complete": "Complete",
+    "admin.canonicalProducts.status.no_image": "No image",
+    "admin.canonicalProducts.status.no_category": "No category",
+    "admin.canonicalProducts.status.no_providers": "No stores",
+    "admin.canonicalProducts.status.no_quality": "No quality",
+    "admin.canonicalProducts.status.stale_price": "Stale price",
+    "admin.canonicalProducts.status.possible_duplicate": "Possible duplicate",
+    "admin.canonicalProducts.statusHint.complete": "Nothing missing: it has an image, a category, quality, linked stores and a fresh price.",
+    "admin.canonicalProducts.statusHint.no_image": "Missing image. It can be taken from a linked store in the detail view.",
+    "admin.canonicalProducts.statusHint.no_category": "No category assigned: it does not show up in the public navigation tree.",
+    "admin.canonicalProducts.statusHint.no_providers": "No store is linked to this canonical, so there is no price to compare.",
+    "admin.canonicalProducts.statusHint.no_quality": "Missing the quality tier (premium, select…).",
+    "admin.canonicalProducts.statusHint.stale_price": "No run has refreshed this product's price in over a week.",
+    "admin.canonicalProducts.statusHint.possible_duplicate": "Another canonical shares an EAN or brand and size with this one. Review it before it pollutes comparisons.",
+    "admin.canonicalProducts.ean.reachable": "EAN-reachable",
+    "admin.canonicalProducts.ean.reachableHint": "At least one linked store carries an EAN: barcode matching can cover it.",
+    "admin.canonicalProducts.actions.menuLabel": "Product actions",
+    "admin.canonicalProducts.actions.view": "View detail",
+    "admin.canonicalProducts.actions.edit": "Edit",
+    "admin.canonicalProducts.actions.providers": "View providers",
+    "admin.canonicalProducts.actions.public": "View public page",
+    "admin.canonicalProducts.actions.archive": "Archive",
+    "admin.canonicalProducts.actions.archiveBlocked": "Archiving is not available yet: it requires a model migration (archived_at).",
+    "admin.canonicalProducts.pagination.show": "Show",
+    "admin.canonicalProducts.pagination.perPage": "per page",
+    "admin.canonicalProducts.pagination.of": "{from}–{to} of {total}",
+    "admin.canonicalProducts.providers.title": "Matched providers",
+    "admin.canonicalProducts.providers.col.provider": "Store",
+    "admin.canonicalProducts.providers.col.price": "Price",
+    "admin.canonicalProducts.providers.col.lastSeen": "Updated",
+    "admin.canonicalProducts.providers.col.action": "Online store",
+    "admin.canonicalProducts.providers.cheapest": "Best price",
+    "admin.canonicalProducts.providers.open": "Open",
+    "admin.canonicalProducts.providers.empty": "No store is linked to this product.",
+    "admin.canonicalProducts.providers.loading": "Loading…",
+    "admin.canonicalProducts.form.name": "Name",
+    "admin.canonicalProducts.form.brand": "Brand",
+    "admin.canonicalProducts.form.brandHint": "Stored in UPPERCASE so variants of the same brand do not coexist.",
+    "admin.canonicalProducts.form.amount": "Amount",
+    "admin.canonicalProducts.form.measure": "Unit",
+    "admin.canonicalProducts.form.displaySize": "Package size",
+    "admin.canonicalProducts.form.quality": "Quality",
+    "admin.canonicalProducts.form.imageUrl": "Image URL",
+    "admin.canonicalProducts.form.cancel": "Cancel",
+    "admin.canonicalProducts.create.title": "Add canonical product",
+    "admin.canonicalProducts.create.subtitle": "It starts with no linked stores. The public slug is generated once and never changes.",
+    "admin.canonicalProducts.create.submit": "Create product",
+    "admin.canonicalProducts.create.submitting": "Creating…",
+    "admin.canonicalProducts.create.error": "Could not create the product.",
+    "admin.canonicalProducts.edit.title": "Edit canonical product",
+    "admin.canonicalProducts.edit.subtitle": "The public slug does NOT change when editing: it is the product's address and breaking it would break shared links.",
+    "admin.canonicalProducts.edit.submit": "Save changes",
+    "admin.canonicalProducts.edit.submitting": "Saving…",
+    "admin.canonicalProducts.edit.error": "Could not save the changes.",
+    "admin.canonicalProducts.import.title": "Import canonicals",
+    "admin.canonicalProducts.import.subtitle": "Paste the CSV, review what will happen, and only then confirm.",
+    "admin.canonicalProducts.import.step1": "1. Paste",
+    "admin.canonicalProducts.import.step2": "2. Preview",
+    "admin.canonicalProducts.import.step3": "3. Confirm",
+    "admin.canonicalProducts.import.columns": "Columns: name, brand, size_amount, size_measure, display_size, quality, image_url",
+    "admin.canonicalProducts.import.placeholder": "name,brand,size_amount,size_measure\nWhite Rice,GOYA,5,mass",
+    "admin.canonicalProducts.import.preview": "Preview",
+    "admin.canonicalProducts.import.back": "Back",
+    "admin.canonicalProducts.import.confirm": "Import {count}",
+    "admin.canonicalProducts.import.confirming": "Importing…",
+    "admin.canonicalProducts.import.valid": "{count} ready to import",
+    "admin.canonicalProducts.import.invalid": "{count} with errors",
+    "admin.canonicalProducts.import.warnings": "{count} warnings",
+    "admin.canonicalProducts.import.noValidRows": "No row in the file is valid. Fix the errors and preview again.",
+    "admin.canonicalProducts.import.row": "Row {n}",
+    "admin.canonicalProducts.import.done": "{count} products were imported.",
+    "admin.canonicalProducts.import.close": "Close",
+    "admin.canonicalProducts.import.error": "Could not process the import.",
   },
   pt: {
     "nav.save": "Save",
@@ -2533,6 +2854,113 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.sources.modal.probeErrConfig": "Configuração inválida: {message}",
     "admin.sources.modal.probeErrUpstream": "A loja não respondeu: {message}",
     "admin.sources.modal.probeNoResults": "Sem resultados para essa query.",
+    "admin.canonicalProducts.title": "Produtos Canônicos (Save)",
+    "admin.canonicalProducts.subtitle": "Catálogo canônico: o que existe, com quantas lojas está vinculado e o que falta para estar completo.",
+    "admin.canonicalProducts.search.aria": "Buscar produtos canônicos",
+    "admin.canonicalProducts.search.placeholder": "Buscar por nome, marca ou slug…",
+    "admin.canonicalProducts.empty": "Ainda não há produtos canônicos.",
+    "admin.canonicalProducts.emptySearch": "Nenhum produto corresponde a essa busca.",
+    "admin.canonicalProducts.add": "Adicionar canônico",
+    "admin.canonicalProducts.import": "Importar",
+    "admin.canonicalProducts.filters.button": "Filtros",
+    "admin.canonicalProducts.filters.title": "Filtrar catálogo",
+    "admin.canonicalProducts.filters.clear": "Limpar",
+    "admin.canonicalProducts.filters.apply": "Aplicar",
+    "admin.canonicalProducts.filters.quality": "Estado",
+    "admin.canonicalProducts.filters.ean": "EAN",
+    "admin.canonicalProducts.filters.minProviders": "Cobertura mínima",
+    "admin.canonicalProducts.filters.minProvidersHint": "Somente canônicos vinculados a pelo menos esta quantidade de lojas.",
+    "admin.canonicalProducts.filters.updatedSince": "Preço visto desde",
+    "admin.canonicalProducts.filters.all": "Todos",
+    "admin.canonicalProducts.filters.eanYes": "Com EAN",
+    "admin.canonicalProducts.filters.eanNo": "Sem EAN",
+    "admin.canonicalProducts.col.image": "Imagem",
+    "admin.canonicalProducts.col.product": "Produto",
+    "admin.canonicalProducts.col.brand": "Marca",
+    "admin.canonicalProducts.col.size": "Tamanho",
+    "admin.canonicalProducts.col.measure": "Unidade",
+    "admin.canonicalProducts.col.category": "Categoria",
+    "admin.canonicalProducts.col.providers": "Lojas",
+    "admin.canonicalProducts.col.completeness": "Completude",
+    "admin.canonicalProducts.col.quality": "Estado",
+    "admin.canonicalProducts.col.lastPrice": "Último preço",
+    "admin.canonicalProducts.col.actions": "Ações",
+    "admin.canonicalProducts.measure.mass": "Massa",
+    "admin.canonicalProducts.measure.volume": "Volume",
+    "admin.canonicalProducts.measure.count": "Unidades",
+    "admin.canonicalProducts.status.complete": "Completo",
+    "admin.canonicalProducts.status.no_image": "Sem imagem",
+    "admin.canonicalProducts.status.no_category": "Sem categoria",
+    "admin.canonicalProducts.status.no_providers": "Sem lojas",
+    "admin.canonicalProducts.status.no_quality": "Sem qualidade",
+    "admin.canonicalProducts.status.stale_price": "Preço antigo",
+    "admin.canonicalProducts.status.possible_duplicate": "Possível duplicado",
+    "admin.canonicalProducts.statusHint.complete": "Não falta nada: tem imagem, categoria, qualidade, lojas vinculadas e preço recente.",
+    "admin.canonicalProducts.statusHint.no_image": "Falta a imagem. Pode ser obtida de uma loja vinculada na tela de detalhe.",
+    "admin.canonicalProducts.statusHint.no_category": "Sem categoria atribuída: não aparece na árvore de navegação pública.",
+    "admin.canonicalProducts.statusHint.no_providers": "Nenhuma loja está vinculada a este canônico, portanto não há preço para comparar.",
+    "admin.canonicalProducts.statusHint.no_quality": "Falta o nível de qualidade (premium, seleto…).",
+    "admin.canonicalProducts.statusHint.stale_price": "Nenhuma execução atualizou o preço deste produto em mais de uma semana.",
+    "admin.canonicalProducts.statusHint.possible_duplicate": "Outro canônico compartilha EAN ou marca e tamanho com este. Revise antes que contamine as comparações.",
+    "admin.canonicalProducts.ean.reachable": "Alcançável por EAN",
+    "admin.canonicalProducts.ean.reachableHint": "Pelo menos uma loja vinculada traz EAN: o matching por código de barras pode cobri-lo.",
+    "admin.canonicalProducts.actions.menuLabel": "Ações do produto",
+    "admin.canonicalProducts.actions.view": "Ver detalhe",
+    "admin.canonicalProducts.actions.edit": "Editar",
+    "admin.canonicalProducts.actions.providers": "Ver fornecedores",
+    "admin.canonicalProducts.actions.public": "Ver página pública",
+    "admin.canonicalProducts.actions.archive": "Arquivar",
+    "admin.canonicalProducts.actions.archiveBlocked": "Arquivar ainda não está disponível: requer uma migração do modelo (archived_at).",
+    "admin.canonicalProducts.pagination.show": "Mostrar",
+    "admin.canonicalProducts.pagination.perPage": "por página",
+    "admin.canonicalProducts.pagination.of": "{from}–{to} de {total}",
+    "admin.canonicalProducts.providers.title": "Fornecedores correspondidos",
+    "admin.canonicalProducts.providers.col.provider": "Loja",
+    "admin.canonicalProducts.providers.col.price": "Preço",
+    "admin.canonicalProducts.providers.col.lastSeen": "Atualizado",
+    "admin.canonicalProducts.providers.col.action": "Loja online",
+    "admin.canonicalProducts.providers.cheapest": "Melhor preço",
+    "admin.canonicalProducts.providers.open": "Abrir",
+    "admin.canonicalProducts.providers.empty": "Nenhuma loja está vinculada a este produto.",
+    "admin.canonicalProducts.providers.loading": "Carregando…",
+    "admin.canonicalProducts.form.name": "Nome",
+    "admin.canonicalProducts.form.brand": "Marca",
+    "admin.canonicalProducts.form.brandHint": "Salvo em MAIÚSCULA para que variantes da mesma marca não coexistam.",
+    "admin.canonicalProducts.form.amount": "Quantidade",
+    "admin.canonicalProducts.form.measure": "Unidade",
+    "admin.canonicalProducts.form.displaySize": "Tamanho da embalagem",
+    "admin.canonicalProducts.form.quality": "Qualidade",
+    "admin.canonicalProducts.form.imageUrl": "URL da imagem",
+    "admin.canonicalProducts.form.cancel": "Cancelar",
+    "admin.canonicalProducts.create.title": "Adicionar produto canônico",
+    "admin.canonicalProducts.create.subtitle": "Nasce sem lojas vinculadas. O slug público é gerado uma vez e não muda depois.",
+    "admin.canonicalProducts.create.submit": "Criar produto",
+    "admin.canonicalProducts.create.submitting": "Criando…",
+    "admin.canonicalProducts.create.error": "Não foi possível criar o produto.",
+    "admin.canonicalProducts.edit.title": "Editar produto canônico",
+    "admin.canonicalProducts.edit.subtitle": "O slug público NÃO muda ao editar: é o endereço do produto e quebrá-lo quebraria os links compartilhados.",
+    "admin.canonicalProducts.edit.submit": "Salvar alterações",
+    "admin.canonicalProducts.edit.submitting": "Salvando…",
+    "admin.canonicalProducts.edit.error": "Não foi possível salvar as alterações.",
+    "admin.canonicalProducts.import.title": "Importar canônicos",
+    "admin.canonicalProducts.import.subtitle": "Cole o CSV, revise o que vai acontecer e só então confirme.",
+    "admin.canonicalProducts.import.step1": "1. Colar",
+    "admin.canonicalProducts.import.step2": "2. Pré-visualizar",
+    "admin.canonicalProducts.import.step3": "3. Confirmar",
+    "admin.canonicalProducts.import.columns": "Colunas: name, brand, size_amount, size_measure, display_size, quality, image_url",
+    "admin.canonicalProducts.import.placeholder": "name,brand,size_amount,size_measure\nArroz Branco,GOYA,5,mass",
+    "admin.canonicalProducts.import.preview": "Pré-visualizar",
+    "admin.canonicalProducts.import.back": "Voltar",
+    "admin.canonicalProducts.import.confirm": "Importar {count}",
+    "admin.canonicalProducts.import.confirming": "Importando…",
+    "admin.canonicalProducts.import.valid": "{count} prontas para importar",
+    "admin.canonicalProducts.import.invalid": "{count} com erro",
+    "admin.canonicalProducts.import.warnings": "{count} avisos",
+    "admin.canonicalProducts.import.noValidRows": "Nenhuma linha do arquivo é válida. Corrija os erros e pré-visualize novamente.",
+    "admin.canonicalProducts.import.row": "Linha {n}",
+    "admin.canonicalProducts.import.done": "{count} produtos foram importados.",
+    "admin.canonicalProducts.import.close": "Fechar",
+    "admin.canonicalProducts.import.error": "Não foi possível processar a importação.",
   },
 };
 
