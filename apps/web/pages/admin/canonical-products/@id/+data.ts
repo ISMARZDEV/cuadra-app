@@ -4,6 +4,7 @@ import {
   listCanonicalProductDuplicates,
   listCanonicalProductEvidence,
   listCanonicalProductProviders,
+  listTaxonomyLeaves,
 } from "@cuadra/api-client";
 import { render } from "vike/abort";
 import type { PageContextServer } from "vike/types";
@@ -32,11 +33,13 @@ export async function data(pageContext: PageContextServer) {
   }
 
   // En paralelo: los tres paneles de sólo lectura del detalle.
-  const [providers, evidence, duplicates, auditLog] = await Promise.all([
+  const [providers, evidence, duplicates, auditLog, taxonomy] = await Promise.all([
     listCanonicalProductProviders({ client: apiClient, headers, path }),
     listCanonicalProductEvidence({ client: apiClient, headers, path }),
     listCanonicalProductDuplicates({ client: apiClient, headers, path }),
     listCanonicalProductAuditLog({ client: apiClient, headers, path }),
+    // Hojas de taxonomía para el selector de categoría del modal de edición (US-CP-D2).
+    listTaxonomyLeaves({ client: apiClient, headers }),
   ]);
 
   return {
@@ -45,6 +48,7 @@ export async function data(pageContext: PageContextServer) {
     evidence: evidence.data ?? [],
     duplicates: duplicates.data ?? [],
     auditLog: auditLog.data ?? [],
+    taxonomyLeaves: taxonomy.data?.leaves ?? [],
     ...shell,
   };
 }

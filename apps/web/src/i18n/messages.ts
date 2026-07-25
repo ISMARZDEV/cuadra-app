@@ -811,7 +811,24 @@ type MessageKey =
   | "admin.canonicalDetail.note.saved"
   | "admin.canonicalDetail.action.audit"
   | "admin.canonicalDetail.chart.loading"
-  | "admin.canonicalDetail.chart.error";
+  | "admin.canonicalDetail.chart.error"
+  | "admin.canonicalDetail.section.image"
+  | "admin.canonicalDetail.image.current"
+  | "admin.canonicalDetail.image.candidates"
+  | "admin.canonicalDetail.image.empty"
+  | "admin.canonicalDetail.image.none"
+  | "admin.canonicalDetail.image.use"
+  | "admin.canonicalDetail.image.inUse"
+  | "admin.canonicalDetail.image.hint"
+  | "admin.canonicalDetail.image.uploadBlocked"
+  | "admin.canonicalDetail.activity.by"
+  | "admin.canonicalDetail.activity.action.create"
+  | "admin.canonicalDetail.activity.action.import"
+  | "admin.canonicalDetail.activity.action.update"
+  | "admin.canonicalDetail.activity.action.archive"
+  | "admin.canonicalDetail.activity.action.unarchive"
+  | "admin.canonicalDetail.activity.action.note"
+  | "admin.canonicalDetail.activity.fields";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1619,6 +1636,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.action.audit": "Actividad",
     "admin.canonicalDetail.chart.loading": "Cargando histórico…",
     "admin.canonicalDetail.chart.error": "No se pudo cargar el histórico de precios. Reintentá en un momento.",
+    "admin.canonicalDetail.section.image": "Imagen del producto",
+    "admin.canonicalDetail.image.current": "Imagen actual",
+    "admin.canonicalDetail.image.candidates": "Tomar de una tienda",
+    "admin.canonicalDetail.image.empty": "Ninguna tienda enlazada trae imagen. Podés pegar una URL desde Editar.",
+    "admin.canonicalDetail.image.none": "Sin imagen",
+    "admin.canonicalDetail.image.use": "Usar esta",
+    "admin.canonicalDetail.image.inUse": "En uso",
+    "admin.canonicalDetail.image.hint": "Copia la URL de la tienda al canónico. No modifica el producto de la tienda.",
+    "admin.canonicalDetail.image.uploadBlocked": "Subir una imagen desde el ordenador requiere definir el almacenamiento de archivos.",
+    "admin.canonicalDetail.activity.by": "por",
+    "admin.canonicalDetail.activity.action.create": "Alta manual",
+    "admin.canonicalDetail.activity.action.import": "Importación masiva",
+    "admin.canonicalDetail.activity.action.update": "Edición",
+    "admin.canonicalDetail.activity.action.archive": "Archivado",
+    "admin.canonicalDetail.activity.action.unarchive": "Restaurado",
+    "admin.canonicalDetail.activity.action.note": "Nota interna",
+    "admin.canonicalDetail.activity.fields": "Campos:",
   },
   en: {
     "nav.save": "Save",
@@ -2424,6 +2458,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.action.audit": "Activity",
     "admin.canonicalDetail.chart.loading": "Loading history…",
     "admin.canonicalDetail.chart.error": "Could not load the price history. Try again in a moment.",
+    "admin.canonicalDetail.section.image": "Product image",
+    "admin.canonicalDetail.image.current": "Current image",
+    "admin.canonicalDetail.image.candidates": "Take from a store",
+    "admin.canonicalDetail.image.empty": "No linked store has an image. You can paste a URL from Edit.",
+    "admin.canonicalDetail.image.none": "No image",
+    "admin.canonicalDetail.image.use": "Use this",
+    "admin.canonicalDetail.image.inUse": "In use",
+    "admin.canonicalDetail.image.hint": "Copies the store URL onto the canonical. It does not modify the store product.",
+    "admin.canonicalDetail.image.uploadBlocked": "Uploading an image from your computer requires deciding on file storage.",
+    "admin.canonicalDetail.activity.by": "by",
+    "admin.canonicalDetail.activity.action.create": "Manual creation",
+    "admin.canonicalDetail.activity.action.import": "Bulk import",
+    "admin.canonicalDetail.activity.action.update": "Edit",
+    "admin.canonicalDetail.activity.action.archive": "Archived",
+    "admin.canonicalDetail.activity.action.unarchive": "Restored",
+    "admin.canonicalDetail.activity.action.note": "Internal note",
+    "admin.canonicalDetail.activity.fields": "Fields:",
   },
   pt: {
     "nav.save": "Save",
@@ -3229,6 +3280,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.action.audit": "Atividade",
     "admin.canonicalDetail.chart.loading": "Carregando histórico…",
     "admin.canonicalDetail.chart.error": "Não foi possível carregar o histórico de preços. Tente novamente em instantes.",
+    "admin.canonicalDetail.section.image": "Imagem do produto",
+    "admin.canonicalDetail.image.current": "Imagem atual",
+    "admin.canonicalDetail.image.candidates": "Pegar de uma loja",
+    "admin.canonicalDetail.image.empty": "Nenhuma loja vinculada tem imagem. Você pode colar uma URL em Editar.",
+    "admin.canonicalDetail.image.none": "Sem imagem",
+    "admin.canonicalDetail.image.use": "Usar esta",
+    "admin.canonicalDetail.image.inUse": "Em uso",
+    "admin.canonicalDetail.image.hint": "Copia a URL da loja para o canônico. Não modifica o produto da loja.",
+    "admin.canonicalDetail.image.uploadBlocked": "Enviar uma imagem do computador exige definir o armazenamento de arquivos.",
+    "admin.canonicalDetail.activity.by": "por",
+    "admin.canonicalDetail.activity.action.create": "Cadastro manual",
+    "admin.canonicalDetail.activity.action.import": "Importação em massa",
+    "admin.canonicalDetail.activity.action.update": "Edição",
+    "admin.canonicalDetail.activity.action.archive": "Arquivado",
+    "admin.canonicalDetail.activity.action.unarchive": "Restaurado",
+    "admin.canonicalDetail.activity.action.note": "Nota interna",
+    "admin.canonicalDetail.activity.fields": "Campos:",
   },
 };
 

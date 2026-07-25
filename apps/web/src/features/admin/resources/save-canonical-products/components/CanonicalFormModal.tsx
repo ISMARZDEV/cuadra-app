@@ -1,4 +1,4 @@
-import type { AdminCanonicalProductRowDto } from "@cuadra/api-client";
+import type { AdminCanonicalProductRowDto, TaxonomyLeafDto } from "@cuadra/api-client";
 import { Dialog } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -25,7 +25,11 @@ interface CanonicalFormModalProps {
   onClose: () => void;
   onSaved: () => void;
   t: (key: MessageKey) => string;
+  /** Hojas de la taxonomía para el selector de categoría. Vacío = el selector no se muestra. */
+  taxonomyLeaves?: TaxonomyLeafDto[];
 }
+
+const NO_CATEGORY = "none";
 
 const EMPTY = {
   name: "",
@@ -35,12 +39,20 @@ const EMPTY = {
   display_size: "",
   quality: "",
   image_url: "",
+  description: "",
+  taxonomy_node_id: NO_CATEGORY,
 };
 
 // Alta manual (US-CP-L7) y edición básica (US-CP-L5) comparten formulario a propósito: son los
 // MISMOS campos del canónico. Dos formularios distintos para la misma entidad terminan siempre
 // divergiendo en validaciones.
-export function CanonicalFormModal({ state, onClose, onSaved, t }: CanonicalFormModalProps) {
+export function CanonicalFormModal({
+  state,
+  onClose,
+  onSaved,
+  t,
+  taxonomyLeaves = [],
+}: CanonicalFormModalProps) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +71,8 @@ export function CanonicalFormModal({ state, onClose, onSaved, t }: CanonicalForm
         display_size: state.row.display_size ?? "",
         quality: state.row.quality ?? "",
         image_url: state.row.image_url ?? "",
+        description: state.row.description ?? "",
+        taxonomy_node_id: state.row.taxonomy_node_id ?? NO_CATEGORY,
       });
     } else {
       setForm(EMPTY);
@@ -84,6 +98,12 @@ export function CanonicalFormModal({ state, onClose, onSaved, t }: CanonicalForm
             quality: form.quality || null,
             display_size: form.display_size || null,
             image_url: form.image_url || null,
+            description: form.description || null,
+            // `clear_taxonomy` existe porque `null` ya significa "no cambiar": sin esta bandera
+            // no habría forma de SACARLE la categoría a un canónico.
+            taxonomy_node_id:
+              form.taxonomy_node_id === NO_CATEGORY ? null : form.taxonomy_node_id,
+            clear_taxonomy: form.taxonomy_node_id === NO_CATEGORY,
           } as never)
         : await createCanonicalProduct({
             name: form.name,
@@ -93,6 +113,9 @@ export function CanonicalFormModal({ state, onClose, onSaved, t }: CanonicalForm
             quality: form.quality || null,
             display_size: form.display_size || null,
             image_url: form.image_url || null,
+            description: form.description || null,
+            taxonomy_node_id:
+              form.taxonomy_node_id === NO_CATEGORY ? null : form.taxonomy_node_id,
           } as never);
 
       if (!result) {
@@ -207,6 +230,44 @@ export function CanonicalFormModal({ state, onClose, onSaved, t }: CanonicalForm
                     value={form.quality}
                     onChange={(e) => setForm({ ...form, quality: e.target.value })}
                     placeholder="premium"
+                  />
+                </Field>
+
+                {taxonomyLeaves.length > 0 ? (
+                  <Field
+                    label={t("admin.canonicalProducts.col.category")}
+                    className="col-span-2"
+                  >
+                    <Select
+                      value={form.taxonomy_node_id}
+                      onValueChange={(v) => setForm({ ...form, taxonomy_node_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_CATEGORY}>
+                          {t("admin.canonicalProducts.status.no_category")}
+                        </SelectItem>
+                        {taxonomyLeaves.map((leaf) => (
+                          <SelectItem key={leaf.id} value={leaf.id}>
+                            {leaf.top_name} › {leaf.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                ) : null}
+
+                <Field
+                  label={t("admin.canonicalProducts.form.description")}
+                  className="col-span-2"
+                >
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    rows={3}
+                    className="w-full rounded-xl border border-border bg-background p-2.5 text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-brand-lime focus-visible:outline-none"
                   />
                 </Field>
 

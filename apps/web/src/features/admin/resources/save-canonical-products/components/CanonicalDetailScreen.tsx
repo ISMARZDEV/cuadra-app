@@ -8,7 +8,9 @@ import {
   ArrowLeft,
   Barcode,
   Boxes,
+  Check,
   ExternalLink,
+  ImageOff,
   Pencil,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -38,10 +40,12 @@ import {
   archiveCanonicalProduct,
   getCanonicalProductHistory,
   unarchiveCanonicalProduct,
+  updateCanonicalProduct,
   updateInternalNote,
 } from "../api";
 import type { CanonicalDetailData } from "../interfaces";
 import { formatCatalogDate } from "../lib/format-date";
+import { toGtin14 } from "../lib/gtin";
 import {
   MEASURE_LABEL_KEY,
   QUALITY_HINT_KEY,
@@ -71,6 +75,7 @@ export function CanonicalDetailScreen() {
     evidence,
     duplicates,
     auditLog,
+    taxonomyLeaves = [],
     locale = DEFAULT_LOCALE,
   } = useData<CanonicalDetailData>();
   const { t } = useAdminI18n(locale);
@@ -127,6 +132,17 @@ export function CanonicalDetailScreen() {
     setBusy(false);
     setArchiveOpen(false);
   };
+
+  // US-CP-D3: copia la URL de la tienda al canónico. NO toca `store_product.image_url` — la
+  // imagen de la tienda es dato de ELLA; acá sólo se elige cuál representa al canónico.
+  const useProviderImage = async (imageUrl: string) => {
+    setBusy(true);
+    const updated = await updateCanonicalProduct(id, { image_url: imageUrl } as never);
+    if (updated) setProduct(updated);
+    setBusy(false);
+  };
+
+  const imageCandidates = providers.filter((p) => Boolean(p.store_product_image_url));
 
   const publicHref = product.slug ? `/${locale}/do/save/producto/${product.slug}` : null;
 
@@ -424,6 +440,91 @@ export function CanonicalDetailScreen() {
         ) : null}
       </Panel>
 
+      {/* ── Imagen del producto (US-CP-D3) ──────────────────────────────────── */}
+      <Panel title={t("admin.canonicalDetail.section.image")}>
+        <div className="flex flex-wrap gap-6">
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              {t("admin.canonicalDetail.image.current")}
+            </p>
+            {product.image_url ? (
+              <img
+                src={product.image_url}
+                alt=""
+                className="size-32 rounded-2xl border border-border object-cover"
+              />
+            ) : (
+              <div className="flex size-32 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-border text-muted-foreground">
+                <ImageOff className="size-6" aria-hidden="true" />
+                <span className="text-xs">{t("admin.canonicalDetail.image.none")}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-[16rem] flex-1 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              {t("admin.canonicalDetail.image.candidates")}
+            </p>
+            {imageCandidates.length === 0 ? (
+              <Empty>{t("admin.canonicalDetail.image.empty")}</Empty>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-3">
+                  {imageCandidates.map((p) => {
+                    const inUse = p.store_product_image_url === product.image_url;
+                    return (
+                      <div key={p.store_product_id} className="space-y-1.5">
+                        <img
+                          src={p.store_product_image_url ?? undefined}
+                          alt={p.provider_name}
+                          className={cn(
+                            "size-24 rounded-xl border-2 object-cover",
+                            inUse ? "border-brand-lime" : "border-border",
+                          )}
+                        />
+                        <p className="max-w-24 truncate text-xs text-muted-foreground">
+                          {p.provider_name}
+                        </p>
+                        <button
+                          type="button"
+                          disabled={inUse || busy}
+                          onClick={() =>
+                            p.store_product_image_url &&
+                            void useProviderImage(p.store_product_image_url)
+                          }
+                          className={cn(
+                            "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold",
+                            inUse
+                              ? "bg-brand-lime/30 text-brand-forest"
+                              : "bg-brand-lime text-brand-forest hover:bg-brand-lime/90",
+                            busy && "opacity-50",
+                          )}
+                        >
+                          {inUse ? <Check className="size-3" /> : null}
+                          {t(
+                            inUse
+                              ? "admin.canonicalDetail.image.inUse"
+                              : "admin.canonicalDetail.image.use",
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("admin.canonicalDetail.image.hint")}
+                </p>
+              </>
+            )}
+            {/* US-CP-D4: subir desde el ordenador queda BLOQUEADO hasta que exista una decisión
+                de storage. El SDD manda declararlo, no improvisar un upload sin destino. */}
+            <p className="text-xs text-muted-foreground/80 italic">
+              {t("admin.canonicalDetail.image.uploadBlocked")}
+            </p>
+          </div>
+        </div>
+      </Panel>
+
       {/* ── Evidencia ───────────────────────────────────────────────────────── */}
       <Panel title={t("admin.canonicalDetail.section.evidence")} count={evidence.length}>
         {evidence.length === 0 ? (
@@ -454,9 +555,11 @@ export function CanonicalDetailScreen() {
                         </span>
                       </div>
                     </TableCell>
+                    {/* GTIN-14 zero-padded: mostrar la forma cruda haría creer que dos tiendas
+                        no coinciden cuando en realidad tienen el MISMO código. */}
                     <TableCell className="font-mono text-xs">
                       <div className="flex flex-col">
-                        <span>{e.ean || "—"}</span>
+                        <span>{toGtin14(e.ean) ?? "—"}</span>
                         <span className="text-muted-foreground">{e.sku || "—"}</span>
                       </div>
                     </TableCell>
@@ -562,18 +665,33 @@ export function CanonicalDetailScreen() {
           {auditLog.length === 0 ? (
             <Empty>{t("admin.canonicalDetail.activity.empty")}</Empty>
           ) : (
-            <ol className="space-y-2">
-              {auditLog.map((e) => (
-                <li key={e.id} className="flex items-start gap-2 text-sm">
-                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brand-lime" />
-                  <div>
-                    <p className="font-medium">{e.action}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatCatalogDate(e.created_at, locale)}
-                    </p>
-                  </div>
-                </li>
-              ))}
+            <ol className="space-y-2.5">
+              {auditLog.map((e) => {
+                const changed = (e.payload_summary?.changed as string[] | undefined) ?? [];
+                return (
+                  <li key={e.id} className="flex items-start gap-2 text-sm">
+                    <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brand-lime" />
+                    <div className="min-w-0">
+                      <p className="font-medium">{auditActionLabel(e.action, t)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatCatalogDate(e.created_at, locale)}
+                        {e.actor_user_id ? (
+                          <>
+                            {" "}
+                            {t("admin.canonicalDetail.activity.by")}{" "}
+                            <span className="font-mono">{e.actor_user_id.slice(0, 8)}</span>
+                          </>
+                        ) : null}
+                      </p>
+                      {changed.length > 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          {t("admin.canonicalDetail.activity.fields")} {changed.join(", ")}
+                        </p>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           )}
         </Panel>
@@ -584,6 +702,7 @@ export function CanonicalDetailScreen() {
         onClose={() => setFormState(null)}
         onSaved={() => void navigate(`/admin/canonical-products/${id}`)}
         t={t}
+        taxonomyLeaves={taxonomyLeaves}
       />
 
       <ConfirmDialog
@@ -599,6 +718,22 @@ export function CanonicalDetailScreen() {
       />
     </div>
   );
+}
+
+/** El `action` del log es una clave técnica (`canonical_product.archive`). El operador necesita
+ * leer QUÉ pasó, no el identificador del evento. Una acción desconocida se muestra cruda en vez
+ * de desaparecer: si el backend agrega un evento nuevo, la actividad no puede quedar muda. */
+function auditActionLabel(action: string, t: (key: MessageKey) => string): string {
+  const map: Record<string, MessageKey> = {
+    "canonical_product.create": "admin.canonicalDetail.activity.action.create",
+    "canonical_product.import": "admin.canonicalDetail.activity.action.import",
+    "canonical_product.update": "admin.canonicalDetail.activity.action.update",
+    "canonical_product.archive": "admin.canonicalDetail.activity.action.archive",
+    "canonical_product.unarchive": "admin.canonicalDetail.activity.action.unarchive",
+    "canonical_product.internal_note": "admin.canonicalDetail.activity.action.note",
+  };
+  const key = map[action];
+  return key ? t(key) : action;
 }
 
 function Panel({
