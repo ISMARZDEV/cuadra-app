@@ -10,6 +10,8 @@ import {
   type ImportRequest,
   type UpdateCanonicalProductRequest,
   type AdminCanonicalAuditEventDto,
+  type CategorySuggestionDto,
+  type SlugPreviewDto,
   type AdminCanonicalPriceHistoryDto,
   archiveCanonicalProduct as archiveCanonicalProductRequest,
   commitCanonicalImport as commitCanonicalImportRequest,
@@ -21,6 +23,10 @@ import {
   listCanonicalProductAuditLog as listCanonicalProductAuditLogRequest,
   listCanonicalProducts as listCanonicalProductsRequest,
   previewCanonicalImport as previewCanonicalImportRequest,
+  previewCanonicalSlug as previewCanonicalSlugRequest,
+  regenerateCanonicalSlug as regenerateCanonicalSlugRequest,
+  setCanonicalCategory as setCanonicalCategoryRequest,
+  suggestCanonicalCategories as suggestCanonicalCategoriesRequest,
   unarchiveCanonicalProduct as unarchiveCanonicalProductRequest,
   updateCanonicalProduct as updateCanonicalProductRequest,
   updateInternalNote as updateInternalNoteRequest,
@@ -198,6 +204,56 @@ export async function updateInternalNote(
     headers: await authHeaders(),
     path: { canonical_product_id: canonicalProductId },
     body: { internal_note: note },
+  });
+  return res.data ?? null;
+}
+
+/** Qué slug tendría el canónico si se regenerara. No persiste nada (US-CP-D2b). */
+export async function previewCanonicalSlug(
+  canonicalProductId: string,
+): Promise<SlugPreviewDto | null> {
+  const res = await previewCanonicalSlugRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+  });
+  return res.data ?? null;
+}
+
+/** Acción EXPLÍCITA: editar el nombre nunca regenera el slug por su cuenta. */
+export async function regenerateCanonicalSlug(
+  canonicalProductId: string,
+): Promise<AdminCanonicalProductRowDto | null> {
+  const res = await regenerateCanonicalSlugRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+  });
+  return res.data ?? null;
+}
+
+/** Sugerencias deterministas del léxico (US-CP-D2c). Vacío = sin señal, usar el árbol. */
+export async function suggestCanonicalCategories(
+  canonicalProductId: string,
+): Promise<CategorySuggestionDto[] | null> {
+  const res = await suggestCanonicalCategoriesRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+  });
+  return res.data ?? null;
+}
+
+/** Asigna la categoría. Queda registrada como decisión HUMANA, no del clasificador. */
+export async function setCanonicalCategory(
+  canonicalProductId: string,
+  taxonomyNodeId: string,
+): Promise<AdminCanonicalProductRowDto | null> {
+  const res = await setCanonicalCategoryRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+    body: { taxonomy_node_id: taxonomyNodeId },
   });
   return res.data ?? null;
 }

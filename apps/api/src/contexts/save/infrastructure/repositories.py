@@ -432,21 +432,58 @@ class SqlCanonicalProductRepository:
         self._s.flush()
         return True
 
-    def _unique_slug(self, base: str, market_id: str) -> str:
-        """Slug único por-mercado: si `base` ya existe, sufija -2, -3… (invariante del catálogo)."""
+    def slug_candidate(self, canonical_product_id: str) -> tuple[str, str] | None:
+        """`(slug_actual, slug_que_tendría)` recalculado desde nombre/marca/tamaño (US-CP-D2b).
+
+        PURO respecto a la base: no escribe. Es lo que alimenta el preview con advertencia SEO —
+        el operador tiene que ver la URL nueva ANTES de romper la vieja.
+        """
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return None
+        m = self._s.get(CanonicalProductModel, pid)
+        if m is None:
+            return None
+        base = product_slug(m.name, self._brand_name(m.brand_id), m.display_size)
+        return m.slug, self._unique_slug(base, m.market_id, exclude_id=m.id)
+
+    def regenerate_slug(self, canonical_product_id: str) -> tuple[str, str] | None:
+        """Regenera el slug y devuelve `(viejo, nuevo)`. Acción EXPLÍCITA (US-CP-D2b): nunca la
+        dispara una edición de nombre, porque cambiar la llave pública rompe enlaces compartidos
+        y el canonical SEO en silencio."""
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return None
+        m = self._s.get(CanonicalProductModel, pid)
+        if m is None:
+            return None
+        old = m.slug
+        base = product_slug(m.name, self._brand_name(m.brand_id), m.display_size)
+        m.slug = self._unique_slug(base, m.market_id, exclude_id=m.id)
+        self._s.flush()
+        return old, m.slug
+
+    def _unique_slug(
+        self, base: str, market_id: str, *, exclude_id: uuid.UUID | None = None
+    ) -> str:
+        """Slug único por-mercado: si `base` ya existe, sufija -2, -3… (invariante del catálogo).
+
+        `exclude_id` es para REGENERAR: el slug que "ya existe" suele ser el del propio producto,
+        y sin excluirse a sí mismo regenerar sin haber cambiado nada renombraría `arroz-10-lb` a
+        `arroz-10-lb-2` — un cambio de URL pública a cambio de nada.
+        """
         base = base or "producto"
         candidate, n = base, 2
-        while (
-            self._s.scalars(
-                select(CanonicalProductModel.id).where(
-                    CanonicalProductModel.market_id == market_id,
-                    CanonicalProductModel.slug == candidate,
-                )
-            ).first()
-            is not None
-        ):
+        while True:
+            clash = select(CanonicalProductModel.id).where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.slug == candidate,
+            )
+            if exclude_id is not None:
+                clash = clash.where(CanonicalProductModel.id != exclude_id)
+            if self._s.scalars(clash).first() is None:
+                return candidate
             candidate, n = f"{base}-{n}", n + 1
-        return candidate
 
     def get_by_slug(self, slug: str, market_id: str) -> CanonicalProduct | None:
         # `archived_at IS NULL`: para el sitio público un canónico archivado NO EXISTE. Es la

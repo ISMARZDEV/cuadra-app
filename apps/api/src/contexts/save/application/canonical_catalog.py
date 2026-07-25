@@ -43,9 +43,15 @@ from ..domain.canonical_import import (
     normalize_brand,
     validate_import_row,
 )
+from ..domain.classification import CategoryClassification
 from ..domain.entities import CanonicalProduct
 from ..domain.history import PricePoint
 from ..domain.value_objects import Quantity, UnitMeasure
+from ..infrastructure.classification.lexicon import build_lexicon_index, lexicon_suggestions
+
+# Mismo vocabulario que `SetProductCategory`: lo que decide un humano NUNCA se registra como
+# decidido por el sistema.
+HUMAN_CATEGORY_METHOD = "human"
 
 
 class InvalidMeasureError(ValueError):
@@ -531,3 +537,137 @@ class CanonicalPriceHistory:
     range: str
     series: dict[str, list[PricePoint]]
     kpis: CanonicalPriceKpis
+
+
+# --------------------------------------------------------------------------------------- slug --
+
+
+class PreviewCanonicalSlug:
+    """Qué slug tendría el canónico si se regenerara (US-CP-D2b). No persiste nada.
+
+    Existe como paso aparte porque la regla del slug vive en el DOMINIO (`product_slug` + la
+    unicidad por mercado): replicarla en el cliente para "previsualizar" la duplicaría en dos
+    lenguajes y las dos copias divergirían al primer cambio.
+    """
+
+    def __init__(self, canonical_repo) -> None:  # type: ignore[no-untyped-def]
+        self._repo = canonical_repo
+
+    def execute(self, canonical_product_id: str) -> tuple[str, str] | None:
+        return self._repo.slug_candidate(canonical_product_id)
+
+
+class RegenerateCanonicalSlug:
+    """Regenera el slug público. ACCIÓN EXPLÍCITA — jamás un efecto de editar el nombre."""
+
+    def __init__(self, canonical_repo, catalog_repo) -> None:  # type: ignore[no-untyped-def]
+        self._canonical = canonical_repo
+        self._catalog = catalog_repo
+
+    def execute(
+        self, *, market_id: str, canonical_product_id: str
+    ) -> tuple[CanonicalCatalogRow, str, str] | None:
+        result = self._canonical.regenerate_slug(canonical_product_id)
+        if result is None:
+            return None
+        old, new = result
+        row = self._catalog.get_catalog_row(
+            market_id=market_id, canonical_product_id=canonical_product_id
+        )
+        if row is None:  # pragma: no cover
+            return None
+        return row, old, new
+
+
+# ---------------------------------------------------------------------------------- categoría --
+
+
+class SuggestCanonicalCategories:
+    """Hojas sugeridas para el canónico (US-CP-D2c).
+
+    Reusa el LÉXICO del clasificador ya construido — no diseña otra cascada. Corre sin embedder
+    ni juez a propósito: BGE-M3 vive en el grupo `ingestion` y NO está en la imagen de la API
+    (importarlo la reventaría al arrancar en producción). El léxico es determinista y no necesita
+    modelo, que es justamente por lo que el clasificador funciona del lado de la API.
+
+    Sin señal léxica devuelve `[]`: no inventar categoría es regla sagrada del módulo, y el árbol
+    completo queda como fallback.
+    """
+
+    def __init__(self, catalog_repo, taxonomy_repo) -> None:  # type: ignore[no-untyped-def]
+        self._catalog = catalog_repo
+        self._taxonomy = taxonomy_repo
+
+    def execute(
+        self, *, market_id: str, canonical_product_id: str, limit: int = 5
+    ) -> list[tuple[str, str, list[str], str]]:
+        """`[(taxonomy_node_id, nombre_hoja, tokens, señal)]`, más evidencia primero."""
+        row = self._catalog.get_catalog_row(
+            market_id=market_id, canonical_product_id=canonical_product_id
+        )
+        if row is None:
+            return []
+
+        tree = self._taxonomy.list_tree(market_id)
+        leaves = [(child.id, child.name) for root in tree for child in root.children]
+        names = dict(leaves)
+
+        return [
+            (s.taxonomy_node_id, names.get(s.taxonomy_node_id, ""), s.matched_tokens, s.signal)
+            for s in lexicon_suggestions(
+                row.name, build_lexicon_index(leaves), brand=row.brand, limit=limit
+            )
+        ]
+
+
+class SetCanonicalCategory:
+    """Asigna la categoría del canónico y REGISTRA que la decidió una persona (US-CP-D2c).
+
+    Escribe en dos lugares a propósito y no es duplicación:
+    - `canonical_product.taxonomy_node_id` es lo que leen el listado y el sitio público.
+    - `category_classification` con `method="human"` es el REGISTRO de quién decidió. Sin él, el
+      trabajo manual se contaría como acierto del clasificador y la métrica de auto-clasificación
+      dejaría de medir lo único que importa: si el pipeline se sostiene SIN nosotros.
+    """
+
+    def __init__(self, canonical_repo, catalog_repo, classifications) -> None:  # type: ignore[no-untyped-def]
+        self._canonical = canonical_repo
+        self._catalog = catalog_repo
+        self._classifications = classifications
+
+    def execute(
+        self, *, market_id: str, canonical_product_id: str, taxonomy_node_id: str
+    ) -> tuple[CanonicalCatalogRow, str | None] | None:
+        if not taxonomy_node_id.strip():
+            # "Sin categoría" NO se persiste como clasificación: la AUSENCIA de fila activa ya
+            # significa eso. Una fila `active` apuntando a nada afirmaría que sí sabemos.
+            raise ValueError("taxonomy_node_id es obligatorio para fijar una categoría")
+
+        previous = self._catalog.get_catalog_row(
+            market_id=market_id, canonical_product_id=canonical_product_id
+        )
+        if previous is None:
+            return None
+
+        updated = self._canonical.update_attributes(
+            canonical_product_id, taxonomy_node_id=taxonomy_node_id
+        )
+        if updated is None:
+            return None
+
+        self._classifications.save_active(
+            CategoryClassification(
+                id=str(uuid.uuid4()),
+                store_product_id=None,
+                canonical_product_id=canonical_product_id,
+                taxonomy_node_id=taxonomy_node_id,
+                confidence=1.0,
+                method=HUMAN_CATEGORY_METHOD,
+                status="active",
+            )
+        )
+
+        row = self._catalog.get_catalog_row(
+            market_id=market_id, canonical_product_id=canonical_product_id
+        )
+        return (row, previous.category) if row is not None else None

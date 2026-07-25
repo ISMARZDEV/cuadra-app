@@ -5,6 +5,7 @@ import type {
   AdminCanonicalProductListDto,
   AdminCanonicalProductRowDto,
   AdminCanonicalProviderPriceDto,
+  CategorySuggestionDto,
   TaxonomyLeafDto,
 } from "@cuadra/api-client";
 
@@ -25,5 +26,6 @@ export interface CanonicalDetailData {
   duplicates: AdminCanonicalDuplicateDto[];
   auditLog: AdminCanonicalAuditEventDto[];
   taxonomyLeaves: TaxonomyLeafDto[];
+  categorySuggestions: CategorySuggestionDto[];
   locale?: Locale;
 }

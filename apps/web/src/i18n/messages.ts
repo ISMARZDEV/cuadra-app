@@ -828,7 +828,24 @@ type MessageKey =
   | "admin.canonicalDetail.activity.action.archive"
   | "admin.canonicalDetail.activity.action.unarchive"
   | "admin.canonicalDetail.activity.action.note"
-  | "admin.canonicalDetail.activity.fields";
+  | "admin.canonicalDetail.activity.fields"
+  | "admin.canonicalDetail.slug.action"
+  | "admin.canonicalDetail.slug.title"
+  | "admin.canonicalDetail.slug.warning"
+  | "admin.canonicalDetail.slug.from"
+  | "admin.canonicalDetail.slug.to"
+  | "admin.canonicalDetail.slug.unchanged"
+  | "admin.canonicalDetail.slug.confirm"
+  | "admin.canonicalDetail.category.title"
+  | "admin.canonicalDetail.category.suggestions"
+  | "admin.canonicalDetail.category.suggestionsHint"
+  | "admin.canonicalDetail.category.noSuggestions"
+  | "admin.canonicalDetail.category.because"
+  | "admin.canonicalDetail.category.all"
+  | "admin.canonicalDetail.category.search"
+  | "admin.canonicalDetail.category.assign"
+  | "admin.canonicalDetail.category.current"
+  | "admin.canonicalDetail.category.signal.lexicon";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1653,6 +1670,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.activity.action.unarchive": "Restaurado",
     "admin.canonicalDetail.activity.action.note": "Nota interna",
     "admin.canonicalDetail.activity.fields": "Campos:",
+    "admin.canonicalDetail.slug.action": "Regenerar slug",
+    "admin.canonicalDetail.slug.title": "¿Regenerar el slug público?",
+    "admin.canonicalDetail.slug.warning": "El slug es la dirección pública del producto. Al cambiarlo, los enlaces ya compartidos y los resultados indexados en buscadores dejan de funcionar. No hay redirección automática.",
+    "admin.canonicalDetail.slug.from": "Actual",
+    "admin.canonicalDetail.slug.to": "Quedaría",
+    "admin.canonicalDetail.slug.unchanged": "El slug ya coincide con el nombre actual: regenerarlo no cambiaría nada.",
+    "admin.canonicalDetail.slug.confirm": "Regenerar",
+    "admin.canonicalDetail.category.title": "Categoría",
+    "admin.canonicalDetail.category.suggestions": "Sugerencias",
+    "admin.canonicalDetail.category.suggestionsHint": "Derivadas del léxico de la taxonomía. Sin IA generativa.",
+    "admin.canonicalDetail.category.noSuggestions": "Sin sugerencias para este nombre: elegí del árbol completo.",
+    "admin.canonicalDetail.category.because": "por",
+    "admin.canonicalDetail.category.all": "Árbol completo",
+    "admin.canonicalDetail.category.search": "Buscar categoría…",
+    "admin.canonicalDetail.category.assign": "Asignar",
+    "admin.canonicalDetail.category.current": "Actual",
+    "admin.canonicalDetail.category.signal.lexicon": "léxico",
   },
   en: {
     "nav.save": "Save",
@@ -2475,6 +2509,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.activity.action.unarchive": "Restored",
     "admin.canonicalDetail.activity.action.note": "Internal note",
     "admin.canonicalDetail.activity.fields": "Fields:",
+    "admin.canonicalDetail.slug.action": "Regenerate slug",
+    "admin.canonicalDetail.slug.title": "Regenerate the public slug?",
+    "admin.canonicalDetail.slug.warning": "The slug is the product's public address. Changing it breaks already-shared links and indexed search results. There is no automatic redirect.",
+    "admin.canonicalDetail.slug.from": "Current",
+    "admin.canonicalDetail.slug.to": "Would become",
+    "admin.canonicalDetail.slug.unchanged": "The slug already matches the current name: regenerating would change nothing.",
+    "admin.canonicalDetail.slug.confirm": "Regenerate",
+    "admin.canonicalDetail.category.title": "Category",
+    "admin.canonicalDetail.category.suggestions": "Suggestions",
+    "admin.canonicalDetail.category.suggestionsHint": "Derived from the taxonomy lexicon. No generative AI.",
+    "admin.canonicalDetail.category.noSuggestions": "No suggestions for this name: pick from the full tree.",
+    "admin.canonicalDetail.category.because": "because of",
+    "admin.canonicalDetail.category.all": "Full tree",
+    "admin.canonicalDetail.category.search": "Search category…",
+    "admin.canonicalDetail.category.assign": "Assign",
+    "admin.canonicalDetail.category.current": "Current",
+    "admin.canonicalDetail.category.signal.lexicon": "lexicon",
   },
   pt: {
     "nav.save": "Save",
@@ -3297,6 +3348,23 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.activity.action.unarchive": "Restaurado",
     "admin.canonicalDetail.activity.action.note": "Nota interna",
     "admin.canonicalDetail.activity.fields": "Campos:",
+    "admin.canonicalDetail.slug.action": "Regenerar slug",
+    "admin.canonicalDetail.slug.title": "Regenerar o slug público?",
+    "admin.canonicalDetail.slug.warning": "O slug é o endereço público do produto. Alterá-lo quebra os links já compartilhados e os resultados indexados. Não há redirecionamento automático.",
+    "admin.canonicalDetail.slug.from": "Atual",
+    "admin.canonicalDetail.slug.to": "Ficaria",
+    "admin.canonicalDetail.slug.unchanged": "O slug já corresponde ao nome atual: regenerar não mudaria nada.",
+    "admin.canonicalDetail.slug.confirm": "Regenerar",
+    "admin.canonicalDetail.category.title": "Categoria",
+    "admin.canonicalDetail.category.suggestions": "Sugestões",
+    "admin.canonicalDetail.category.suggestionsHint": "Derivadas do léxico da taxonomia. Sem IA generativa.",
+    "admin.canonicalDetail.category.noSuggestions": "Sem sugestões para este nome: escolha na árvore completa.",
+    "admin.canonicalDetail.category.because": "por",
+    "admin.canonicalDetail.category.all": "Árvore completa",
+    "admin.canonicalDetail.category.search": "Buscar categoria…",
+    "admin.canonicalDetail.category.assign": "Atribuir",
+    "admin.canonicalDetail.category.current": "Atual",
+    "admin.canonicalDetail.category.signal.lexicon": "léxico",
   },
 };
 

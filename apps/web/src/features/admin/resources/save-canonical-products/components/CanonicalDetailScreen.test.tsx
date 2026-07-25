@@ -13,6 +13,9 @@ vi.mock("../api", () => ({
   unarchiveCanonicalProduct: vi.fn(),
   updateCanonicalProduct: vi.fn(),
   updateInternalNote: vi.fn(),
+  previewCanonicalSlug: vi.fn(),
+  regenerateCanonicalSlug: vi.fn(),
+  setCanonicalCategory: vi.fn(),
 }));
 vi.mock("vike/client/router", () => ({ navigate: vi.fn() }));
 
@@ -96,6 +99,9 @@ const DATA: CanonicalDetailData = {
     },
   ],
   taxonomyLeaves: [{ id: "tax-1", name: "Arroz", top_name: "Granos", top_slug: "granos" }],
+  categorySuggestions: [
+    { taxonomy_node_id: "tax-1", name: "Arroz", matched_tokens: ["arroz"], signal: "lexicon" },
+  ],
   locale: "es",
 };
 

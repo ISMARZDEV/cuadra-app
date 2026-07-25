@@ -34,6 +34,10 @@ from src.api.composition_root import (
     get_list_canonical_products,
     get_list_canonical_providers,
     get_preview_canonical_import,
+    get_preview_canonical_slug,
+    get_regenerate_canonical_slug,
+    get_set_canonical_category,
+    get_suggest_canonical_categories,
     get_update_canonical_product,
     get_update_internal_note,
 )
@@ -54,6 +58,10 @@ from src.contexts.save.application.canonical_catalog import (
     ListCanonicalProducts,
     ListCanonicalProviders,
     PreviewCanonicalImport,
+    PreviewCanonicalSlug,
+    RegenerateCanonicalSlug,
+    SetCanonicalCategory,
+    SuggestCanonicalCategories,
     UpdateCanonicalProduct,
     UpdateInternalNote,
     derive_row_quality,
@@ -793,3 +801,143 @@ def list_canonical_product_audit_log(
             market_id=MARKET, canonical_product_id=canonical_product_id, limit=limit
         )
     ]
+
+
+class SlugPreviewDto(BaseModel):
+    """Preview de la regeneración de slug (US-CP-D2b).
+
+    `would_change=False` es la respuesta esperada cuando nadie editó nada: sirve para que la UI
+    no ofrezca una acción que cambiaría la URL pública a cambio de nada.
+    """
+
+    current_slug: str
+    new_slug: str
+    would_change: bool
+
+
+@catalog_router.get(
+    "/canonical-products/{canonical_product_id}/slug-preview", response_model=SlugPreviewDto
+)
+def preview_canonical_slug(
+    canonical_product_id: str,
+    use_case: PreviewCanonicalSlug = Depends(get_preview_canonical_slug),
+) -> SlugPreviewDto:
+    """Qué slug tendría el canónico si se regenerara. NO persiste nada.
+
+    La regla del slug vive en el dominio; replicarla en el cliente para previsualizar la
+    duplicaría en dos lenguajes y divergirían al primer cambio.
+    """
+    result = use_case.execute(canonical_product_id)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+    current, candidate = result
+    return SlugPreviewDto(
+        current_slug=current, new_slug=candidate, would_change=candidate != current
+    )
+
+
+@catalog_router.post(
+    "/canonical-products/{canonical_product_id}/regenerate-slug",
+    response_model=AdminCanonicalProductRowDto,
+)
+def regenerate_canonical_slug(
+    canonical_product_id: str,
+    use_case: RegenerateCanonicalSlug = Depends(get_regenerate_canonical_slug),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> AdminCanonicalProductRowDto:
+    """Regenera el slug público (US-CP-D2b). ACCIÓN EXPLÍCITA: editar el nombre NUNCA la dispara.
+
+    Se auditan `old_slug` y `new_slug` porque son el único rastro para saber a qué URL redirigir
+    cuando alguien reporte un enlace roto.
+    """
+    result = use_case.execute(market_id=MARKET, canonical_product_id=canonical_product_id)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+    row, old_slug, new_slug = result
+
+    audit.record(
+        "canonical_product.regenerate_slug",
+        "canonical_product",
+        row.canonical_product_id,
+        {"old_slug": old_slug, "new_slug": new_slug, "origin": "manual_admin"},
+    )
+    return AdminCanonicalProductRowDto.from_row(row)
+
+
+class CategorySuggestionDto(BaseModel):
+    """Una hoja propuesta CON su evidencia (US-CP-D2c).
+
+    `matched_tokens` no es decorativo: es la señal de origen que convierte la sugerencia en una
+    decisión informada en vez de una caja negra.
+    """
+
+    taxonomy_node_id: str
+    name: str
+    matched_tokens: list[str]
+    signal: str
+
+
+@catalog_router.get(
+    "/canonical-products/{canonical_product_id}/category-suggestions",
+    response_model=list[CategorySuggestionDto],
+)
+def suggest_canonical_categories(
+    canonical_product_id: str,
+    limit: int = Query(5, ge=1, le=10),
+    use_case: SuggestCanonicalCategories = Depends(get_suggest_canonical_categories),
+) -> list[CategorySuggestionDto]:
+    """Sugerencias de categoría del clasificador ya construido (US-CP-D2c).
+
+    Deterministas (léxico), sin IA generativa. Lista vacía = no hay señal, y el árbol completo es
+    el fallback: inventar una categoría es exactamente lo que el módulo tiene prohibido.
+    """
+    return [
+        CategorySuggestionDto(
+            taxonomy_node_id=node_id, name=name, matched_tokens=tokens, signal=signal
+        )
+        for node_id, name, tokens, signal in use_case.execute(
+            market_id=MARKET, canonical_product_id=canonical_product_id, limit=limit
+        )
+    ]
+
+
+class SetCategoryRequest(BaseModel):
+    taxonomy_node_id: str
+
+
+@catalog_router.patch(
+    "/canonical-products/{canonical_product_id}/category",
+    response_model=AdminCanonicalProductRowDto,
+)
+def set_canonical_category(
+    canonical_product_id: str,
+    body: SetCategoryRequest,
+    use_case: SetCanonicalCategory = Depends(get_set_canonical_category),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> AdminCanonicalProductRowDto:
+    """Asigna la categoría del canónico (US-CP-D2c). Queda registrada como decisión HUMANA."""
+    try:
+        result = use_case.execute(
+            market_id=MARKET,
+            canonical_product_id=canonical_product_id,
+            taxonomy_node_id=body.taxonomy_node_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+    row, old_category = result
+
+    audit.record(
+        "canonical_product.set_category",
+        "canonical_product",
+        row.canonical_product_id,
+        {
+            "old_category": old_category,
+            "new_category": row.category,
+            "method": "human",
+            "origin": "manual_admin",
+        },
+    )
+    return AdminCanonicalProductRowDto.from_row(row)

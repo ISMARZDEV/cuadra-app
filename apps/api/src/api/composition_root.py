@@ -50,6 +50,10 @@ from src.contexts.save.application.canonical_catalog import (
     ListCanonicalProducts,
     ListCanonicalProviders,
     PreviewCanonicalImport,
+    PreviewCanonicalSlug,
+    RegenerateCanonicalSlug,
+    SetCanonicalCategory,
+    SuggestCanonicalCategories,
     UpdateCanonicalProduct,
     UpdateInternalNote,
 )
@@ -782,3 +786,33 @@ def get_list_canonical_audit_log(
     session: Session = Depends(get_session),
 ) -> ListCanonicalAuditLog:
     return ListCanonicalAuditLog(SqlAdminAuditRepository(session))
+
+
+def get_preview_canonical_slug(session: Session = Depends(get_session)) -> PreviewCanonicalSlug:
+    return PreviewCanonicalSlug(SqlCanonicalProductRepository(session))
+
+
+def get_regenerate_canonical_slug(
+    session: Session = Depends(get_session),
+) -> RegenerateCanonicalSlug:
+    return RegenerateCanonicalSlug(
+        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+    )
+
+
+def get_suggest_canonical_categories(
+    session: Session = Depends(get_session),
+) -> SuggestCanonicalCategories:
+    """Sin embedder ni juez: el léxico es determinista y no necesita modelo — BGE-M3 no está en
+    la imagen de la API (mismo criterio que `get_bulk_classify_review`)."""
+    return SuggestCanonicalCategories(
+        SqlAdminCanonicalCatalogRepository(session), SqlTaxonomyRepository(session)
+    )
+
+
+def get_set_canonical_category(session: Session = Depends(get_session)) -> SetCanonicalCategory:
+    return SetCanonicalCategory(
+        SqlCanonicalProductRepository(session),
+        SqlAdminCanonicalCatalogRepository(session),
+        SqlCategoryClassificationRepository(session),
+    )

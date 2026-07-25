@@ -11,6 +11,7 @@ import {
   Check,
   ExternalLink,
   ImageOff,
+  Link2,
   Pencil,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -39,6 +40,9 @@ import { cn } from "@/lib/utils";
 import {
   archiveCanonicalProduct,
   getCanonicalProductHistory,
+  previewCanonicalSlug,
+  regenerateCanonicalSlug,
+  setCanonicalCategory,
   unarchiveCanonicalProduct,
   updateCanonicalProduct,
   updateInternalNote,
@@ -54,6 +58,7 @@ import {
   isQualityStatus,
 } from "../lib/quality-status";
 import { CanonicalFormModal, type CanonicalFormState } from "./CanonicalFormModal";
+import { CategoryPicker } from "./CategoryPicker";
 import { PriceHistoryChart } from "./PriceHistoryChart";
 
 const RANGES = ["15d", "1m", "3m", "6m", "1y", "all"] as const;
@@ -76,6 +81,7 @@ export function CanonicalDetailScreen() {
     duplicates,
     auditLog,
     taxonomyLeaves = [],
+    categorySuggestions = [],
     locale = DEFAULT_LOCALE,
   } = useData<CanonicalDetailData>();
   const { t } = useAdminI18n(locale);
@@ -84,6 +90,13 @@ export function CanonicalDetailScreen() {
   const [formState, setFormState] = useState<CanonicalFormState | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Regenerar slug SIEMPRE pasa por preview: el operador tiene que ver la URL nueva antes de
+  // romper la vieja, porque no hay redirección automática.
+  const [slugPreview, setSlugPreview] = useState<{
+    current_slug: string;
+    new_slug: string;
+    would_change: boolean;
+  } | null>(null);
 
   const [range, setRange] = useState<(typeof RANGES)[number]>("1m");
   const [history, setHistory] = useState<AdminCanonicalPriceHistoryDto | null>(null);
@@ -143,6 +156,26 @@ export function CanonicalDetailScreen() {
   };
 
   const imageCandidates = providers.filter((p) => Boolean(p.store_product_image_url));
+
+  const openSlugDialog = async () => {
+    const preview = await previewCanonicalSlug(id);
+    if (preview) setSlugPreview(preview as never);
+  };
+
+  const confirmRegenerateSlug = async () => {
+    setBusy(true);
+    const updated = await regenerateCanonicalSlug(id);
+    if (updated) setProduct(updated);
+    setBusy(false);
+    setSlugPreview(null);
+  };
+
+  const pickCategory = async (taxonomyNodeId: string) => {
+    setBusy(true);
+    const updated = await setCanonicalCategory(id, taxonomyNodeId);
+    if (updated) setProduct(updated);
+    setBusy(false);
+  };
 
   const publicHref = product.slug ? `/${locale}/do/save/producto/${product.slug}` : null;
 
@@ -241,6 +274,15 @@ export function CanonicalDetailScreen() {
               <ExternalLink className="size-4" />
               {t("admin.canonicalProducts.actions.public")}
             </a>
+            <Button
+              variant="outline"
+              onClick={() => void openSlugDialog()}
+              disabled={busy}
+              className="h-9 rounded-full"
+            >
+              <Link2 className="size-4" />
+              {t("admin.canonicalDetail.slug.action")}
+            </Button>
             <Button
               variant="outline"
               onClick={() => (archived ? void toggleArchive() : setArchiveOpen(true))}
@@ -438,6 +480,18 @@ export function CanonicalDetailScreen() {
             locale={locale}
           />
         ) : null}
+      </Panel>
+
+      {/* ── Categoría con sugerencias (US-CP-D2c) ───────────────────────────── */}
+      <Panel title={t("admin.canonicalDetail.category.title")}>
+        <CategoryPicker
+          currentId={product.taxonomy_node_id ?? null}
+          suggestions={categorySuggestions}
+          leaves={taxonomyLeaves}
+          onPick={(nodeId) => void pickCategory(nodeId)}
+          busy={busy}
+          t={t}
+        />
       </Panel>
 
       {/* ── Imagen del producto (US-CP-D3) ──────────────────────────────────── */}
@@ -704,6 +758,43 @@ export function CanonicalDetailScreen() {
         t={t}
         taxonomyLeaves={taxonomyLeaves}
       />
+
+      <ConfirmDialog
+        open={slugPreview !== null}
+        onOpenChange={(open) => !open && setSlugPreview(null)}
+        title={t("admin.canonicalDetail.slug.title")}
+        description={t("admin.canonicalDetail.slug.warning")}
+        confirmLabel={t("admin.canonicalDetail.slug.confirm")}
+        cancelLabel={t("admin.canonicalProducts.archive.cancel")}
+        onConfirm={() => void confirmRegenerateSlug()}
+        busy={busy}
+        // Sin cambios no hay nada que confirmar: dejar el botón activo invitaría a cambiar la
+        // URL pública a cambio de nada.
+        confirmDisabled={slugPreview?.would_change === false}
+        destructive
+      >
+        {slugPreview ? (
+          <div className="space-y-1.5 rounded-xl bg-muted/60 p-3 font-mono text-xs dark:bg-white/5">
+            <p>
+              <span className="font-sans text-muted-foreground">
+                {t("admin.canonicalDetail.slug.from")}:{" "}
+              </span>
+              {slugPreview.current_slug}
+            </p>
+            <p>
+              <span className="font-sans text-muted-foreground">
+                {t("admin.canonicalDetail.slug.to")}:{" "}
+              </span>
+              <span className="font-semibold">{slugPreview.new_slug}</span>
+            </p>
+            {!slugPreview.would_change ? (
+              <p className="font-sans text-muted-foreground">
+                {t("admin.canonicalDetail.slug.unchanged")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={archiveOpen}
