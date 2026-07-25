@@ -5,6 +5,7 @@ import type {
   AdminCanonicalProductListDto,
   AdminCanonicalProductRowDto,
   AdminCanonicalProviderPriceDto,
+  CanonicalImageDto,
   CategorySuggestionDto,
   TaxonomyLeafDto,
 } from "@cuadra/api-client";
@@ -29,5 +30,7 @@ export interface CanonicalDetailData {
   auditLog: AdminCanonicalAuditEventDto[];
   taxonomyLeaves: TaxonomyLeafDto[];
   categorySuggestions: CategorySuggestionDto[];
+  /** Galería ordenada; posición 1 = imagen pública. */
+  images: CanonicalImageDto[];
   locale?: Locale;
 }

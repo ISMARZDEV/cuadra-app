@@ -39,6 +39,7 @@ from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.canonical_catalog import (
+    AddCanonicalImage,
     ArchiveCanonicalProduct,
     BulkSetCanonicalCategory,
     CommitCanonicalImport,
@@ -48,11 +49,14 @@ from src.contexts.save.application.canonical_catalog import (
     ListCanonicalAuditLog,
     ListCanonicalDuplicates,
     ListCanonicalEvidence,
+    ListCanonicalImages,
     ListCanonicalProducts,
     ListCanonicalProviders,
     PreviewCanonicalImport,
     PreviewCanonicalSlug,
     RegenerateCanonicalSlug,
+    RemoveCanonicalImage,
+    ReorderCanonicalImages,
     SetCanonicalCategory,
     SuggestBulkCategories,
     SuggestCanonicalCategories,
@@ -112,6 +116,7 @@ from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlBasketQueryRepository,
     SqlAdminCanonicalCatalogRepository,
+    SqlCanonicalImageRepository,
     SqlCanonicalProductRepository,
     SqlCollectionRepository,
     SqlProviderRepository,
@@ -832,3 +837,21 @@ def get_bulk_set_canonical_category(
     """La Session entra al use case por los SAVEPOINTS: una fila que falla no puede arrastrar
     a las que ya se confirmaron en el mismo lote."""
     return BulkSetCanonicalCategory(get_set_canonical_category(session), session)
+
+
+def get_list_canonical_images(session: Session = Depends(get_session)) -> ListCanonicalImages:
+    return ListCanonicalImages(SqlCanonicalImageRepository(session))
+
+
+def get_add_canonical_image(session: Session = Depends(get_session)) -> AddCanonicalImage:
+    return AddCanonicalImage(SqlCanonicalImageRepository(session))
+
+
+def get_reorder_canonical_images(
+    session: Session = Depends(get_session),
+) -> ReorderCanonicalImages:
+    return ReorderCanonicalImages(SqlCanonicalImageRepository(session))
+
+
+def get_remove_canonical_image(session: Session = Depends(get_session)) -> RemoveCanonicalImage:
+    return RemoveCanonicalImage(SqlCanonicalImageRepository(session))

@@ -9,6 +9,9 @@ import { CanonicalDetailScreen } from "./CanonicalDetailScreen";
 const getHistory = vi.fn();
 vi.mock("../api", () => ({
   getCanonicalProductHistory: (...args: unknown[]) => getHistory(...args),
+  addCanonicalImage: vi.fn(),
+  reorderCanonicalImages: vi.fn(),
+  removeCanonicalImage: vi.fn(),
   archiveCanonicalProduct: vi.fn(),
   unarchiveCanonicalProduct: vi.fn(),
   updateCanonicalProduct: vi.fn(),
@@ -102,6 +105,7 @@ const DATA: CanonicalDetailData = {
   categorySuggestions: [
     { taxonomy_node_id: "tax-1", name: "Arroz", matched_tokens: ["arroz"], signal: "lexicon" },
   ],
+  images: [],
   locale: "es",
 };
 
@@ -162,14 +166,21 @@ describe("CanonicalDetailScreen", () => {
     expect(screen.getByText("Mismo EAN")).toBeInTheDocument();
   });
 
-  it("ofrece la imagen de la tienda como candidata cuando el canónico no tiene", async () => {
+  it("ofrece la imagen de la tienda como candidata de la galería", async () => {
     await renderDetail();
-    expect(screen.getByRole("button", { name: /Usar esta/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Agregar/ })).toBeInTheDocument();
   });
 
-  it("declara que subir imagen está bloqueado en vez de ofrecer un botón muerto", async () => {
+  it("con la galería vacía lo dice en vez de mostrar un hueco", async () => {
     await renderDetail();
-    expect(screen.getByText(/requiere definir el almacenamiento/i)).toBeInTheDocument();
+    expect(screen.getByText(/todavía no tiene imágenes/i)).toBeInTheDocument();
+  });
+
+  it("el botón de subir EXISTE aunque la función esté diferida", async () => {
+    // Esconderlo dejaría al operador buscando una función que sí vamos a tener; al tocarlo se
+    // explica por qué todavía no hace nada.
+    await renderDetail();
+    expect(screen.getByRole("button", { name: /Subir imagen/ })).toBeInTheDocument();
   });
 
   it("un histórico que falla lo dice en vez de dejar el panel en blanco", async () => {

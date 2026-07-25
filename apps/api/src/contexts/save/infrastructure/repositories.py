@@ -31,6 +31,7 @@ from ..domain.canonical_catalog import (
     CanonicalProviderPriceRow,
     CanonicalQualityStatus,
 )
+from ..domain.canonical_image import CanonicalImage
 from ..domain.canonical_import import normalize_amount_key
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
@@ -62,6 +63,7 @@ from .mappers import (
 from ..domain.admin_audit import AdminAuditEntry
 from .models import (
     AdminAuditLogModel,
+    CanonicalProductImageModel,
     AlertNotificationModel,
     BasketQueryModel,
     BrandModel,
@@ -2116,3 +2118,149 @@ def _as_int(condition):  # type: ignore[no-untyped-def]
     from sqlalchemy import Integer, case, cast
 
     return cast(case((condition, 1), else_=0), Integer)
+
+
+class DuplicateImageError(ValueError):
+    """Esa URL ya está en la galería. Dos posiciones con la misma foto no es una galería."""
+
+
+class SqlCanonicalImageRepository:
+    """Galería ORDENADA de imágenes del canónico (F5).
+
+    ⚠️ INVARIANTE que toda escritura mantiene: `canonical_product.image_url` = URL de la POSICIÓN
+    1 (o `NULL` si la galería quedó vacía). El sitio público lee esa columna — og:image, canonical,
+    tarjetas y rails — así que desincronizarla haría que el admin muestre una imagen y el público
+    otra, sin que nadie se entere hasta que un usuario lo reporte.
+
+    ⚠️ Reordenar NO puede actualizar posición por posición: `UNIQUE(canonical_product_id, position)`
+    choca a mitad de camino cuando dos filas comparten número. Se hace en DOS fases, pasando por
+    posiciones negativas (que ningún registro válido usa).
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def list_images(self, canonical_product_id: str) -> list[CanonicalImage]:
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return []
+        rows = self._s.scalars(
+            select(CanonicalProductImageModel)
+            .where(CanonicalProductImageModel.canonical_product_id == pid)
+            .order_by(CanonicalProductImageModel.position)
+        ).all()
+        return [
+            CanonicalImage(
+                id=str(m.id),
+                url=m.url,
+                position=m.position,
+                source_store_product_id=(
+                    str(m.source_store_product_id) if m.source_store_product_id else None
+                ),
+            )
+            for m in rows
+        ]
+
+    def add_image(
+        self,
+        canonical_product_id: str,
+        *,
+        url: str,
+        source_store_product_id: str | None = None,
+    ) -> CanonicalImage | None:
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None or self._s.get(CanonicalProductModel, pid) is None:
+            return None
+
+        existing = self.list_images(canonical_product_id)
+        if any(image.url == url for image in existing):
+            raise DuplicateImageError(url)
+
+        model = CanonicalProductImageModel(
+            canonical_product_id=pid,
+            url=url,
+            position=len(existing) + 1,  # se agrega al FINAL; el orden lo decide el operador
+            source_store_product_id=_parse_uuid(source_store_product_id or ""),
+        )
+        self._s.add(model)
+        self._s.flush()
+        self._sync_primary(pid)
+        return CanonicalImage(
+            id=str(model.id),
+            url=model.url,
+            position=model.position,
+            source_store_product_id=source_store_product_id,
+        )
+
+    def reorder(self, canonical_product_id: str, image_ids: list[str]) -> bool:
+        """Fija el orden. Exige la lista COMPLETA: mandar un subconjunto dejaría imágenes sin
+        posición, y adivinar dónde van sería inventar la decisión del operador."""
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return False
+        current = {image.id for image in self.list_images(canonical_product_id)}
+        if current != set(image_ids) or len(image_ids) != len(set(image_ids)):
+            return False
+
+        # Fase 1: a posiciones NEGATIVAS. Sin este paso intermedio, mover la 3 a la 1 choca con
+        # la que ya ocupa la 1 y la constraint aborta la transacción.
+        for index, image_id in enumerate(image_ids):
+            self._s.execute(
+                update(CanonicalProductImageModel)
+                .where(CanonicalProductImageModel.id == uuid.UUID(image_id))
+                .values(position=-(index + 1))
+            )
+        self._s.flush()
+        # Fase 2: al positivo definitivo.
+        for index, image_id in enumerate(image_ids):
+            self._s.execute(
+                update(CanonicalProductImageModel)
+                .where(CanonicalProductImageModel.id == uuid.UUID(image_id))
+                .values(position=index + 1)
+            )
+        self._s.flush()
+        self._sync_primary(pid)
+        return True
+
+    def remove_image(self, canonical_product_id: str, image_id: str) -> bool:
+        """Quita una imagen y COMPACTA el resto: un hueco (1, 3) haría que la "2da imagen" no
+        exista aunque haya dos fotos."""
+        pid = _parse_uuid(canonical_product_id)
+        iid = _parse_uuid(image_id)
+        if pid is None or iid is None:
+            return False
+        model = self._s.get(CanonicalProductImageModel, iid)
+        if model is None or model.canonical_product_id != pid:
+            return False
+
+        self._s.delete(model)
+        self._s.flush()
+
+        remaining = self.list_images(canonical_product_id)
+        # Reusar `reorder` haría el doble de escrituras; acá el orden relativo ya es el correcto
+        # y sólo hay que cerrar el hueco, siempre hacia ABAJO (nunca choca con una posición viva).
+        for index, image in enumerate(remaining):
+            if image.position != index + 1:
+                self._s.execute(
+                    update(CanonicalProductImageModel)
+                    .where(CanonicalProductImageModel.id == uuid.UUID(image.id))
+                    .values(position=index + 1)
+                )
+        self._s.flush()
+        self._sync_primary(pid)
+        return True
+
+    def _sync_primary(self, canonical_product_id: uuid.UUID) -> None:
+        """Espeja la posición 1 en `canonical_product.image_url` (o la vacía si no queda ninguna)."""
+        first = self._s.scalars(
+            select(CanonicalProductImageModel)
+            .where(CanonicalProductImageModel.canonical_product_id == canonical_product_id)
+            .order_by(CanonicalProductImageModel.position)
+            .limit(1)
+        ).first()
+        self._s.execute(
+            update(CanonicalProductModel)
+            .where(CanonicalProductModel.id == canonical_product_id)
+            .values(image_url=first.url if first else None)
+        )
+        self._s.flush()

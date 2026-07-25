@@ -1,6 +1,7 @@
 import {
   getCanonicalProduct,
   listCanonicalProductAuditLog,
+  listCanonicalImages,
   listCanonicalProductDuplicates,
   listCanonicalProductEvidence,
   listCanonicalProductProviders,
@@ -34,7 +35,8 @@ export async function data(pageContext: PageContextServer) {
   }
 
   // En paralelo: los tres paneles de sólo lectura del detalle.
-  const [providers, evidence, duplicates, auditLog, taxonomy, suggestions] = await Promise.all([
+  const [providers, evidence, duplicates, auditLog, taxonomy, suggestions, images] =
+    await Promise.all([
     listCanonicalProductProviders({ client: apiClient, headers, path }),
     listCanonicalProductEvidence({ client: apiClient, headers, path }),
     listCanonicalProductDuplicates({ client: apiClient, headers, path }),
@@ -44,6 +46,7 @@ export async function data(pageContext: PageContextServer) {
     // Sugerencias de categoría (US-CP-D2c): deterministas y baratas, así que viajan con el SSR
     // en vez de costar un request extra al abrir el picker.
     suggestCanonicalCategories({ client: apiClient, headers, path }),
+    listCanonicalImages({ client: apiClient, headers, path }),
   ]);
 
   return {
@@ -54,6 +57,7 @@ export async function data(pageContext: PageContextServer) {
     auditLog: auditLog.data ?? [],
     taxonomyLeaves: taxonomy.data?.leaves ?? [],
     categorySuggestions: suggestions.data ?? [],
+    images: images.data ?? [],
     ...shell,
   };
 }

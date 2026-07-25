@@ -859,7 +859,23 @@ type MessageKey =
   | "admin.canonicalProducts.bulk.done"
   | "admin.canonicalProducts.bulk.someFailed"
   | "admin.canonicalProducts.bulk.error"
-  | "admin.canonicalProducts.bulk.close";
+  | "admin.canonicalProducts.bulk.close"
+  | "admin.canonicalDetail.image.gallery"
+  | "admin.canonicalDetail.image.position"
+  | "admin.canonicalDetail.image.primary"
+  | "admin.canonicalDetail.image.emptyGallery"
+  | "admin.canonicalDetail.image.moveUp"
+  | "admin.canonicalDetail.image.moveDown"
+  | "admin.canonicalDetail.image.remove"
+  | "admin.canonicalDetail.image.fromStore"
+  | "admin.canonicalDetail.image.manual"
+  | "admin.canonicalDetail.image.add"
+  | "admin.canonicalDetail.image.added"
+  | "admin.canonicalDetail.image.candidatesHint"
+  | "admin.canonicalDetail.image.upload"
+  | "admin.canonicalDetail.image.uploadSoon"
+  | "admin.canonicalDetail.image.uploadSoonTitle"
+  | "admin.canonicalDetail.image.understood";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1715,6 +1731,22 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.bulk.someFailed": "{count} no se pudieron actualizar.",
     "admin.canonicalProducts.bulk.error": "No se pudo aplicar la asignación.",
     "admin.canonicalProducts.bulk.close": "Cerrar",
+    "admin.canonicalDetail.image.gallery": "Galería del canónico",
+    "admin.canonicalDetail.image.position": "{n}ª imagen",
+    "admin.canonicalDetail.image.primary": "Principal · la que ve el público",
+    "admin.canonicalDetail.image.emptyGallery": "Este canónico todavía no tiene imágenes. Tomá una de las tiendas de abajo.",
+    "admin.canonicalDetail.image.moveUp": "Subir una posición",
+    "admin.canonicalDetail.image.moveDown": "Bajar una posición",
+    "admin.canonicalDetail.image.remove": "Quitar de la galería",
+    "admin.canonicalDetail.image.fromStore": "De {name}",
+    "admin.canonicalDetail.image.manual": "URL manual",
+    "admin.canonicalDetail.image.add": "Agregar",
+    "admin.canonicalDetail.image.added": "Ya en la galería",
+    "admin.canonicalDetail.image.candidatesHint": "Copia la URL de la tienda al canónico. No modifica el producto de la tienda.",
+    "admin.canonicalDetail.image.upload": "Subir imagen",
+    "admin.canonicalDetail.image.uploadSoon": "Subir desde el ordenador todavía no está disponible: falta definir dónde se guardarán los archivos. Por ahora se toman de las tiendas o se pega una URL desde Editar.",
+    "admin.canonicalDetail.image.uploadSoonTitle": "Subida de imágenes: próximamente",
+    "admin.canonicalDetail.image.understood": "Entendido",
   },
   en: {
     "nav.save": "Save",
@@ -2568,6 +2600,22 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.bulk.someFailed": "{count} could not be updated.",
     "admin.canonicalProducts.bulk.error": "Could not apply the assignment.",
     "admin.canonicalProducts.bulk.close": "Close",
+    "admin.canonicalDetail.image.gallery": "Canonical gallery",
+    "admin.canonicalDetail.image.position": "Image {n}",
+    "admin.canonicalDetail.image.primary": "Primary · what the public sees",
+    "admin.canonicalDetail.image.emptyGallery": "This canonical has no images yet. Take one from the stores below.",
+    "admin.canonicalDetail.image.moveUp": "Move up one position",
+    "admin.canonicalDetail.image.moveDown": "Move down one position",
+    "admin.canonicalDetail.image.remove": "Remove from gallery",
+    "admin.canonicalDetail.image.fromStore": "From {name}",
+    "admin.canonicalDetail.image.manual": "Manual URL",
+    "admin.canonicalDetail.image.add": "Add",
+    "admin.canonicalDetail.image.added": "Already in the gallery",
+    "admin.canonicalDetail.image.candidatesHint": "Copies the store URL onto the canonical. It does not modify the store product.",
+    "admin.canonicalDetail.image.upload": "Upload image",
+    "admin.canonicalDetail.image.uploadSoon": "Uploading from your computer is not available yet: we still need to decide where files will be stored. For now, take them from the stores or paste a URL from Edit.",
+    "admin.canonicalDetail.image.uploadSoonTitle": "Image upload: coming soon",
+    "admin.canonicalDetail.image.understood": "Got it",
   },
   pt: {
     "nav.save": "Save",
@@ -3421,6 +3469,22 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.bulk.someFailed": "{count} não puderam ser atualizados.",
     "admin.canonicalProducts.bulk.error": "Não foi possível aplicar a atribuição.",
     "admin.canonicalProducts.bulk.close": "Fechar",
+    "admin.canonicalDetail.image.gallery": "Galeria do canônico",
+    "admin.canonicalDetail.image.position": "{n}ª imagem",
+    "admin.canonicalDetail.image.primary": "Principal · a que o público vê",
+    "admin.canonicalDetail.image.emptyGallery": "Este canônico ainda não tem imagens. Pegue uma das lojas abaixo.",
+    "admin.canonicalDetail.image.moveUp": "Subir uma posição",
+    "admin.canonicalDetail.image.moveDown": "Descer uma posição",
+    "admin.canonicalDetail.image.remove": "Remover da galeria",
+    "admin.canonicalDetail.image.fromStore": "De {name}",
+    "admin.canonicalDetail.image.manual": "URL manual",
+    "admin.canonicalDetail.image.add": "Adicionar",
+    "admin.canonicalDetail.image.added": "Já na galeria",
+    "admin.canonicalDetail.image.candidatesHint": "Copia a URL da loja para o canônico. Não modifica o produto da loja.",
+    "admin.canonicalDetail.image.upload": "Enviar imagem",
+    "admin.canonicalDetail.image.uploadSoon": "Enviar do computador ainda não está disponível: falta definir onde os arquivos serão guardados. Por enquanto, pegue das lojas ou cole uma URL em Editar.",
+    "admin.canonicalDetail.image.uploadSoonTitle": "Envio de imagens: em breve",
+    "admin.canonicalDetail.image.understood": "Entendido",
   },
 };
 

@@ -31,6 +31,7 @@ from ..domain.canonical_bulk_category import (
     BulkCategoryAdvice,
     aggregate_category_suggestions,
 )
+from ..domain.canonical_image import CanonicalImage
 from ..domain.canonical_history import (
     CanonicalHistoryRange,
     CanonicalPriceKpis,
@@ -767,3 +768,60 @@ class BulkSetCanonicalCategory:
         return BulkCategoryResult(
             succeeded=succeeded, failed=failed, category_name=category_name
         )
+
+
+# ---------------------------------------------------------------------------------- galería --
+
+
+class ListCanonicalImages:
+    """Galería ordenada del canónico (F5)."""
+
+    def __init__(self, image_repo) -> None:  # type: ignore[no-untyped-def]
+        self._repo = image_repo
+
+    def execute(self, canonical_product_id: str) -> list[CanonicalImage]:
+        return self._repo.list_images(canonical_product_id)
+
+
+class AddCanonicalImage:
+    """Agrega una imagen AL FINAL de la galería. El orden lo decide el operador después.
+
+    Tomarla de una tienda copia la URL al canónico y NO toca `store_product.image_url`: esa
+    imagen es dato de la tienda, y el canónico sólo elige cuál lo representa.
+    """
+
+    def __init__(self, image_repo) -> None:  # type: ignore[no-untyped-def]
+        self._repo = image_repo
+
+    def execute(
+        self,
+        *,
+        canonical_product_id: str,
+        url: str,
+        source_store_product_id: str | None = None,
+    ) -> CanonicalImage | None:
+        return self._repo.add_image(
+            canonical_product_id,
+            url=url,
+            source_store_product_id=source_store_product_id,
+        )
+
+
+class ReorderCanonicalImages:
+    """Fija el orden de la galería. La posición 1 pasa a ser la imagen pública."""
+
+    def __init__(self, image_repo) -> None:  # type: ignore[no-untyped-def]
+        self._repo = image_repo
+
+    def execute(self, *, canonical_product_id: str, image_ids: list[str]) -> bool:
+        return self._repo.reorder(canonical_product_id, image_ids)
+
+
+class RemoveCanonicalImage:
+    """Quita una imagen y compacta el resto. Si era la primera, la siguiente pasa a ser pública."""
+
+    def __init__(self, image_repo) -> None:  # type: ignore[no-untyped-def]
+        self._repo = image_repo
+
+    def execute(self, *, canonical_product_id: str, image_id: str) -> bool:
+        return self._repo.remove_image(canonical_product_id, image_id)

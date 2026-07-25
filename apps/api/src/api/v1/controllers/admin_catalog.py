@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from src.api.composition_root import (
+    get_add_canonical_image,
     get_archive_canonical_product,
     get_bulk_set_canonical_category,
     get_canonical_price_history,
@@ -32,11 +33,14 @@ from src.api.composition_root import (
     get_list_canonical_audit_log,
     get_list_canonical_duplicates,
     get_list_canonical_evidence,
+    get_list_canonical_images,
     get_list_canonical_products,
     get_list_canonical_providers,
     get_preview_canonical_import,
     get_preview_canonical_slug,
     get_regenerate_canonical_slug,
+    get_remove_canonical_image,
+    get_reorder_canonical_images,
     get_set_canonical_category,
     get_suggest_bulk_categories,
     get_suggest_canonical_categories,
@@ -47,6 +51,7 @@ from src.api.extensions.security import require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
 from src.contexts.save.application.admin_audit_recorder import AdminAuditRecorder
 from src.contexts.save.application.canonical_catalog import (
+    AddCanonicalImage,
     ArchiveCanonicalProduct,
     BulkSetCanonicalCategory,
     CommitCanonicalImport,
@@ -58,11 +63,14 @@ from src.contexts.save.application.canonical_catalog import (
     ListCanonicalAuditLog,
     ListCanonicalDuplicates,
     ListCanonicalEvidence,
+    ListCanonicalImages,
     ListCanonicalProducts,
     ListCanonicalProviders,
     PreviewCanonicalImport,
     PreviewCanonicalSlug,
     RegenerateCanonicalSlug,
+    RemoveCanonicalImage,
+    ReorderCanonicalImages,
     SetCanonicalCategory,
     SuggestBulkCategories,
     SuggestCanonicalCategories,
@@ -77,6 +85,7 @@ from src.contexts.save.domain.canonical_catalog import (
     CanonicalQualityStatus,
 )
 from src.contexts.save.domain.canonical_import import ImportRowInput
+from src.contexts.save.infrastructure.repositories import DuplicateImageError
 
 from .admin_save import get_admin_audit
 
@@ -1067,3 +1076,159 @@ def bulk_set_canonical_category(
         failed_count=len(result.failed),
         category_name=result.category_name,
     )
+
+
+class CanonicalImageDto(BaseModel):
+    """Una imagen de la galería. `position` 1 = la que ve el público."""
+
+    id: str
+    url: str
+    position: int
+    source_store_product_id: str | None = None
+    is_primary: bool = False
+
+
+class AddImageRequest(BaseModel):
+    url: str = Field(min_length=1)
+    source_store_product_id: str | None = None
+
+
+class ReorderImagesRequest(BaseModel):
+    """Lista COMPLETA de ids en el orden deseado. Un subconjunto dejaría imágenes sin posición."""
+
+    image_ids: list[str]
+
+
+@catalog_router.get(
+    "/canonical-products/{canonical_product_id}/images",
+    response_model=list[CanonicalImageDto],
+)
+def list_canonical_images(
+    canonical_product_id: str,
+    use_case: ListCanonicalImages = Depends(get_list_canonical_images),
+) -> list[CanonicalImageDto]:
+    """Galería ordenada (1ra, 2da, 3ra…) del canónico."""
+    return [
+        CanonicalImageDto(
+            id=i.id,
+            url=i.url,
+            position=i.position,
+            source_store_product_id=i.source_store_product_id,
+            is_primary=i.is_primary,
+        )
+        for i in use_case.execute(canonical_product_id)
+    ]
+
+
+@catalog_router.post(
+    "/canonical-products/{canonical_product_id}/images",
+    response_model=CanonicalImageDto,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_canonical_image(
+    canonical_product_id: str,
+    body: AddImageRequest,
+    use_case: AddCanonicalImage = Depends(get_add_canonical_image),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> CanonicalImageDto:
+    """Agrega una imagen al FINAL de la galería (US-CP-D3/D4b).
+
+    Si es la primera, pasa a ser la imagen pública. Tomarla de una tienda copia la URL: NO toca
+    `store_product.image_url`, que es dato de la tienda.
+    """
+    try:
+        image = use_case.execute(
+            canonical_product_id=canonical_product_id,
+            url=body.url,
+            source_store_product_id=body.source_store_product_id,
+        )
+    except DuplicateImageError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Esa imagen ya está en la galería."
+        ) from exc
+
+    if image is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+
+    audit.record(
+        "canonical_product.add_image",
+        "canonical_product",
+        canonical_product_id,
+        {"position": image.position, "from_store": image.source_store_product_id is not None},
+    )
+    return CanonicalImageDto(
+        id=image.id,
+        url=image.url,
+        position=image.position,
+        source_store_product_id=image.source_store_product_id,
+        is_primary=image.is_primary,
+    )
+
+
+@catalog_router.patch(
+    "/canonical-products/{canonical_product_id}/images/order",
+    response_model=list[CanonicalImageDto],
+)
+def reorder_canonical_images(
+    canonical_product_id: str,
+    body: ReorderImagesRequest,
+    use_case: ReorderCanonicalImages = Depends(get_reorder_canonical_images),
+    listing: ListCanonicalImages = Depends(get_list_canonical_images),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> list[CanonicalImageDto]:
+    """Fija el orden (US-CP-D4b). La posición 1 pasa a ser la imagen pública del producto."""
+    if not use_case.execute(
+        canonical_product_id=canonical_product_id, image_ids=body.image_ids
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "El orden debe incluir TODAS las imágenes de la galería, sin repetir.",
+        )
+
+    audit.record(
+        "canonical_product.reorder_images",
+        "canonical_product",
+        canonical_product_id,
+        {"count": len(body.image_ids)},
+    )
+    return [
+        CanonicalImageDto(
+            id=i.id,
+            url=i.url,
+            position=i.position,
+            source_store_product_id=i.source_store_product_id,
+            is_primary=i.is_primary,
+        )
+        for i in listing.execute(canonical_product_id)
+    ]
+
+
+@catalog_router.delete(
+    "/canonical-products/{canonical_product_id}/images/{image_id}",
+    response_model=list[CanonicalImageDto],
+)
+def remove_canonical_image(
+    canonical_product_id: str,
+    image_id: str,
+    use_case: RemoveCanonicalImage = Depends(get_remove_canonical_image),
+    listing: ListCanonicalImages = Depends(get_list_canonical_images),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> list[CanonicalImageDto]:
+    """Quita una imagen y compacta las posiciones. Si era la primera, la siguiente pasa a ser
+    la pública; si era la única, el producto queda sin imagen pública."""
+    if not use_case.execute(canonical_product_id=canonical_product_id, image_id=image_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Imagen no encontrada.")
+
+    audit.record(
+        "canonical_product.remove_image", "canonical_product", canonical_product_id, {}
+    )
+    return [
+        CanonicalImageDto(
+            id=i.id,
+            url=i.url,
+            position=i.position,
+            source_store_product_id=i.source_store_product_id,
+            is_primary=i.is_primary,
+        )
+        for i in listing.execute(canonical_product_id)
+    ]

@@ -12,14 +12,17 @@ import {
   type AdminCanonicalAuditEventDto,
   type BulkCategoryAdviceDto,
   type BulkSetCategoryResultDto,
+  type CanonicalImageDto,
   type CategorySuggestionDto,
   type SlugPreviewDto,
   type AdminCanonicalPriceHistoryDto,
+  addCanonicalImage as addCanonicalImageRequest,
   archiveCanonicalProduct as archiveCanonicalProductRequest,
   bulkSetCanonicalCategory as bulkSetCanonicalCategoryRequest,
   commitCanonicalImport as commitCanonicalImportRequest,
   createCanonicalProduct as createCanonicalProductRequest,
   listCanonicalProductDuplicates as listCanonicalProductDuplicatesRequest,
+  listCanonicalImages as listCanonicalImagesRequest,
   listCanonicalProductEvidence as listCanonicalProductEvidenceRequest,
   listCanonicalProductProviders as listCanonicalProductProvidersRequest,
   getCanonicalProductHistory as getCanonicalProductHistoryRequest,
@@ -31,6 +34,8 @@ import {
   setCanonicalCategory as setCanonicalCategoryRequest,
   suggestBulkCategories as suggestBulkCategoriesRequest,
   suggestCanonicalCategories as suggestCanonicalCategoriesRequest,
+  removeCanonicalImage as removeCanonicalImageRequest,
+  reorderCanonicalImages as reorderCanonicalImagesRequest,
   unarchiveCanonicalProduct as unarchiveCanonicalProductRequest,
   updateCanonicalProduct as updateCanonicalProductRequest,
   updateInternalNote as updateInternalNoteRequest,
@@ -287,6 +292,60 @@ export async function bulkSetCanonicalCategory(
       canonical_product_ids: canonicalProductIds,
       taxonomy_node_id: taxonomyNodeId,
     },
+  });
+  return res.data ?? null;
+}
+
+// ── Galería del canónico (F5) ──────────────────────────────────────────────────────────────
+// La posición 1 es la imagen PÚBLICA: reordenar no es cosmético, cambia lo que se publica.
+
+export async function listCanonicalImages(
+  canonicalProductId: string,
+): Promise<CanonicalImageDto[] | null> {
+  const res = await listCanonicalImagesRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+  });
+  return res.data ?? null;
+}
+
+export async function addCanonicalImage(
+  canonicalProductId: string,
+  url: string,
+  sourceStoreProductId?: string,
+): Promise<CanonicalImageDto | null> {
+  const res = await addCanonicalImageRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+    body: { url, source_store_product_id: sourceStoreProductId ?? null },
+  });
+  return res.data ?? null;
+}
+
+/** Exige la lista COMPLETA de ids: un subconjunto dejaría imágenes sin posición. */
+export async function reorderCanonicalImages(
+  canonicalProductId: string,
+  imageIds: string[],
+): Promise<CanonicalImageDto[] | null> {
+  const res = await reorderCanonicalImagesRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+    body: { image_ids: imageIds },
+  });
+  return res.data ?? null;
+}
+
+export async function removeCanonicalImage(
+  canonicalProductId: string,
+  imageId: string,
+): Promise<CanonicalImageDto[] | null> {
+  const res = await removeCanonicalImageRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId, image_id: imageId },
   });
   return res.data ?? null;
 }
