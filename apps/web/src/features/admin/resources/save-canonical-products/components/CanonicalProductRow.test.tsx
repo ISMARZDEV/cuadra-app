@@ -39,6 +39,8 @@ function renderRow(overrides: Partial<AdminCanonicalProductRowDto> = {}) {
           locale="es"
           onViewProviders={vi.fn()}
           onEdit={vi.fn()}
+          onArchive={vi.fn()}
+          onUnarchive={vi.fn()}
           publicHref="/es/do/save/producto/arroz-goya-10-lb"
         />
       </TableBody>
@@ -97,6 +99,8 @@ describe("CanonicalProductRow", () => {
             locale="en"
             onViewProviders={vi.fn()}
             onEdit={vi.fn()}
+            onArchive={vi.fn()}
+            onUnarchive={vi.fn()}
             publicHref={null}
           />
         </TableBody>
@@ -114,5 +118,18 @@ describe("CanonicalProductRow", () => {
   it("una fecha nula sale como guion y no como 'Invalid Date'", () => {
     renderRow({ last_price_seen_at: null });
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+});
+
+
+describe("CanonicalProductRow · archivado", () => {
+  it("un canónico archivado muestra su badge", () => {
+    renderRow({ archived_at: "2026-07-25T10:00:00Z" });
+    expect(screen.getByText("Archivado")).toBeInTheDocument();
+  });
+
+  it("un canónico activo no muestra el badge", () => {
+    renderRow({ archived_at: null });
+    expect(screen.queryByText("Archivado")).not.toBeInTheDocument();
   });
 });

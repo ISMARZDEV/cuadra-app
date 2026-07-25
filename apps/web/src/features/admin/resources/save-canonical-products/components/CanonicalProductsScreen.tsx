@@ -27,7 +27,9 @@ import { DEFAULT_LOCALE } from "@/i18n/config";
 import { format } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 
-import { listCanonicalProducts } from "../api";
+import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
+
+import { archiveCanonicalProduct, listCanonicalProducts, unarchiveCanonicalProduct } from "../api";
 import type { CanonicalProductsData } from "../interfaces";
 import {
   type CanonicalProductsParams,
@@ -63,6 +65,9 @@ export function CanonicalProductsScreen() {
   const [importOpen, setImportOpen] = useState(false);
   const [formState, setFormState] = useState<CanonicalFormState | null>(null);
   const [providersFor, setProvidersFor] = useState<AdminCanonicalProductRowDto | null>(null);
+  // Archivar SIEMPRE pasa por confirmación fuerte: saca el producto del sitio público.
+  const [archiveTarget, setArchiveTarget] = useState<AdminCanonicalProductRowDto | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   // El primer render ya trae los datos del SSR: refetchear ahí sería pedir dos veces lo mismo.
   const hydrated = useRef(false);
@@ -85,6 +90,7 @@ export function CanonicalProductsScreen() {
       ean_reachable: next.ean_reachable,
       min_provider_count: next.min_provider_count,
       updated_since: next.updated_since,
+      include_archived: next.include_archived,
       sort: next.sort,
       limit: next.limit,
       offset: next.offset,
@@ -116,6 +122,22 @@ export function CanonicalProductsScreen() {
   const hasQuery = Boolean(params.search) || activeFilters > 0;
 
   const refresh = () => void applyParams({ offset: params.offset });
+
+  const confirmArchive = async () => {
+    if (!archiveTarget) return;
+    setArchiving(true);
+    await archiveCanonicalProduct(archiveTarget.canonical_product_id);
+    setArchiving(false);
+    setArchiveTarget(null);
+    refresh();
+  };
+
+  // Restaurar NO pide confirmación: devolver algo a su estado anterior no destruye nada, y
+  // agregarle una fricción que la acción destructiva ya tiene sólo entrena a ignorar los diálogos.
+  const unarchive = async (row: AdminCanonicalProductRowDto) => {
+    await unarchiveCanonicalProduct(row.canonical_product_id);
+    refresh();
+  };
 
   return (
     <div className="flex flex-1 flex-col p-4 md:p-6">
@@ -237,6 +259,8 @@ export function CanonicalProductsScreen() {
                     locale={locale}
                     onViewProviders={setProvidersFor}
                     onEdit={(r) => setFormState({ mode: "edit", row: r })}
+                    onArchive={setArchiveTarget}
+                    onUnarchive={(r) => void unarchive(r)}
                     publicHref={row.slug ? `/${locale}/do/save/producto/${row.slug}` : null}
                   />
                 ))}
@@ -340,6 +364,18 @@ export function CanonicalProductsScreen() {
         onImported={refresh}
         t={t}
         locale={locale}
+      />
+
+      <ConfirmDialog
+        open={archiveTarget !== null}
+        onOpenChange={(open) => !open && setArchiveTarget(null)}
+        title={t("admin.canonicalProducts.archive.title")}
+        description={t("admin.canonicalProducts.archive.impact")}
+        confirmLabel={t("admin.canonicalProducts.archive.confirm")}
+        cancelLabel={t("admin.canonicalProducts.archive.cancel")}
+        onConfirm={() => void confirmArchive()}
+        busy={archiving}
+        destructive
       />
 
       <ProvidersModal

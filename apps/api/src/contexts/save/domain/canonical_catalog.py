@@ -127,6 +127,17 @@ class CanonicalCatalogRow:
     possible_duplicate_count: int = 0
     last_price_seen_at: datetime | None = None
     last_match_at: datetime | None = None
+    # ── F5 detalle: columnas de curación (migración 1b48d0f4dc93) ──
+    description: str | None = None
+    created_at: datetime | None = None
+    # Nota INTERNA: viaja sólo en DTOs de admin. Nunca en un contrato público.
+    internal_note: str | None = None
+    # Soft-delete: `None` = activo. Archivado sigue existiendo, sólo deja de ser público.
+    archived_at: datetime | None = None
+
+    @property
+    def is_archived(self) -> bool:
+        return self.archived_at is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +160,10 @@ class CanonicalCatalogFilters:
     ean_reachable: bool | None = None
     min_provider_count: int | None = None
     updated_since: datetime | None = None
+    # Por defecto el catálogo muestra sólo lo ACTIVO: archivar tiene que limpiar la vista de
+    # trabajo. Pero el admin puede pedirlos a propósito — si no pudiera verlos, archivar sería
+    # irreversible en la práctica y nadie podría restaurar nada.
+    include_archived: bool = False
 
 
 @dataclass(frozen=True, slots=True)

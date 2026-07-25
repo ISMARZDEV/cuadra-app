@@ -338,6 +338,7 @@ class SqlCanonicalProductRepository:
                 display_size=display_size,
                 image_url=product.image_url,
                 origin_run_id=product.origin_run_id,
+                description=product.description,
                 size_amount=product.quantity.amount,
                 size_measure=product.quantity.measure.value,
                 taxonomy_node_id=(
@@ -359,6 +360,7 @@ class SqlCanonicalProductRepository:
         display_size: str | None = None,
         image_url: str | None = None,
         taxonomy_node_id: str | None = None,
+        description: str | None = None,
         clear_taxonomy: bool = False,
     ) -> CanonicalProduct | None:
         """Edición de atributos del canónico (US-CP-L5/D2).
@@ -391,6 +393,8 @@ class SqlCanonicalProductRepository:
             m.display_size = normalize_size_text(display_size)
         if image_url is not None:
             m.image_url = image_url or None
+        if description is not None:
+            m.description = description.strip() or None
         if clear_taxonomy:
             m.taxonomy_node_id = None
         elif taxonomy_node_id is not None:
@@ -398,6 +402,35 @@ class SqlCanonicalProductRepository:
 
         self._s.flush()
         return canonical_to_entity(m, self._brand_name(m.brand_id))
+
+    def set_archived(self, canonical_product_id: str, *, archived: bool) -> datetime | None | bool:
+        """Archiva o restaura (US-CP-L6/D12). Devuelve `False` si el canónico no existe.
+
+        SOFT-delete: no se borra la fila ni se desenlazan las tiendas. Un `DELETE` real dejaría
+        `store_product.canonical_product_id` colgando y rompería comparaciones ya publicadas.
+        """
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return False
+        m = self._s.get(CanonicalProductModel, pid)
+        if m is None:
+            return False
+        m.archived_at = datetime.now(timezone.utc) if archived else None
+        self._s.flush()
+        return m.archived_at
+
+    def set_internal_note(self, canonical_product_id: str, note: str | None) -> bool:
+        """Nota interna del operador (US-CP-D10). Vacío → NULL, para no guardar cadenas en blanco
+        que la UI tendría que distinguir de "sin nota"."""
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return False
+        m = self._s.get(CanonicalProductModel, pid)
+        if m is None:
+            return False
+        m.internal_note = (note or "").strip() or None
+        self._s.flush()
+        return True
 
     def _unique_slug(self, base: str, market_id: str) -> str:
         """Slug único por-mercado: si `base` ya existe, sufija -2, -3… (invariante del catálogo)."""
@@ -416,10 +449,13 @@ class SqlCanonicalProductRepository:
         return candidate
 
     def get_by_slug(self, slug: str, market_id: str) -> CanonicalProduct | None:
+        # `archived_at IS NULL`: para el sitio público un canónico archivado NO EXISTE. Es la
+        # razón de ser del archivado — si siguiera resolviendo, la acción sería una mentira.
         m = self._s.scalars(
             select(CanonicalProductModel).where(
                 CanonicalProductModel.market_id == market_id,
                 CanonicalProductModel.slug == slug,
+                CanonicalProductModel.archived_at.is_(None),
             )
         ).first()
         return canonical_to_entity(m, self._brand_name(m.brand_id)) if m else None
@@ -442,6 +478,7 @@ class SqlCanonicalProductRepository:
             select(CanonicalProductModel).where(
                 CanonicalProductModel.market_id == market_id,
                 CanonicalProductModel.name.ilike(f"%{query}%"),
+                CanonicalProductModel.archived_at.is_(None),
             )
         ).all()
         return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
@@ -451,7 +488,10 @@ class SqlCanonicalProductRepository:
     ) -> list[CanonicalProduct]:
         models = self._s.scalars(
             select(CanonicalProductModel)
-            .where(CanonicalProductModel.market_id == market_id)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.archived_at.is_(None),
+            )
             .order_by(CanonicalProductModel.name)
             .limit(limit)
             .offset(offset)
@@ -890,7 +930,11 @@ class SqlStoreProductRepository:
         ]
 
     def _offerings(self, whereclause) -> list[OfferingRow]:
-        """Filas producto×tienda con marca/presentación/precio, filtradas por `whereclause`."""
+        """Filas producto×tienda con marca/presentación/precio, filtradas por `whereclause`.
+
+        Punto ÚNICO por donde salen los rails, las categorías y las páginas de tienda del sitio
+        público: el filtro de archivados va acá y cubre las tres de una vez.
+        """
         rows = self._s.execute(
             select(
                 CanonicalProductModel.id,
@@ -913,7 +957,7 @@ class SqlStoreProductRepository:
             )
             .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
             .join(BrandModel, CanonicalProductModel.brand_id == BrandModel.id, isouter=True)
-            .where(whereclause)
+            .where(whereclause, CanonicalProductModel.archived_at.is_(None))
         ).all()
         return [
             OfferingRow(
@@ -1686,6 +1730,8 @@ class SqlAdminCanonicalCatalogRepository:
             query = query.where(provider_count >= f.min_provider_count)
         if f.updated_since is not None:
             query = query.where(metrics.c.last_price_seen_at >= f.updated_since)
+        if not f.include_archived:
+            query = query.where(CanonicalProductModel.archived_at.is_(None))
 
         # Espejo SQL de `derive_quality_statuses` — ver la advertencia del docstring.
         if f.quality_status is not None:
@@ -1801,6 +1847,10 @@ class SqlAdminCanonicalCatalogRepository:
             ean_reachable=bool(r[5]),
             last_match_at=r[6],
             possible_duplicate_count=r[7] or 0,
+            description=cp.description,
+            created_at=cp.created_at,
+            internal_note=cp.internal_note,
+            archived_at=cp.archived_at,
         )
 
     # ------------------------------------------------------------------ identidad (importación) --

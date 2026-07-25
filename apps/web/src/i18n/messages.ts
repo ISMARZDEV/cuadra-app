@@ -744,7 +744,15 @@ type MessageKey =
   | "admin.canonicalProducts.import.row"
   | "admin.canonicalProducts.import.done"
   | "admin.canonicalProducts.import.close"
-  | "admin.canonicalProducts.import.error";
+  | "admin.canonicalProducts.import.error"
+  | "admin.canonicalProducts.actions.unarchive"
+  | "admin.canonicalProducts.archive.title"
+  | "admin.canonicalProducts.archive.impact"
+  | "admin.canonicalProducts.archive.confirm"
+  | "admin.canonicalProducts.archive.cancel"
+  | "admin.canonicalProducts.archive.badge"
+  | "admin.canonicalProducts.filters.includeArchived"
+  | "admin.canonicalProducts.form.description";
 
 const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
   es: {
@@ -1485,6 +1493,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.import.done": "Se importaron {count} productos.",
     "admin.canonicalProducts.import.close": "Cerrar",
     "admin.canonicalProducts.import.error": "No se pudo procesar la importación.",
+    "admin.canonicalProducts.actions.unarchive": "Restaurar",
+    "admin.canonicalProducts.archive.title": "¿Archivar este producto canónico?",
+    "admin.canonicalProducts.archive.impact": "Dejará de aparecer en el sitio público, en las comparaciones y en los rails de categoría. NO se borra: el histórico de precios, las tiendas enlazadas y el enlace público se conservan, y podés restaurarlo cuando quieras.",
+    "admin.canonicalProducts.archive.confirm": "Archivar",
+    "admin.canonicalProducts.archive.cancel": "Cancelar",
+    "admin.canonicalProducts.archive.badge": "Archivado",
+    "admin.canonicalProducts.filters.includeArchived": "Mostrar archivados",
+    "admin.canonicalProducts.form.description": "Descripción",
   },
   en: {
     "nav.save": "Save",
@@ -2223,6 +2239,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.import.done": "{count} products were imported.",
     "admin.canonicalProducts.import.close": "Close",
     "admin.canonicalProducts.import.error": "Could not process the import.",
+    "admin.canonicalProducts.actions.unarchive": "Restore",
+    "admin.canonicalProducts.archive.title": "Archive this canonical product?",
+    "admin.canonicalProducts.archive.impact": "It will stop appearing on the public site, in comparisons and in category rails. Nothing is deleted: price history, linked stores and the public link are preserved, and you can restore it at any time.",
+    "admin.canonicalProducts.archive.confirm": "Archive",
+    "admin.canonicalProducts.archive.cancel": "Cancel",
+    "admin.canonicalProducts.archive.badge": "Archived",
+    "admin.canonicalProducts.filters.includeArchived": "Show archived",
+    "admin.canonicalProducts.form.description": "Description",
   },
   pt: {
     "nav.save": "Save",
@@ -2961,6 +2985,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.import.done": "{count} produtos foram importados.",
     "admin.canonicalProducts.import.close": "Fechar",
     "admin.canonicalProducts.import.error": "Não foi possível processar a importação.",
+    "admin.canonicalProducts.actions.unarchive": "Restaurar",
+    "admin.canonicalProducts.archive.title": "Arquivar este produto canônico?",
+    "admin.canonicalProducts.archive.impact": "Deixará de aparecer no site público, nas comparações e nos trilhos de categoria. NADA é apagado: o histórico de preços, as lojas vinculadas e o link público são preservados, e você pode restaurá-lo quando quiser.",
+    "admin.canonicalProducts.archive.confirm": "Arquivar",
+    "admin.canonicalProducts.archive.cancel": "Cancelar",
+    "admin.canonicalProducts.archive.badge": "Arquivado",
+    "admin.canonicalProducts.filters.includeArchived": "Mostrar arquivados",
+    "admin.canonicalProducts.form.description": "Descrição",
   },
 };
 

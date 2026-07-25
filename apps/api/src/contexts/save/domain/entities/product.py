@@ -35,6 +35,9 @@ class CanonicalProduct:
     # los crea una persona, y este es el hilo que une las dos cosas. `None` = no vino de una corrida
     # (bootstrap, alta manual, o anterior a F4); inventarle una lo contaría en un total ajeno.
     origin_run_id: str | None = None
+    # Texto libre de curación (F5). Lo escribe SÓLO un operador desde el admin — nunca la ingesta
+    # ni un LLM: es la descripción que un humano decidió que representa al producto.
+    description: str | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip():

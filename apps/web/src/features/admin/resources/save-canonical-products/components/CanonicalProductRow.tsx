@@ -1,5 +1,15 @@
 import type { AdminCanonicalProductRowDto } from "@cuadra/api-client";
-import { Barcode, Boxes, ExternalLink, Eye, MoreHorizontal, Pencil, Archive, Store } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  Barcode,
+  Boxes,
+  ExternalLink,
+  Eye,
+  MoreHorizontal,
+  Pencil,
+  Store,
+} from "lucide-react";
 import { navigate } from "vike/client/router";
 
 import {
@@ -32,6 +42,9 @@ interface CanonicalProductRowProps {
   onToggleSelect?: (id: string) => void;
   onViewProviders: (row: AdminCanonicalProductRowDto) => void;
   onEdit: (row: AdminCanonicalProductRowDto) => void;
+  /** Abre la confirmación fuerte de archivado. Archivar NUNCA se ejecuta directo desde el menú. */
+  onArchive: (row: AdminCanonicalProductRowDto) => void;
+  onUnarchive: (row: AdminCanonicalProductRowDto) => void;
   /** URL pública del producto; `null` si el slug no sirve → la acción queda deshabilitada. */
   publicHref: string | null;
 }
@@ -46,17 +59,25 @@ export function CanonicalProductRow({
   onToggleSelect,
   onViewProviders,
   onEdit,
+  onArchive,
+  onUnarchive,
   publicHref,
 }: CanonicalProductRowProps) {
   const { t } = useAdminI18n(locale);
   const providers = row.matched_provider_count ?? 0;
   const completeness = row.completeness_score ?? 0;
+  const archived = Boolean(row.archived_at);
   const detailHref = `/admin/canonical-products/${row.canonical_product_id}`;
 
   return (
     <TableRow
       data-state={selected ? "selected" : undefined}
-      className="border-border/60 data-[state=selected]:bg-brand-lime/10"
+      className={cn(
+        "border-border/60 data-[state=selected]:bg-brand-lime/10",
+        // Atenuada, no escondida: si el operador pidió ver archivados, tiene que distinguirlos
+        // de un golpe de vista sin que desaparezcan.
+        archived && "opacity-55",
+      )}
     >
       {onToggleSelect ? (
         <TableCell className="w-10">
@@ -107,6 +128,12 @@ export function CanonicalProductRow({
             <TruncatedText text={row.name} lines={2} />
           </a>
           <span className="truncate text-xs text-muted-foreground">{row.slug}</span>
+          {archived ? (
+            <span className="mt-0.5 inline-flex w-fit items-center gap-1 rounded-full bg-slate-500/15 px-2 py-0.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+              <Archive className="size-3" aria-hidden="true" />
+              {t("admin.canonicalProducts.archive.badge")}
+            </span>
+          ) : null}
         </div>
       </TableCell>
 
@@ -226,17 +253,23 @@ export function CanonicalProductRow({
               <ExternalLink className="text-blue-600 dark:text-blue-400" />
               {t("admin.canonicalProducts.actions.public")}
             </DropdownMenuItem>
-            {/* Archivar queda DESHABILITADO con tooltip: `canonical_product` no tiene columna
-                `archived_at`. El SDD es explícito — si el modelo no lo soporta, se bloquea la
-                acción; improvisar un borrado destructivo acá rompería histórico y matches. */}
-            <DropdownMenuItem
-              disabled
-              title={t("admin.canonicalProducts.actions.archiveBlocked")}
-              variant="destructive"
-            >
-              <Archive />
-              {t("admin.canonicalProducts.actions.archive")}
-            </DropdownMenuItem>
+            {/* Archivar es SOFT-delete y abre confirmación fuerte: no borra nada, pero saca el
+                producto del sitio público. Restaurar es la inversa exacta y no necesita
+                confirmación — devolver algo a su estado anterior no destruye nada. */}
+            {archived ? (
+              <DropdownMenuItem
+                onClick={() => onUnarchive(row)}
+                className="focus:bg-emerald-500/10 focus:text-emerald-600 not-data-[variant=destructive]:focus:**:text-emerald-600 dark:focus:text-emerald-400 dark:not-data-[variant=destructive]:focus:**:text-emerald-400"
+              >
+                <ArchiveRestore className="text-emerald-600 dark:text-emerald-400" />
+                {t("admin.canonicalProducts.actions.unarchive")}
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem variant="destructive" onClick={() => onArchive(row)}>
+                <Archive />
+                {t("admin.canonicalProducts.actions.archive")}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>

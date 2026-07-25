@@ -39,6 +39,7 @@ from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.canonical_catalog import (
+    ArchiveCanonicalProduct,
     CommitCanonicalImport,
     CreateCanonicalProduct,
     GetCanonicalProduct,
@@ -48,6 +49,7 @@ from src.contexts.save.application.canonical_catalog import (
     ListCanonicalProviders,
     PreviewCanonicalImport,
     UpdateCanonicalProduct,
+    UpdateInternalNote,
 )
 from src.contexts.save.application.get_review_detail import GetReviewDetail
 from src.contexts.save.application.history import GetPriceHistory
@@ -749,4 +751,18 @@ def get_commit_canonical_import(
         SqlCanonicalProductRepository(session),
         SqlAdminCanonicalCatalogRepository(session),
         session,
+    )
+
+
+def get_archive_canonical_product(
+    session: Session = Depends(get_session),
+) -> ArchiveCanonicalProduct:
+    return ArchiveCanonicalProduct(
+        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+    )
+
+
+def get_update_internal_note(session: Session = Depends(get_session)) -> UpdateInternalNote:
+    return UpdateInternalNote(
+        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
     )

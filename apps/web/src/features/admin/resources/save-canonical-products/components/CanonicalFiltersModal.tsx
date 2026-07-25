@@ -1,4 +1,4 @@
-import { Barcode, Filter, Layers, Store } from "lucide-react";
+import { Archive, Barcode, Filter, Layers, Store } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,7 @@ export function CanonicalFiltersModal({
     params.min_provider_count === undefined ? "" : String(params.min_provider_count),
   );
   const [updatedSince, setUpdatedSince] = useState(params.updated_since ?? "");
+  const [includeArchived, setIncludeArchived] = useState(Boolean(params.include_archived));
 
   // Al reabrir, el draft se re-siembra desde la URL: si no, el modal mostraría los filtros de la
   // última vez que se abrió y no los que están REALMENTE aplicados.
@@ -57,6 +58,7 @@ export function CanonicalFiltersModal({
       params.min_provider_count === undefined ? "" : String(params.min_provider_count),
     );
     setUpdatedSince(params.updated_since ?? "");
+    setIncludeArchived(Boolean(params.include_archived));
   }, [open, params]);
 
   const clear = () => {
@@ -64,6 +66,7 @@ export function CanonicalFiltersModal({
     setEan(ALL);
     setMinProviders("");
     setUpdatedSince("");
+    setIncludeArchived(false);
   };
 
   const apply = () => {
@@ -76,6 +79,7 @@ export function CanonicalFiltersModal({
           ? Math.floor(parsedMin)
           : undefined,
       updated_since: updatedSince || undefined,
+      include_archived: includeArchived || undefined,
     });
     onOpenChange(false);
   };
@@ -159,6 +163,24 @@ export function CanonicalFiltersModal({
             value={updatedSince ? updatedSince.slice(0, 10) : ""}
             onChange={(e) => setUpdatedSince(e.target.value)}
           />
+        </FilterField>
+
+        <FilterField
+          icon={<Archive />}
+          label={t("admin.canonicalProducts.filters.includeArchived")}
+          htmlFor="cp-filter-archived"
+          className="sm:col-span-2"
+        >
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              id="cp-filter-archived"
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => setIncludeArchived(e.target.checked)}
+              className="size-4 accent-brand-lime"
+            />
+            {t("admin.canonicalProducts.filters.includeArchived")}
+          </label>
         </FilterField>
       </div>
     </FilterModal>

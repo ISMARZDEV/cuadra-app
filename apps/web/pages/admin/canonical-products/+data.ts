@@ -32,6 +32,7 @@ export async function data(pageContext: PageContextServer) {
       ean_reachable: params.ean_reachable,
       min_provider_count: params.min_provider_count,
       updated_since: params.updated_since,
+      include_archived: params.include_archived,
       sort: params.sort,
       limit: params.limit,
       offset: params.offset,

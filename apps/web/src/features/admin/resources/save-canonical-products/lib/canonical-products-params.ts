@@ -17,6 +17,8 @@ export interface CanonicalProductsParams {
   updated_since?: string;
   /** `name|providers|completeness|updated`, con prefijo `-` para descendente (US-CP-L9). */
   sort?: string;
+  /** Los archivados se ocultan por defecto; el admin puede pedirlos para restaurarlos. */
+  include_archived?: boolean;
   limit: number;
   offset: number;
 }
@@ -45,6 +47,7 @@ export function parseCanonicalProductsParams(search: Search): CanonicalProductsP
     min_provider_count: parsePositiveInt(search.min_provider_count),
     updated_since: search.updated_since || undefined,
     sort: search.sort || undefined,
+    include_archived: parseBoolean(search.include_archived) || undefined,
     limit: parsePositiveInt(search.limit) ?? DEFAULT_LIMIT,
     offset: parsePositiveInt(search.offset) ?? DEFAULT_OFFSET,
   };
@@ -72,6 +75,7 @@ export function serializeCanonicalProductsParams(
     qs.set("min_provider_count", String(params.min_provider_count));
   if (params.updated_since) qs.set("updated_since", params.updated_since);
   if (params.sort && params.sort !== DEFAULT_SORT) qs.set("sort", params.sort);
+  if (params.include_archived) qs.set("include_archived", "true");
   if (params.limit !== DEFAULT_LIMIT) qs.set("limit", String(params.limit));
   if (params.offset !== DEFAULT_OFFSET) qs.set("offset", String(params.offset));
   return qs;
@@ -86,5 +90,6 @@ export function countActiveFilters(params: CanonicalProductsParams): number {
     params.ean_reachable,
     params.min_provider_count,
     params.updated_since,
+    params.include_archived || undefined,
   ].filter((v) => v !== undefined && v !== "").length;
 }

@@ -243,6 +243,20 @@ class CanonicalProductModel(Base):
     # semántico (F2.0 matching, cascada Batch 7): BGE-M3 dim=1024, poblado a escritura de ingesta.
     # Un solo modelo por deployment — ver CONSTRAINT NOTE en la migración 614e370d452c.
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
+    # ── F5 (SDD Detail by Id) ────────────────────────────────────────────────────────────────
+    # Texto libre de curación. Nunca lo escribe la ingesta ni un LLM: sólo un operador.
+    description: Mapped[str | None] = mapped_column(Text)
+    # Cuándo nació el canónico. Complementa `origin_run_id` (de QUÉ corrida) — no lo reemplaza.
+    # Backfill: MIN(product_match.created_at) del canónico; NULL donde no hubo match.
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # Nota interna del operador. NUNCA sale por un DTO público — ver `ProductDetailDto`.
+    internal_note: Mapped[str | None] = mapped_column(Text)
+    # Soft-delete (US-CP-L6/D12): NULL = activo. Archivar PRESERVA histórico, matches y slug;
+    # borrar físicamente un canónico dejaría `store_product.canonical_product_id` colgando y
+    # rompería comparaciones ya publicadas.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class StoreProductModel(Base):

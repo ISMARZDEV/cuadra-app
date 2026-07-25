@@ -8,10 +8,10 @@ Controller FINO (ADR 31): parsea, delega en el use case y arma el DTO. Cero SQLA
 queries viven en `SqlAdminCanonicalCatalogRepository` y las reglas en `domain/canonical_catalog`.
 Toda mutación escribe su fila de auditoría en la MISMA transacción del request (T2).
 
-> **Archivar (US-CP-L6/D12) NO tiene endpoint a propósito.** `canonical_product` no tiene columna
-> `archived_at` ni `deleted_at`. El SDD es explícito: *si el modelo no lo soporta, BLOQUEAR la
-> acción, no improvisarla*. La UI la muestra deshabilitada con tooltip. Cuando exista la
-> migración, la acción entra acá — con soft-delete, nunca con borrado físico.
+> **Archivar es SOFT-delete** (migración `1b48d0f4dc93`): estampa `archived_at` y saca el producto
+> del sitio público, pero conserva la fila, el slug, el histórico de precios y los `product_match`.
+> Un borrado físico dejaría `store_product.canonical_product_id` colgando y rompería comparaciones
+> ya publicadas. `unarchive` es la operación inversa exacta.
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from src.api.composition_root import (
+    get_archive_canonical_product,
     get_commit_canonical_import,
     get_create_canonical_product,
     get_get_canonical_product,
@@ -32,11 +33,13 @@ from src.api.composition_root import (
     get_list_canonical_providers,
     get_preview_canonical_import,
     get_update_canonical_product,
+    get_update_internal_note,
 )
 from src.api.extensions.security import require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
 from src.contexts.save.application.admin_audit_recorder import AdminAuditRecorder
 from src.contexts.save.application.canonical_catalog import (
+    ArchiveCanonicalProduct,
     CommitCanonicalImport,
     CreateCanonicalProduct,
     GetCanonicalProduct,
@@ -47,6 +50,7 @@ from src.contexts.save.application.canonical_catalog import (
     ListCanonicalProviders,
     PreviewCanonicalImport,
     UpdateCanonicalProduct,
+    UpdateInternalNote,
     derive_row_quality,
 )
 from src.contexts.save.domain.canonical_catalog import (
@@ -86,7 +90,6 @@ class AdminCanonicalProductRowDto(BaseModel):
     size_amount: Decimal
     size_measure: str
     image_url: str | None = None
-    # ⚠️ `description` NO existe en el modelo — se omite del DTO en vez de inventarlo.
     category: str | None = None
     taxonomy_node_id: str | None = None
     quality: str | None = None
@@ -100,6 +103,14 @@ class AdminCanonicalProductRowDto(BaseModel):
     last_match_at: datetime | None = None
     quality_statuses: list[str] = []
     completeness_score: int = 0
+    # ── F5 detalle (migración 1b48d0f4dc93) ──
+    description: str | None = None
+    created_at: datetime | None = None
+    # `internal_note` viaja SÓLO en este DTO de admin. El DTO público del producto no lo tiene:
+    # es coordinación del equipo, no contenido.
+    internal_note: str | None = None
+    # `None` = activo. Un canónico archivado desaparece del sitio público pero sigue existiendo.
+    archived_at: datetime | None = None
 
     @classmethod
     def from_row(cls, row: CanonicalCatalogRow, *, now: datetime | None = None):  # type: ignore[no-untyped-def]
@@ -124,6 +135,10 @@ class AdminCanonicalProductRowDto(BaseModel):
             last_match_at=row.last_match_at,
             quality_statuses=[s.value for s in statuses],
             completeness_score=score,
+            description=row.description,
+            created_at=row.created_at,
+            internal_note=row.internal_note,
+            archived_at=row.archived_at,
         )
 
 
@@ -195,6 +210,7 @@ class CreateCanonicalProductRequest(BaseModel):
     display_size: str | None = None
     image_url: str | None = None
     taxonomy_node_id: str | None = None
+    description: str | None = None
 
 
 class UpdateCanonicalProductRequest(BaseModel):
@@ -212,6 +228,7 @@ class UpdateCanonicalProductRequest(BaseModel):
     display_size: str | None = None
     image_url: str | None = None
     taxonomy_node_id: str | None = None
+    description: str | None = None
     clear_taxonomy: bool = False
 
 
@@ -270,6 +287,9 @@ def list_canonical_products(
         None, description="complete|no_image|no_category|no_providers|no_quality|stale_price|possible_duplicate"
     ),
     ean_reachable: bool | None = Query(None),
+    include_archived: bool = Query(
+        False, description="Incluir archivados (por defecto el catálogo muestra sólo activos)"
+    ),
     min_provider_count: int | None = Query(None, ge=0, description="Cobertura mínima"),
     updated_since: datetime | None = Query(
         None, description="Sólo canónicos con precio visto desde esta fecha"
@@ -292,6 +312,7 @@ def list_canonical_products(
             ean_reachable=ean_reachable,
             min_provider_count=min_provider_count,
             updated_since=updated_since,
+            include_archived=include_archived,
         ),
         limit=limit,
         offset=offset,
@@ -325,6 +346,7 @@ def create_canonical_product(
             display_size=body.display_size,
             image_url=body.image_url,
             taxonomy_node_id=body.taxonomy_node_id,
+            description=body.description,
         )
     except InvalidMeasureError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
@@ -444,6 +466,7 @@ def update_canonical_product(
             display_size=body.display_size,
             image_url=body.image_url,
             taxonomy_node_id=body.taxonomy_node_id,
+            description=body.description,
             clear_taxonomy=body.clear_taxonomy,
         )
     except InvalidMeasureError as exc:
@@ -537,3 +560,98 @@ def list_canonical_product_duplicates(
             canonical_product_id=canonical_product_id, market_id=MARKET, limit=limit
         )
     ]
+
+
+@catalog_router.post(
+    "/canonical-products/{canonical_product_id}/archive",
+    response_model=AdminCanonicalProductRowDto,
+)
+def archive_canonical_product(
+    canonical_product_id: str,
+    use_case: ArchiveCanonicalProduct = Depends(get_archive_canonical_product),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> AdminCanonicalProductRowDto:
+    """Archiva un canónico (US-CP-L6/D12).
+
+    SOFT-delete: estampa `archived_at` y lo saca del sitio público. NO borra la fila ni desenlaza
+    las tiendas — el histórico de precios y los `product_match` sobreviven intactos, porque un
+    borrado real rompería comparaciones ya publicadas.
+    """
+    row = use_case.execute(
+        market_id=MARKET, canonical_product_id=canonical_product_id, archived=True
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+
+    audit.record(
+        "canonical_product.archive",
+        "canonical_product",
+        row.canonical_product_id,
+        {"name": row.name, "slug": row.slug, "origin": "archive"},
+    )
+    return AdminCanonicalProductRowDto.from_row(row)
+
+
+@catalog_router.post(
+    "/canonical-products/{canonical_product_id}/unarchive",
+    response_model=AdminCanonicalProductRowDto,
+)
+def unarchive_canonical_product(
+    canonical_product_id: str,
+    use_case: ArchiveCanonicalProduct = Depends(get_archive_canonical_product),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> AdminCanonicalProductRowDto:
+    """Restaura un canónico archivado. Inversa exacta de `archive` — por eso el archivado NO puede
+    ser destructivo: si borrara, esto no podría existir."""
+    row = use_case.execute(
+        market_id=MARKET, canonical_product_id=canonical_product_id, archived=False
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+
+    audit.record(
+        "canonical_product.unarchive",
+        "canonical_product",
+        row.canonical_product_id,
+        {"name": row.name, "slug": row.slug, "origin": "archive"},
+    )
+    return AdminCanonicalProductRowDto.from_row(row)
+
+
+class UpdateInternalNoteRequest(BaseModel):
+    """Nota interna del operador (US-CP-D10). Vacío o `null` borra la nota."""
+
+    internal_note: str | None = None
+
+
+@catalog_router.patch(
+    "/canonical-products/{canonical_product_id}/internal-note",
+    response_model=AdminCanonicalProductRowDto,
+)
+def update_internal_note(
+    canonical_product_id: str,
+    body: UpdateInternalNoteRequest,
+    use_case: UpdateInternalNote = Depends(get_update_internal_note),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> AdminCanonicalProductRowDto:
+    """Guarda la nota interna (US-CP-D10).
+
+    ⚠️ El CONTENIDO de la nota NO entra en el payload de auditoría: el log se lee en otra pantalla
+    y se exporta, así que copiarlo ahí duplicaría contenido interno en una superficie con otro
+    control de acceso. Se audita QUE cambió, no QUÉ dice.
+    """
+    row = use_case.execute(
+        market_id=MARKET,
+        canonical_product_id=canonical_product_id,
+        note=body.internal_note,
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Producto canónico no encontrado.")
+
+    audit.record(
+        "canonical_product.internal_note",
+        "canonical_product",
+        row.canonical_product_id,
+        {"name": row.name, "has_note": row.internal_note is not None, "origin": "manual_admin"},
+    )
+    return AdminCanonicalProductRowDto.from_row(row)

@@ -9,6 +9,7 @@ import {
   type ImportPreviewDto,
   type ImportRequest,
   type UpdateCanonicalProductRequest,
+  archiveCanonicalProduct as archiveCanonicalProductRequest,
   commitCanonicalImport as commitCanonicalImportRequest,
   createCanonicalProduct as createCanonicalProductRequest,
   listCanonicalProductDuplicates as listCanonicalProductDuplicatesRequest,
@@ -16,6 +17,7 @@ import {
   listCanonicalProductProviders as listCanonicalProductProvidersRequest,
   listCanonicalProducts as listCanonicalProductsRequest,
   previewCanonicalImport as previewCanonicalImportRequest,
+  unarchiveCanonicalProduct as unarchiveCanonicalProductRequest,
   updateCanonicalProduct as updateCanonicalProductRequest,
 } from "@cuadra/api-client";
 
@@ -34,6 +36,7 @@ export interface ListCanonicalProductsQuery {
   ean_reachable?: boolean | null;
   min_provider_count?: number | null;
   updated_since?: string | null;
+  include_archived?: boolean | null;
   sort?: string | null;
   limit?: number;
   offset?: number;
@@ -127,6 +130,29 @@ export async function commitCanonicalImport(
     client: apiClient,
     headers: await authHeaders(),
     body: payload,
+  });
+  return res.data ?? null;
+}
+
+/** Archiva (soft-delete): lo saca del sitio público SIN borrar nada. Reversible con `unarchive`. */
+export async function archiveCanonicalProduct(
+  canonicalProductId: string,
+): Promise<AdminCanonicalProductRowDto | null> {
+  const res = await archiveCanonicalProductRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
+  });
+  return res.data ?? null;
+}
+
+export async function unarchiveCanonicalProduct(
+  canonicalProductId: string,
+): Promise<AdminCanonicalProductRowDto | null> {
+  const res = await unarchiveCanonicalProductRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId },
   });
   return res.data ?? null;
 }

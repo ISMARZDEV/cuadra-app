@@ -161,6 +161,7 @@ class CreateCanonicalProduct:
         display_size: str | None = None,
         image_url: str | None = None,
         taxonomy_node_id: str | None = None,
+        description: str | None = None,
     ) -> CanonicalCatalogRow:
         product_id = str(uuid.uuid4())
         self._canonical.add(
@@ -174,6 +175,7 @@ class CreateCanonicalProduct:
                 quality=quality or None,
                 display_size=display_size or None,
                 image_url=image_url or None,
+                description=description or None,
             )
         )
         row = self._catalog.get_catalog_row(
@@ -204,6 +206,7 @@ class UpdateCanonicalProduct:
         display_size: str | None = None,
         image_url: str | None = None,
         taxonomy_node_id: str | None = None,
+        description: str | None = None,
         clear_taxonomy: bool = False,
     ) -> CanonicalCatalogRow | None:
         quantity = None
@@ -219,9 +222,54 @@ class UpdateCanonicalProduct:
             display_size=display_size,
             image_url=image_url,
             taxonomy_node_id=taxonomy_node_id,
+            description=description,
             clear_taxonomy=clear_taxonomy,
         )
         if updated is None:
+            return None
+        return self._catalog.get_catalog_row(
+            market_id=market_id, canonical_product_id=canonical_product_id
+        )
+
+
+class ArchiveCanonicalProduct:
+    """Archivar / restaurar un canónico (US-CP-L6/D12).
+
+    SOFT-delete deliberado: archivar saca el producto del sitio público pero NO borra la fila ni
+    desenlaza las tiendas. El histórico de precios, los `product_match` y el slug sobreviven — un
+    borrado real dejaría `store_product.canonical_product_id` colgando y rompería comparaciones ya
+    publicadas. Restaurar es la operación inversa exacta.
+    """
+
+    def __init__(self, canonical_repo, catalog_repo) -> None:  # type: ignore[no-untyped-def]
+        self._canonical = canonical_repo
+        self._catalog = catalog_repo
+
+    def execute(
+        self, *, market_id: str, canonical_product_id: str, archived: bool
+    ) -> CanonicalCatalogRow | None:
+        result = self._canonical.set_archived(canonical_product_id, archived=archived)
+        if result is False:
+            return None
+        return self._catalog.get_catalog_row(
+            market_id=market_id, canonical_product_id=canonical_product_id
+        )
+
+
+class UpdateInternalNote:
+    """Nota interna del operador (US-CP-D10).
+
+    Nunca sale por un DTO público: es coordinación del equipo sobre un producto, no contenido.
+    """
+
+    def __init__(self, canonical_repo, catalog_repo) -> None:  # type: ignore[no-untyped-def]
+        self._canonical = canonical_repo
+        self._catalog = catalog_repo
+
+    def execute(
+        self, *, market_id: str, canonical_product_id: str, note: str | None
+    ) -> CanonicalCatalogRow | None:
+        if not self._canonical.set_internal_note(canonical_product_id, note):
             return None
         return self._catalog.get_catalog_row(
             market_id=market_id, canonical_product_id=canonical_product_id
