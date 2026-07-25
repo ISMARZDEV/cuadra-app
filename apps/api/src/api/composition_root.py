@@ -38,6 +38,17 @@ from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
 from src.contexts.save.application.drops import ListPriceDrops
+from src.contexts.save.application.canonical_catalog import (
+    CommitCanonicalImport,
+    CreateCanonicalProduct,
+    GetCanonicalProduct,
+    ListCanonicalDuplicates,
+    ListCanonicalEvidence,
+    ListCanonicalProducts,
+    ListCanonicalProviders,
+    PreviewCanonicalImport,
+    UpdateCanonicalProduct,
+)
 from src.contexts.save.application.get_review_detail import GetReviewDetail
 from src.contexts.save.application.history import GetPriceHistory
 from src.contexts.save.application.list_review_queue import ListReviewQueue
@@ -90,6 +101,7 @@ from src.contexts.save.infrastructure.repositories import (
     SqlAdminAuditRepository,
     SqlAlertRepository,
     SqlBasketQueryRepository,
+    SqlAdminCanonicalCatalogRepository,
     SqlCanonicalProductRepository,
     SqlCollectionRepository,
     SqlProviderRepository,
@@ -666,3 +678,75 @@ def get_taxonomy_repo(session: Session = Depends(get_session)) -> SqlTaxonomyRep
     """Repo de taxonomía crudo — el selector de categoría de la cola solo necesita listar hojas
     con su id, sin la proyección pública (que expone slugs y esconde ids)."""
     return SqlTaxonomyRepository(session)
+
+
+# --------------------------------------------------- Catálogo canónico admin (F5, SDD List) --
+
+def get_canonical_catalog_repo(
+    session: Session = Depends(get_session),
+) -> SqlAdminCanonicalCatalogRepository:
+    return SqlAdminCanonicalCatalogRepository(session)
+
+
+def get_list_canonical_products(
+    session: Session = Depends(get_session),
+) -> ListCanonicalProducts:
+    return ListCanonicalProducts(SqlAdminCanonicalCatalogRepository(session))
+
+
+def get_get_canonical_product(
+    session: Session = Depends(get_session),
+) -> GetCanonicalProduct:
+    return GetCanonicalProduct(SqlAdminCanonicalCatalogRepository(session))
+
+
+def get_list_canonical_providers(
+    session: Session = Depends(get_session),
+) -> ListCanonicalProviders:
+    return ListCanonicalProviders(SqlAdminCanonicalCatalogRepository(session))
+
+
+def get_list_canonical_evidence(
+    session: Session = Depends(get_session),
+) -> ListCanonicalEvidence:
+    return ListCanonicalEvidence(SqlAdminCanonicalCatalogRepository(session))
+
+
+def get_list_canonical_duplicates(
+    session: Session = Depends(get_session),
+) -> ListCanonicalDuplicates:
+    return ListCanonicalDuplicates(SqlAdminCanonicalCatalogRepository(session))
+
+
+def get_create_canonical_product(
+    session: Session = Depends(get_session),
+) -> CreateCanonicalProduct:
+    return CreateCanonicalProduct(
+        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+    )
+
+
+def get_update_canonical_product(
+    session: Session = Depends(get_session),
+) -> UpdateCanonicalProduct:
+    return UpdateCanonicalProduct(
+        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+    )
+
+
+def get_preview_canonical_import(
+    session: Session = Depends(get_session),
+) -> PreviewCanonicalImport:
+    return PreviewCanonicalImport(SqlAdminCanonicalCatalogRepository(session))
+
+
+def get_commit_canonical_import(
+    session: Session = Depends(get_session),
+) -> CommitCanonicalImport:
+    """La Session entra al use case porque el import necesita SAVEPOINTS por fila — una fila
+    inválida no puede arrastrar a las siguientes."""
+    return CommitCanonicalImport(
+        SqlCanonicalProductRepository(session),
+        SqlAdminCanonicalCatalogRepository(session),
+        session,
+    )

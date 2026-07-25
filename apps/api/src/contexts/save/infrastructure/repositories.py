@@ -21,6 +21,17 @@ from ..domain.classification import (
     CategoryClassification,
     ClassifiableProduct,
 )
+from ..domain.canonical_catalog import (
+    PRICE_STALENESS_THRESHOLD,
+    CanonicalCatalogFilters,
+    CanonicalCatalogPage,
+    CanonicalCatalogRow,
+    CanonicalDuplicateCandidate,
+    CanonicalEvidenceRow,
+    CanonicalProviderPriceRow,
+    CanonicalQualityStatus,
+)
+from ..domain.canonical_import import normalize_amount_key
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
 from ..domain.coverage import CoveragePair, StaleCovered
@@ -336,6 +347,57 @@ class SqlCanonicalProductRepository:
             )
         )
         self._s.flush()
+
+    def update_attributes(
+        self,
+        canonical_product_id: str,
+        *,
+        name: str | None = None,
+        brand: str | None = None,
+        quantity: Quantity | None = None,
+        quality: str | None = None,
+        display_size: str | None = None,
+        image_url: str | None = None,
+        taxonomy_node_id: str | None = None,
+        clear_taxonomy: bool = False,
+    ) -> CanonicalProduct | None:
+        """Edición de atributos del canónico (US-CP-L5/D2).
+
+        ⚠️ El `slug` NO se toca. Es la llave PÚBLICA de la página del producto: regenerarlo al
+        editar el nombre rompería enlaces compartidos y el canonical SEO en silencio.
+        Regenerarlo es una acción EXPLÍCITA y aparte (US-CP-D2b).
+
+        `None` significa "no cambiar". Para VACIAR la categoría hay que pedirlo con
+        `clear_taxonomy=True` — si no, no habría forma de distinguir "dejala como está" de
+        "sacásela".
+        """
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return None
+        m = self._s.get(CanonicalProductModel, pid)
+        if m is None:
+            return None
+
+        if name is not None:
+            m.name = name
+        if brand is not None:
+            m.brand_id = self._get_or_create_brand_id(brand, m.market_id)
+        if quantity is not None:
+            m.size_amount = quantity.amount
+            m.size_measure = quantity.measure.value
+        if quality is not None:
+            m.quality = quality or None
+        if display_size is not None:
+            m.display_size = normalize_size_text(display_size)
+        if image_url is not None:
+            m.image_url = image_url or None
+        if clear_taxonomy:
+            m.taxonomy_node_id = None
+        elif taxonomy_node_id is not None:
+            m.taxonomy_node_id = _parse_uuid(taxonomy_node_id)
+
+        self._s.flush()
+        return canonical_to_entity(m, self._brand_name(m.brand_id))
 
     def _unique_slug(self, base: str, market_id: str) -> str:
         """Slug único por-mercado: si `base` ya existe, sufija -2, -3… (invariante del catálogo)."""
@@ -1443,3 +1505,527 @@ class SqlAdminAuditRepository:
             )
             for m in self._s.execute(stmt).scalars()
         ]
+
+
+class SqlAdminCanonicalCatalogRepository:
+    """Read model del catálogo canónico para la consola admin (F5).
+
+    Todo el SQL del listado vive ACÁ, no en el controller (ADR 31). Las métricas
+    (`matched_provider_count`, `ean_reachable`, `possible_duplicate_count`, `last_match_at`) se
+    calculan en SQL y no en Python **porque el `total` de la paginación tiene que contarse sobre
+    las filas ya filtradas** — derivar en Python obligaría a traer el catálogo entero para poder
+    filtrar, y el total dejaría de ser real.
+
+    ⚠️ Acoplamiento consciente: los filtros por `quality_status` ESPEJAN en SQL las reglas de
+    `domain/canonical_catalog.py`. Si cambiás una regla allá, cambiala acá. Es el precio de poder
+    filtrar y paginar en la base; la alternativa (traer todo y filtrar en memoria) rompe el total.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    # ------------------------------------------------------------------ subqueries derivadas --
+
+    @staticmethod
+    def _provider_metrics():  # type: ignore[no-untyped-def]
+        """Proveedores DISTINTOS por canónico + el precio visto más reciente."""
+        return (
+            select(
+                StoreProductModel.canonical_product_id.label("cp_id"),
+                func.count(func.distinct(StoreProductModel.provider_id)).label("provider_count"),
+                func.max(StoreProductModel.last_seen_at).label("last_price_seen_at"),
+            )
+            .where(StoreProductModel.canonical_product_id.isnot(None))
+            .group_by(StoreProductModel.canonical_product_id)
+            .subquery()
+        )
+
+    @staticmethod
+    def _ean_reachable():  # type: ignore[no-untyped-def]
+        """≥1 store_product enlazado CON EAN: dice si el job de matcheo-por-barcode puede cubrirlo."""
+        return (
+            select(StoreProductModel.canonical_product_id.label("cp_id"))
+            .where(
+                StoreProductModel.canonical_product_id.isnot(None),
+                func.coalesce(StoreProductModel.ean, "") != "",
+            )
+            .distinct()
+            .subquery()
+        )
+
+    @staticmethod
+    def _last_match():  # type: ignore[no-untyped-def]
+        """Último match del canónico. `decided_at` gana sobre `created_at`: lo que le importa al
+        operador es cuándo se RESOLVIÓ el vínculo, no cuándo se propuso."""
+        return (
+            select(
+                ProductMatchModel.canonical_product_id.label("cp_id"),
+                func.max(
+                    func.coalesce(ProductMatchModel.decided_at, ProductMatchModel.created_at)
+                ).label("last_match_at"),
+            )
+            .where(ProductMatchModel.canonical_product_id.isnot(None))
+            .group_by(ProductMatchModel.canonical_product_id)
+            .subquery()
+        )
+
+    @staticmethod
+    def _duplicate_counts():  # type: ignore[no-untyped-def]
+        """Colisión de EAN: cuántos OTROS canónicos comparten EAN con éste (R4).
+
+        Es la señal MÁS fuerte de duplicado — mucho más que la similitud de nombre. Dos canónicos
+        cuyos store_products comparten el mismo EAN normalizado son, casi con certeza, el mismo
+        producto. Sólo ALERTA: merge/split está fuera de alcance.
+        """
+        other = aliased(StoreProductModel)
+        return (
+            select(
+                StoreProductModel.canonical_product_id.label("cp_id"),
+                func.count(func.distinct(other.canonical_product_id)).label("dup_count"),
+            )
+            .join(
+                other,
+                and_(
+                    other.ean == StoreProductModel.ean,
+                    other.canonical_product_id != StoreProductModel.canonical_product_id,
+                    other.canonical_product_id.isnot(None),
+                ),
+            )
+            .where(
+                StoreProductModel.canonical_product_id.isnot(None),
+                func.coalesce(StoreProductModel.ean, "") != "",
+            )
+            .group_by(StoreProductModel.canonical_product_id)
+            .subquery()
+        )
+
+    # ------------------------------------------------------------------------------ listado --
+
+    def list_catalog(
+        self,
+        *,
+        market_id: str,
+        filters: CanonicalCatalogFilters | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        sort: str = "name",
+        now: datetime | None = None,
+    ) -> CanonicalCatalogPage:
+        f = filters or CanonicalCatalogFilters()
+        now = now or datetime.now(timezone.utc)
+        metrics = self._provider_metrics()
+        eans = self._ean_reachable()
+        matches = self._last_match()
+        dups = self._duplicate_counts()
+
+        provider_count = func.coalesce(metrics.c.provider_count, 0)
+        dup_count = func.coalesce(dups.c.dup_count, 0)
+        has_image = func.coalesce(CanonicalProductModel.image_url, "") != ""
+        has_quality = func.coalesce(CanonicalProductModel.quality, "") != ""
+        has_category = CanonicalProductModel.taxonomy_node_id.isnot(None)
+        has_display_size = func.coalesce(CanonicalProductModel.display_size, "") != ""
+        has_brand = CanonicalProductModel.brand_id.isnot(None)
+        stale_cutoff = now - PRICE_STALENESS_THRESHOLD
+        is_stale = and_(
+            provider_count > 0,
+            or_(
+                metrics.c.last_price_seen_at.is_(None),
+                metrics.c.last_price_seen_at < stale_cutoff,
+            ),
+        )
+
+        query = (
+            select(
+                CanonicalProductModel,
+                BrandModel.name.label("brand_name"),
+                TaxonomyNodeModel.name.label("category_name"),
+                provider_count.label("provider_count"),
+                metrics.c.last_price_seen_at,
+                eans.c.cp_id.isnot(None).label("has_ean"),
+                matches.c.last_match_at,
+                dup_count.label("dup_count"),
+            )
+            .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
+            .outerjoin(
+                TaxonomyNodeModel,
+                CanonicalProductModel.taxonomy_node_id == TaxonomyNodeModel.id,
+            )
+            .outerjoin(metrics, CanonicalProductModel.id == metrics.c.cp_id)
+            .outerjoin(eans, CanonicalProductModel.id == eans.c.cp_id)
+            .outerjoin(matches, CanonicalProductModel.id == matches.c.cp_id)
+            .outerjoin(dups, CanonicalProductModel.id == dups.c.cp_id)
+            .where(CanonicalProductModel.market_id == market_id)
+        )
+
+        # Search: nombre, slug Y marca (US-CP-L2) — buscar sólo por nombre obliga al operador a
+        # saber cómo se llama exactamente el producto, que es justo lo que no sabe.
+        if f.search:
+            term = f"%{f.search}%"
+            query = query.where(
+                or_(
+                    CanonicalProductModel.name.ilike(term),
+                    CanonicalProductModel.slug.ilike(term),
+                    BrandModel.name.ilike(term),
+                )
+            )
+        if f.brand_id:
+            brand_uuid = _parse_uuid(f.brand_id)
+            if brand_uuid is None:
+                return CanonicalCatalogPage(rows=[], total=0)
+            query = query.where(CanonicalProductModel.brand_id == brand_uuid)
+        if f.taxonomy_node_id:
+            node_uuid = _parse_uuid(f.taxonomy_node_id)
+            if node_uuid is None:
+                return CanonicalCatalogPage(rows=[], total=0)
+            query = query.where(CanonicalProductModel.taxonomy_node_id == node_uuid)
+        if f.ean_reachable is not None:
+            query = query.where(
+                eans.c.cp_id.isnot(None) if f.ean_reachable else eans.c.cp_id.is_(None)
+            )
+        if f.min_provider_count is not None:
+            query = query.where(provider_count >= f.min_provider_count)
+        if f.updated_since is not None:
+            query = query.where(metrics.c.last_price_seen_at >= f.updated_since)
+
+        # Espejo SQL de `derive_quality_statuses` — ver la advertencia del docstring.
+        if f.quality_status is not None:
+            status = CanonicalQualityStatus(f.quality_status)
+            if status is CanonicalQualityStatus.COMPLETE:
+                query = query.where(
+                    has_image, has_category, has_quality, provider_count > 0,
+                    ~is_stale, dup_count == 0,
+                )
+            elif status is CanonicalQualityStatus.NO_IMAGE:
+                query = query.where(~has_image)
+            elif status is CanonicalQualityStatus.NO_CATEGORY:
+                query = query.where(~has_category)
+            elif status is CanonicalQualityStatus.NO_PROVIDERS:
+                query = query.where(provider_count == 0)
+            elif status is CanonicalQualityStatus.NO_QUALITY:
+                query = query.where(~has_quality)
+            elif status is CanonicalQualityStatus.STALE_PRICE:
+                query = query.where(is_stale)
+            elif status is CanonicalQualityStatus.POSSIBLE_DUPLICATE:
+                query = query.where(dup_count > 0)
+
+        total = self._s.scalar(select(func.count()).select_from(query.subquery())) or 0
+
+        # Ordenar por completitud = ordenar por la SUMA de campos presentes (0-6). Da exactamente
+        # el mismo orden que el porcentaje y evita repetir la aritmética del dominio en SQL.
+        present_sum = (
+            _as_int(has_image)
+            + _as_int(has_category)
+            + _as_int(provider_count > 0)
+            + _as_int(has_brand)
+            + _as_int(has_display_size)
+            + _as_int(has_quality)
+        )
+        order = {
+            "name": CanonicalProductModel.name.asc(),
+            "-name": CanonicalProductModel.name.desc(),
+            "providers": provider_count.asc(),
+            "-providers": provider_count.desc(),
+            "completeness": present_sum.asc(),
+            "-completeness": present_sum.desc(),
+            "updated": metrics.c.last_price_seen_at.asc().nullsfirst(),
+            "-updated": metrics.c.last_price_seen_at.desc().nullslast(),
+        }.get(sort, CanonicalProductModel.name.asc())
+
+        rows = self._s.execute(query.order_by(order).limit(limit).offset(offset)).all()
+        return CanonicalCatalogPage(
+            rows=[self._to_row(r) for r in rows],
+            total=total,
+        )
+
+    def get_catalog_row(
+        self, *, market_id: str, canonical_product_id: str | None = None, slug: str | None = None
+    ) -> CanonicalCatalogRow | None:
+        """Una fila por id o por slug, con EXACTAMENTE las mismas métricas que el listado —
+        que el detalle y la lista discrepen es la clase de incoherencia que quema confianza."""
+        if canonical_product_id is not None:
+            pid = _parse_uuid(canonical_product_id)
+            if pid is None:
+                return None
+            key = CanonicalProductModel.id == pid
+        elif slug is not None:
+            key = CanonicalProductModel.slug == slug
+        else:
+            return None
+
+        metrics = self._provider_metrics()
+        eans = self._ean_reachable()
+        matches = self._last_match()
+        dups = self._duplicate_counts()
+        row = self._s.execute(
+            select(
+                CanonicalProductModel,
+                BrandModel.name.label("brand_name"),
+                TaxonomyNodeModel.name.label("category_name"),
+                func.coalesce(metrics.c.provider_count, 0).label("provider_count"),
+                metrics.c.last_price_seen_at,
+                eans.c.cp_id.isnot(None).label("has_ean"),
+                matches.c.last_match_at,
+                func.coalesce(dups.c.dup_count, 0).label("dup_count"),
+            )
+            .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
+            .outerjoin(
+                TaxonomyNodeModel,
+                CanonicalProductModel.taxonomy_node_id == TaxonomyNodeModel.id,
+            )
+            .outerjoin(metrics, CanonicalProductModel.id == metrics.c.cp_id)
+            .outerjoin(eans, CanonicalProductModel.id == eans.c.cp_id)
+            .outerjoin(matches, CanonicalProductModel.id == matches.c.cp_id)
+            .outerjoin(dups, CanonicalProductModel.id == dups.c.cp_id)
+            .where(CanonicalProductModel.market_id == market_id, key)
+        ).first()
+        return self._to_row(row) if row is not None else None
+
+    @staticmethod
+    def _to_row(r) -> CanonicalCatalogRow:  # type: ignore[no-untyped-def]
+        cp = r[0]
+        return CanonicalCatalogRow(
+            canonical_product_id=str(cp.id),
+            slug=cp.slug,
+            name=cp.name,
+            brand=r[1] or "",
+            size_amount=cp.size_amount,
+            size_measure=cp.size_measure,
+            display_size=cp.display_size,
+            image_url=cp.image_url,
+            category=r[2],
+            quality=cp.quality,
+            taxonomy_node_id=str(cp.taxonomy_node_id) if cp.taxonomy_node_id else None,
+            origin_run_id=cp.origin_run_id,
+            matched_provider_count=r[3] or 0,
+            last_price_seen_at=r[4],
+            ean_reachable=bool(r[5]),
+            last_match_at=r[6],
+            possible_duplicate_count=r[7] or 0,
+        )
+
+    # ------------------------------------------------------------------ identidad (importación) --
+
+    def find_existing_identities(
+        self, *, market_id: str, names: list[str]
+    ) -> set[tuple[str, str, str, str]]:
+        """Qué identidades (nombre+marca+tamaño+unidad) YA existen, en UNA sola query.
+
+        Se filtra por los nombres del archivo en vez de traer el catálogo entero: el preview de
+        un CSV de 500 filas no puede costar leer 100.000 canónicos.
+        """
+        if not names:
+            return set()
+        rows = self._s.execute(
+            select(
+                func.lower(CanonicalProductModel.name),
+                func.coalesce(BrandModel.name, ""),
+                CanonicalProductModel.size_amount,
+                CanonicalProductModel.size_measure,
+            )
+            .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                func.lower(CanonicalProductModel.name).in_([n.lower() for n in names]),
+            )
+        ).all()
+        # La marca se compara en MAYÚSCULA y la cantidad normalizada: el catálogo tiene marcas
+        # cargadas por la ingesta con casing arbitrario y `Numeric(18,8)` devuelve `1.00000000`
+        # donde el CSV trae `1`. Sin normalizar los dos lados, un duplicado real no se detecta.
+        return {
+            (n, (b or "").upper(), normalize_amount_key(amount), measure)
+            for n, b, amount, measure in rows
+        }
+
+    # --------------------------------------------------------------------------- proveedores --
+
+    def list_providers(self, canonical_product_id: str) -> list[CanonicalProviderPriceRow]:
+        """Tiendas que venden este canónico, MÁS BARATA PRIMERO (US-CP-L4/D5).
+
+        `is_cheapest` se marca sobre la fila real más barata, no sobre "la primera": si dos
+        tiendas empatan en el precio mínimo, ambas quedan destacadas — inventar un desempate
+        arbitrario le mentiría al operador sobre cuál conviene.
+        """
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return []
+        rows = self._s.execute(
+            select(
+                StoreProductModel.id,
+                StoreProductModel.provider_id,
+                ProviderModel.name,
+                ProviderModel.logo_url,
+                StoreProductModel.current_price_minor,
+                StoreProductModel.currency,
+                StoreProductModel.url,
+                StoreProductModel.last_seen_at,
+                StoreProductModel.image_url,
+            )
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .where(StoreProductModel.canonical_product_id == pid)
+            .order_by(StoreProductModel.current_price_minor.asc())
+        ).all()
+        if not rows:
+            return []
+        cheapest = min(r[4] for r in rows)
+        return [
+            CanonicalProviderPriceRow(
+                store_product_id=str(r[0]),
+                provider_id=str(r[1]),
+                provider_name=r[2],
+                provider_logo_url=r[3],
+                price_minor=r[4],
+                currency=r[5],
+                url=r[6],
+                last_seen_at=r[7],
+                store_product_image_url=r[8],
+                is_cheapest=(r[4] == cheapest),
+            )
+            for r in rows
+        ]
+
+    # ----------------------------------------------------------------------------- evidencia --
+
+    def list_evidence(self, canonical_product_id: str) -> list[CanonicalEvidenceRow]:
+        """Datos CRUDOS por tienda + cómo se enlazó cada uno (US-CP-D8). Sólo lectura."""
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return []
+        latest_match = (
+            select(
+                ProductMatchModel.store_product_id.label("sp_id"),
+                func.max(
+                    func.coalesce(ProductMatchModel.decided_at, ProductMatchModel.created_at)
+                ).label("matched_at"),
+            )
+            .where(ProductMatchModel.canonical_product_id == pid)
+            .group_by(ProductMatchModel.store_product_id)
+            .subquery()
+        )
+        rows = self._s.execute(
+            select(
+                StoreProductModel,
+                ProviderModel.name,
+                ProductMatchModel.method,
+                ProductMatchModel.confidence,
+                latest_match.c.matched_at,
+            )
+            .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
+            .outerjoin(latest_match, latest_match.c.sp_id == StoreProductModel.id)
+            .outerjoin(
+                ProductMatchModel,
+                and_(
+                    ProductMatchModel.store_product_id == StoreProductModel.id,
+                    func.coalesce(ProductMatchModel.decided_at, ProductMatchModel.created_at)
+                    == latest_match.c.matched_at,
+                ),
+            )
+            .where(StoreProductModel.canonical_product_id == pid)
+            .order_by(ProviderModel.name)
+        ).all()
+        return [
+            CanonicalEvidenceRow(
+                store_product_id=str(sp.id),
+                provider_id=str(sp.provider_id),
+                provider_name=provider_name,
+                raw_name=sp.name or "",
+                raw_brand=sp.brand,
+                raw_size_text=sp.size_text,
+                ean=sp.ean,
+                sku=sp.external_id,
+                image_url=sp.image_url,
+                store_product_url=sp.url,
+                match_method=method,
+                match_confidence=float(confidence) if confidence is not None else None,
+                matched_at=matched_at,
+            )
+            for sp, provider_name, method, confidence, matched_at in rows
+        ]
+
+    # ---------------------------------------------------------------------------- duplicados --
+
+    def list_duplicate_candidates(
+        self, *, canonical_product_id: str, market_id: str, limit: int = 20
+    ) -> list[CanonicalDuplicateCandidate]:
+        """Canónicos sospechosos de ser el MISMO producto (US-CP-D11).
+
+        Dos señales, en orden de fuerza: colisión de EAN primero (casi certeza), y luego misma
+        marca + mismo tamaño con nombre parecido. Sólo alerta.
+        """
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return []
+        target = self._s.get(CanonicalProductModel, pid)
+        if target is None:
+            return []
+
+        signals: dict[str, list[str]] = {}
+
+        # Señal 1 — colisión de EAN (la más fuerte).
+        mine = aliased(StoreProductModel)
+        other = aliased(StoreProductModel)
+        ean_hits = self._s.execute(
+            select(func.distinct(other.canonical_product_id))
+            .select_from(mine)
+            .join(
+                other,
+                and_(
+                    other.ean == mine.ean,
+                    other.canonical_product_id != mine.canonical_product_id,
+                    other.canonical_product_id.isnot(None),
+                ),
+            )
+            .where(mine.canonical_product_id == pid, func.coalesce(mine.ean, "") != "")
+        ).scalars().all()
+        for cid in ean_hits:
+            signals.setdefault(str(cid), []).append("ean_collision")
+
+        # Señal 2 — misma marca + mismo tamaño (léxica, mucho más débil).
+        lexical = self._s.execute(
+            select(CanonicalProductModel.id)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.id != pid,
+                CanonicalProductModel.brand_id == target.brand_id,
+                CanonicalProductModel.size_amount == target.size_amount,
+                CanonicalProductModel.size_measure == target.size_measure,
+            )
+            .limit(limit)
+        ).scalars().all()
+        for cid in lexical:
+            signals.setdefault(str(cid), []).append("same_brand_size")
+
+        if not signals:
+            return []
+
+        rows = self._s.execute(
+            select(CanonicalProductModel, BrandModel.name, TaxonomyNodeModel.name)
+            .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
+            .outerjoin(
+                TaxonomyNodeModel,
+                CanonicalProductModel.taxonomy_node_id == TaxonomyNodeModel.id,
+            )
+            .where(CanonicalProductModel.id.in_([_parse_uuid(k) for k in signals]))
+        ).all()
+
+        candidates = [
+            CanonicalDuplicateCandidate(
+                canonical_product_id=str(cp.id),
+                slug=cp.slug,
+                name=cp.name,
+                brand=brand_name or "",
+                display_size=cp.display_size,
+                category=category_name,
+                signals=signals[str(cp.id)],
+            )
+            for cp, brand_name, category_name in rows
+        ]
+        # La colisión de EAN ordena POR ENCIMA de las señales léxicas (regla del SDD).
+        candidates.sort(key=lambda c: (not c.has_ean_collision, c.name))
+        return candidates[:limit]
+
+
+def _as_int(condition):  # type: ignore[no-untyped-def]
+    """`bool` SQL → 0/1 para poder sumarlo. Postgres no suma booleanos directamente."""
+    from sqlalchemy import Integer, case, cast
+
+    return cast(case((condition, 1), else_=0), Integer)
