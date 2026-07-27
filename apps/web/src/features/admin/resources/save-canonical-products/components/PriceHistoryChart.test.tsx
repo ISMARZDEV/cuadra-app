@@ -123,6 +123,55 @@ describe("PriceHistoryChart", () => {
     expect(title.textContent).toContain("100.00");
   });
 
+  // ── Escala honesta ─────────────────────────────────────────────────────────
+  // El caso real que lo destapó: Bravo 474.00 · Nacional 474.95 · Sirena 475.00. Un peso de
+  // diferencia sobre RD$474 (0.2%) se dibujaba ocupando TODO el alto del gráfico, como un
+  // desplome — mientras el KPI de al lado decía "Variación del rango RD$0.00".
+
+  it("una diferencia ínfima NO se dibuja como un desplome", () => {
+    renderChart([
+      { provider_id: "p1", provider_name: "Bravo", points: [point("2026-07-21T00:00:00Z", 47400)] },
+      { provider_id: "p2", provider_name: "Sirena", points: [point("2026-07-21T00:00:00Z", 47500)] },
+    ]);
+
+    const svg = document.querySelector("svg")!;
+    const [, , , height] = svg.getAttribute("viewBox")!.split(" ").map(Number);
+    const ys = [...svg.querySelectorAll("circle")].map((c) => Number(c.getAttribute("cy")));
+    const separacion = Math.max(...ys) - Math.min(...ys);
+
+    // RD$1 sobre RD$474 no puede ocupar más de una fracción del alto del gráfico.
+    expect(separacion).toBeLessThan(height * 0.25);
+  });
+
+  it("una diferencia REAL sí usa el alto del gráfico", () => {
+    // La otra cara: si el piso de escala se pasa de generoso, aplana diferencias que importan.
+    renderChart([
+      { provider_id: "p1", provider_name: "Bravo", points: [point("2026-07-21T00:00:00Z", 10000)] },
+      { provider_id: "p2", provider_name: "Sirena", points: [point("2026-07-21T00:00:00Z", 20000)] },
+    ]);
+
+    const svg = document.querySelector("svg")!;
+    const [, , , height] = svg.getAttribute("viewBox")!.split(" ").map(Number);
+    const ys = [...svg.querySelectorAll("circle")].map((c) => Number(c.getAttribute("cy")));
+
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(height * 0.4);
+  });
+
+  it("con todas las capturas del mismo día el eje X no repite la fecha dos veces", () => {
+    // Horas elegidas para caer el MISMO día local: `captured_at` viaja en UTC y se formatea en
+    // hora local, así que un 00:00Z se muestra como el día anterior en RD (UTC−4).
+    renderChart([
+      { provider_id: "p1", provider_name: "Bravo", points: [point("2026-07-21T12:00:00Z", 47400)] },
+      { provider_id: "p2", provider_name: "Sirena", points: [point("2026-07-21T15:00:00Z", 47500)] },
+    ]);
+
+    const etiquetas = [...document.querySelectorAll("svg text")]
+      .map((n) => n.textContent ?? "")
+      .filter((s) => /jul/i.test(s));
+
+    expect(etiquetas).toHaveLength(1);
+  });
+
   it("explica el baseline carry-in bajo el gráfico", () => {
     renderChart([
       { provider_id: "p1", provider_name: "Sirena", points: [point("2026-07-01T00:00:00Z", 10000)] },

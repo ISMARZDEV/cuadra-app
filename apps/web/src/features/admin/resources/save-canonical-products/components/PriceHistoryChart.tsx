@@ -76,14 +76,30 @@ export function PriceHistoryChart({
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
 
+  // PISO DE ESCALA. Ajustar el eje a los extremos crudos convierte cualquier diferencia en un
+  // desplome: con Bravo 474.00 · Nacional 474.95 · Sirena 475.00, un peso (0.2% del precio)
+  // ocupaba los 260px de alto mientras el KPI de al lado decía "Variación del rango RD$0.00".
+  // El gráfico y el número se contradecían, y el gráfico mentía. Ahora el dominio cubre al menos
+  // un 6% del nivel de precio: una diferencia ínfima se ve ínfima, y una real sigue usando el
+  // alto completo (`priceDomain` sólo se ensancha cuando el rango real no llega al piso).
+  const MIN_SPAN_RATIO = 0.06;
+  const midPrice = (minPrice + maxPrice) / 2;
+  const minSpan = Math.max(Math.ceil(midPrice * MIN_SPAN_RATIO), 1);
+  const rawSpan = maxPrice - minPrice;
+  const domainMin = rawSpan >= minSpan ? minPrice : Math.round(midPrice - minSpan / 2);
+  const domainMax = rawSpan >= minSpan ? maxPrice : Math.round(midPrice + minSpan / 2);
+
+  const startLabel = formatCatalogDate(new Date(minTime).toISOString(), locale);
+  const endLabel = formatCatalogDate(new Date(maxTime).toISOString(), locale);
+
   const timeSpan = maxTime - minTime || 1;
-  const priceSpan = maxPrice - minPrice || 1;
+  const priceSpan = domainMax - domainMin || 1;
   const x = (iso: string) =>
     PAD.left + ((new Date(iso).getTime() - minTime) / timeSpan) * plotW;
   const y = (minor: number) =>
     flat
       ? PAD.top + plotH / 2 // centrada: la línea plana ES la información
-      : PAD.top + plotH - ((minor - minPrice) / priceSpan) * plotH;
+      : PAD.top + plotH - ((minor - domainMin) / priceSpan) * plotH;
 
   // Una serie plana no necesita 5 líneas de grilla repitiendo el mismo número.
   const gridLines = flat ? 0 : 4;
@@ -125,7 +141,7 @@ export function PriceHistoryChart({
         >
           {Array.from({ length: gridLines + 1 }, (_, i) => {
             const value =
-              gridLines === 0 ? minPrice : minPrice + ((maxPrice - minPrice) * i) / gridLines;
+              gridLines === 0 ? minPrice : domainMin + ((domainMax - domainMin) * i) / gridLines;
             const gy = y(value);
             return (
               <g key={i}>
@@ -190,17 +206,33 @@ export function PriceHistoryChart({
             );
           })}
 
-          <text x={PAD.left} y={H - 8} className="fill-muted-foreground text-[11px]">
-            {formatCatalogDate(new Date(minTime).toISOString(), locale)}
-          </text>
-          <text
-            x={W - PAD.right}
-            y={H - 8}
-            textAnchor="end"
-            className="fill-muted-foreground text-[11px]"
-          >
-            {formatCatalogDate(new Date(maxTime).toISOString(), locale)}
-          </text>
+          {/* Con una sola fecha de captura, imprimir inicio y fin daba la misma fecha en los dos
+              extremos y sugería un período que no existe. Una etiqueta centrada dice la verdad:
+              todo lo que hay es de ese día. */}
+          {startLabel === endLabel ? (
+            <text
+              x={PAD.left + plotW / 2}
+              y={H - 8}
+              textAnchor="middle"
+              className="fill-muted-foreground text-[11px]"
+            >
+              {startLabel}
+            </text>
+          ) : (
+            <>
+              <text x={PAD.left} y={H - 8} className="fill-muted-foreground text-[11px]">
+                {startLabel}
+              </text>
+              <text
+                x={W - PAD.right}
+                y={H - 8}
+                textAnchor="end"
+                className="fill-muted-foreground text-[11px]"
+              >
+                {endLabel}
+              </text>
+            </>
+          )}
         </svg>
       </div>
 
