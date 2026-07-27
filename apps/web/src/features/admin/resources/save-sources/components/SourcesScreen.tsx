@@ -189,10 +189,10 @@ export function SourcesScreen() {
 
   return (
     <div className="flex flex-1 flex-col p-4 md:p-6">
-      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">{t("admin.sources.title")}</h1>
+          <h1 className="text-2xl font-medium text-black dark:text-white">{t("admin.sources.title")}</h1>
           <span className="text-base font-semibold text-brand-forest dark:text-brand-lime">({sources.length})</span>
         </div>
         <p className="text-sm text-muted-foreground">{t("admin.sources.subtitle")}</p>
@@ -200,7 +200,7 @@ export function SourcesScreen() {
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="relative flex h-9 w-[272px] items-center gap-2 rounded-full border border-[#8daeae]/40 bg-[#b0b0b0]/15 pr-1.5 pl-3 dark:border-white/10 dark:bg-white/5">
+            <div className="relative flex h-9 w-[272px] items-center gap-2 rounded-full border border-[#8daeae]/40 bg-[#b0b0b0]/15 pr-1.5 pl-3 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:border-white/10 dark:bg-white/5">
               <Search className="size-4 shrink-0 text-[#4f585d]/70 dark:text-white/50" aria-hidden="true" />
               <Input
                 type="search"

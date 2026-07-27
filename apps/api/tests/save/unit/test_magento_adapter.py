@@ -57,7 +57,7 @@ def test_map_magento_product_full_fields() -> None:
         category_path=("Despensa", "Arroz, Cereales y Legumbres", "Arroz"),
         ean=None,  # no expuesto por la API
         url="https://supermercadosnacional.com/arroz-selecto-lider-10-lb-2140283",
-        image_url="https://supermercadosnacional.com/media/catalog/product/L/I/LIDER_ARROZ_SELECTO_10_LB.jpg",
+        image_urls=("https://supermercadosnacional.com/media/catalog/product/L/I/LIDER_ARROZ_SELECTO_10_LB.jpg",),
     )
 
 

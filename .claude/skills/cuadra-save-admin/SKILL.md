@@ -83,8 +83,8 @@ for tone and ergonomics. Looking at only one is how the wrong answer gets shippe
 
 **The visual language, verbatim** (copy these, do not approximate):
 
-- Page shell: `flex flex-1 flex-col p-4 md:p-6` > `rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]`
-- Title: `text-2xl font-bold text-brand-forest dark:text-brand-lime` **+ the count in parentheses**
+- Page shell: `flex flex-1 flex-col p-4 md:p-6` > `rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]`
+- Title: `text-2xl font-medium text-black dark:text-white` **+ the count in parentheses**
 - Search pill: `h-9 w-[272px] rounded-full border border-[#8daeae]/40 bg-[#b0b0b0]/15`
 - Filter button: `size-9 rounded-full bg-brand-lime text-brand-forest` + `FunnelIcon`
 - Primary CTA: `h-9 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest`

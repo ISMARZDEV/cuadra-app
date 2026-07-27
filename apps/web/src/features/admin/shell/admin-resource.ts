@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Database, ListChecks, ListPlus, Store, Workflow } from "lucide-react";
+import { Boxes, Database, ListChecks, ListPlus, Store, Workflow } from "lucide-react";
 
 // Seam de extensibilidad de la OFV (back-office único): cada módulo admin futuro (News,
 // accesos/RBAC, financieros...) se registra acá — F2·B1 habilita SOLO la cola de revisión de
@@ -54,5 +54,14 @@ export const ADMIN_RESOURCES: AdminResource[] = [
     // sensible que editar un provider. = CapabilityKey.ADMIN_SAVE_ORCHESTRATION_OPS
     capability: "admin_save_orchestration_ops",
     navIcon: Workflow,
+  },
+  {
+    key: "save-canonical-products",
+    label: "Productos Canónicos (Save)",
+    path: "/admin/canonical-products",
+    // F5: capability PROPIA — archivar canónicos e importar en lote afecta el catálogo público
+    // y el histórico de matches. = CapabilityKey.ADMIN_SAVE_CATALOG_OPS
+    capability: "admin_save_catalog_ops",
+    navIcon: Boxes,
   },
 ];

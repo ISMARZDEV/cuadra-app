@@ -104,7 +104,10 @@ describe("AdminSidebar", () => {
     const activePill = activeLink!.querySelector("span");
     expect(activePill).toHaveClass("bg-sidebar-accent");
     expect(activePill).toHaveClass("border-sidebar-accent-border");
-    expect(activePill).toHaveClass("font-bold");
+    // El sidebar usa DOS pesos y nada más: `font-medium` (500) para lo navegable y
+    // `font-semibold` (600) para lo estructural y lo activo. El activo estaba en `font-bold`
+    // (700) apilando una TERCERA señal sobre el fondo y el borde, que ya lo distinguen solos.
+    expect(activePill).toHaveClass("font-semibold");
 
     const inactiveLink = screen.getByText("Proveedores").closest("a");
     expect(inactiveLink?.querySelector("span")).not.toHaveClass("bg-sidebar-accent");

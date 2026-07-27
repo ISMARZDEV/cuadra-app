@@ -54,13 +54,22 @@ def _category_path(item: dict) -> tuple[str, ...]:
 _IMAGE_BASE = "https://bravova-resources.superbravo.com.do/images/catalogo/big"
 
 
-def _image_url(item: dict) -> str | None:
+# Tope de imágenes por artículo. `nimgArticulo` viene del proveedor: un valor disparatado
+# generaría cientos de URLs INVENTADAS que además nadie verificó que existan.
+_MAX_IMAGES = 10
+
+
+def _image_urls(item: dict) -> tuple[str, ...]:
+    """TODAS las imágenes del artículo (F5). Bravo no manda URLs: manda `nimgArticulo` (CUÁNTAS
+    hay) y el patrón lleva índice (`{idext}_N.png`). Teníamos el patrón completo y usábamos sólo
+    la primera."""
     idext = item.get("idexternoArticulo")
     version = item.get("imageCatalogVersion")
     nimg = item.get("nimgArticulo") or 0
-    if idext and version is not None and nimg:
-        return f"{_IMAGE_BASE}/{idext}_1.png?v={version}"
-    return None
+    if not (idext and version is not None and nimg):
+        return ()
+    count = min(int(nimg), _MAX_IMAGES)
+    return tuple(f"{_IMAGE_BASE}/{idext}_{i}.png?v={version}" for i in range(1, count + 1))
 
 
 def _global_ean(item: dict) -> str | None:
@@ -107,7 +116,7 @@ def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalog
         category_path=_category_path(item),
         ean=_global_ean(item),
         url=None,
-        image_url=_image_url(item),
+        image_urls=_image_urls(item),
         source_ref=source_ref,
     )
 

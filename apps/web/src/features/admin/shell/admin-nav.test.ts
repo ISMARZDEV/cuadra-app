@@ -14,7 +14,7 @@ describe("ADMIN_NAV", () => {
     expect(ADMIN_NAV.map((section) => section.key)).toEqual(["menu", "users", "news", "save"]);
   });
 
-  it("sección Save → grupo Supermercado con los 6 sub-ítems en orden exacto", () => {
+  it("sección Save → grupo Supermercado con los 7 sub-ítems en orden exacto", () => {
     const saveSection = ADMIN_NAV.find((s) => s.key === "save");
     expect(saveSection).toBeDefined();
 
@@ -31,6 +31,7 @@ describe("ADMIN_NAV", () => {
       "providers",
       "sources",
       "basket",
+      "canonical-products",
       "orquestacion",
     ]);
 
@@ -43,6 +44,7 @@ describe("ADMIN_NAV", () => {
       providers: "ready",
       sources: "ready",
       basket: "ready",
+      "canonical-products": "ready",
       orquestacion: "ready",
     });
   });
@@ -59,6 +61,7 @@ describe("ADMIN_NAV", () => {
       providers: "save-providers",
       sources: "save-sources",
       basket: "save-basket",
+      "canonical-products": "save-canonical-products",
       orquestacion: "save-orchestration",
     };
 

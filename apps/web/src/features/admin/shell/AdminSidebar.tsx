@@ -233,12 +233,12 @@ function SubItem({
   // es `w-fit` al texto — el background/border se aplica al <span> interno, no a la fila completa.
   // El indent del texto se logra con `pl-[29px]` en el contenedor.
   const containerClass = cn(
-    "flex h-[30px] w-full items-center pl-[20px] pr-2 text-[13px] text-sidebar-foreground",
+    "flex h-[30px] w-full items-center pl-[20px] pr-2 text-sm font-medium text-sidebar-foreground",
   );
   const pillClass = cn(
     "flex-1 rounded-[10px] px-2 py-1 text-left transition-all duration-200 ease-linear",
     "hover:bg-sidebar-accent/50",
-    active && "bg-sidebar-accent border-[0.725px] border-sidebar-accent-border font-bold hover:bg-sidebar-accent",
+    active && "bg-sidebar-accent border-[0.725px] border-sidebar-accent-border font-semibold hover:bg-sidebar-accent",
     (collapsed || !open) && "opacity-0",
   );
 
@@ -332,7 +332,7 @@ function FooterItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 text-[15px] font-medium text-sidebar-muted outline-none",
+        "flex items-center gap-2 text-sm font-normal text-sidebar-muted outline-none",
         collapsed && "justify-center",
       )}
     >

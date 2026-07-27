@@ -11,6 +11,7 @@ PURO: sin DB ni I/O. `build_lexicon_index` recibe las hojas ya cargadas (composi
 """
 from __future__ import annotations
 
+from ...domain.category_suggestion import CategorySuggestion
 from ...domain.taxonomy import slugify
 
 LexiconIndex = dict[str, str]  # token -> taxonomy_node_id (hoja)
@@ -59,3 +60,35 @@ def lexicon_match_path(source_category: str, index: LexiconIndex) -> tuple[str, 
         if hit is not None:
             return hit
     return None
+
+
+def lexicon_suggestions(
+    name: str,
+    index: LexiconIndex,
+    *,
+    brand: str | None = None,
+    limit: int = 5,
+) -> list[CategorySuggestion]:
+    """Hojas candidatas rankeadas para que elija un HUMANO (US-CP-D2c).
+
+    Distinto de `lexicon_match` a propósito: aquél DECIDE (una hoja o `None` si hay ambigüedad);
+    éste EXPONE la evidencia para que decida una persona. Por eso varias hojas pueden convivir en
+    el resultado — lo que allá es ambigüedad, acá es justamente la lista de opciones.
+
+    Sin tokens que peguen devuelve `[]`: la regla sagrada del clasificador es no inventar categoría,
+    y el árbol completo queda como fallback. Los tokens ambiguos ya vienen descartados del índice.
+    """
+    seen: dict[str, list[str]] = {}
+    # `dict.fromkeys` deduplica preservando el orden: repetir un token no puede inflar el ranking.
+    for token in dict.fromkeys(_tokens(f"{name} {brand or ''}")):
+        node_id = index.get(token)
+        if node_id is not None:
+            seen.setdefault(node_id, []).append(token)
+
+    suggestions = [
+        CategorySuggestion(taxonomy_node_id=node_id, matched_tokens=tokens)
+        for node_id, tokens in seen.items()
+    ]
+    # Más tokens = más evidencia. Empate → orden estable por id para que la lista no baile.
+    suggestions.sort(key=lambda s: (-s.strength, s.taxonomy_node_id))
+    return suggestions[:limit]

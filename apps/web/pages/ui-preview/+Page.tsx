@@ -57,9 +57,9 @@ function Workspace({ locale, bare }: { locale: "es"; bare?: boolean }) {
     <>
     {bare ? null : <AdminTopBar name="Ismael Porfirio Martínez Encarnación" locale={locale} />}
     <div className="flex flex-1 flex-col p-4 md:p-6">
-      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:dark:bg-muted [corner-shape:squircle]">
       <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">Cola de revisión</h1>
+        <h1 className="text-2xl font-medium text-black dark:text-white">Cola de revisión</h1>
         <span className="text-base font-semibold text-brand-forest dark:text-brand-lime">(118)</span>
         <button type="button" className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-brand-forest px-4 text-sm font-semibold text-white shadow-sm">
           Sincronizar

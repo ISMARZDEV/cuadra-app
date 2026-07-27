@@ -92,7 +92,7 @@ export function ReviewQueueToolbar({
       <div className="flex flex-wrap items-center gap-2.5">
         {/* Búsqueda: pill gris neutro, ícono lupa, hint ⌘F en pastilla verde bosque. Client-side-only
             (ver doc del prop `search`) — Batch 6 filtra `rows` por nombre con este valor. */}
-        <div className="relative flex h-9 w-[272px] items-center gap-2 rounded-full border border-[#8daeae]/40 bg-[#b0b0b0]/15 pr-1.5 pl-3 dark:border-white/10 dark:bg-white/5">
+        <div className="relative flex h-9 w-[272px] items-center gap-2 rounded-full border border-[#8daeae]/40 bg-[#b0b0b0]/15 pr-1.5 pl-3 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:border-white/10 dark:bg-white/5">
           <Search className="size-4 shrink-0 text-[#4f585d]/70 dark:text-white/50" aria-hidden="true" />
           <Input
             type="search"

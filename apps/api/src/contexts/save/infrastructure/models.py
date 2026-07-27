@@ -214,6 +214,13 @@ class CanonicalProductModel(Base):
     __table_args__ = (
         Index("ix_canonical_product_market", "market_id"),
         Index("ix_canonical_product_origin_run", "origin_run_id"),
+        # Parcial: el 99% de las lecturas pide sólo los activos (migración 1b48d0f4dc93). Se
+        # declara acá para que autogenerate no proponga borrarlo en cada revisión.
+        Index(
+            "ix_canonical_product_active",
+            "market_id",
+            postgresql_where=text("archived_at IS NULL"),
+        ),
         UniqueConstraint("market_id", "slug", name="uq_canonical_product_market_slug"),
         {"schema": _SCHEMA},
     )
@@ -243,6 +250,61 @@ class CanonicalProductModel(Base):
     # semántico (F2.0 matching, cascada Batch 7): BGE-M3 dim=1024, poblado a escritura de ingesta.
     # Un solo modelo por deployment — ver CONSTRAINT NOTE en la migración 614e370d452c.
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
+    # ── F5 (SDD Detail by Id) ────────────────────────────────────────────────────────────────
+    # Texto libre de curación. Nunca lo escribe la ingesta ni un LLM: sólo un operador.
+    description: Mapped[str | None] = mapped_column(Text)
+    # Cuándo nació el canónico. Complementa `origin_run_id` (de QUÉ corrida) — no lo reemplaza.
+    # Backfill: MIN(product_match.created_at) del canónico; NULL donde no hubo match.
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # Nota interna del operador. NUNCA sale por un DTO público — ver `ProductDetailDto`.
+    internal_note: Mapped[str | None] = mapped_column(Text)
+    # Soft-delete (US-CP-L6/D12): NULL = activo. Archivar PRESERVA histórico, matches y slug;
+    # borrar físicamente un canónico dejaría `store_product.canonical_product_id` colgando y
+    # rompería comparaciones ya publicadas.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CanonicalProductImageModel(Base):
+    """Galería ORDENADA del canónico (F5). Una fila por imagen, con su posición.
+
+    Por qué una tabla y no un array de URLs: cada imagen guarda DE DÓNDE salió
+    (`source_store_product_id`), y eso es lo que permite decir "la 2da la tomamos de Sirena" y
+    volver a ella si la tienda la cambia. Un array perdería esa trazabilidad.
+
+    ⚠️ INVARIANTE: `canonical_product.image_url` es la imagen de POSICIÓN 1, denormalizada. El
+    sitio público (og:image, canonical, tarjetas) la lee de ahí y no se toca: la galería es la
+    fuente de verdad, y quien la escribe mantiene ese espejo.
+    """
+
+    __tablename__ = "canonical_product_image"
+    __table_args__ = (
+        UniqueConstraint(
+            "canonical_product_id", "position", name="uq_canonical_product_image_position"
+        ),
+        Index("ix_canonical_product_image_canonical", "canonical_product_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    canonical_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("save.canonical_product.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 = principal
+    # De qué store_product se tomó. NULL = URL manual. `SET NULL` y no `CASCADE`: que la tienda
+    # deje de vender el producto no puede borrar la imagen que el operador ya eligió.
+    source_store_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.store_product.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class StoreProductModel(Base):
@@ -284,10 +346,45 @@ class StoreProductModel(Base):
     # Etapa B (save-category-classification): categoría CRUDA de la fuente (path del adapter, ej.
     # "Despensa > Arroz y Granos"). Segunda señal — la cascada la cruza con el nombre para clasificar.
     source_category: Mapped[str | None] = mapped_column(Text)
+    # Descripción publicada por la TIENDA (F5, tarea 9). Es dato crudo de la tienda, igual que
+    # `name`/`brand`: el canónico tiene la suya propia (`canonical_product.description`), curada.
+    description: Mapped[str | None] = mapped_column(Text)
     # §15.3: localizador(es) extra para el re-fetch por-producto (camino A) cuando `external_id` no
     # alcanza — p.ej. Bravo {"id_articulo": "29866"} (el /get usa idArticulo, no idexterno). NULL salvo
     # las fuentes que lo necesitan.
     source_ref: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class StoreProductImageModel(Base):
+    """Imágenes que publica la TIENDA para un producto, en SU orden (F5, tarea 9).
+
+    Antes se guardaba una sola y el resto se descartaba, aunque el payload ya las traía. Éstas son
+    las CANDIDATAS que alimentan la galería del canónico: sin ellas, la galería sólo puede ofrecer
+    una foto por tienda.
+
+    Se reemplazan enteras en cada observación: la tienda puede agregar, quitar o reordenar sus
+    fotos, y conservar las viejas mostraría imágenes que ya no publica.
+    """
+
+    __tablename__ = "store_product_image"
+    __table_args__ = (
+        UniqueConstraint(
+            "store_product_id", "position", name="uq_store_product_image_position"
+        ),
+        Index("ix_store_product_image_store_product", "store_product_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    store_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("save.store_product.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 = la principal de la tienda
 
 
 class PriceAlertModel(Base):

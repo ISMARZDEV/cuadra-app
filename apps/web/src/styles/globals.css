@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Kantumruy Pro (variable, wght 100–700) — tipografía ÚNICA de toda la web: admin/OFV + Save
+   público. Se importa ACÁ y no en los layouts a propósito: `globals.css` es la hoja que declara
+   la familia en `body` y en `--font-sans`, así que el `@font-face` viaja con ella y no puede
+   haber drift (los DOS layouts de Vike —`layouts/LayoutDefault.tsx` y
+   `pages/admin/+Layout.clear.tsx`— importan este archivo, y ninguno necesita saber de la fuente).
+   El paquete parte el woff2 por `unicode-range`: con contenido es/en/pt solo baja el subset
+   `latin` (33 KB) —el `khmer` (56 KB) nunca—, y `font-display: swap` evita bloquear el LCP. */
+@import "@fontsource-variable/kantumruy-pro";
+
 /* Modo oscuro por clase en <html> (tema claro por defecto). */
 @custom-variant dark (&:is(.dark *));
 
@@ -19,7 +28,7 @@
   --primary-foreground: #ffffff;
   --secondary: #e3f0de;
   --secondary-foreground: #052e16;
-  --muted: #e8ede7;
+  --muted: #F4F6F6;
   --muted-foreground: #6b7280;
   --accent: #e3f0de;
   --accent-foreground: #052e16;
@@ -31,13 +40,13 @@
 
   /* Marca (constantes) — para elementos de énfasis. */
   --brand: #16a34a;
-  --lime: #7eb427;
+  --lime: #A7E842;
 
   /* Verdes de marca EXACTOS del Figma del admin (nodos 483:12416/12419) — constantes en ambos
      temas (una marca es una marca). El contraste sobre fondo oscuro se resuelve con `dark:` inline
      donde se usan como TEXTO. */
-  --brand-forest: #015442;
-  --brand-lime: #bbec6c;
+  --brand-forest: #0B6A53;
+  --brand-lime: #A7E842;
   /* Verde lima medio (barras/línea de los KPI charts) — distinto del brand-lime (más amarillo). */
   --brand-green: #93d454;
 
@@ -57,42 +66,42 @@
 }
 
 .dark {
-  /* Superficies oscuras por elevación (paleta del usuario): fondo #000406 → muted #001110 →
-     card #0A1418 → bordes/acentos #002523. */
+  /* Superficies oscuras por elevación (paleta del usuario): fondo #000406 → muted #161616 →
+     card #0e0e0e → bordes/acentos #002523. */
   --background: #000406;
   --foreground: #f7faf7;
-  --card: #0a1418;
+  --card: #0e0e0e;
   --card-foreground: #f7faf7;
-  --popover: #0a1418;
+  --popover: #0e0e0e;
   --popover-foreground: #f7faf7;
   --primary: #16a34a;
   --primary-foreground: #ffffff;
   --secondary: #002523;
   --secondary-foreground: #f7faf7;
-  --muted: #001110;
+  --muted: #161616;
   --muted-foreground: #9ca3af;
-  --accent: #002523;
+  --accent: #2a2a2a;
   --accent-foreground: #f7faf7;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #002523;
-  --input: #002523;
-  --ring: #16a34a;
+  --border: #2f2f2f;
+  --input: #00252300;
+  --ring: #6a6a6a;
 
   /* Sidebar del admin/OFV — variante oscura (paleta del usuario: bg #000406, coherente con las
      superficies del tema dark). */
-  --sidebar: #000406;
+  --sidebar: #0d0d0d;
   --sidebar-foreground: #d7e8dc;
   --sidebar-primary: #16a34a;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #26421d;
-  --sidebar-accent-foreground: #cdf19a;
-  --sidebar-accent-border: #3f5f22;
-  --sidebar-border: #002523;
-  --sidebar-ring: #7eb427;
-  --sidebar-section-label: #93d555;
-  --sidebar-group-item: #b8d8c4;
-  --sidebar-muted: #7f9a9a;
+  --sidebar-accent: #222222;
+  --sidebar-accent-foreground: #ccfd9e;
+  --sidebar-accent-border: #3a3a3a;
+  --sidebar-border: #2f2f2f;
+  --sidebar-ring: #4b4b4b;
+  --sidebar-section-label: #a5a5a5;
+  --sidebar-group-item: #c3c3c3;
+  --sidebar-muted: #7d7d7d;
 }
 
 /* Mapea los tokens a utilidades de Tailwind (bg-background, text-primary, border-border, …). */
@@ -138,6 +147,13 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  /* Sobrescribe el stack por defecto de Tailwind v4 para que la utilidad `font-sans` resuelva a la
+     MISMA familia que el `body` de más abajo. Sin esto, cualquier `font-sans` explícito (p. ej. el
+     que devuelve a texto normal dentro de un bloque `font-mono`) volvería al stack de Tailwind
+     —`ui-sans-serif, system-ui, …`— y rompería la tipografía justo donde se pide sans a propósito. */
+  --font-sans:
+    "Kantumruy Pro Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 @layer base {
@@ -147,7 +163,9 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* Tipografía única de la web (admin + Save público). El subárbol `/admin/*` la HEREDA de acá:
+       `AdminLayout` ya no declara familia propia (ver el comentario ahí). */
+    font-family: var(--font-sans);
   }
 }
 

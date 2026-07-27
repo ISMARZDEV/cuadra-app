@@ -23,7 +23,7 @@ export function AdminTopBar({ name, locale }: AdminTopBarProps) {
   // oscuro; solo el color se adapta vía token (íconos/nombre verde-forest → lima en dark; el avatar
   // es lima de marca en ambos). Sin hex crudos ni px hardcodeados.
   return (
-    <header className="flex h-14 w-full shrink-0 items-center justify-end gap-3 rounded-bl-2xl bg-muted/60 px-6 dark:bg-secondary">
+    <header className="flex h-14 w-full shrink-0 items-center justify-end gap-3 rounded-bl-2xl bg-muted px-6 dark:bg-muted">
       <button
         type="button"
         aria-label={t("admin.topbar.notifications" as MessageKey)}

@@ -1,12 +1,5 @@
 import type { ReactNode } from "react";
 
-// Inter (fuente del Figma) — importado UNA sola vez acá, en el entry-point del shell admin
-// (`AdminLayout` solo se monta bajo `/admin/*` vía `pages/admin/+Layout.clear.tsx`; nunca en el
-// árbol de `LayoutDefault` de las páginas públicas). Cero impacto en la fuente global del `body`
-// (`globals.css`) ni en el bundle de las páginas públicas — es un side-effect CSS import
-// code-split junto con este módulo.
-import "@fontsource-variable/inter";
-
 import { SidebarInset, SidebarProvider } from "@/components/ui-base/sidebar";
 import { Toaster } from "@/components/ui-base/sonner";
 import type { Locale } from "@/i18n/config";
@@ -15,11 +8,10 @@ import { AdminSidebar } from "./AdminSidebar";
 import { AdminTopBar } from "./AdminTopBar";
 import { EcosystemRail } from "./rail/EcosystemRail";
 
-// Familia aplicada SOLO al subárbol admin (vía `style` en el `SidebarProvider` de más abajo, que
-// envuelve sidebar + contenido) — NUNCA tocar `body` en `globals.css`.
-const ADMIN_FONT_FAMILY =
-  "'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
-
+// Tipografía: NO se declara acá. Kantumruy Pro es la fuente ÚNICA de toda la web y se importa y
+// aplica en `src/styles/globals.css` (`@font-face` + `--font-sans` + `body`); el subárbol admin la
+// HEREDA. Antes este shell importaba Inter y la fijaba con un `style` propio porque el admin era la
+// única superficie con webfont — al unificar, esa familia local pasó a ser drift esperando ocurrir.
 interface AdminLayoutProps {
   /** Capabilities efectivas del usuario actual (resueltas server-side, ver `require-admin.ts`). */
   capabilities: string[];
@@ -52,10 +44,7 @@ export function AdminLayout({ capabilities, locale, name, email, children }: Adm
   return (
     <div className="admin-shell flex min-h-screen">
       <EcosystemRail />
-      <SidebarProvider
-        className="min-w-0 bg-white text-foreground"
-        style={{ fontFamily: ADMIN_FONT_FAMILY }}
-      >
+      <SidebarProvider className="min-w-0 bg-white text-foreground">
         <AdminSidebar capabilities={capabilities} locale={locale} />
         {/* `min-w-0`: sin esto, el flex item toma `min-width:auto` y crece hasta el ancho intrínseco
             de la tabla (13 columnas `whitespace-nowrap`) → toda la página scrollea horizontal y el
