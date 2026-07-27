@@ -14,7 +14,7 @@ export default function Page() {
   return (
     <div>
       <section className="mx-auto max-w-4xl px-4 py-20 text-center">
-        <h1 className="bg-gradient-to-b from-primary to-foreground bg-clip-text text-4xl font-extrabold text-transparent sm:text-5xl">
+        <h1 className="bg-gradient-to-b from-primary to-foreground bg-clip-text text-4xl font-bold text-transparent sm:text-5xl">
           {t("corp.title")}
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">{t("corp.subtitle")}</p>

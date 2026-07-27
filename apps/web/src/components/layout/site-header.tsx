@@ -83,7 +83,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/85 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
-        <a href={href("/")} className="text-xl font-extrabold tracking-tight">
+        <a href={href("/")} className="text-xl font-bold tracking-tight">
           <span className="text-primary">CUA</span>DRA
         </a>
 

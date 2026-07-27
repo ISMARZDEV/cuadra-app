@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Kantumruy Pro (variable, wght 100–700) — tipografía ÚNICA de toda la web: admin/OFV + Save
+   público. Se importa ACÁ y no en los layouts a propósito: `globals.css` es la hoja que declara
+   la familia en `body` y en `--font-sans`, así que el `@font-face` viaja con ella y no puede
+   haber drift (los DOS layouts de Vike —`layouts/LayoutDefault.tsx` y
+   `pages/admin/+Layout.clear.tsx`— importan este archivo, y ninguno necesita saber de la fuente).
+   El paquete parte el woff2 por `unicode-range`: con contenido es/en/pt solo baja el subset
+   `latin` (33 KB) —el `khmer` (56 KB) nunca—, y `font-display: swap` evita bloquear el LCP. */
+@import "@fontsource-variable/kantumruy-pro";
+
 /* Modo oscuro por clase en <html> (tema claro por defecto). */
 @custom-variant dark (&:is(.dark *));
 
@@ -138,6 +147,13 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  /* Sobrescribe el stack por defecto de Tailwind v4 para que la utilidad `font-sans` resuelva a la
+     MISMA familia que el `body` de más abajo. Sin esto, cualquier `font-sans` explícito (p. ej. el
+     que devuelve a texto normal dentro de un bloque `font-mono`) volvería al stack de Tailwind
+     —`ui-sans-serif, system-ui, …`— y rompería la tipografía justo donde se pide sans a propósito. */
+  --font-sans:
+    "Kantumruy Pro Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 @layer base {
@@ -147,7 +163,9 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* Tipografía única de la web (admin + Save público). El subárbol `/admin/*` la HEREDA de acá:
+       `AdminLayout` ya no declara familia propia (ver el comentario ahí). */
+    font-family: var(--font-sans);
   }
 }
 
