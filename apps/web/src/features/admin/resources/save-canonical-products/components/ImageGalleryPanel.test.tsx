@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { translate } from "@/i18n/messages";
@@ -93,8 +93,107 @@ describe("ImageGalleryPanel", () => {
     await act(async () => {
       screen.getAllByRole("button", { name: /Bajar una posición/ })[0].click();
     });
+    // Bajar la 1ª cambia lo que ve el público → pasa por confirmación.
+    await act(async () => {
+      screen.getByTestId("confirm-accept").click();
+    });
 
     expect(reorder).toHaveBeenCalledWith("cp-1", ["i2", "i1"]);
+  });
+
+  // ── Fricción proporcional al riesgo ────────────────────────────────────────
+  // La posición 1 es la que ve un consumidor real en producción. Tocarla no puede costar
+  // menos que regenerar un slug, que sí advierte.
+
+  it("quitar la imagen de la posición 1 pide confirmación antes de borrar", async () => {
+    renderPanel();
+
+    await act(async () => {
+      screen.getAllByRole("button", { name: /Quitar de la galería/ })[0].click();
+    });
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(screen.getByTestId("confirm-accept")).toBeInTheDocument();
+  });
+
+  it("la confirmación explica el IMPACTO, no pregunta '¿estás seguro?'", async () => {
+    renderPanel();
+
+    await act(async () => {
+      screen.getAllByRole("button", { name: /Quitar de la galería/ })[0].click();
+    });
+
+    // Acotado al diálogo: la tarjeta también dice "la que ve el público" en su pie.
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText(/la que ve el público/i)).toBeInTheDocument();
+    expect(dialog.getByText(/pasa a ocupar su lugar/i)).toBeInTheDocument();
+  });
+
+  it("confirmar ejecuta el borrado de la posición 1", async () => {
+    remove.mockResolvedValue([IMAGES[1]]);
+    const { onChanged } = renderPanel();
+
+    await act(async () => {
+      screen.getAllByRole("button", { name: /Quitar de la galería/ })[0].click();
+    });
+    await act(async () => {
+      screen.getByTestId("confirm-accept").click();
+    });
+
+    expect(remove).toHaveBeenCalledWith("cp-1", "i1");
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("cancelar la confirmación NO borra nada", async () => {
+    renderPanel();
+
+    await act(async () => {
+      screen.getAllByRole("button", { name: /Quitar de la galería/ })[0].click();
+    });
+    await act(async () => {
+      screen.getByTestId("confirm-dismiss").click();
+    });
+
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("quitar una imagen que NO es la pública no pide confirmación", async () => {
+    // Fricción proporcional: la 2ª no la ve nadie fuera del admin.
+    remove.mockResolvedValue([IMAGES[0]]);
+    renderPanel();
+
+    await act(async () => {
+      screen.getAllByRole("button", { name: /Quitar de la galería/ })[1].click();
+    });
+
+    expect(remove).toHaveBeenCalledWith("cp-1", "i2");
+  });
+
+  it("subir la 2ª a la posición 1 pide confirmación (promociona lo que se publica)", async () => {
+    renderPanel();
+
+    await act(async () => {
+      screen.getAllByRole("button", { name: /Subir una posición/ })[1].click();
+    });
+
+    expect(reorder).not.toHaveBeenCalled();
+    expect(screen.getByTestId("confirm-accept")).toBeInTheDocument();
+  });
+
+  it("reordenar sin tocar la posición 1 no pide confirmación", async () => {
+    const three = [
+      ...IMAGES,
+      { id: "i3", url: "https://cdn/c.jpg", position: 3, source_store_product_id: null, is_primary: false },
+    ];
+    reorder.mockResolvedValue(three);
+    renderPanel(three);
+
+    await act(async () => {
+      // Bajar la 2ª: la 1ª no se mueve.
+      screen.getAllByRole("button", { name: /Bajar una posición/ })[1].click();
+    });
+
+    expect(reorder).toHaveBeenCalledWith("cp-1", ["i1", "i3", "i2"]);
   });
 
   it("una candidata YA en la galería no se puede volver a agregar", () => {

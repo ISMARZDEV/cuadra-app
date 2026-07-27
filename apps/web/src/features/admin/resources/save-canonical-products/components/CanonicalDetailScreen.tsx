@@ -13,8 +13,9 @@ import {
   ImageOff,
   Link2,
   Pencil,
+  RefreshCw,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
 
@@ -107,6 +108,8 @@ export function CanonicalDetailScreen() {
   // `null` solo no alcanza: "todavía cargando" y "falló" se ven igual (un panel en blanco) y el
   // operador no sabe si esperar o si el dato no existe.
   const [historyState, setHistoryState] = useState<"loading" | "ready" | "error">("loading");
+  /** Contador de reintentos: cambiarlo re-dispara el efecto sin tocar el rango elegido. */
+  const [historyReload, setHistoryReload] = useState(0);
   const [visibleSeries, setVisibleSeries] = useState<Set<string>>(new Set());
 
   const id = product.canonical_product_id;
@@ -126,7 +129,7 @@ export function CanonicalDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, range]);
+  }, [id, range, historyReload]);
 
   const toggleSeries = (providerId: string) =>
     setVisibleSeries((prev) => {
@@ -184,7 +187,7 @@ export function CanonicalDetailScreen() {
       </button>
 
       {/* ── Header ───────────────────────────────────────────────────────────── */}
-      <section className="rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+      <section className="rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
         <div className="flex flex-wrap items-start gap-5">
           {product.image_url ? (
             <img
@@ -200,7 +203,7 @@ export function CanonicalDetailScreen() {
 
           <div className="min-w-[16rem] flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">
+              <h1 className="text-2xl font-medium text-black dark:text-white">
                 {product.name}
               </h1>
               {archived ? (
@@ -240,7 +243,8 @@ export function CanonicalDetailScreen() {
                 ) : null,
               )}
               <span className="text-xs text-muted-foreground">
-                {product.completeness_score}% · {t("admin.canonicalProducts.col.completeness")}
+                <span className="tabular-nums">{product.completeness_score}%</span> ·{" "}
+                {t("admin.canonicalProducts.col.completeness")}
               </span>
             </div>
           </div>
@@ -458,9 +462,20 @@ export function CanonicalDetailScreen() {
         {historyState === "loading" ? (
           <Empty>{t("admin.canonicalDetail.chart.loading")}</Empty>
         ) : historyState === "error" ? (
-          <p className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
-            {t("admin.canonicalDetail.chart.error")}
-          </p>
+          // Un error que dice "reintentá" sin darte con qué es un callejón sin salida: el operador
+          // sólo puede recargar la página entera y perder el rango que había elegido.
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-destructive/10 p-3">
+            <p className="text-sm text-destructive">{t("admin.canonicalDetail.chart.error")}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setHistoryReload((n) => n + 1)}
+              className="shrink-0"
+            >
+              <RefreshCw className="size-3.5" />
+              {t("admin.canonicalDetail.chart.retry")}
+            </Button>
+          </div>
         ) : history ? (
           <PriceHistoryChart
             history={history}
@@ -581,7 +596,10 @@ export function CanonicalDetailScreen() {
         )}
       </Panel>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* `items-start`: sin esto el grid estira ambas columnas a la altura de la más alta, y
+          "Duplicados posibles (0)" ocupaba media pantalla para decir una línea. Cada panel toma
+          su altura natural. */}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* ── Duplicados ────────────────────────────────────────────────────── */}
         <Panel title={t("admin.canonicalDetail.section.duplicates")} count={duplicates.length}>
           {duplicates.length === 0 ? (
@@ -702,7 +720,7 @@ export function CanonicalDetailScreen() {
         destructive
       >
         {slugPreview ? (
-          <div className="space-y-1.5 rounded-xl bg-muted/60 p-3 font-mono text-xs dark:bg-white/5">
+          <div className="space-y-1.5 rounded-xl bg-muted p-3 font-mono text-xs dark:bg-white/5">
             <p>
               <span className="font-sans text-muted-foreground">
                 {t("admin.canonicalDetail.slug.from")}:{" "}
@@ -739,9 +757,14 @@ export function CanonicalDetailScreen() {
   );
 }
 
-/** El `action` del log es una clave técnica (`canonical_product.archive`). El operador necesita
- * leer QUÉ pasó, no el identificador del evento. Una acción desconocida se muestra cruda en vez
- * de desaparecer: si el backend agrega un evento nuevo, la actividad no puede quedar muda. */
+/**
+ * Nombre legible de una acción de auditoría.
+ *
+ * Cubre las 11 acciones que emite hoy `apps/api` (grep de `"canonical_product.*"`). El fallback
+ * NUNCA devuelve la clave cruda: hacerlo puso "canonical_product.reorder_images" delante del
+ * operador, que es exactamente la jerga de backend que el PRODUCT.md prohíbe en pantalla. Una
+ * acción nueva del backend se degrada a un texto genérico y honesto hasta que se le dé nombre.
+ */
 function auditActionLabel(action: string, t: (key: MessageKey) => string): string {
   const map: Record<string, MessageKey> = {
     "canonical_product.create": "admin.canonicalDetail.activity.action.create",
@@ -750,9 +773,13 @@ function auditActionLabel(action: string, t: (key: MessageKey) => string): strin
     "canonical_product.archive": "admin.canonicalDetail.activity.action.archive",
     "canonical_product.unarchive": "admin.canonicalDetail.activity.action.unarchive",
     "canonical_product.internal_note": "admin.canonicalDetail.activity.action.note",
+    "canonical_product.add_image": "admin.canonicalDetail.activity.action.addImage",
+    "canonical_product.remove_image": "admin.canonicalDetail.activity.action.removeImage",
+    "canonical_product.reorder_images": "admin.canonicalDetail.activity.action.reorderImages",
+    "canonical_product.set_category": "admin.canonicalDetail.activity.action.setCategory",
+    "canonical_product.regenerate_slug": "admin.canonicalDetail.activity.action.regenerateSlug",
   };
-  const key = map[action];
-  return key ? t(key) : action;
+  return t(map[action] ?? "admin.canonicalDetail.activity.action.unknown");
 }
 
 function Panel({
@@ -767,16 +794,18 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
+    // Sin sombra: el borde y el radio ya separan. Apilar borde + sombra en los 9 paneles es la
+    // misma frase dicha dos veces, y deja a Evidencia pesando igual que Duplicados.
     <section
       className={cn(
-        "rounded-2xl border border-black/5 bg-white p-4 shadow-sm md:p-5 dark:border-white/10 dark:bg-card",
+        "rounded-2xl border border-black/5 bg-white p-4 md:p-5 dark:border-white/10 dark:bg-card",
         className,
       )}
     >
       <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-brand-forest dark:text-brand-lime">
         {title}
         {count !== undefined ? (
-          <span className="text-sm font-semibold">({count})</span>
+          <span className="text-sm font-semibold tabular-nums">({count})</span>
         ) : null}
       </h2>
       {children}
@@ -803,11 +832,13 @@ function Kpi({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl bg-muted/60 p-3 dark:bg-white/5">
+    <div className="rounded-2xl bg-muted p-3 dark:bg-white/5">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p
         className={cn(
-          "mt-1 text-lg font-bold tabular-nums",
+          // Display (1.5rem/700): el sistema asigna ese rol justamente a las cifras de KPI, y son
+          // el dato que el operador compara de un vistazo.
+          "mt-1 text-2xl font-bold tabular-nums",
           tone === "good" && "text-emerald-600 dark:text-emerald-400",
           tone === "bad" && "text-red-600 dark:text-red-400",
         )}
@@ -836,6 +867,8 @@ function InternalNote({
   const [note, setNote] = useState(initialNote);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const titleId = useId();
+  const hintId = useId();
 
   const save = async () => {
     setSaving(true);
@@ -850,13 +883,15 @@ function InternalNote({
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold">
+      <h3 id={titleId} className="text-sm font-semibold">
         {t("admin.canonicalDetail.note.title")}
       </h3>
-      <p className="text-xs text-muted-foreground">
+      <p id={hintId} className="text-xs text-muted-foreground">
         {t("admin.canonicalDetail.note.hint")}
       </p>
       <textarea
+        aria-labelledby={titleId}
+        aria-describedby={hintId}
         value={note}
         onChange={(e) => {
           setNote(e.target.value);
@@ -877,11 +912,14 @@ function InternalNote({
             ? t("admin.canonicalDetail.note.saving")
             : t("admin.canonicalDetail.note.save")}
         </button>
-        {saved ? (
-          <span className="text-xs text-emerald-600 dark:text-emerald-400">
-            {t("admin.canonicalDetail.note.saved")}
-          </span>
-        ) : null}
+        {/* Siempre en el DOM: una live region que aparece junto con su texto no se anuncia. */}
+        <span
+          role="status"
+          aria-live="polite"
+          className="text-xs text-emerald-600 dark:text-emerald-400"
+        >
+          {saved ? t("admin.canonicalDetail.note.saved") : ""}
+        </span>
       </div>
     </div>
   );

@@ -828,6 +828,13 @@ type MessageKey =
   | "admin.canonicalDetail.activity.action.archive"
   | "admin.canonicalDetail.activity.action.unarchive"
   | "admin.canonicalDetail.activity.action.note"
+  | "admin.canonicalDetail.activity.action.addImage"
+  | "admin.canonicalDetail.activity.action.removeImage"
+  | "admin.canonicalDetail.activity.action.reorderImages"
+  | "admin.canonicalDetail.activity.action.setCategory"
+  | "admin.canonicalDetail.activity.action.regenerateSlug"
+  | "admin.canonicalDetail.activity.action.unknown"
+  | "admin.canonicalDetail.chart.retry"
   | "admin.canonicalDetail.activity.fields"
   | "admin.canonicalDetail.slug.action"
   | "admin.canonicalDetail.slug.title"
@@ -842,6 +849,8 @@ type MessageKey =
   | "admin.canonicalDetail.category.noSuggestions"
   | "admin.canonicalDetail.category.because"
   | "admin.canonicalDetail.category.all"
+  | "admin.canonicalDetail.category.showTree"
+  | "admin.canonicalDetail.category.hideTree"
   | "admin.canonicalDetail.category.search"
   | "admin.canonicalDetail.category.assign"
   | "admin.canonicalDetail.category.current"
@@ -876,6 +885,12 @@ type MessageKey =
   | "admin.canonicalDetail.image.uploadSoon"
   | "admin.canonicalDetail.image.uploadSoonTitle"
   | "admin.canonicalDetail.image.understood"
+  | "admin.canonicalDetail.image.confirmTitle"
+  | "admin.canonicalDetail.image.confirmRemove"
+  | "admin.canonicalDetail.image.confirmReorder"
+  | "admin.canonicalDetail.image.confirmRemoveAccept"
+  | "admin.canonicalDetail.image.confirmReorderAccept"
+  | "admin.canonicalDetail.image.confirmCancel"
   | "admin.canonicalDetail.description.title"
   | "admin.canonicalDetail.description.current"
   | "admin.canonicalDetail.description.hint"
@@ -1712,6 +1727,13 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.activity.action.archive": "Archivado",
     "admin.canonicalDetail.activity.action.unarchive": "Restaurado",
     "admin.canonicalDetail.activity.action.note": "Nota interna",
+    "admin.canonicalDetail.activity.action.addImage": "Imagen agregada",
+    "admin.canonicalDetail.activity.action.removeImage": "Imagen quitada",
+    "admin.canonicalDetail.activity.action.reorderImages": "Imágenes reordenadas",
+    "admin.canonicalDetail.activity.action.setCategory": "Categoría asignada",
+    "admin.canonicalDetail.activity.action.regenerateSlug": "Slug regenerado",
+    "admin.canonicalDetail.activity.action.unknown": "Cambio en el producto",
+    "admin.canonicalDetail.chart.retry": "Reintentar",
     "admin.canonicalDetail.activity.fields": "Campos:",
     "admin.canonicalDetail.slug.action": "Regenerar slug",
     "admin.canonicalDetail.slug.title": "¿Regenerar el slug público?",
@@ -1726,6 +1748,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.noSuggestions": "Sin sugerencias para este nombre: elegí del árbol completo.",
     "admin.canonicalDetail.category.because": "por",
     "admin.canonicalDetail.category.all": "Árbol completo",
+    "admin.canonicalDetail.category.showTree": "Ver árbol completo",
+    "admin.canonicalDetail.category.hideTree": "Ocultar árbol",
     "admin.canonicalDetail.category.search": "Buscar categoría…",
     "admin.canonicalDetail.category.assign": "Asignar",
     "admin.canonicalDetail.category.current": "Actual",
@@ -1760,6 +1784,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.uploadSoon": "Subir desde el ordenador todavía no está disponible: falta definir dónde se guardarán los archivos. Por ahora se toman de las tiendas o se pega una URL desde Editar.",
     "admin.canonicalDetail.image.uploadSoonTitle": "Subida de imágenes: próximamente",
     "admin.canonicalDetail.image.understood": "Entendido",
+    "admin.canonicalDetail.image.confirmTitle": "Esto cambia lo que ve el público",
+    "admin.canonicalDetail.image.confirmRemove":
+      "La imagen en posición 1 es la que ve el público en la página del producto. Al quitarla, la siguiente de la galería pasa a ocupar su lugar; si no hay otra, el producto queda sin imagen.",
+    "admin.canonicalDetail.image.confirmReorder":
+      "Vas a mover la imagen que ve el público en la página del producto. El cambio se publica de inmediato.",
+    "admin.canonicalDetail.image.confirmRemoveAccept": "Quitar igual",
+    "admin.canonicalDetail.image.confirmReorderAccept": "Mover igual",
+    "admin.canonicalDetail.image.confirmCancel": "Cancelar",
     "admin.canonicalDetail.description.title": "Descripción",
     "admin.canonicalDetail.description.current": "Descripción del canónico",
     "admin.canonicalDetail.description.hint": "Es la que se publica. Elegí una de las tiendas y ajustala si hace falta.",
@@ -2594,6 +2626,13 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.activity.action.archive": "Archived",
     "admin.canonicalDetail.activity.action.unarchive": "Restored",
     "admin.canonicalDetail.activity.action.note": "Internal note",
+    "admin.canonicalDetail.activity.action.addImage": "Image added",
+    "admin.canonicalDetail.activity.action.removeImage": "Image removed",
+    "admin.canonicalDetail.activity.action.reorderImages": "Images reordered",
+    "admin.canonicalDetail.activity.action.setCategory": "Category assigned",
+    "admin.canonicalDetail.activity.action.regenerateSlug": "Slug regenerated",
+    "admin.canonicalDetail.activity.action.unknown": "Product change",
+    "admin.canonicalDetail.chart.retry": "Try again",
     "admin.canonicalDetail.activity.fields": "Fields:",
     "admin.canonicalDetail.slug.action": "Regenerate slug",
     "admin.canonicalDetail.slug.title": "Regenerate the public slug?",
@@ -2608,6 +2647,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.noSuggestions": "No suggestions for this name: pick from the full tree.",
     "admin.canonicalDetail.category.because": "because of",
     "admin.canonicalDetail.category.all": "Full tree",
+    "admin.canonicalDetail.category.showTree": "Browse full tree",
+    "admin.canonicalDetail.category.hideTree": "Hide tree",
     "admin.canonicalDetail.category.search": "Search category…",
     "admin.canonicalDetail.category.assign": "Assign",
     "admin.canonicalDetail.category.current": "Current",
@@ -2642,6 +2683,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.uploadSoon": "Uploading from your computer is not available yet: we still need to decide where files will be stored. For now, take them from the stores or paste a URL from Edit.",
     "admin.canonicalDetail.image.uploadSoonTitle": "Image upload: coming soon",
     "admin.canonicalDetail.image.understood": "Got it",
+    "admin.canonicalDetail.image.confirmTitle": "This changes what the public sees",
+    "admin.canonicalDetail.image.confirmRemove":
+      "The image in position 1 is the one shoppers see on the product page. Removing it promotes the next image in the gallery; if there is none, the product is left without an image.",
+    "admin.canonicalDetail.image.confirmReorder":
+      "You are moving the image shoppers see on the product page. The change is published immediately.",
+    "admin.canonicalDetail.image.confirmRemoveAccept": "Remove anyway",
+    "admin.canonicalDetail.image.confirmReorderAccept": "Move anyway",
+    "admin.canonicalDetail.image.confirmCancel": "Cancel",
     "admin.canonicalDetail.description.title": "Description",
     "admin.canonicalDetail.description.current": "Canonical description",
     "admin.canonicalDetail.description.hint": "This is what gets published. Pick one from the stores and adjust it if needed.",
@@ -3476,6 +3525,13 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.activity.action.archive": "Arquivado",
     "admin.canonicalDetail.activity.action.unarchive": "Restaurado",
     "admin.canonicalDetail.activity.action.note": "Nota interna",
+    "admin.canonicalDetail.activity.action.addImage": "Imagem adicionada",
+    "admin.canonicalDetail.activity.action.removeImage": "Imagem removida",
+    "admin.canonicalDetail.activity.action.reorderImages": "Imagens reordenadas",
+    "admin.canonicalDetail.activity.action.setCategory": "Categoria atribuída",
+    "admin.canonicalDetail.activity.action.regenerateSlug": "Slug regenerado",
+    "admin.canonicalDetail.activity.action.unknown": "Alteração no produto",
+    "admin.canonicalDetail.chart.retry": "Tentar novamente",
     "admin.canonicalDetail.activity.fields": "Campos:",
     "admin.canonicalDetail.slug.action": "Regenerar slug",
     "admin.canonicalDetail.slug.title": "Regenerar o slug público?",
@@ -3490,6 +3546,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.noSuggestions": "Sem sugestões para este nome: escolha na árvore completa.",
     "admin.canonicalDetail.category.because": "por",
     "admin.canonicalDetail.category.all": "Árvore completa",
+    "admin.canonicalDetail.category.showTree": "Ver árvore completa",
+    "admin.canonicalDetail.category.hideTree": "Ocultar árvore",
     "admin.canonicalDetail.category.search": "Buscar categoria…",
     "admin.canonicalDetail.category.assign": "Atribuir",
     "admin.canonicalDetail.category.current": "Atual",
@@ -3524,6 +3582,14 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.uploadSoon": "Enviar do computador ainda não está disponível: falta definir onde os arquivos serão guardados. Por enquanto, pegue das lojas ou cole uma URL em Editar.",
     "admin.canonicalDetail.image.uploadSoonTitle": "Envio de imagens: em breve",
     "admin.canonicalDetail.image.understood": "Entendido",
+    "admin.canonicalDetail.image.confirmTitle": "Isto muda o que o público vê",
+    "admin.canonicalDetail.image.confirmRemove":
+      "A imagem na posição 1 é a que o público vê na página do produto. Ao removê-la, a próxima da galeria ocupa o lugar dela; se não houver outra, o produto fica sem imagem.",
+    "admin.canonicalDetail.image.confirmReorder":
+      "Você vai mover a imagem que o público vê na página do produto. A mudança é publicada imediatamente.",
+    "admin.canonicalDetail.image.confirmRemoveAccept": "Remover mesmo assim",
+    "admin.canonicalDetail.image.confirmReorderAccept": "Mover mesmo assim",
+    "admin.canonicalDetail.image.confirmCancel": "Cancelar",
     "admin.canonicalDetail.description.title": "Descrição",
     "admin.canonicalDetail.description.current": "Descrição do canônico",
     "admin.canonicalDetail.description.hint": "É a que se publica. Escolha uma das lojas e ajuste se necessário.",

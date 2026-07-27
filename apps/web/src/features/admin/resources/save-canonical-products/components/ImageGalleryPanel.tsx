@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 
 import { Button } from "@/components/ui-base/button";
+import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
 import type { Locale } from "@/i18n/config";
 import { format, type MessageKey } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,12 @@ import {
   removeCanonicalImage,
   reorderCanonicalImages,
 } from "../api";
+
+/** Acción sobre la posición 1 esperando confirmación. Se guarda la INTENCIÓN, no el resultado:
+ * así cancelar no deja nada a medias. */
+type PendingAction =
+  | { kind: "remove"; imageId: string }
+  | { kind: "move"; index: number; delta: number };
 
 interface ImageGalleryPanelProps {
   canonicalProductId: string;
@@ -44,6 +51,8 @@ export function ImageGalleryPanel({
 }: ImageGalleryPanelProps) {
   const [busy, setBusy] = useState(false);
   const [uploadNotice, setUploadNotice] = useState(false);
+  // Acción que toca la posición 1 y espera confirmación. `null` = no hay nada pendiente.
+  const [pending, setPending] = useState<PendingAction | null>(null);
 
   const usedUrls = new Set(images.map((i) => i.url));
   // Una entrada por IMAGEN, no por tienda: Sirena publica la bolsa y la etiqueta nutricional, y
@@ -80,6 +89,37 @@ export function ImageGalleryPanel({
     const updated = await removeCanonicalImage(canonicalProductId, imageId);
     setBusy(false);
     if (updated) onChanged(updated);
+  };
+
+  // ── Fricción proporcional al riesgo ──────────────────────────────────────────
+  // Regenerar un slug advierte; mover la imagen que ve un consumidor real no advertía nada. Estas
+  // dos guardas igualan la fricción al impacto: sólo pregunta cuando la acción toca la posición 1.
+
+  const requestMove = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= images.length) return;
+    // Tanto sacar la 1ª de su puesto como promover otra a él cambian lo que se publica.
+    if (index === 0 || target === 0) {
+      setPending({ kind: "move", index, delta });
+      return;
+    }
+    void move(index, delta);
+  };
+
+  const requestRemove = (image: CanonicalImageDto) => {
+    if (image.position === 1) {
+      setPending({ kind: "remove", imageId: image.id });
+      return;
+    }
+    void remove(image.id);
+  };
+
+  const runPending = () => {
+    if (!pending) return;
+    const action = pending;
+    setPending(null);
+    if (action.kind === "remove") void remove(action.imageId);
+    else void move(action.index, action.delta);
   };
 
   const add = async (url: string, storeProductId: string) => {
@@ -144,14 +184,14 @@ export function ImageGalleryPanel({
                   <IconButton
                     label={t("admin.canonicalDetail.image.moveUp")}
                     disabled={busy || index === 0}
-                    onClick={() => void move(index, -1)}
+                    onClick={() => requestMove(index, -1)}
                   >
                     <ArrowLeft className="size-3.5" />
                   </IconButton>
                   <IconButton
                     label={t("admin.canonicalDetail.image.moveDown")}
                     disabled={busy || index === images.length - 1}
-                    onClick={() => void move(index, 1)}
+                    onClick={() => requestMove(index, 1)}
                   >
                     <ArrowRight className="size-3.5" />
                   </IconButton>
@@ -159,7 +199,7 @@ export function ImageGalleryPanel({
                     label={t("admin.canonicalDetail.image.remove")}
                     disabled={busy}
                     destructive
-                    onClick={() => void remove(image.id)}
+                    onClick={() => requestRemove(image)}
                   >
                     <Trash2 className="size-3.5" />
                   </IconButton>
@@ -244,6 +284,31 @@ export function ImageGalleryPanel({
           </>
         )}
       </section>
+
+      {/* Confirmación fuerte SÓLO cuando la acción toca la posición 1. Reusa el mismo
+          `ConfirmDialog` que archivar y regenerar slug: la fricción de una acción debe ser
+          proporcional a su impacto, y esta publica un cambio para el consumidor. */}
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open) setPending(null);
+        }}
+        title={t("admin.canonicalDetail.image.confirmTitle")}
+        description={t(
+          pending?.kind === "remove"
+            ? "admin.canonicalDetail.image.confirmRemove"
+            : "admin.canonicalDetail.image.confirmReorder",
+        )}
+        confirmLabel={t(
+          pending?.kind === "remove"
+            ? "admin.canonicalDetail.image.confirmRemoveAccept"
+            : "admin.canonicalDetail.image.confirmReorderAccept",
+        )}
+        cancelLabel={t("admin.canonicalDetail.image.confirmCancel")}
+        destructive={pending?.kind === "remove"}
+        busy={busy}
+        onConfirm={runPending}
+      />
 
       {/* Aviso INFORMATIVO, no una confirmación: un `ConfirmDialog` ofrecería "Cancelar" y
           "Entendido" haciendo exactamente lo mismo, y dos botones idénticos mienten sobre la

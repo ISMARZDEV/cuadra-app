@@ -92,6 +92,9 @@ const DATA: CanonicalDetailData = {
       has_ean_collision: true,
     },
   ],
+  // Las 11 acciones que el backend emite hoy (grep de `"canonical_product.*"` en apps/api).
+  // Están TODAS acá a propósito: es lo que impide que una acción nueva vuelva a llegar a la
+  // pantalla como clave cruda.
   auditLog: [
     {
       id: "a1",
@@ -100,6 +103,24 @@ const DATA: CanonicalDetailData = {
       payload_summary: { changed: ["name", "brand"] },
       created_at: "2026-07-22T10:00:00Z",
     },
+    ...[
+      "canonical_product.create",
+      "canonical_product.import",
+      "canonical_product.archive",
+      "canonical_product.unarchive",
+      "canonical_product.internal_note",
+      "canonical_product.add_image",
+      "canonical_product.remove_image",
+      "canonical_product.reorder_images",
+      "canonical_product.set_category",
+      "canonical_product.regenerate_slug",
+    ].map((action, i) => ({
+      id: `a${i + 2}`,
+      action,
+      actor_user_id: "1234abcd-0000-0000-0000-000000000000",
+      payload_summary: {},
+      created_at: "2026-07-22T10:00:00Z",
+    })),
   ],
   taxonomyLeaves: [{ id: "tax-1", name: "Arroz", top_name: "Granos", top_slug: "granos" }],
   categorySuggestions: [
@@ -157,7 +178,8 @@ describe("CanonicalDetailScreen", () => {
     await renderDetail();
 
     expect(screen.getByText("Edición")).toBeInTheDocument();
-    expect(screen.getByText(/1234abcd/)).toBeInTheDocument();
+    // El fixture trae los 11 tipos de acción, todos del mismo actor.
+    expect(screen.getAllByText(/1234abcd/).length).toBeGreaterThan(0);
     expect(screen.getByText(/name, brand/)).toBeInTheDocument();
   });
 
@@ -196,5 +218,42 @@ describe("CanonicalDetailScreen", () => {
   it("muestra el badge EAN-alcanzable en el header", async () => {
     await renderDetail();
     expect(screen.getByText("Alcanzable por EAN")).toBeInTheDocument();
+  });
+
+  // ── Actividad: nada de jerga del backend en pantalla ────────────────────────
+
+  it("NINGUNA acción de auditoría se muestra con su clave cruda", async () => {
+    // `auditActionLabel` caía a `return action` cuando faltaba el mapeo, y el operador terminaba
+    // leyendo "canonical_product.reorder_images" en la pantalla.
+    await renderDetail();
+    expect(screen.queryByText(/canonical_product\./)).not.toBeInTheDocument();
+  });
+
+  it("traduce las acciones de imagen y de categoría", async () => {
+    await renderDetail();
+    expect(screen.getByText("Imagen agregada")).toBeInTheDocument();
+    expect(screen.getByText("Imagen quitada")).toBeInTheDocument();
+    expect(screen.getByText("Imágenes reordenadas")).toBeInTheDocument();
+    expect(screen.getByText("Categoría asignada")).toBeInTheDocument();
+    expect(screen.getByText("Slug regenerado")).toBeInTheDocument();
+  });
+
+  // ── El error del histórico tiene salida ────────────────────────────────────
+
+  it("el error del histórico ofrece reintentar", async () => {
+    // El copy decía "Reintentá en un momento" sin darle al operador con qué hacerlo.
+    await renderDetail();
+    expect(screen.getByRole("button", { name: /Reintentar/i })).toBeInTheDocument();
+  });
+
+  it("reintentar vuelve a pedir el histórico", async () => {
+    await renderDetail();
+    const callsBefore = getHistory.mock.calls.length;
+
+    await act(async () => {
+      screen.getByRole("button", { name: /Reintentar/i }).click();
+    });
+
+    expect(getHistory.mock.calls.length).toBeGreaterThan(callsBefore);
   });
 });

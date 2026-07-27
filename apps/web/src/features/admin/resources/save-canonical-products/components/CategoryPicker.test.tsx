@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { translate } from "@/i18n/messages";
@@ -74,5 +74,50 @@ describe("CategoryPicker", () => {
   it("aclara que las sugerencias no vienen de IA generativa", () => {
     renderPicker();
     expect(screen.getByText(/Sin IA generativa/)).toBeInTheDocument();
+  });
+
+  // ── Accesibilidad ──────────────────────────────────────────────────────────
+
+  it("sus encabezados son h3, sin saltar un nivel", () => {
+    // Vive dentro de un `Panel` que renderiza <h2>. Con <h4> se saltaba el h3 y un lector de
+    // pantalla que navega por encabezados percibe una sección que falta.
+    renderPicker();
+    const h3 = screen.getAllByRole("heading", { level: 3 });
+    expect(h3.map((h) => h.textContent)).toEqual(["Sugerencias", "Árbol completo"]);
+    expect(screen.queryAllByRole("heading", { level: 4 })).toHaveLength(0);
+  });
+
+  // ── Divulgación progresiva del árbol ───────────────────────────────────────
+
+  it("con categoría ya asignada, el árbol completo arranca colapsado", () => {
+    // En el producto de arroz el árbol mostraba siete entradas de "Alcohol >" pese a tener ya
+    // su categoría aceptada: ruido puro sobre una decisión que ya estaba tomada.
+    renderPicker({ currentId: "l1" });
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ver árbol completo/i })).toBeInTheDocument();
+  });
+
+  it("el árbol se abre cuando el operador lo pide", () => {
+    renderPicker({ currentId: "l1" });
+
+    act(() => {
+      screen.getByRole("button", { name: /Ver árbol completo/i }).click();
+    });
+
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+  });
+
+  it("sin categoría asignada el árbol se muestra de entrada", () => {
+    // Acá el árbol ES la tarea: esconderlo sería un click de peaje.
+    renderPicker({ currentId: null });
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+  });
+
+  it("el buscador muestra el foco en su contenedor", () => {
+    // El `Input` anula su propio anillo (`focus-visible:ring-0`) porque el pill de alrededor es
+    // el que debe mostrarlo. Sin `focus-within` en ese contenedor, el foco es INVISIBLE.
+    renderPicker();
+    const wrapper = screen.getByRole("searchbox").parentElement;
+    expect(wrapper?.className).toMatch(/focus-within:ring-/);
   });
 });

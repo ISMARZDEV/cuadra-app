@@ -139,4 +139,37 @@ describe("DescriptionPanel", () => {
     renderPanel();
     expect(screen.getByText(/No modifica el producto de la tienda/)).toBeInTheDocument();
   });
+
+  // ── Accesibilidad ──────────────────────────────────────────────────────────
+
+  it("el textarea tiene nombre accesible", () => {
+    // Sin esto un lector de pantalla anuncia solo 'campo de texto, en blanco'.
+    renderPanel();
+    expect(
+      screen.getByRole("textbox", { name: /Descripción del canónico/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("el textarea expone su ayuda como descripción accesible", () => {
+    renderPanel();
+    expect(screen.getByRole("textbox", { name: /Descripción del canónico/i })).toHaveAccessibleDescription(
+      /Es la que se publica/i,
+    );
+  });
+
+  it("el aviso de guardado vive en una región live", async () => {
+    // El 'Guardado' de hoy es puramente visual: quien no ve la pantalla no se entera.
+    update.mockResolvedValue({ id: "cp-1", description: "Nuevo texto" });
+    renderPanel("Viejo");
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Descripción del canónico/i }), {
+      target: { value: "Nuevo texto" },
+    });
+    await act(async () => {
+      screen.getByRole("button", { name: /^Guardar descripción$/ }).click();
+    });
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(/guardada/i);
+  });
 });

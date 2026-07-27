@@ -3,7 +3,7 @@ import type {
   AdminCanonicalProviderPriceDto,
 } from "@cuadra/api-client";
 import { Check, Store } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { ProviderLogo } from "@/features/admin/components/ProviderLogo";
 import type { MessageKey } from "@/i18n/messages";
@@ -39,6 +39,8 @@ export function DescriptionPanel({
   const [draft, setDraft] = useState(description ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const titleId = useId();
+  const hintId = useId();
 
   // Si el canónico se recarga desde afuera (editar, archivar), el borrador se re-siembra: dejarlo
   // viejo mostraría un texto que ya no es el del producto.
@@ -67,7 +69,7 @@ export function DescriptionPanel({
     <div className="space-y-5">
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold">
+          <h3 id={titleId} className="text-sm font-semibold">
             {t("admin.canonicalDetail.description.current")}
           </h3>
           {dirty ? (
@@ -76,11 +78,15 @@ export function DescriptionPanel({
             </span>
           ) : null}
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p id={hintId} className="text-xs text-muted-foreground">
           {t("admin.canonicalDetail.description.hint")}
         </p>
 
+        {/* El `<h3>` ya nombra este campo en pantalla; enlazarlo evita repetir la etiqueta y deja
+            de anunciarlo como "campo de texto, en blanco". */}
         <textarea
+          aria-labelledby={titleId}
+          aria-describedby={hintId}
           value={draft}
           onChange={(e) => {
             setDraft(e.target.value);
@@ -102,11 +108,15 @@ export function DescriptionPanel({
               ? t("admin.canonicalDetail.description.saving")
               : t("admin.canonicalDetail.description.save")}
           </button>
-          {saved ? (
-            <span className="text-xs text-emerald-600 dark:text-emerald-400">
-              {t("admin.canonicalDetail.description.saved")}
-            </span>
-          ) : null}
+          {/* La región vive SIEMPRE en el DOM, aunque esté vacía: un lector de pantalla sólo
+              anuncia cambios dentro de una live region que ya existía cuando cambió. */}
+          <span
+            role="status"
+            aria-live="polite"
+            className="text-xs text-emerald-600 dark:text-emerald-400"
+          >
+            {saved ? t("admin.canonicalDetail.description.saved") : ""}
+          </span>
         </div>
       </section>
 

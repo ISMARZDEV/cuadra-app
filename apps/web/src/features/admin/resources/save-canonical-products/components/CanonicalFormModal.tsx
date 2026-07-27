@@ -1,7 +1,7 @@
 import type { AdminCanonicalProductRowDto, TaxonomyLeafDto } from "@cuadra/api-client";
 import { Dialog } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { Button } from "@/components/ui-base/button";
 import { Input } from "@/components/ui-base/input";
@@ -166,41 +166,52 @@ export function CanonicalFormModal({
 
               <div className="grid grid-cols-2 gap-4">
                 <Field label={t("admin.canonicalProducts.form.name")} required className="col-span-2">
-                  <Input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    required
-                  />
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      required
+                    />
+                  )}
                 </Field>
 
-                <Field label={t("admin.canonicalProducts.form.brand")}>
-                  <Input
-                    value={form.brand}
-                    onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                    placeholder="GOYA"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {t("admin.canonicalProducts.form.brandHint")}
-                  </p>
+                <Field
+                  label={t("admin.canonicalProducts.form.brand")}
+                  hint={t("admin.canonicalProducts.form.brandHint")}
+                >
+                  {({ id, describedBy }) => (
+                    <Input
+                      id={id}
+                      aria-describedby={describedBy}
+                      value={form.brand}
+                      onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                      placeholder="GOYA"
+                    />
+                  )}
                 </Field>
 
                 <Field label={t("admin.canonicalProducts.form.amount")} required>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    value={form.size_amount}
-                    onChange={(e) => setForm({ ...form, size_amount: e.target.value })}
-                    required
-                  />
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={form.size_amount}
+                      onChange={(e) => setForm({ ...form, size_amount: e.target.value })}
+                      required
+                    />
+                  )}
                 </Field>
 
                 <Field label={t("admin.canonicalProducts.form.measure")} required>
+                  {({ id }) => (
                   <Select
                     value={form.size_measure}
                     onValueChange={(v) => setForm({ ...form, size_measure: v })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id={id}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -215,22 +226,29 @@ export function CanonicalFormModal({
                       </SelectItem>
                     </SelectContent>
                   </Select>
+                  )}
                 </Field>
 
                 <Field label={t("admin.canonicalProducts.form.displaySize")}>
-                  <Input
-                    value={form.display_size}
-                    onChange={(e) => setForm({ ...form, display_size: e.target.value })}
-                    placeholder="10 Lb"
-                  />
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      value={form.display_size}
+                      onChange={(e) => setForm({ ...form, display_size: e.target.value })}
+                      placeholder="10 Lb"
+                    />
+                  )}
                 </Field>
 
                 <Field label={t("admin.canonicalProducts.form.quality")} className="col-span-2">
-                  <Input
-                    value={form.quality}
-                    onChange={(e) => setForm({ ...form, quality: e.target.value })}
-                    placeholder="premium"
-                  />
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      value={form.quality}
+                      onChange={(e) => setForm({ ...form, quality: e.target.value })}
+                      placeholder="premium"
+                    />
+                  )}
                 </Field>
 
                 {taxonomyLeaves.length > 0 ? (
@@ -238,11 +256,12 @@ export function CanonicalFormModal({
                     label={t("admin.canonicalProducts.col.category")}
                     className="col-span-2"
                   >
+                    {({ id }) => (
                     <Select
                       value={form.taxonomy_node_id}
                       onValueChange={(v) => setForm({ ...form, taxonomy_node_id: v })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger id={id}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -256,6 +275,7 @@ export function CanonicalFormModal({
                         ))}
                       </SelectContent>
                     </Select>
+                    )}
                   </Field>
                 ) : null}
 
@@ -263,21 +283,27 @@ export function CanonicalFormModal({
                   label={t("admin.canonicalProducts.form.description")}
                   className="col-span-2"
                 >
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    rows={3}
-                    className="w-full rounded-xl border border-border bg-background p-2.5 text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-brand-lime focus-visible:outline-none"
-                  />
+                  {({ id }) => (
+                    <textarea
+                      id={id}
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      rows={3}
+                      className="w-full rounded-xl border border-border bg-background p-2.5 text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-brand-lime focus-visible:outline-none"
+                    />
+                  )}
                 </Field>
 
                 <Field label={t("admin.canonicalProducts.form.imageUrl")} className="col-span-2">
-                  <Input
-                    type="url"
-                    value={form.image_url}
-                    onChange={(e) => setForm({ ...form, image_url: e.target.value })}
-                    placeholder="https://…"
-                  />
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      type="url"
+                      value={form.image_url}
+                      onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+                      placeholder="https://…"
+                    />
+                  )}
                 </Field>
               </div>
 
@@ -311,23 +337,44 @@ export function CanonicalFormModal({
   );
 }
 
+/**
+ * Campo etiquetado del formulario del canónico.
+ *
+ * `children` es una FUNCIÓN a propósito: recibe el `id` que el `<label>` ya apunta con `htmlFor`,
+ * así que enlazar etiqueta y control deja de ser algo que se pueda olvidar en un call-site. La
+ * versión anterior renderizaba el label como hermano sin `htmlFor` y los 9 campos quedaban sin
+ * nombre accesible — un lector de pantalla anunciaba "campo de texto, en blanco".
+ *
+ * Mismo contrato que `admin/components/filters/FilterField`, que ya lo hacía bien.
+ */
 function Field({
   label,
   required,
   className,
+  hint,
   children,
 }: {
   label: string;
   required?: boolean;
   className?: string;
-  children: React.ReactNode;
+  /** Ayuda bajo el control. Se enlaza con `aria-describedby`, no queda suelta en el DOM. */
+  hint?: string;
+  children: (field: { id: string; describedBy?: string }) => React.ReactNode;
 }) {
+  const id = useId();
+  const hintId = hint ? `${id}-hint` : undefined;
+
   return (
     <div className={className}>
-      <label className="mb-1.5 block text-sm font-medium">
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium">
         {label} {required ? <span className="text-destructive">*</span> : null}
       </label>
-      {children}
+      {children({ id, describedBy: hintId })}
+      {hint ? (
+        <p id={hintId} className="mt-1 text-xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
