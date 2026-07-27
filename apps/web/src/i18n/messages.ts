@@ -662,6 +662,7 @@ type MessageKey =
   | "admin.canonicalProducts.col.product"
   | "admin.canonicalProducts.col.brand"
   | "admin.canonicalProducts.col.size"
+  | "admin.canonicalProducts.col.weight"
   | "admin.canonicalProducts.col.measure"
   | "admin.canonicalProducts.col.category"
   | "admin.canonicalProducts.col.providers"
@@ -1561,6 +1562,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.col.product": "Producto",
     "admin.canonicalProducts.col.brand": "Marca",
     "admin.canonicalProducts.col.size": "Tamaño",
+    "admin.canonicalProducts.col.weight": "Peso",
     "admin.canonicalProducts.col.measure": "Unidad",
     "admin.canonicalProducts.col.category": "Categoría",
     "admin.canonicalProducts.col.providers": "Tiendas",
@@ -2460,6 +2462,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.col.product": "Product",
     "admin.canonicalProducts.col.brand": "Brand",
     "admin.canonicalProducts.col.size": "Size",
+    "admin.canonicalProducts.col.weight": "Weight",
     "admin.canonicalProducts.col.measure": "Unit",
     "admin.canonicalProducts.col.category": "Category",
     "admin.canonicalProducts.col.providers": "Stores",
@@ -3359,6 +3362,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.col.product": "Produto",
     "admin.canonicalProducts.col.brand": "Marca",
     "admin.canonicalProducts.col.size": "Tamanho",
+    "admin.canonicalProducts.col.weight": "Peso",
     "admin.canonicalProducts.col.measure": "Unidade",
     "admin.canonicalProducts.col.category": "Categoria",
     "admin.canonicalProducts.col.providers": "Lojas",

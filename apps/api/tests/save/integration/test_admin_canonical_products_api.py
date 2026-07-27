@@ -853,3 +853,105 @@ class TestImportCommit:
         assert res.status_code == 201
         assert res.json()["imported_count"] == 0
         assert res.json()["error_count"] == 0
+
+
+class TestCategoryCarriesLeafAndTop:
+    """La lista muestra la HOJA ("Arroz") y colorea el badge por el TOPE ("Despensa & Abarrotes").
+
+    Antes de esto la fila sólo traía la hoja, y el admin la pasaba como si fuera el slug: el mapa
+    de colores está cargado por slug de TOPE, así que ninguna categoría resolvía color y TODOS los
+    badges salían grises. El slug se deriva en read-time — `taxonomy_node` no tiene columna slug.
+    """
+
+    MARKET_ID = "DO"
+    BRAND_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    TOP_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    LEAF_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    CANONICAL_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+    ORPHAN_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+
+    def _seed(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        db_session.add(
+            BrandModel(id=self.BRAND_ID, name="LEAFTOP_TEST", market_id=self.MARKET_ID)
+        )
+        db_session.add(
+            TaxonomyNodeModel(
+                id=self.TOP_ID, name="Despensa & Abarrotes", level=0,
+                market_id=self.MARKET_ID, parent_id=None,
+            )
+        )
+        db_session.add(
+            TaxonomyNodeModel(
+                id=self.LEAF_ID, name="Arroz LeafTop", level=1,
+                market_id=self.MARKET_ID, parent_id=self.TOP_ID,
+            )
+        )
+        db_session.flush()
+        db_session.add(
+            CanonicalProductModel(
+                id=self.CANONICAL_ID, slug="arroz-leaftop-test", name="Arroz LeafTop Test",
+                brand_id=self.BRAND_ID, size_amount=Decimal("1.0"), size_measure="mass",
+                taxonomy_node_id=self.LEAF_ID, market_id=self.MARKET_ID,
+            )
+        )
+        # Sin clasificar: NO debe inventar tope ni slug.
+        db_session.add(
+            CanonicalProductModel(
+                id=self.ORPHAN_ID, slug="sin-categoria-leaftop", name="Sin Categoria LeafTop",
+                brand_id=self.BRAND_ID, size_amount=Decimal("1.0"), size_measure="mass",
+                taxonomy_node_id=None, market_id=self.MARKET_ID,
+            )
+        )
+        db_session.flush()
+
+    def _rows(self, db_session, user_id):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                res = c.get("/v1/admin/save/canonical-products?search=LeafTop")
+        finally:
+            app.dependency_overrides.clear()
+        assert res.status_code == 200, res.text
+        return {r["canonical_product_id"]: r for r in res.json()["rows"]}
+
+    def test_the_row_carries_the_leaf_the_top_and_the_derived_slug(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        row = self._rows(db_session, user_id)[self.CANONICAL_ID]
+
+        assert row["category"] == "Arroz LeafTop"
+        assert row["category_top"] == "Despensa & Abarrotes"
+        # El slug es lo que hace que el badge tenga color — sin él sale gris.
+        assert row["category_top_slug"] == "despensa-abarrotes"
+
+    def test_an_unclassified_canonical_invents_nothing(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        row = self._rows(db_session, user_id)[self.ORPHAN_ID]
+
+        assert row["category"] is None
+        assert row["category_top"] is None
+        assert row["category_top_slug"] is None
+
+    def test_the_detail_agrees_with_the_list(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Que el detalle y la lista discrepen en la categoría es incoherencia que quema confianza."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+        listed = self._rows(db_session, user_id)[self.CANONICAL_ID]
+
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                res = c.get(f"/v1/admin/save/canonical-products/{self.CANONICAL_ID}")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert res.status_code == 200, res.text
+        detail = res.json()
+        assert detail["category"] == listed["category"]
+        assert detail["category_top"] == listed["category_top"]
+        assert detail["category_top_slug"] == listed["category_top_slug"]

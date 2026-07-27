@@ -1768,6 +1768,11 @@ class SqlAdminCanonicalCatalogRepository:
             ),
         )
 
+        # Categoría: la HOJA (join directo por `taxonomy_node_id`) MÁS su ancestro TOPE. La
+        # taxonomía es de 2 niveles, así que el tope es el padre de la hoja; COALESCE cae a la
+        # hoja si por defensa el nodo fuera level-0. Mismo criterio que la cola de revisión.
+        top = aliased(TaxonomyNodeModel)
+        category_top_name = func.coalesce(top.name, TaxonomyNodeModel.name)
         query = (
             select(
                 CanonicalProductModel,
@@ -1778,12 +1783,14 @@ class SqlAdminCanonicalCatalogRepository:
                 eans.c.cp_id.isnot(None).label("has_ean"),
                 matches.c.last_match_at,
                 dup_count.label("dup_count"),
+                category_top_name.label("category_top_name"),
             )
             .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
             .outerjoin(
                 TaxonomyNodeModel,
                 CanonicalProductModel.taxonomy_node_id == TaxonomyNodeModel.id,
             )
+            .outerjoin(top, top.id == TaxonomyNodeModel.parent_id)
             .outerjoin(metrics, CanonicalProductModel.id == metrics.c.cp_id)
             .outerjoin(eans, CanonicalProductModel.id == eans.c.cp_id)
             .outerjoin(matches, CanonicalProductModel.id == matches.c.cp_id)
@@ -1892,6 +1899,9 @@ class SqlAdminCanonicalCatalogRepository:
         eans = self._ean_reachable()
         matches = self._last_match()
         dups = self._duplicate_counts()
+        # Hoja + tope, igual que el listado (ver comentario allá): el detalle y la lista NO pueden
+        # discrepar en la categoría que muestran.
+        top = aliased(TaxonomyNodeModel)
         row = self._s.execute(
             select(
                 CanonicalProductModel,
@@ -1902,12 +1912,14 @@ class SqlAdminCanonicalCatalogRepository:
                 eans.c.cp_id.isnot(None).label("has_ean"),
                 matches.c.last_match_at,
                 func.coalesce(dups.c.dup_count, 0).label("dup_count"),
+                func.coalesce(top.name, TaxonomyNodeModel.name).label("category_top_name"),
             )
             .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
             .outerjoin(
                 TaxonomyNodeModel,
                 CanonicalProductModel.taxonomy_node_id == TaxonomyNodeModel.id,
             )
+            .outerjoin(top, top.id == TaxonomyNodeModel.parent_id)
             .outerjoin(metrics, CanonicalProductModel.id == metrics.c.cp_id)
             .outerjoin(eans, CanonicalProductModel.id == eans.c.cp_id)
             .outerjoin(matches, CanonicalProductModel.id == matches.c.cp_id)
@@ -1929,6 +1941,7 @@ class SqlAdminCanonicalCatalogRepository:
             display_size=cp.display_size,
             image_url=cp.image_url,
             category=r[2],
+            category_top=r[8],
             quality=cp.quality,
             taxonomy_node_id=str(cp.taxonomy_node_id) if cp.taxonomy_node_id else None,
             origin_run_id=cp.origin_run_id,

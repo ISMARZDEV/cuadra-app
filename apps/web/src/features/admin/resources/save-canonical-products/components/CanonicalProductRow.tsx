@@ -20,14 +20,15 @@ import {
 } from "@/components/ui-base/dropdown-menu";
 import { TableCell, TableRow } from "@/components/ui-base/table";
 import { CategoryBadge } from "@/features/admin/components/CategoryBadge";
+import { SizePill } from "@/features/admin/components/SizePill";
 import { TruncatedText } from "@/features/admin/components/TruncatedText";
+import { parseSize } from "@/features/admin/lib/parse-size";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import type { Locale } from "@/i18n/config";
 import { cn } from "@/lib/utils";
 
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 import {
-  MEASURE_LABEL_KEY,
   QUALITY_HINT_KEY,
   QUALITY_LABEL_KEY,
   QUALITY_PILL_CLASS,
@@ -67,6 +68,7 @@ export function CanonicalProductRow({
   const providers = row.matched_provider_count ?? 0;
   const completeness = row.completeness_score ?? 0;
   const archived = Boolean(row.archived_at);
+  const size = parseSize(row.display_size);
   const detailHref = `/admin/canonical-products/${row.canonical_product_id}`;
 
   return (
@@ -139,19 +141,37 @@ export function CanonicalProductRow({
 
       <TableCell className="whitespace-nowrap font-medium">{row.brand || "—"}</TableCell>
 
-      <TableCell className="whitespace-nowrap">
-        <div className="flex flex-col leading-tight">
-          <span>{row.display_size || "—"}</span>
-          <span className="text-xs text-muted-foreground">
-            {MEASURE_LABEL_KEY[row.size_measure]
-              ? t(MEASURE_LABEL_KEY[row.size_measure])
-              : row.size_measure}
-          </span>
-        </div>
+      {/* Tamaño + Peso: dos columnas con el mismo par de píldoras que la Cola de revisión
+          (ver `SizePill`). El número y la unidad salen de `display_size` — el tamaño tal como lo
+          publica la tienda — y NO de `size_amount`/`size_measure`, que están normalizados al
+          vocabulario del dominio (mass/volume/count) y no son lenguaje de operador. */}
+      <TableCell>
+        <SizePill value={size.amount} tone="amount" />
       </TableCell>
 
       <TableCell>
-        <CategoryBadge slug={row.category} name={row.category} locale={locale} />
+        <SizePill value={size.unit} tone="unit" />
+      </TableCell>
+
+      {/* Categoría: badge coloreado por el TOPE + la hoja debajo. El mapa de colores del admin
+          (`category-colors.ts`) está cargado por slug de tope, así que pasarle el nombre de la
+          hoja dejaba TODOS los badges en el neutro gris. La hoja no se pierde: es el dato
+          específico ("Arroz") con el que el operador realmente distingue productos. */}
+      <TableCell>
+        <div className="flex flex-col items-start gap-0.5">
+          <CategoryBadge
+            slug={row.category_top_slug}
+            name={row.category_top}
+            locale={locale}
+          />
+          {/* Un nodo level-0 hace COALESCE a sí mismo en el backend (hoja === tope): repetir el
+              mismo texto dos veces se lee como un bug de render, no como jerarquía. */}
+          {row.category && row.category !== row.category_top ? (
+            <span className="max-w-[11rem] truncate text-xs text-muted-foreground">
+              {row.category}
+            </span>
+          ) : null}
+        </div>
       </TableCell>
 
       {/* EAN-alcanzable: decide si el job de matcheo por código de barras puede cubrir este

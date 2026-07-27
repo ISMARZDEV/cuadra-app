@@ -13,6 +13,7 @@ import { TableCell, TableRow } from "@/components/ui-base/table";
 
 import { MethodBadge } from "@/features/admin/components/MethodBadge";
 import { ProviderLogo } from "@/features/admin/components/ProviderLogo";
+import { SizePill } from "@/features/admin/components/SizePill";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 
@@ -22,7 +23,7 @@ import type { Locale } from "@/i18n/config";
 import { confidencePillClass } from "../lib/confidence-color";
 import { formatMatchDate, formatMatchTime } from "../lib/format-match-date";
 import { SelectCheckbox } from "./SelectCheckbox";
-import { parseSize } from "../lib/parse-size";
+import { parseSize } from "@/features/admin/lib/parse-size";
 
 interface ReviewRowProps {
   row: AdminReviewQueueRowDto;
@@ -129,26 +130,13 @@ export function ReviewRow({
         </a>
       </TableCell>
 
-      {/* Tamaño: pill teal RELLENO con el número (Figma 483:12422 — bg #007e62, texto lima #c2fb7e). */}
+      {/* Tamaño + Peso: el mismo par de píldoras que el catálogo canónico (ver `SizePill`). */}
       <TableCell>
-        {size.amount ? (
-          <span className="inline-flex w-fit items-center rounded-full bg-[#007e62] px-2.5 py-1 text-xs font-bold text-[#c2fb7e]">
-            {size.amount}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
+        <SizePill value={size.amount} tone="amount" />
       </TableCell>
 
-      {/* Peso: pill lima con la unidad (Figma — bg brand-lime #bbec6c, texto verde #3f6942). */}
       <TableCell>
-        {size.unit ? (
-          <span className="inline-flex w-fit items-center rounded-full bg-brand-lime px-2.5 py-1 text-xs font-bold text-[#3f6942]">
-            {size.unit}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
+        <SizePill value={size.unit} tone="unit" />
       </TableCell>
 
       {/* Descripción: NO existe en el DTO todavía (SPEC Fase 3) — placeholder, follow-up documentado. */}

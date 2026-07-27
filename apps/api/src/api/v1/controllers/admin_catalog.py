@@ -117,7 +117,13 @@ class AdminCanonicalProductRowDto(BaseModel):
     size_amount: Decimal
     size_measure: str
     image_url: str | None = None
+    # `category` es la HOJA ("Arroz"); `category_top` su ancestro de nivel 0 ("Despensa &
+    # Abarrotes") y `category_top_slug` el slug DERIVADO en read-time — `taxonomy_node` no tiene
+    # columna slug. El admin colorea el badge por el tope (su mapa de colores está cargado por
+    # slug de tope) y muestra la hoja debajo.
     category: str | None = None
+    category_top: str | None = None
+    category_top_slug: str | None = None
     taxonomy_node_id: str | None = None
     quality: str | None = None
     # DERIVADO: ≥1 store_product enlazado con EAN.
@@ -152,6 +158,8 @@ class AdminCanonicalProductRowDto(BaseModel):
             size_measure=row.size_measure,
             image_url=row.image_url,
             category=row.category,
+            category_top=row.category_top,
+            category_top_slug=row.category_top_slug,
             taxonomy_node_id=row.taxonomy_node_id,
             quality=row.quality,
             ean_reachable=row.ean_reachable,

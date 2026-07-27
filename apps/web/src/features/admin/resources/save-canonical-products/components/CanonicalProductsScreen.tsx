@@ -262,7 +262,7 @@ export function CanonicalProductsScreen() {
         </div>
 
         {/* El card es `overflow-hidden`, pero `Table` ya trae su propio wrapper
-            `overflow-x-auto`: con 10 columnas la tabla excede el ancho y sin ese scroll las
+            `overflow-x-auto`: con 11 columnas la tabla excede el ancho y sin ese scroll las
             últimas columnas (entre ellas Acciones) quedarían recortadas sin forma de llegar.
             Verificado: scrollWidth 1203 > clientWidth 1176. NO anidar otro scroller acá. */}
         <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-card">
@@ -289,6 +289,7 @@ export function CanonicalProductsScreen() {
                   />
                   <TableHead>{t("admin.canonicalProducts.col.brand")}</TableHead>
                   <TableHead>{t("admin.canonicalProducts.col.size")}</TableHead>
+                  <TableHead>{t("admin.canonicalProducts.col.weight")}</TableHead>
                   <TableHead>{t("admin.canonicalProducts.col.category")}</TableHead>
                   <TableHead>{t("admin.canonicalProducts.filters.ean")}</TableHead>
                   <SortableHead

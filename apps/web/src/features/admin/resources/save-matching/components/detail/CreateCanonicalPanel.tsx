@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FolderPlus, Sparkles } from "lucide-react";
 
-import { parseSize } from "../../lib/parse-size";
+import { parseSize } from "@/features/admin/lib/parse-size";
 
 // Medidas del `Quantity` del dominio (create-canonical: quantity_measure). El revisor confirma/corrige.
 export type Measure = "mass" | "volume" | "count";

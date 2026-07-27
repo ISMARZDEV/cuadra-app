@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
+from .taxonomy import slugify
+
 # La ingesta es diaria, pero marcar STALE a las 24h pintaría el catálogo entero de rojo ante
 # cualquier corrida saltada. Una semana significa "ninguna corrida cubrió este producto", que sí
 # es accionable para el operador.
@@ -118,7 +120,12 @@ class CanonicalCatalogRow:
     size_measure: str
     display_size: str | None = None
     image_url: str | None = None
+    # `category` es la HOJA (el dato específico: "Arroz"); `category_top` su ancestro de nivel 0
+    # ("Despensa & Abarrotes"). La lista muestra las dos: el badge se colorea por el TOPE — el mapa
+    # de colores del admin está cargado por slug de tope — y la hoja va debajo, para no perder
+    # especificidad. Sin clasificar, las dos son None.
     category: str | None = None
+    category_top: str | None = None
     quality: str | None = None
     taxonomy_node_id: str | None = None
     origin_run_id: str | None = None
@@ -138,6 +145,16 @@ class CanonicalCatalogRow:
     @property
     def is_archived(self) -> bool:
         return self.archived_at is not None
+
+    @property
+    def category_top_slug(self) -> str | None:
+        """Slug del tope derivado en READ-TIME — `taxonomy_node` NO tiene columna `slug`.
+
+        Mismo `slugify` que usa la cola de revisión (`product_match_repository`), así que un mismo
+        tope produce el mismo slug en las dos pantallas y el badge sale del mismo color. Sin tope
+        NO se inventa uno: el badge cae al neutro "Sin categoría".
+        """
+        return slugify(self.category_top) if self.category_top else None
 
 
 @dataclass(frozen=True, slots=True)

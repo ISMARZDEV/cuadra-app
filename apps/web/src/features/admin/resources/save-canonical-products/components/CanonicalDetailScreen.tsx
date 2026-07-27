@@ -218,7 +218,17 @@ export function CanonicalDetailScreen() {
             </p>
 
             <div className="flex flex-wrap items-center gap-2">
-              <CategoryBadge slug={product.category} name={product.category} locale={locale} />
+              {/* Mismo criterio que la fila del listado: color por el TOPE (el mapa está cargado
+                  por slug de tope) y la hoja al lado. Que la lista y el detalle discrepen en la
+                  categoría es la clase de incoherencia que quema confianza. */}
+              <CategoryBadge
+                slug={product.category_top_slug}
+                name={product.category_top}
+                locale={locale}
+              />
+              {product.category && product.category !== product.category_top ? (
+                <span className="text-xs text-muted-foreground">{product.category}</span>
+              ) : null}
               {product.ean_reachable ? (
                 <span
                   title={t("admin.canonicalProducts.ean.reachableHint")}
