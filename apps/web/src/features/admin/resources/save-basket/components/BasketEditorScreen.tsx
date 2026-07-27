@@ -178,10 +178,10 @@ export function BasketEditorScreen() {
 
   return (
     <div className="flex flex-1 flex-col p-4 md:p-6">
-      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">{t("admin.basket.title")}</h1>
+          <h1 className="text-2xl font-medium text-black dark:text-white">{t("admin.basket.title")}</h1>
           <Info
             className="size-4 text-muted-foreground"
             aria-label={format(locale, "admin.basket.info", { market: DEFAULT_BASKET_MARKET })}

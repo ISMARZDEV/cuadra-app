@@ -308,7 +308,7 @@ export function ProviderDetailScreen() {
 
   return (
     <div className="flex flex-1 flex-col p-4 md:p-6">
-      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
         <a
           href="/admin/orchestration"
           className="group inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -330,7 +330,7 @@ export function ProviderDetailScreen() {
               />
             </div>
             <div className="flex flex-col">
-              <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">
+              <h1 className="text-2xl font-medium text-black dark:text-white">
                 {detail.provider_name ?? detail.provider_id}
               </h1>
               <span className="text-sm text-muted-foreground" title={detail.flow_key}>

@@ -220,10 +220,10 @@ export function OrchestrationScreen() {
 
   return (
     <div className="flex flex-1 flex-col p-4 md:p-6">
-      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
         {/* Header — mismo patrón que Fuentes/Canasta: título + contador entre paréntesis. */}
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">
+          <h1 className="text-2xl font-medium text-black dark:text-white">
             {t("admin.orchestration.title")}
           </h1>
           <span className="text-base font-semibold text-brand-forest dark:text-brand-lime">

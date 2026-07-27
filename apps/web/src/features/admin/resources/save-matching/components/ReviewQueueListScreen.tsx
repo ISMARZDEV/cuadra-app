@@ -283,13 +283,13 @@ export function ReviewQueueListScreen() {
 
   return (
     // Todo el workspace vive dentro de UNA card contenedora (Figma): mismo gris que el `AdminTopBar`
-    // (`bg-muted/60` claro / `bg-secondary` oscuro) + radio grande con corner-smoothing tipo Figma.
+    // (`bg-muted` claro / `bg-secondary` oscuro) + radio grande con corner-smoothing tipo Figma.
     // `[corner-shape:squircle]` es progressive-enhancement: donde el navegador lo soporta suaviza la
     // superelipse; donde no, cae limpio al `rounded-[32px]`. La card llena el alto (`flex-1`).
     <div className="flex flex-1 flex-col p-4 md:p-6">
-      <div className="flex-1 space-y-4 rounded-[32px] bg-muted/60 p-4 shadow-sm md:p-6 dark:bg-secondary [corner-shape:squircle]">
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
       <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-brand-forest dark:text-brand-lime">
+        <h1 className="text-2xl font-medium text-black dark:text-white">
           {t("admin.reviewQueue.title")}
         </h1>
         <Info

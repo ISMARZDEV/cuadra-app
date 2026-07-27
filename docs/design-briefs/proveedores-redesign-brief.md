@@ -417,7 +417,7 @@ Save  ˅
 - **Espaciado generoso** y respirable. No comprimir elementos.
 - **Jerarquía visual clara:** título → KPIs → toolbar → tabla. Separado por espacio, no líneas.
 - **Hover states:** filas con `bg-muted/30`, botones con transición suave.
-- **Contenedor principal** centrado con padding de página, fondo `bg-muted/60` rounded-32px.
+- **Contenedor principal** centrado con padding de página, fondo `bg-muted` rounded-32px.
 - **La tabla** dentro de su propia card blanca rounded-2xl.
 
 ---
