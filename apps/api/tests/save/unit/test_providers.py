@@ -1,7 +1,11 @@
 """Unit — ListProviders/GetProvider (A9: "Ofertas por supermercado"). Fake repo, sin DB."""
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import UTC, datetime
+
 from src.contexts.save.application.providers import (
+    ArchiveProvider,
     GetProvider,
     ListAdminProviders,
     ListProviders,
@@ -13,11 +17,22 @@ class FakeProviderRepo:
     def __init__(self, providers: list[Provider]) -> None:
         self._providers = providers
 
-    def list_by_market(self, market_id: str) -> list[Provider]:
-        return [p for p in self._providers if p.market_id == market_id]
+    def list_by_market(self, market_id: str, *, include_archived: bool = False) -> list[Provider]:
+        rows = [p for p in self._providers if p.market_id == market_id]
+        if not include_archived:
+            rows = [p for p in rows if not p.is_archived]
+        return rows
 
     def get_by_id(self, provider_id: str) -> Provider | None:
         return next((p for p in self._providers if p.id == provider_id), None)
+
+    def set_archived(self, provider_id: str, *, archived: bool) -> bool:
+        for i, p in enumerate(self._providers):
+            if p.id == provider_id:
+                stamp = datetime(2026, 7, 27, tzinfo=UTC) if archived else None
+                self._providers[i] = replace(p, archived_at=stamp)
+                return True
+        return False
 
 
 def test_lists_providers_of_the_market_as_refs() -> None:
@@ -82,3 +97,58 @@ def test_admin_list_sorted_by_name() -> None:
     ]
     result = ListAdminProviders(FakeProviderRepo(providers)).execute("DO")
     assert [p.name for p in result] == ["Bravo", "Zumo"]
+
+
+# --- ArchiveProvider: SOFT-delete ----------------------------------------------------------------
+# Un provider está referenciado por FK desde `store_registry` y `store_product`, así que un DELETE
+# real o revienta o se lleva por delante el histórico de precios. Espeja `ArchiveCanonicalProduct`:
+# un solo use case con booleano, para que restaurar sea la inversa EXACTA de archivar.
+
+
+def _do_provider(pid: str = "p1", name: str = "Bravo") -> Provider:
+    return Provider(pid, name, ProviderType.SUPERMARKET, SourcePlatform.VTEX, "DO")
+
+
+def test_archive_stamps_the_provider_and_returns_it() -> None:
+    repo = FakeProviderRepo([_do_provider()])
+    result = ArchiveProvider(repo).execute(provider_id="p1", archived=True)
+
+    assert result is not None
+    assert result.is_archived is True
+
+
+def test_unarchive_is_the_exact_inverse() -> None:
+    repo = FakeProviderRepo([_do_provider()])
+    use_case = ArchiveProvider(repo)
+
+    use_case.execute(provider_id="p1", archived=True)
+    restored = use_case.execute(provider_id="p1", archived=False)
+
+    assert restored is not None
+    assert restored.is_archived is False
+    assert restored.archived_at is None
+
+
+def test_archive_returns_none_when_provider_does_not_exist() -> None:
+    """El "no encontrado" es regla del use case, no del repo (ADR 31: el repo es I/O puro)."""
+    assert ArchiveProvider(FakeProviderRepo([])).execute(provider_id="nope", archived=True) is None
+
+
+def test_admin_list_hides_archived_providers_by_default() -> None:
+    """Archivar tiene que SACARLO de la consola; si siguiera listado no serviría de nada."""
+    repo = FakeProviderRepo([_do_provider("p1", "Bravo"), _do_provider("p2", "Ritmo")])
+    ArchiveProvider(repo).execute(provider_id="p2", archived=True)
+
+    result = ListAdminProviders(repo).execute("DO")
+
+    assert [p.name for p in result] == ["Bravo"]
+
+
+def test_admin_list_can_include_archived_on_demand() -> None:
+    """Sin esta vista, un provider archivado por error sería irrecuperable desde la UI."""
+    repo = FakeProviderRepo([_do_provider("p1", "Bravo"), _do_provider("p2", "Ritmo")])
+    ArchiveProvider(repo).execute(provider_id="p2", archived=True)
+
+    result = ListAdminProviders(repo).execute("DO", include_archived=True)
+
+    assert [p.name for p in result] == ["Bravo", "Ritmo"]

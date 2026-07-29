@@ -81,3 +81,37 @@ describe("CategoryCell", () => {
     expect(screen.getByRole("button").hasAttribute("disabled")).toBe(true);
   });
 });
+
+describe("CategoryCell · subcategoría", () => {
+  it("muestra la hoja debajo del badge del tope", () => {
+    // Mismo patrón que el catálogo canónico: el tope da el COLOR, la hoja el detalle con el que
+    // el operador realmente distingue productos.
+    cell({
+      category: { slug: "despensa", name: "Despensa" },
+      categoryLeaf: "Arroz, Granos & Legumbres",
+    });
+
+    expect(screen.getByText("Despensa")).toBeInTheDocument();
+    expect(screen.getByText("Arroz, Granos & Legumbres")).toBeInTheDocument();
+  });
+
+  it("sin subcategoría no deja una línea vacía", () => {
+    cell({ category: { slug: "despensa", name: "Despensa" }, categoryLeaf: null });
+
+    expect(screen.getByText("Despensa")).toBeInTheDocument();
+    expect(screen.queryByText("Arroz, Granos & Legumbres")).not.toBeInTheDocument();
+  });
+
+  it("al elegir una hoja, la subcategoría se actualiza junto al badge", async () => {
+    // Si sólo se repintara el tope, la celda quedaría diciendo "Despensa" con la subcategoría
+    // vieja debajo — dos cosas contradictorias en la misma fila.
+    cell({ category: { slug: "alcohol", name: "Alcohol" }, categoryLeaf: "Cerveza" });
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByText(/Arroz/));
+
+    await waitFor(() => {
+      expect(screen.getByText("Despensa")).toBeInTheDocument();
+      expect(screen.queryByText("Cerveza")).not.toBeInTheDocument();
+    });
+  });
+});

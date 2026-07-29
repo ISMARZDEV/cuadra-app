@@ -271,6 +271,7 @@ class SqlProductMatchRepository:
                 ProviderModel.logo_url,
                 candidate_count,
                 category_top_name,
+                leaf.name,
             )
             .join(StoreProductModel, ProductMatchModel.store_product_id == StoreProductModel.id)
             .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
@@ -333,8 +334,11 @@ class SqlProductMatchRepository:
                 # (sin columna). Sin clasificación `active` → None → badge "N/A".
                 category_slug=slugify(cat_name) if cat_name else None,
                 category_name=cat_name,
+                # La hoja sólo se muestra si aporta algo: cuando el nodo clasificado YA es el tope,
+                # repetir el mismo texto debajo del badge se lee como un bug de render.
+                category_leaf_name=leaf_name if leaf_name != cat_name else None,
             )
-            for m, sp, pid, pname, plogo, ccount, cat_name in rows
+            for m, sp, pid, pname, plogo, ccount, cat_name, leaf_name in rows
         ]
         return result, int(total)
 

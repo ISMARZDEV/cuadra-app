@@ -164,6 +164,7 @@ export function ReviewDetailScreen() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:items-stretch">
         <StoreProductPanel
+          storeProductId={detail.store_product_id}
           name={store.name}
           brand={store.brand}
           sizeText={store.sizeText}

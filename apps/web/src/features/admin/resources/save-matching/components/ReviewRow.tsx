@@ -1,5 +1,5 @@
 import type { AdminReviewQueueRowDto, TaxonomyLeafDto } from "@cuadra/api-client";
-import { ExternalLink, Eye, ImageOff, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ExternalLink, Eye, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { navigate } from "vike/client/router";
 
@@ -13,6 +13,9 @@ import { TableCell, TableRow } from "@/components/ui-base/table";
 
 import { MethodBadge } from "@/features/admin/components/MethodBadge";
 import { ProviderLogo } from "@/features/admin/components/ProviderLogo";
+import { SizePill } from "@/features/admin/components/SizePill";
+import { ThumbnailLightbox } from "@/features/admin/components/ThumbnailLightbox";
+import { TruncatedText } from "@/features/admin/components/TruncatedText";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 
@@ -22,7 +25,8 @@ import type { Locale } from "@/i18n/config";
 import { confidencePillClass } from "../lib/confidence-color";
 import { formatMatchDate, formatMatchTime } from "../lib/format-match-date";
 import { SelectCheckbox } from "./SelectCheckbox";
-import { parseSize } from "../lib/parse-size";
+import { listStoreProductImages } from "../api";
+import { parseSize } from "@/features/admin/lib/parse-size";
 
 interface ReviewRowProps {
   row: AdminReviewQueueRowDto;
@@ -83,7 +87,43 @@ export function ReviewRow({
         </TableCell>
       ) : null}
 
-      {/* Confianza: pill % coloreado por banda de matching (85/94 verde, 55 ámbar, 26 rojo). */}
+      {/* Imagen + Producto: MISMO tratamiento que el catálogo canónico (`ThumbnailWithCount` +
+          nombre a 2 líneas con tooltip si no entra). El operador salta entre las dos tablas todo
+          el día; que la misma información se vea distinta le cuesta una relectura por salto. */}
+      <TableCell>
+        <ThumbnailLightbox
+          src={row.store_product_image_url}
+          alt={row.store_product_name ?? ""}
+          title={row.store_product_name ?? ""}
+          count={row.candidate_count}
+          emptyLabel={t("admin.reviewQueue.noImage")}
+          countTestId="candidate-count-badge"
+          loadImages={() => listStoreProductImages(row.store_product_id)}
+        />
+      </TableCell>
+
+      <TableCell>
+        <div className="flex max-w-[16rem] flex-col gap-0.5">
+          <a href={href} className="font-medium text-foreground hover:underline">
+            <span data-testid="review-row-name">
+              <TruncatedText text={row.store_product_name ?? "(sin nombre)"} lines={2} />
+            </span>
+          </a>
+        </div>
+      </TableCell>
+
+      {/* Tamaño + Peso: el mismo par de píldoras que el catálogo canónico (ver `SizePill`). */}
+      <TableCell>
+        <SizePill value={size.amount} tone="amount" />
+      </TableCell>
+
+      <TableCell>
+        <SizePill value={size.unit} tone="unit" />
+      </TableCell>
+
+      {/* Confianza: pill % coloreado por banda de matching (85/94 verde, 55 ámbar, 26 rojo).
+          Va DESPUÉS de Tamaño/Peso: la decisión de aprobar se toma leyendo primero qué producto es
+          (imagen, nombre, tamaño) y recién después con cuánta seguridad lo propuso el matcher. */}
       <TableCell>
         <span
           data-testid="confidence-badge"
@@ -91,64 +131,6 @@ export function ReviewRow({
         >
           {confidencePct}
         </span>
-      </TableCell>
-
-      {/* Imagen: thumbnail redondeado con el nº de candidatos como badge sobre la esquina. */}
-      <TableCell>
-        <div className="relative size-11 shrink-0">
-          {row.store_product_image_url ? (
-            <img
-              src={row.store_product_image_url}
-              alt={row.store_product_name ?? ""}
-              loading="lazy"
-              className="size-11 rounded-lg object-cover"
-            />
-          ) : (
-            <div
-              className="flex size-11 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-              role="img"
-              aria-label={t("admin.reviewQueue.noImage")}
-              title={t("admin.reviewQueue.noImage")}
-            >
-              <ImageOff className="size-4" aria-hidden="true" />
-            </div>
-          )}
-          <span
-            data-testid="candidate-count-badge"
-            className="absolute -top-1.5 -right-1.5 flex size-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground ring-2 ring-card"
-          >
-            {row.candidate_count}
-          </span>
-        </div>
-      </TableCell>
-
-      {/* Producto: nombre en 2 líneas, enlaza al detalle. */}
-      <TableCell>
-        <a href={href} className="line-clamp-2 max-w-[13rem] font-semibold text-foreground hover:underline">
-          <span data-testid="review-row-name">{row.store_product_name ?? "(sin nombre)"}</span>
-        </a>
-      </TableCell>
-
-      {/* Tamaño: pill teal RELLENO con el número (Figma 483:12422 — bg #007e62, texto lima #c2fb7e). */}
-      <TableCell>
-        {size.amount ? (
-          <span className="inline-flex w-fit items-center rounded-full bg-[#007e62] px-2.5 py-1 text-xs font-bold text-[#c2fb7e]">
-            {size.amount}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-
-      {/* Peso: pill lima con la unidad (Figma — bg brand-lime #bbec6c, texto verde #3f6942). */}
-      <TableCell>
-        {size.unit ? (
-          <span className="inline-flex w-fit items-center rounded-full bg-brand-lime px-2.5 py-1 text-xs font-bold text-[#3f6942]">
-            {size.unit}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
       </TableCell>
 
       {/* Descripción: NO existe en el DTO todavía (SPEC Fase 3) — placeholder, follow-up documentado. */}
@@ -163,6 +145,7 @@ export function ReviewRow({
         <CategoryCell
           storeProductId={row.store_product_id}
           category={row.category}
+          categoryLeaf={row.category_leaf}
           leaves={taxonomyLeaves ?? []}
           onSet={onSetCategory ?? (async () => false)}
           locale={locale}

@@ -32,8 +32,29 @@ class ListAdminProviders:
     def __init__(self, provider_repo: ProviderRepository) -> None:
         self._repo = provider_repo
 
-    def execute(self, market_id: str) -> list[Provider]:
-        return sorted(self._repo.list_by_market(market_id), key=lambda p: p.name.lower())
+    def execute(self, market_id: str, *, include_archived: bool = False) -> list[Provider]:
+        rows = self._repo.list_by_market(market_id, include_archived=include_archived)
+        return sorted(rows, key=lambda p: p.name.lower())
+
+
+class ArchiveProvider:
+    """Archivar / restaurar un provider — SOFT-delete deliberado.
+
+    `provider_id` está referenciado por FK desde `store_registry` y `store_product`, así que un
+    DELETE real o revienta contra la FK o arrastra el histórico de precios de esa cadena. Archivar
+    lo saca de la consola y de la ingesta sin tocar una sola fila de lo que cuelga de él.
+
+    Espeja `ArchiveCanonicalProduct` (US-CP-L6/D12): UN use case con booleano, no dos. Que restaurar
+    sea la inversa exacta de archivar es justamente lo que obliga a que archivar no destruya nada.
+    """
+
+    def __init__(self, provider_repo: ProviderRepository) -> None:
+        self._repo = provider_repo
+
+    def execute(self, *, provider_id: str, archived: bool) -> Provider | None:
+        if not self._repo.set_archived(provider_id, archived=archived):
+            return None
+        return self._repo.get_by_id(provider_id)
 
 
 class GetProvider:

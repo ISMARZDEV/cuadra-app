@@ -55,6 +55,9 @@ def test_classified_store_product_shows_top_category(db_session) -> None:  # typ
     row = _row_for(rows, sp_id)
     assert row.category_name == "Despensa & Abarrotes"  # ancestro TOPE, no la hoja
     assert row.category_slug == "despensa-abarrotes"
+    # La HOJA viaja aparte: el badge se colorea por el tope (el mapa de colores del admin está
+    # cargado por slug de tope) y la subcategoría se muestra debajo, igual que en el catálogo.
+    assert row.category_leaf_name == "Arroz, Granos & Legumbres"
 
 
 def test_unclassified_store_product_has_none_category(db_session) -> None:  # type: ignore[no-untyped-def]
@@ -66,3 +69,4 @@ def test_unclassified_store_product_has_none_category(db_session) -> None:  # ty
     row = _row_for(rows, sp_id)
     assert row.category_slug is None
     assert row.category_name is None
+    assert row.category_leaf_name is None

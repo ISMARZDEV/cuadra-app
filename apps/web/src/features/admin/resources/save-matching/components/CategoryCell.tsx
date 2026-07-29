@@ -25,12 +25,15 @@ import { CategoryPicker } from "./CategoryPicker";
 export function CategoryCell({
   storeProductId,
   category,
+  categoryLeaf,
   leaves,
   onSet,
   locale,
 }: {
   storeProductId: string;
   category: CategoryRefDto | null | undefined;
+  /** Subcategoría (hoja) que se muestra bajo el badge. `null` cuando la hoja ES el tope. */
+  categoryLeaf?: string | null;
   leaves: TaxonomyLeafDto[];
   /** Persiste la categoría. `false` = el servidor la rechazó → la celda revierte. */
   onSet: (storeProductId: string, taxonomyNodeId: string) => Promise<boolean>;
@@ -38,23 +41,30 @@ export function CategoryCell({
 }) {
   // Valor OPTIMISTA: lo que la celda muestra ahora. `undefined` = todavía manda el prop.
   const [optimistic, setOptimistic] = useState<CategoryRefDto | null | undefined>(undefined);
+  // La HOJA sigue su propio optimista: si sólo se actualizara el tope, elegir "Arroz" repintaría el
+  // badge pero dejaría la subcategoría vieja debajo — una fila diciendo dos cosas a la vez.
+  const [optimisticLeaf, setOptimisticLeaf] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
   const shown = optimistic !== undefined ? optimistic : category;
+  const shownLeaf = optimisticLeaf !== undefined ? optimisticLeaf : categoryLeaf;
 
   const pick = async (leaf: TaxonomyLeafDto) => {
     const previous = shown;
+    const previousLeaf = shownLeaf;
     // Optimista: la celda es la interacción más repetida del flujo (diez correcciones seguidas), y
     // esperar el round-trip en cada una la volvería lenta justo donde tiene que ser barata. Va CON
     // el slug del tope para que el color sea el definitivo desde el primer frame: sin él saldría
     // gris y cambiaría al refrescar, un parpadeo que se lee como si algo hubiera fallado.
     setOptimistic({ slug: leaf.top_slug, name: leaf.top_name });
+    setOptimisticLeaf(leaf.name !== leaf.top_name ? leaf.name : null);
     setBusy(true);
     const ok = await onSet(storeProductId, leaf.id);
     setBusy(false);
     if (!ok) {
       // Un optimismo que no se deshace es una mentira: la celda diría una cosa y la DB otra.
       setOptimistic(previous);
+      setOptimisticLeaf(previousLeaf ?? null);
     }
   };
 
@@ -67,7 +77,15 @@ export function CategoryCell({
       label={translate(locale, "admin.reviewQueue.category.edit")}
       locale={locale}
     >
-      <CategoryBadge slug={shown?.slug} name={shown?.name} locale={locale} />
+      {/* Badge (tope, da el color) + subcategoría debajo — mismo patrón que el catálogo canónico.
+          Las dos van DENTRO del disparador: el badge es el afford. de edición y partirlo dejaría
+          media celda muerta al click. */}
+      <div className="flex flex-col items-start gap-0.5">
+        <CategoryBadge slug={shown?.slug} name={shown?.name} locale={locale} />
+        {shownLeaf ? (
+          <span className="max-w-[11rem] truncate text-xs text-muted-foreground">{shownLeaf}</span>
+        ) : null}
+      </div>
     </CategoryPicker>
   );
 }

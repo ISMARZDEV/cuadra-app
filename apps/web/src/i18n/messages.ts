@@ -558,6 +558,43 @@ type MessageKey =
   | "admin.providers.empty"
   | "admin.providers.update.nameError"
   | "admin.providers.update.logoError"
+  | "admin.providers.add"
+  | "admin.providers.search.aria"
+  | "admin.providers.search.placeholder"
+  | "admin.providers.emptySearch"
+  | "admin.providers.selectAll"
+  | "admin.providers.col.logo"
+  | "admin.providers.col.name"
+  | "admin.providers.col.market"
+  | "admin.providers.col.type"
+  | "admin.providers.col.platform"
+  | "admin.providers.col.status"
+  | "admin.providers.col.actions"
+  | "admin.providers.status.active"
+  | "admin.providers.status.archived"
+  | "admin.providers.filters.title"
+  | "admin.providers.filters.open"
+  | "admin.providers.filters.type"
+  | "admin.providers.filters.platform"
+  | "admin.providers.filters.status"
+  | "admin.providers.filters.all"
+  | "admin.providers.filters.onlyActive"
+  | "admin.providers.filters.onlyArchived"
+  | "admin.providers.actions.aria"
+  | "admin.providers.actions.edit"
+  | "admin.providers.actions.archive"
+  | "admin.providers.actions.unarchive"
+  | "admin.providers.actions.errArchive"
+  | "admin.providers.modal.editTitle"
+  | "admin.providers.modal.cancel"
+  | "admin.providers.modal.save"
+  | "admin.providers.modal.saving"
+  | "admin.providers.archive.title"
+  | "admin.providers.archive.description"
+  | "admin.providers.archive.confirm"
+  | "admin.providers.pagination.show"
+  | "admin.providers.pagination.perPage"
+  | "admin.providers.pagination.of"
   | "admin.providers.row.name"
   | "admin.providers.row.saveName"
   | "admin.providers.row.logo"
@@ -662,6 +699,9 @@ type MessageKey =
   | "admin.canonicalProducts.col.product"
   | "admin.canonicalProducts.col.brand"
   | "admin.canonicalProducts.col.size"
+  | "admin.canonicalProducts.col.weight"
+  | "admin.canonicalProducts.col.price"
+  | "admin.canonicalProducts.noImage"
   | "admin.canonicalProducts.col.measure"
   | "admin.canonicalProducts.col.category"
   | "admin.canonicalProducts.col.providers"
@@ -676,14 +716,12 @@ type MessageKey =
   | "admin.canonicalProducts.status.no_image"
   | "admin.canonicalProducts.status.no_category"
   | "admin.canonicalProducts.status.no_providers"
-  | "admin.canonicalProducts.status.no_quality"
   | "admin.canonicalProducts.status.stale_price"
   | "admin.canonicalProducts.status.possible_duplicate"
   | "admin.canonicalProducts.statusHint.complete"
   | "admin.canonicalProducts.statusHint.no_image"
   | "admin.canonicalProducts.statusHint.no_category"
   | "admin.canonicalProducts.statusHint.no_providers"
-  | "admin.canonicalProducts.statusHint.no_quality"
   | "admin.canonicalProducts.statusHint.stale_price"
   | "admin.canonicalProducts.statusHint.possible_duplicate"
   | "admin.canonicalProducts.ean.reachable"
@@ -1443,7 +1481,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.basket.modal.noResults": "Sin resultados.",
     "admin.basket.modal.viewAria": "Ver",
     "admin.providers.title": "Proveedores (Save)",
-    "admin.providers.subtitle": "Alta y logo por URL pegada (MVP, sin subida de archivos).",
+    "admin.providers.subtitle": "Gestión de cadenas y sus fuentes de datos. El logo se define por URL pegada (sin subida de archivos).",
     "admin.providers.new": "Nuevo proveedor",
     "admin.providers.field.name": "Nombre",
     "admin.providers.field.market": "Mercado",
@@ -1456,6 +1494,43 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.providers.empty": "Sin proveedores todavía.",
     "admin.providers.update.nameError": "No se pudo actualizar el nombre.",
     "admin.providers.update.logoError": "No se pudo guardar el logo.",
+    "admin.providers.add": "Añadir proveedor",
+    "admin.providers.search.aria": "Buscar proveedor",
+    "admin.providers.search.placeholder": "Buscar proveedor...",
+    "admin.providers.emptySearch": "Ningún proveedor coincide con la búsqueda.",
+    "admin.providers.selectAll": "Seleccionar todos los proveedores de la página",
+    "admin.providers.col.logo": "Logo",
+    "admin.providers.col.name": "Nombre",
+    "admin.providers.col.market": "Mercado",
+    "admin.providers.col.type": "Tipo",
+    "admin.providers.col.platform": "Plataforma",
+    "admin.providers.col.status": "Estado",
+    "admin.providers.col.actions": "Acciones",
+    "admin.providers.status.active": "Activo",
+    "admin.providers.status.archived": "Archivado",
+    "admin.providers.filters.title": "Filtrar proveedores",
+    "admin.providers.filters.open": "Abrir filtros",
+    "admin.providers.filters.type": "Tipo",
+    "admin.providers.filters.platform": "Plataforma",
+    "admin.providers.filters.status": "Estado",
+    "admin.providers.filters.all": "Todos",
+    "admin.providers.filters.onlyActive": "Solo activos",
+    "admin.providers.filters.onlyArchived": "Solo archivados",
+    "admin.providers.actions.aria": "Acciones de {name}",
+    "admin.providers.actions.edit": "Editar",
+    "admin.providers.actions.archive": "Archivar",
+    "admin.providers.actions.unarchive": "Restaurar",
+    "admin.providers.actions.errArchive": "No se pudo cambiar el estado del proveedor.",
+    "admin.providers.modal.editTitle": "Editar {name}",
+    "admin.providers.modal.cancel": "Cancelar",
+    "admin.providers.modal.save": "Guardar cambios",
+    "admin.providers.modal.saving": "Guardando...",
+    "admin.providers.archive.title": "¿Archivar {name}?",
+    "admin.providers.archive.description": "Deja de aparecer en la consola y en la ingesta. Su histórico de precios, sus productos y su configuración quedan intactos, y puedes restaurarlo cuando quieras.",
+    "admin.providers.archive.confirm": "Archivar proveedor",
+    "admin.providers.pagination.show": "Mostrar",
+    "admin.providers.pagination.perPage": "por página",
+    "admin.providers.pagination.of": "{from}-{to} de {total}",
     "admin.providers.row.name": "Nombre de {name}",
     "admin.providers.row.saveName": "Guardar nombre de {name}",
     "admin.providers.row.logo": "Logo de {name}",
@@ -1561,6 +1636,9 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.col.product": "Producto",
     "admin.canonicalProducts.col.brand": "Marca",
     "admin.canonicalProducts.col.size": "Tamaño",
+    "admin.canonicalProducts.col.weight": "Peso",
+    "admin.canonicalProducts.col.price": "Precio",
+    "admin.canonicalProducts.noImage": "Sin imagen",
     "admin.canonicalProducts.col.measure": "Unidad",
     "admin.canonicalProducts.col.category": "Categoría",
     "admin.canonicalProducts.col.providers": "Tiendas",
@@ -1575,14 +1653,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.status.no_image": "Sin imagen",
     "admin.canonicalProducts.status.no_category": "Sin categoría",
     "admin.canonicalProducts.status.no_providers": "Sin tiendas",
-    "admin.canonicalProducts.status.no_quality": "Sin calidad",
     "admin.canonicalProducts.status.stale_price": "Precio viejo",
     "admin.canonicalProducts.status.possible_duplicate": "Duplicado posible",
     "admin.canonicalProducts.statusHint.complete": "No le falta nada: tiene imagen, categoría, calidad, tiendas enlazadas y precio fresco.",
     "admin.canonicalProducts.statusHint.no_image": "Falta la imagen. Se puede tomar de una tienda enlazada desde el detalle.",
     "admin.canonicalProducts.statusHint.no_category": "Sin categoría asignada: no aparece en el árbol de navegación público.",
     "admin.canonicalProducts.statusHint.no_providers": "Ninguna tienda está enlazada a este canónico, así que no tiene precio que comparar.",
-    "admin.canonicalProducts.statusHint.no_quality": "Falta el nivel de calidad (premium, selecto…).",
     "admin.canonicalProducts.statusHint.stale_price": "Ninguna corrida actualizó el precio de este producto en más de una semana.",
     "admin.canonicalProducts.statusHint.possible_duplicate": "Otro canónico comparte EAN o marca y tamaño con este. Revisalo antes de que contamine las comparaciones.",
     "admin.canonicalProducts.ean.reachable": "Alcanzable por EAN",
@@ -2342,7 +2418,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.basket.modal.noResults": "No results.",
     "admin.basket.modal.viewAria": "View",
     "admin.providers.title": "Providers (Save)",
-    "admin.providers.subtitle": "Create providers and set a logo by pasted URL (MVP, no file upload).",
+    "admin.providers.subtitle": "Manage chains and their data sources. The logo is set by pasted URL (no file upload).",
     "admin.providers.new": "New provider",
     "admin.providers.field.name": "Name",
     "admin.providers.field.market": "Market",
@@ -2355,6 +2431,43 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.providers.empty": "No providers yet.",
     "admin.providers.update.nameError": "Could not update the name.",
     "admin.providers.update.logoError": "Could not save the logo.",
+    "admin.providers.add": "Add provider",
+    "admin.providers.search.aria": "Search provider",
+    "admin.providers.search.placeholder": "Search provider...",
+    "admin.providers.emptySearch": "No provider matches the search.",
+    "admin.providers.selectAll": "Select every provider on this page",
+    "admin.providers.col.logo": "Logo",
+    "admin.providers.col.name": "Name",
+    "admin.providers.col.market": "Market",
+    "admin.providers.col.type": "Type",
+    "admin.providers.col.platform": "Platform",
+    "admin.providers.col.status": "Status",
+    "admin.providers.col.actions": "Actions",
+    "admin.providers.status.active": "Active",
+    "admin.providers.status.archived": "Archived",
+    "admin.providers.filters.title": "Filter providers",
+    "admin.providers.filters.open": "Open filters",
+    "admin.providers.filters.type": "Type",
+    "admin.providers.filters.platform": "Platform",
+    "admin.providers.filters.status": "Status",
+    "admin.providers.filters.all": "All",
+    "admin.providers.filters.onlyActive": "Active only",
+    "admin.providers.filters.onlyArchived": "Archived only",
+    "admin.providers.actions.aria": "Actions for {name}",
+    "admin.providers.actions.edit": "Edit",
+    "admin.providers.actions.archive": "Archive",
+    "admin.providers.actions.unarchive": "Restore",
+    "admin.providers.actions.errArchive": "Could not change the provider status.",
+    "admin.providers.modal.editTitle": "Edit {name}",
+    "admin.providers.modal.cancel": "Cancel",
+    "admin.providers.modal.save": "Save changes",
+    "admin.providers.modal.saving": "Saving...",
+    "admin.providers.archive.title": "Archive {name}?",
+    "admin.providers.archive.description": "It stops showing in the console and in ingestion. Its price history, products and configuration stay intact, and you can restore it at any time.",
+    "admin.providers.archive.confirm": "Archive provider",
+    "admin.providers.pagination.show": "Show",
+    "admin.providers.pagination.perPage": "per page",
+    "admin.providers.pagination.of": "{from}-{to} of {total}",
     "admin.providers.row.name": "Name of {name}",
     "admin.providers.row.saveName": "Save name of {name}",
     "admin.providers.row.logo": "Logo of {name}",
@@ -2460,6 +2573,9 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.col.product": "Product",
     "admin.canonicalProducts.col.brand": "Brand",
     "admin.canonicalProducts.col.size": "Size",
+    "admin.canonicalProducts.col.weight": "Weight",
+    "admin.canonicalProducts.col.price": "Price",
+    "admin.canonicalProducts.noImage": "No image",
     "admin.canonicalProducts.col.measure": "Unit",
     "admin.canonicalProducts.col.category": "Category",
     "admin.canonicalProducts.col.providers": "Stores",
@@ -2474,14 +2590,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.status.no_image": "No image",
     "admin.canonicalProducts.status.no_category": "No category",
     "admin.canonicalProducts.status.no_providers": "No stores",
-    "admin.canonicalProducts.status.no_quality": "No quality",
     "admin.canonicalProducts.status.stale_price": "Stale price",
     "admin.canonicalProducts.status.possible_duplicate": "Possible duplicate",
     "admin.canonicalProducts.statusHint.complete": "Nothing missing: it has an image, a category, quality, linked stores and a fresh price.",
     "admin.canonicalProducts.statusHint.no_image": "Missing image. It can be taken from a linked store in the detail view.",
     "admin.canonicalProducts.statusHint.no_category": "No category assigned: it does not show up in the public navigation tree.",
     "admin.canonicalProducts.statusHint.no_providers": "No store is linked to this canonical, so there is no price to compare.",
-    "admin.canonicalProducts.statusHint.no_quality": "Missing the quality tier (premium, select…).",
     "admin.canonicalProducts.statusHint.stale_price": "No run has refreshed this product's price in over a week.",
     "admin.canonicalProducts.statusHint.possible_duplicate": "Another canonical shares an EAN or brand and size with this one. Review it before it pollutes comparisons.",
     "admin.canonicalProducts.ean.reachable": "EAN-reachable",
@@ -3241,7 +3355,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.basket.modal.noResults": "Sem resultados.",
     "admin.basket.modal.viewAria": "Ver",
     "admin.providers.title": "Fornecedores (Save)",
-    "admin.providers.subtitle": "Cadastro e logo por URL colada (MVP, sem upload de arquivos).",
+    "admin.providers.subtitle": "Gestão de redes e suas fontes de dados. O logo é definido por URL colada (sem upload de arquivos).",
     "admin.providers.new": "Novo fornecedor",
     "admin.providers.field.name": "Nome",
     "admin.providers.field.market": "Mercado",
@@ -3254,6 +3368,43 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.providers.empty": "Nenhum fornecedor ainda.",
     "admin.providers.update.nameError": "Não foi possível atualizar o nome.",
     "admin.providers.update.logoError": "Não foi possível salvar o logo.",
+    "admin.providers.add": "Adicionar fornecedor",
+    "admin.providers.search.aria": "Buscar fornecedor",
+    "admin.providers.search.placeholder": "Buscar fornecedor...",
+    "admin.providers.emptySearch": "Nenhum fornecedor corresponde à busca.",
+    "admin.providers.selectAll": "Selecionar todos os fornecedores da página",
+    "admin.providers.col.logo": "Logo",
+    "admin.providers.col.name": "Nome",
+    "admin.providers.col.market": "Mercado",
+    "admin.providers.col.type": "Tipo",
+    "admin.providers.col.platform": "Plataforma",
+    "admin.providers.col.status": "Estado",
+    "admin.providers.col.actions": "Ações",
+    "admin.providers.status.active": "Ativo",
+    "admin.providers.status.archived": "Arquivado",
+    "admin.providers.filters.title": "Filtrar fornecedores",
+    "admin.providers.filters.open": "Abrir filtros",
+    "admin.providers.filters.type": "Tipo",
+    "admin.providers.filters.platform": "Plataforma",
+    "admin.providers.filters.status": "Estado",
+    "admin.providers.filters.all": "Todos",
+    "admin.providers.filters.onlyActive": "Somente ativos",
+    "admin.providers.filters.onlyArchived": "Somente arquivados",
+    "admin.providers.actions.aria": "Ações de {name}",
+    "admin.providers.actions.edit": "Editar",
+    "admin.providers.actions.archive": "Arquivar",
+    "admin.providers.actions.unarchive": "Restaurar",
+    "admin.providers.actions.errArchive": "Não foi possível alterar o estado do fornecedor.",
+    "admin.providers.modal.editTitle": "Editar {name}",
+    "admin.providers.modal.cancel": "Cancelar",
+    "admin.providers.modal.save": "Salvar alterações",
+    "admin.providers.modal.saving": "Salvando...",
+    "admin.providers.archive.title": "Arquivar {name}?",
+    "admin.providers.archive.description": "Deixa de aparecer no console e na ingestão. Seu histórico de preços, produtos e configuração ficam intactos, e você pode restaurá-lo quando quiser.",
+    "admin.providers.archive.confirm": "Arquivar fornecedor",
+    "admin.providers.pagination.show": "Mostrar",
+    "admin.providers.pagination.perPage": "por página",
+    "admin.providers.pagination.of": "{from}-{to} de {total}",
     "admin.providers.row.name": "Nome de {name}",
     "admin.providers.row.saveName": "Salvar nome de {name}",
     "admin.providers.row.logo": "Logo de {name}",
@@ -3359,6 +3510,9 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.col.product": "Produto",
     "admin.canonicalProducts.col.brand": "Marca",
     "admin.canonicalProducts.col.size": "Tamanho",
+    "admin.canonicalProducts.col.weight": "Peso",
+    "admin.canonicalProducts.col.price": "Preço",
+    "admin.canonicalProducts.noImage": "Sem imagem",
     "admin.canonicalProducts.col.measure": "Unidade",
     "admin.canonicalProducts.col.category": "Categoria",
     "admin.canonicalProducts.col.providers": "Lojas",
@@ -3373,14 +3527,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.status.no_image": "Sem imagem",
     "admin.canonicalProducts.status.no_category": "Sem categoria",
     "admin.canonicalProducts.status.no_providers": "Sem lojas",
-    "admin.canonicalProducts.status.no_quality": "Sem qualidade",
     "admin.canonicalProducts.status.stale_price": "Preço antigo",
     "admin.canonicalProducts.status.possible_duplicate": "Possível duplicado",
     "admin.canonicalProducts.statusHint.complete": "Não falta nada: tem imagem, categoria, qualidade, lojas vinculadas e preço recente.",
     "admin.canonicalProducts.statusHint.no_image": "Falta a imagem. Pode ser obtida de uma loja vinculada na tela de detalhe.",
     "admin.canonicalProducts.statusHint.no_category": "Sem categoria atribuída: não aparece na árvore de navegação pública.",
     "admin.canonicalProducts.statusHint.no_providers": "Nenhuma loja está vinculada a este canônico, portanto não há preço para comparar.",
-    "admin.canonicalProducts.statusHint.no_quality": "Falta o nível de qualidade (premium, seleto…).",
     "admin.canonicalProducts.statusHint.stale_price": "Nenhuma execução atualizou o preço deste produto em mais de uma semana.",
     "admin.canonicalProducts.statusHint.possible_duplicate": "Outro canônico compartilha EAN ou marca e tamanho com este. Revise antes que contamine as comparações.",
     "admin.canonicalProducts.ean.reachable": "Alcançável por EAN",

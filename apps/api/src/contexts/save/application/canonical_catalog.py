@@ -430,7 +430,6 @@ def derive_row_quality(
         image_url=row.image_url,
         category=row.category,
         matched_provider_count=row.matched_provider_count,
-        quality=row.quality,
         last_price_seen_at=row.last_price_seen_at,
         possible_duplicate_count=row.possible_duplicate_count,
         now=now,
@@ -441,7 +440,6 @@ def derive_row_quality(
         matched_provider_count=row.matched_provider_count,
         brand=row.brand,
         display_size=row.display_size,
-        quality=row.quality,
     )
     return statuses, score
 
@@ -781,6 +779,21 @@ class ListCanonicalImages:
 
     def execute(self, canonical_product_id: str) -> list[CanonicalImage]:
         return self._repo.list_images(canonical_product_id)
+
+
+class ListStoreProductImages:
+    """Galería que publicó la TIENDA para un `store_product` (lightbox de la Cola de revisión).
+
+    Distinta de `ListCanonicalImages`: aquélla es la galería CURADA del canónico; ésta es lo que
+    la tienda publica, sin curar. El operador la abre para decidir si el match propuesto es el
+    mismo producto, y una sola foto muchas veces no alcanza para decidirlo.
+    """
+
+    def __init__(self, store_product_repo) -> None:  # type: ignore[no-untyped-def]
+        self._repo = store_product_repo
+
+    def execute(self, store_product_id: str) -> list[str]:
+        return self._repo.list_store_images(store_product_id)
 
 
 class AddCanonicalImage:

@@ -853,3 +853,204 @@ class TestImportCommit:
         assert res.status_code == 201
         assert res.json()["imported_count"] == 0
         assert res.json()["error_count"] == 0
+
+
+class TestCategoryCarriesLeafAndTop:
+    """La lista muestra la HOJA ("Arroz") y colorea el badge por el TOPE ("Despensa & Abarrotes").
+
+    Antes de esto la fila sólo traía la hoja, y el admin la pasaba como si fuera el slug: el mapa
+    de colores está cargado por slug de TOPE, así que ninguna categoría resolvía color y TODOS los
+    badges salían grises. El slug se deriva en read-time — `taxonomy_node` no tiene columna slug.
+    """
+
+    MARKET_ID = "DO"
+    BRAND_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    TOP_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    LEAF_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    CANONICAL_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+    ORPHAN_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+
+    def _seed(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        db_session.add(
+            BrandModel(id=self.BRAND_ID, name="LEAFTOP_TEST", market_id=self.MARKET_ID)
+        )
+        db_session.add(
+            TaxonomyNodeModel(
+                id=self.TOP_ID, name="Despensa & Abarrotes", level=0,
+                market_id=self.MARKET_ID, parent_id=None,
+            )
+        )
+        db_session.add(
+            TaxonomyNodeModel(
+                id=self.LEAF_ID, name="Arroz LeafTop", level=1,
+                market_id=self.MARKET_ID, parent_id=self.TOP_ID,
+            )
+        )
+        db_session.flush()
+        db_session.add(
+            CanonicalProductModel(
+                id=self.CANONICAL_ID, slug="arroz-leaftop-test", name="Arroz LeafTop Test",
+                brand_id=self.BRAND_ID, size_amount=Decimal("1.0"), size_measure="mass",
+                taxonomy_node_id=self.LEAF_ID, market_id=self.MARKET_ID,
+            )
+        )
+        # Sin clasificar: NO debe inventar tope ni slug.
+        db_session.add(
+            CanonicalProductModel(
+                id=self.ORPHAN_ID, slug="sin-categoria-leaftop", name="Sin Categoria LeafTop",
+                brand_id=self.BRAND_ID, size_amount=Decimal("1.0"), size_measure="mass",
+                taxonomy_node_id=None, market_id=self.MARKET_ID,
+            )
+        )
+        db_session.flush()
+
+    def _rows(self, db_session, user_id):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                res = c.get("/v1/admin/save/canonical-products?search=LeafTop")
+        finally:
+            app.dependency_overrides.clear()
+        assert res.status_code == 200, res.text
+        return {r["canonical_product_id"]: r for r in res.json()["rows"]}
+
+    def test_the_row_carries_the_leaf_the_top_and_the_derived_slug(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        row = self._rows(db_session, user_id)[self.CANONICAL_ID]
+
+        assert row["category"] == "Arroz LeafTop"
+        assert row["category_top"] == "Despensa & Abarrotes"
+        # El slug es lo que hace que el badge tenga color — sin él sale gris.
+        assert row["category_top_slug"] == "despensa-abarrotes"
+
+    def test_an_unclassified_canonical_invents_nothing(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        row = self._rows(db_session, user_id)[self.ORPHAN_ID]
+
+        assert row["category"] is None
+        assert row["category_top"] is None
+        assert row["category_top_slug"] is None
+
+    def test_the_detail_agrees_with_the_list(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Que el detalle y la lista discrepen en la categoría es incoherencia que quema confianza."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+        listed = self._rows(db_session, user_id)[self.CANONICAL_ID]
+
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                res = c.get(f"/v1/admin/save/canonical-products/{self.CANONICAL_ID}")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert res.status_code == 200, res.text
+        detail = res.json()
+        assert detail["category"] == listed["category"]
+        assert detail["category_top"] == listed["category_top"]
+        assert detail["category_top_slug"] == listed["category_top_slug"]
+
+
+class TestEanCodeAndPriceRange:
+    """La fila trae el CÓDIGO de barras y el rango de precio entre sus tiendas.
+
+    MIN/MAX se calculan sobre todas las tiendas enlazadas —el mismo universo que el modal de
+    proveedores que se abre desde esta fila—, así que columna y drill-down no pueden contradecirse.
+    """
+
+    MARKET_ID = "DO"
+    BRAND_ID = "1a1a1a1a-1a1a-4a1a-8a1a-1a1a1a1a1a1a"
+    PROVIDER_A = "2b2b2b2b-2b2b-4b2b-8b2b-2b2b2b2b2b2b"
+    PROVIDER_B = "3c3c3c3c-3c3c-4c3c-8c3c-3c3c3c3c3c3c"
+    CANONICAL_ID = "4d4d4d4d-4d4d-4d4d-8d4d-4d4d4d4d4d4d"
+    LONELY_ID = "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e"
+
+    def _seed(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        db_session.add(BrandModel(id=self.BRAND_ID, name="PRICERANGE_TEST", market_id=self.MARKET_ID))
+        for pid, name in ((self.PROVIDER_A, "PriceRange A"), (self.PROVIDER_B, "PriceRange B")):
+            db_session.add(
+                ProviderModel(
+                    id=pid, name=name, type="supermarket", platform="vtex",
+                    market_id=self.MARKET_ID,
+                )
+            )
+        for cid, slug in ((self.CANONICAL_ID, "con-tiendas"), (self.LONELY_ID, "sin-tiendas")):
+            db_session.add(
+                CanonicalProductModel(
+                    id=cid, slug=f"{slug}-pricerange", name=f"PriceRange {slug}",
+                    brand_id=self.BRAND_ID, size_amount=Decimal("1.0"), size_measure="mass",
+                    market_id=self.MARKET_ID,
+                )
+            )
+        db_session.flush()
+        # Dos tiendas, precios distintos: 150.00 y 210.50 (minor units).
+        for i, (pid, price) in enumerate(((self.PROVIDER_A, 15000), (self.PROVIDER_B, 21050))):
+            db_session.add(
+                StoreProductModel(
+                    provider_id=pid, canonical_product_id=self.CANONICAL_ID,
+                    external_id=f"ext-pricerange-{i}", current_price_minor=price, currency="DOP",
+                    ean="7501234567890" if i == 0 else "", last_seen_at=datetime.now(UTC),
+                    is_available=True, name=f"PriceRange SP {i}", size_text="1 Kg",
+                )
+            )
+        db_session.flush()
+
+    def _rows(self, db_session, user_id):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                res = c.get("/v1/admin/save/canonical-products?search=PriceRange")
+        finally:
+            app.dependency_overrides.clear()
+        assert res.status_code == 200, res.text
+        return {r["canonical_product_id"]: r for r in res.json()["rows"]}
+
+    def test_the_row_carries_the_min_and_max_price_in_minor_units(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        row = self._rows(db_session, user_id)[self.CANONICAL_ID]
+
+        assert row["min_price_minor"] == 15000
+        assert row["max_price_minor"] == 21050
+        assert row["price_currency"] == "DOP"
+
+    def test_the_barcode_travels_not_just_the_boolean(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Una etiqueta que sólo dice "EAN" no le sirve al operador: necesita el código para
+        buscarlo fuera del admin. El `nullif` evita que el string vacío de la otra tienda gane."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        row = self._rows(db_session, user_id)[self.CANONICAL_ID]
+
+        assert row["ean_reachable"] is True
+        assert row["ean"] == "7501234567890"
+
+    def test_a_canonical_without_stores_invents_no_price(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """NULL y no 0: un cero se leería como "gratis" en vez de "todavía nadie lo vende"."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        row = self._rows(db_session, user_id)[self.LONELY_ID]
+
+        assert row["min_price_minor"] is None
+        assert row["max_price_minor"] is None
+        assert row["ean"] is None
+        assert row["ean_reachable"] is False
+
+    def test_quality_no_longer_caps_completeness(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """`quality` salió del denominador: un canónico sin ella puede llegar a 100% y "Completo".
+        Antes quedaba clavado en 83% con un badge "Sin calidad" permanente."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        row = self._rows(db_session, user_id)[self.CANONICAL_ID]
+
+        assert "no_quality" not in row["quality_statuses"]

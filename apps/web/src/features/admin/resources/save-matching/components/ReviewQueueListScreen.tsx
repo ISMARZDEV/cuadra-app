@@ -419,7 +419,6 @@ export function ReviewQueueListScreen() {
                 disabled={visibleRows.length === 0}
               />
             </TableHead>
-            <TableHead>{t("admin.reviewQueue.column.confidence")}</TableHead>
             <TableHead>{t("admin.reviewQueue.column.image")}</TableHead>
             {/* Columnas ORDENABLES (Figma: caret por columna). Cada `col` matchea la clave del
                 backend (`product_match_repository.sortable`); un click cicla none→asc→desc. */}
@@ -434,6 +433,9 @@ export function ReviewQueueListScreen() {
               state={sortStateFor("size")}
               onToggle={() => toggleSort("size")}
             />
+            {/* Confianza queda DESPUÉS de Tamaño/Peso: primero se lee QUÉ producto es, después
+                con cuánta seguridad lo propuso el matcher. */}
+            <TableHead>{t("admin.reviewQueue.column.confidence")}</TableHead>
             <TableHead>{t("admin.reviewQueue.column.description")}</TableHead>
             <SortableColumnHeader
               label={t("admin.reviewQueue.column.category")}

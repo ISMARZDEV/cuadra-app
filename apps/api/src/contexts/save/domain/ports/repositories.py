@@ -60,8 +60,11 @@ class AdminAuditRepository(Protocol):
 class ProviderRepository(Protocol):
     def add(self, provider: Provider) -> None: ...
     def get_by_id(self, provider_id: str) -> Provider | None: ...
-    def list_by_market(self, market_id: str) -> list[Provider]:
-        """Providers del mercado, para el rail "Ofertas por supermercado" (A9)."""
+    def list_by_market(self, market_id: str, *, include_archived: bool = False) -> list[Provider]:
+        """Providers del mercado, para el rail "Ofertas por supermercado" (A9).
+
+        Excluye los archivados por defecto: un provider archivado no debe aparecer ni en la consola
+        ni en el sitio público. `include_archived` existe solo para la vista de recuperación."""
         ...
 
     def update(self, provider: Provider) -> None:
@@ -69,6 +72,11 @@ class ProviderRepository(Protocol):
 
         `provider.id` debe existir — el caller (use case) resuelve el `get_by_id` y arma el
         `Provider` actualizado antes de llamar aquí; este método es I/O puro (ADR 31)."""
+        ...
+
+    def set_archived(self, provider_id: str, *, archived: bool) -> bool:
+        """Estampa o limpia `archived_at`. Devuelve False si el provider no existe (I/O puro:
+        el "no encontrado" lo interpreta el use case, ADR 31)."""
         ...
 
 
@@ -276,6 +284,11 @@ class CanonicalProductRepository(Protocol):
 class StoreProductRepository(Protocol):
     def exists(self, provider_id: str, external_id: str) -> bool:
         """¿Hay store_product para (provider, external_id)? — llave natural del refresh."""
+        ...
+
+    def list_store_images(self, store_product_id: str) -> list[str]:
+        """URLs que publica la tienda, EN SU ORDEN (`position`). Lista vacía si no publicó fotos
+        o si el id no parsea — nunca una excepción: es una lectura de presentación."""
         ...
 
     def list_quotes_by_canonical(self, canonical_product_id: str) -> list[StoreQuote]:

@@ -372,6 +372,10 @@ class AdminReviewQueueRowDto(BaseModel):
     # admin-workspace (Batch 1): NULL hasta que exista `save-category-classification` (cambio de
     # backend separado que asignará categoría vía los mecanismos del matching: trgm/vector/LLM).
     category: CategoryRefDto | None = None
+    # Subcategoría (hoja). Va SUELTA y no dentro de `CategoryRefDto` porque ese DTO lo comparte el
+    # catálogo público (breadcrumb, subcategorías) y no tiene por qué crecer por una necesidad del
+    # admin. `None` cuando la hoja es el tope o no hay clasificación.
+    category_leaf: str | None = None
     candidate_count: int
     created_at: datetime
 
@@ -395,6 +399,7 @@ class AdminReviewQueueRowDto(BaseModel):
                 if r.category_slug and r.category_name
                 else None
             ),
+            category_leaf=r.category_leaf_name,
             candidate_count=r.candidate_count,
             created_at=r.created_at,
         )

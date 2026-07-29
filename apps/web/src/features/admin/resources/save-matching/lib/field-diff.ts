@@ -7,7 +7,7 @@
 // como differ (diferencias de capitalización/espacio en la fuente cruda no son diferencias reales
 // de producto).
 
-import { parseSize } from "./parse-size";
+import { parseSize } from "@/features/admin/lib/parse-size";
 
 export type FieldDiffResult = "match" | "differ";
 

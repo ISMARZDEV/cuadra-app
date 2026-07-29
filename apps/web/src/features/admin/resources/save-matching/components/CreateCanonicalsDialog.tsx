@@ -11,7 +11,7 @@ import type { Locale } from "@/i18n/config";
 import { format } from "@/i18n/messages";
 
 import { CategoryPicker } from "./CategoryPicker";
-import { parseSize } from "../lib/parse-size";
+import { parseSize } from "@/features/admin/lib/parse-size";
 
 /**
  * "Aprobar y crear canónico" en lote — la revisión ANTES de escribir en el catálogo maestro.

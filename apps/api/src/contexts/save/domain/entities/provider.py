@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 
 
@@ -33,6 +34,14 @@ class Provider:
     platform: SourcePlatform
     market_id: str  # "DO" → "US" → "CO" … (ADR 33: por ID)
     logo_url: str | None = None  # F2·B1/B3: logo del súper (MVP = URL pegada, sin storage)
+    # SOFT-delete: `provider_id` está referenciado por FK desde `store_registry` y `store_product`,
+    # así que un borrado real o revienta o arrastra el histórico de precios. Archivar solo lo saca
+    # de la consola; la fila y todo lo que cuelga de ella sobreviven intactos.
+    archived_at: datetime | None = None
+
+    @property
+    def is_archived(self) -> bool:
+        return self.archived_at is not None
 
     def __post_init__(self) -> None:
         if not self.name.strip():

@@ -1,6 +1,9 @@
 import { Check, ImageOff, Star } from "lucide-react";
 
 import { FieldDiffRow } from "./FieldDiffRow";
+import { ThumbnailLightbox } from "@/features/admin/components/ThumbnailLightbox";
+import { listCanonicalImages } from "@/features/admin/resources/save-canonical-products/api";
+
 import type { CandidateCardProps } from "./interfaces";
 
 // Chip del ranking (1..N) y badge "MEJOR CANDIDATO" — módulo-scope (regla `no-inline-components`).
@@ -47,24 +50,19 @@ export function CandidateCard({ candidate, store, rank, onApprove, disabled }: C
       </div>
 
       <div className="flex items-center gap-3">
-        {candidate.image_url ? (
-          <img
-            src={candidate.image_url}
-            alt={candidate.name ?? "Candidato"}
-            loading="lazy"
-            width={80}
-            height={80}
-            className="size-20 shrink-0 rounded-lg object-cover"
-          />
-        ) : (
-          <div
-            className="flex size-20 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-            role="img"
-            aria-label="Sin imagen"
-          >
-            <ImageOff className="size-6" aria-hidden="true" />
-          </div>
-        )}
+        {/* Un candidato ES un canónico: el visor abre SU galería curada, que es contra lo que
+            se compara la foto de la tienda. */}
+        <ThumbnailLightbox
+          src={candidate.image_url}
+          alt={candidate.name ?? "Candidato"}
+          title={candidate.name ?? "Candidato"}
+          count={null}
+          emptyLabel="Sin imagen"
+          className="size-20 rounded-lg"
+          loadImages={async () =>
+            (await listCanonicalImages(candidate.canonical_product_id))?.map((i) => i.url) ?? []
+          }
+        />
         <div className="min-w-0">
           <p className="line-clamp-2 text-sm font-semibold text-foreground">
             {candidate.name ?? "(sin nombre)"}

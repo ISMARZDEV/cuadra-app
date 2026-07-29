@@ -1,6 +1,8 @@
 import type { MessageKey } from "@/i18n/messages";
 
-// Estados de calidad del canónico (US-CP-L3/L9). La clave del backend (`no_image`) NUNCA se le
+// Estados de calidad del canónico (US-CP-L3/L9). `no_quality` fue RETIRADO: el nivel de calidad
+// (premium/selecto) es curación opcional, así que su badge estaba puesto en casi todo el catálogo
+// y nunca movía a nadie a hacer nada. También salió del denominador de completitud. La clave del backend (`no_image`) NUNCA se le
 // muestra al operador: acá se traduce a etiqueta + tooltip que explica QUÉ FALTA, que es lo que
 // convierte el badge en algo accionable en vez de en una etiqueta de sistema.
 
@@ -9,7 +11,6 @@ export const QUALITY_STATUSES = [
   "no_image",
   "no_category",
   "no_providers",
-  "no_quality",
   "stale_price",
   "possible_duplicate",
 ] as const;
@@ -21,7 +22,6 @@ export const QUALITY_LABEL_KEY: Record<QualityStatus, MessageKey> = {
   no_image: "admin.canonicalProducts.status.no_image",
   no_category: "admin.canonicalProducts.status.no_category",
   no_providers: "admin.canonicalProducts.status.no_providers",
-  no_quality: "admin.canonicalProducts.status.no_quality",
   stale_price: "admin.canonicalProducts.status.stale_price",
   possible_duplicate: "admin.canonicalProducts.status.possible_duplicate",
 };
@@ -31,7 +31,6 @@ export const QUALITY_HINT_KEY: Record<QualityStatus, MessageKey> = {
   no_image: "admin.canonicalProducts.statusHint.no_image",
   no_category: "admin.canonicalProducts.statusHint.no_category",
   no_providers: "admin.canonicalProducts.statusHint.no_providers",
-  no_quality: "admin.canonicalProducts.statusHint.no_quality",
   stale_price: "admin.canonicalProducts.statusHint.stale_price",
   possible_duplicate: "admin.canonicalProducts.statusHint.possible_duplicate",
 };
@@ -43,7 +42,6 @@ export const QUALITY_PILL_CLASS: Record<QualityStatus, string> = {
   no_image: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   no_category: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   no_providers: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
-  no_quality: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   stale_price: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
   possible_duplicate: "bg-red-500/15 text-red-700 dark:text-red-300",
 };
