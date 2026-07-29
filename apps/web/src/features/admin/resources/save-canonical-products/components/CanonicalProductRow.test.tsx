@@ -23,6 +23,10 @@ const ROW: AdminCanonicalProductRowDto = {
   taxonomy_node_id: null,
   quality: "premium",
   ean_reachable: true,
+  ean: "7501234567890",
+  min_price_minor: 15000,
+  max_price_minor: 21050,
+  price_currency: "DOP",
   origin_run_id: null,
   matched_provider_count: 3,
   possible_duplicate_count: 0,
@@ -77,15 +81,8 @@ describe("CanonicalProductRow", () => {
     expect(screen.getByText("un_estado_nuevo")).toBeInTheDocument();
   });
 
-  it("muestra el badge EAN cuando el canónico es alcanzable por código de barras", () => {
-    renderRow({ ean_reachable: true });
-    expect(screen.getByText("EAN")).toBeInTheDocument();
-  });
-
-  it("sin EAN no pinta el badge", () => {
-    renderRow({ ean_reachable: false });
-    expect(screen.queryByText("EAN")).not.toBeInTheDocument();
-  });
+  // El badge EAN vive en su propio describe (`CanonicalProductRow · EAN`): desde que muestra el
+  // CÓDIGO y no la etiqueta, los casos son tres y no dos.
 
   it("muestra el nº de tiendas sobre la imagen", () => {
     renderRow({ matched_provider_count: 7 });
@@ -185,6 +182,67 @@ describe("CanonicalProductRow · Categoría", () => {
     renderRow({ category_top: "Categoría Nueva", category_top_slug: "categoria-nueva" });
 
     expect(screen.getByText("Categoría Nueva")).toHaveStyle({ backgroundColor: "#f1f5f4" });
+  });
+});
+
+describe("CanonicalProductRow · EAN", () => {
+  it("muestra el CÓDIGO de barras, no la etiqueta 'EAN'", () => {
+    // Una etiqueta que sólo dice "EAN" no le sirve al operador: el código es lo que copia para
+    // buscar el producto fuera del admin.
+    renderRow({ ean_reachable: true, ean: "7501234567890" });
+
+    expect(screen.getByText("7501234567890")).toBeInTheDocument();
+    expect(screen.queryByText("EAN")).not.toBeInTheDocument();
+  });
+
+  it("alcanzable por barcode pero sin código a mano cae a la etiqueta", () => {
+    renderRow({ ean_reachable: true, ean: null });
+
+    expect(screen.getByText("EAN")).toBeInTheDocument();
+  });
+
+  it("sin EAN no pinta badge", () => {
+    renderRow({ ean_reachable: false, ean: null });
+
+    expect(screen.queryByText("EAN")).not.toBeInTheDocument();
+  });
+});
+
+describe("CanonicalProductRow · Precio más bajo", () => {
+  it("muestra el mínimo y el máximo formateados desde minor units", () => {
+    renderRow({ min_price_minor: 15000, max_price_minor: 21050, price_currency: "DOP" });
+
+    expect(screen.getByText(/150[.,]00/)).toBeInTheDocument();
+    expect(screen.getByText(/210[.,]50/)).toBeInTheDocument();
+  });
+
+  // Empatar en el mínimo NO es un caso raro que haya que resolver: el precio es el mismo, así que
+  // repetirlo dos veces sería ruido.
+  it("cuando mínimo y máximo coinciden muestra un solo precio", () => {
+    renderRow({ min_price_minor: 15000, max_price_minor: 15000, price_currency: "DOP" });
+
+    expect(screen.getAllByText(/150[.,]00/)).toHaveLength(1);
+  });
+
+  it("sin tiendas no inventa un cero", () => {
+    renderRow({ min_price_minor: null, max_price_minor: null, price_currency: null });
+
+    expect(screen.queryByText(/0[.,]00/)).not.toBeInTheDocument();
+  });
+});
+
+describe("CanonicalProductRow · Último precio", () => {
+  it("muestra fecha Y hora, como la columna de la cola de revisión", () => {
+    renderRow({ last_price_seen_at: "2026-07-20T16:54:00Z" });
+
+    expect(screen.getByText(/Julio 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/4:54/)).toBeInTheDocument();
+  });
+
+  it("sin fecha muestra un solo guion y no 'Invalid Date'", () => {
+    renderRow({ last_price_seen_at: null });
+
+    expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument();
   });
 });
 

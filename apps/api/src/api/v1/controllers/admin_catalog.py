@@ -126,8 +126,15 @@ class AdminCanonicalProductRowDto(BaseModel):
     category_top_slug: str | None = None
     taxonomy_node_id: str | None = None
     quality: str | None = None
-    # DERIVADO: ≥1 store_product enlazado con EAN.
+    # DERIVADO: ≥1 store_product enlazado con EAN. `ean` es el código en sí — el operador lo copia
+    # para buscarlo fuera del admin, cosa que una etiqueta que sólo dice "EAN" no permite.
     ean_reachable: bool = False
+    ean: str | None = None
+    # Rango de precio entre las tiendas enlazadas, en MINOR UNITS. El formateo es EXCLUSIVO de la
+    # UI (regla sagrada de Save: jamás floats para dinero).
+    min_price_minor: int | None = None
+    max_price_minor: int | None = None
+    price_currency: str | None = None
     # De qué corrida nació el canónico (F4 #4.5). `None` = alta manual, bootstrap o pre-F4.
     origin_run_id: str | None = None
     matched_provider_count: int = 0
@@ -163,6 +170,10 @@ class AdminCanonicalProductRowDto(BaseModel):
             taxonomy_node_id=row.taxonomy_node_id,
             quality=row.quality,
             ean_reachable=row.ean_reachable,
+            ean=row.ean,
+            min_price_minor=row.min_price_minor,
+            max_price_minor=row.max_price_minor,
+            price_currency=row.price_currency,
             origin_run_id=row.origin_run_id,
             matched_provider_count=row.matched_provider_count,
             possible_duplicate_count=row.possible_duplicate_count,
@@ -324,7 +335,7 @@ def list_canonical_products(
     brand_id: str | None = Query(None),
     taxonomy_node_id: str | None = Query(None),
     quality_status: CanonicalQualityStatus | None = Query(
-        None, description="complete|no_image|no_category|no_providers|no_quality|stale_price|possible_duplicate"
+        None, description="complete|no_image|no_category|no_providers|stale_price|possible_duplicate"
     ),
     ean_reachable: bool | None = Query(None),
     include_archived: bool = Query(

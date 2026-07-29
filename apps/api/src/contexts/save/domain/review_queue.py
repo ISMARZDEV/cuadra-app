@@ -29,8 +29,13 @@ class ReviewQueueRow:
     store_product_url: str | None = None  # F0: página del producto en la tienda origen
     # admin-workspace (Batch 1): SIEMPRE None hasta que exista `save-category-classification`
     # (cambio de backend separado que asignará categoría vía los mecanismos del matching).
+    # `category_slug`/`category_name` son del ancestro TOPE (el badge se colorea por ahí);
+    # `category_leaf_name` es la SUBCATEGORÍA concreta que la clasificación asignó y que se muestra
+    # debajo del badge. Mismo criterio que el catálogo canónico: el tope da el color, la hoja el
+    # detalle con el que el operador realmente distingue productos.
     category_slug: str | None = None
     category_name: str | None = None
+    category_leaf_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

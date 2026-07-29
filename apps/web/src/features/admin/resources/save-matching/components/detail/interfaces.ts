@@ -5,6 +5,8 @@ import type { AdminReviewCandidateDto } from "@cuadra/api-client";
 import type { Locale } from "@/i18n/config";
 
 export interface StoreProductPanelProps {
+  /** Necesario para pedir la galería de la tienda al abrir el visor. `undefined` = sin visor. */
+  storeProductId?: string;
   name: string | null;
   brand: string | null;
   sizeText: string | null;

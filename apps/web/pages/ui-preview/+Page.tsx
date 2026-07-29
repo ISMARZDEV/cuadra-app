@@ -44,6 +44,7 @@ function mock(
     store_product_size_text: size,
     store_product_image_url: image,
     category,
+    category_leaf: category.slug === "frutas-verduras" ? "Plátanos" : "Arroz, Granos & Legumbres",
     candidate_count: 5,
     created_at: "2026-03-02T22:00:00Z",
   };
@@ -100,11 +101,11 @@ function Workspace({ locale, bare }: { locale: "es"; bare?: boolean }) {
           <TableHeader>
             <TableRow className="border-none hover:bg-transparent [&>th]:h-11 [&>th]:bg-[#ecf4f9] [&>th]:text-[11px] [&>th]:font-semibold [&>th]:text-[#464646] [&>th]:first:rounded-l-[10px] [&>th]:last:rounded-r-[10px] dark:[&>th]:bg-secondary dark:[&>th]:text-muted-foreground">
               <TableHead />
-              <TableHead>Confianza</TableHead>
               <TableHead>Imagen</TableHead>
               <TableHead>Producto ▾</TableHead>
               <TableHead>Tamaño</TableHead>
               <TableHead>Peso ▾</TableHead>
+              <TableHead>Confianza</TableHead>
               <TableHead>Descripción</TableHead>
               <TableHead>Categoría ▾</TableHead>
               <TableHead>Marca ▾</TableHead>

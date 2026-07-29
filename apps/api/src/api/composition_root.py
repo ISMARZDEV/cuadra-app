@@ -50,6 +50,7 @@ from src.contexts.save.application.canonical_catalog import (
     ListCanonicalDuplicates,
     ListCanonicalEvidence,
     ListCanonicalImages,
+    ListStoreProductImages,
     ListCanonicalProducts,
     ListCanonicalProviders,
     PreviewCanonicalImport,
@@ -76,6 +77,7 @@ from src.contexts.save.application.listing import (
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.collections import GetCollection, ListCollections
 from src.contexts.save.application.providers import (
+    ArchiveProvider,
     CreateProvider,
     GetProvider,
     ListAdminProviders,
@@ -466,6 +468,10 @@ def get_set_provider_logo(session: Session = Depends(get_session)) -> SetProvide
     return SetProviderLogo(SqlProviderRepository(session))
 
 
+def get_archive_provider(session: Session = Depends(get_session)) -> ArchiveProvider:
+    return ArchiveProvider(SqlProviderRepository(session))
+
+
 def get_create_source(session: Session = Depends(get_session)) -> CreateSource:
     return CreateSource(SqlStoreRegistryRepository(session))
 
@@ -841,6 +847,12 @@ def get_bulk_set_canonical_category(
 
 def get_list_canonical_images(session: Session = Depends(get_session)) -> ListCanonicalImages:
     return ListCanonicalImages(SqlCanonicalImageRepository(session))
+
+
+def get_list_store_product_images(
+    session: Session = Depends(get_session),
+) -> ListStoreProductImages:
+    return ListStoreProductImages(SqlStoreProductRepository(session))
 
 
 def get_add_canonical_image(session: Session = Depends(get_session)) -> AddCanonicalImage:

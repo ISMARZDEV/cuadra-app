@@ -147,6 +147,9 @@ class ProviderModel(Base):
     market_id: Mapped[str] = mapped_column(Text, nullable=False)  # "DO"|"US"|"CO" — por ID (ADR 33)
     base_url: Mapped[str | None] = mapped_column(Text)
     logo_url: Mapped[str | None] = mapped_column(Text)  # F2·B1/B3: logo del súper (migración 09526c5ccaca)
+    # SOFT-delete (§7.2): `store_registry.provider_id` y `store_product.provider_id` apuntan acá por
+    # FK, así que borrar de verdad no es una opción. NULL = activo.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class StoreRegistryModel(Base):

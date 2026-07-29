@@ -23,7 +23,7 @@ PRICE_STALENESS_THRESHOLD = timedelta(days=7)
 
 # Campos que componen la completitud (US-CP-L3). Explícito para que el denominador del porcentaje
 # sea legible y no un `6` mágico.
-_COMPLETENESS_FIELDS = 6
+_COMPLETENESS_FIELDS = 5
 
 
 class CanonicalQualityStatus(StrEnum):
@@ -34,7 +34,6 @@ class CanonicalQualityStatus(StrEnum):
     NO_IMAGE = "no_image"
     NO_CATEGORY = "no_category"
     NO_PROVIDERS = "no_providers"
-    NO_QUALITY = "no_quality"
     STALE_PRICE = "stale_price"
     POSSIBLE_DUPLICATE = "possible_duplicate"
 
@@ -44,7 +43,6 @@ def derive_quality_statuses(
     image_url: str | None,
     category: str | None,
     matched_provider_count: int,
-    quality: str | None,
     last_price_seen_at: datetime | None,
     now: datetime,
     possible_duplicate_count: int = 0,
@@ -59,8 +57,9 @@ def derive_quality_statuses(
         gaps.append(CanonicalQualityStatus.NO_CATEGORY)
     if matched_provider_count <= 0:
         gaps.append(CanonicalQualityStatus.NO_PROVIDERS)
-    if not quality:
-        gaps.append(CanonicalQualityStatus.NO_QUALITY)
+    # `quality` (premium/selecto) NO se evalúa: es curación opcional, no un hueco. Un canónico sin
+    # ella compara precios perfectamente, y contarla dejaba casi todo el catálogo en "Sin calidad"
+    # — un badge permanente que nunca movía a nadie a hacer nada.
 
     # Sin proveedores no hay precio que pueda estar viejo — `NO_PROVIDERS` ya lo dice todo y
     # apilar `STALE_PRICE` encima sería ruido que no cambia la acción del operador.
@@ -84,12 +83,14 @@ def derive_completeness_score(
     matched_provider_count: int,
     brand: str,
     display_size: str | None,
-    quality: str | None,
 ) -> int:
     """Porcentaje 0-100 de CAMPOS COMPLETOS (US-CP-L3).
 
     Deliberadamente NO incluye la señal de duplicado: el score mide completitud de campos, no
     salud global. Mezclarlos haría que el número dejara de significar lo que su nombre dice.
+
+    Tampoco incluye `quality`: es curación OPCIONAL. Mientras contaba, 100% era inalcanzable para
+    casi todo el catálogo y el porcentaje medía cuánto faltaba curar, no cuán completo estaba.
     """
     present = sum(
         [
@@ -98,7 +99,6 @@ def derive_completeness_score(
             matched_provider_count > 0,
             bool(brand),
             bool(display_size),
-            bool(quality),
         ]
     )
     return round(present / _COMPLETENESS_FIELDS * 100)
@@ -130,6 +130,17 @@ class CanonicalCatalogRow:
     taxonomy_node_id: str | None = None
     origin_run_id: str | None = None
     ean_reachable: bool = False
+    # El código de barras REPRESENTATIVO de las tiendas enlazadas. `ean_reachable` sigue siendo la
+    # señal booleana (¿puede cubrirlo el job de barcode?); esto es el dato que el operador copia
+    # para buscarlo en otro lado.
+    ean: str | None = None
+    # Precio MÍNIMO y MÁXIMO entre las tiendas enlazadas, en MINOR UNITS (regla sagrada: el
+    # formateo es exclusivo de la UI). Mismo universo que el modal de proveedores —todas las
+    # tiendas enlazadas, sin filtrar disponibilidad— para que la columna y su drill-down no se
+    # contradigan. Empate en el mínimo NO es un problema: el precio es el mismo.
+    min_price_minor: int | None = None
+    max_price_minor: int | None = None
+    price_currency: str | None = None
     matched_provider_count: int = 0
     possible_duplicate_count: int = 0
     last_price_seen_at: datetime | None = None

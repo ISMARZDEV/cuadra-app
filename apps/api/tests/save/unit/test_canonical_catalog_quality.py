@@ -24,7 +24,6 @@ def _statuses(**overrides):  # type: ignore[no-untyped-def]
         "image_url": "https://cdn/x.jpg",
         "category": "Arroz",
         "matched_provider_count": 3,
-        "quality": "standard",
         "last_price_seen_at": NOW - timedelta(hours=2),
         "possible_duplicate_count": 0,
         "now": NOW,
@@ -51,8 +50,12 @@ class TestDeriveQualityStatuses:
     def test_missing_category_is_reported(self) -> None:
         assert CanonicalQualityStatus.NO_CATEGORY in _statuses(category=None)
 
-    def test_missing_quality_is_reported(self) -> None:
-        assert CanonicalQualityStatus.NO_QUALITY in _statuses(quality=None)
+    def test_quality_is_optional_and_never_reported_as_a_gap(self) -> None:
+        """`quality` (premium/selecto) es CURACIÓN opcional, no un hueco: un canónico sin ella
+        compara precios perfectamente. Contarla dejaba el catálogo entero en 83% y "Sin calidad",
+        un badge que nunca movía a nadie a hacer nada."""
+        assert _statuses() == [CanonicalQualityStatus.COMPLETE]
+        assert not hasattr(CanonicalQualityStatus, "NO_QUALITY")
 
     def test_zero_providers_is_reported(self) -> None:
         assert CanonicalQualityStatus.NO_PROVIDERS in _statuses(matched_provider_count=0)
@@ -95,7 +98,6 @@ class TestDeriveCompletenessScore:
             matched_provider_count=2,
             brand="GOYA",
             display_size="10 Lb",
-            quality="standard",
         )
         assert score == 100
 
@@ -106,20 +108,30 @@ class TestDeriveCompletenessScore:
             matched_provider_count=0,
             brand="",
             display_size=None,
-            quality=None,
         )
         assert score == 0
 
-    def test_half_the_fields_is_fifty(self) -> None:
+    def test_three_of_five_fields_is_sixty(self) -> None:
         score = derive_completeness_score(
             image_url="https://cdn/x.jpg",
             category="Arroz",
             matched_provider_count=1,
             brand="",
             display_size=None,
-            quality=None,
         )
-        assert score == 50
+        assert score == 60
+
+    def test_a_canonical_missing_only_quality_reaches_100(self) -> None:
+        """La razón de sacar `quality` del denominador: antes esta fila era 83% + "Sin calidad",
+        así que 100% era inalcanzable para casi todo el catálogo."""
+        score = derive_completeness_score(
+            image_url="https://cdn/x.jpg",
+            category="Arroz",
+            matched_provider_count=2,
+            brand="GOYA",
+            display_size="10 Lb",
+        )
+        assert score == 100
 
     def test_a_possible_duplicate_does_not_lower_the_score(self) -> None:
         """El score mide CAMPOS COMPLETOS, no salud global. Un duplicado se comunica por badge —
@@ -130,6 +142,5 @@ class TestDeriveCompletenessScore:
             matched_provider_count=2,
             brand="GOYA",
             display_size="10 Lb",
-            quality="standard",
         )
         assert full == 100

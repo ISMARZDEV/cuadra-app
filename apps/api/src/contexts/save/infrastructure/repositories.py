@@ -113,12 +113,11 @@ class SqlProviderRepository:
         m = self._s.get(ProviderModel, pid) if pid else None
         return provider_to_entity(m) if m else None
 
-    def list_by_market(self, market_id: str) -> list[Provider]:
-        models = self._s.scalars(
-            select(ProviderModel)
-            .where(ProviderModel.market_id == market_id)
-            .order_by(ProviderModel.name)
-        ).all()
+    def list_by_market(self, market_id: str, *, include_archived: bool = False) -> list[Provider]:
+        stmt = select(ProviderModel).where(ProviderModel.market_id == market_id)
+        if not include_archived:
+            stmt = stmt.where(ProviderModel.archived_at.is_(None))
+        models = self._s.scalars(stmt.order_by(ProviderModel.name)).all()
         return [provider_to_entity(m) for m in models]
 
     def update(self, provider: Provider) -> None:
@@ -132,6 +131,15 @@ class SqlProviderRepository:
         m.market_id = provider.market_id
         m.logo_url = provider.logo_url
         self._s.flush()
+
+    def set_archived(self, provider_id: str, *, archived: bool) -> bool:
+        pid = _parse_uuid(provider_id)
+        m = self._s.get(ProviderModel, pid) if pid else None
+        if m is None:
+            return False
+        m.archived_at = datetime.now(timezone.utc) if archived else None
+        self._s.flush()
+        return True
 
 
 class SqlStoreRegistryRepository:
@@ -1662,12 +1670,25 @@ class SqlAdminCanonicalCatalogRepository:
 
     @staticmethod
     def _provider_metrics():  # type: ignore[no-untyped-def]
-        """Proveedores DISTINTOS por canónico + el precio visto más reciente."""
+        """Proveedores DISTINTOS por canónico + el precio visto más reciente + el rango de precio.
+
+        MIN/MAX se calculan sobre TODAS las tiendas enlazadas, sin filtrar `is_available`: es el
+        mismo universo que `list_canonical_providers` (el modal que se abre desde esta fila), y si
+        los dos no coincidieran la columna diría un precio y su drill-down otro.
+
+        `func.min`/`func.max` ignoran NULL, así que un canónico sin ningún precio da NULL y la UI
+        muestra guion en vez de inventar un cero.
+        """
         return (
             select(
                 StoreProductModel.canonical_product_id.label("cp_id"),
                 func.count(func.distinct(StoreProductModel.provider_id)).label("provider_count"),
                 func.max(StoreProductModel.last_seen_at).label("last_price_seen_at"),
+                func.min(StoreProductModel.current_price_minor).label("min_price_minor"),
+                func.max(StoreProductModel.current_price_minor).label("max_price_minor"),
+                # Un canónico vive en UN mercado, así que sus tiendas comparten moneda; `max` es
+                # sólo la forma de sacar un representante dentro del GROUP BY.
+                func.max(StoreProductModel.currency).label("price_currency"),
             )
             .where(StoreProductModel.canonical_product_id.isnot(None))
             .group_by(StoreProductModel.canonical_product_id)
@@ -1676,14 +1697,24 @@ class SqlAdminCanonicalCatalogRepository:
 
     @staticmethod
     def _ean_reachable():  # type: ignore[no-untyped-def]
-        """≥1 store_product enlazado CON EAN: dice si el job de matcheo-por-barcode puede cubrirlo."""
+        """≥1 store_product enlazado CON EAN + el código representativo.
+
+        La PRESENCIA (`cp_id is not null`) sigue siendo la señal de si el job de matcheo-por-barcode
+        puede cubrirlo; el código además se muestra, porque un operador que ve el barcode puede
+        buscarlo en otro lado y una etiqueta que sólo dice "EAN" no le sirve para nada.
+
+        `nullif(ean,'')` evita que un string vacío gane el `max` frente a un código real.
+        """
         return (
-            select(StoreProductModel.canonical_product_id.label("cp_id"))
+            select(
+                StoreProductModel.canonical_product_id.label("cp_id"),
+                func.max(func.nullif(StoreProductModel.ean, "")).label("ean"),
+            )
             .where(
                 StoreProductModel.canonical_product_id.isnot(None),
                 func.coalesce(StoreProductModel.ean, "") != "",
             )
-            .distinct()
+            .group_by(StoreProductModel.canonical_product_id)
             .subquery()
         )
 
@@ -1755,7 +1786,6 @@ class SqlAdminCanonicalCatalogRepository:
         provider_count = func.coalesce(metrics.c.provider_count, 0)
         dup_count = func.coalesce(dups.c.dup_count, 0)
         has_image = func.coalesce(CanonicalProductModel.image_url, "") != ""
-        has_quality = func.coalesce(CanonicalProductModel.quality, "") != ""
         has_category = CanonicalProductModel.taxonomy_node_id.isnot(None)
         has_display_size = func.coalesce(CanonicalProductModel.display_size, "") != ""
         has_brand = CanonicalProductModel.brand_id.isnot(None)
@@ -1784,6 +1814,10 @@ class SqlAdminCanonicalCatalogRepository:
                 matches.c.last_match_at,
                 dup_count.label("dup_count"),
                 category_top_name.label("category_top_name"),
+                eans.c.ean.label("ean"),
+                metrics.c.min_price_minor,
+                metrics.c.max_price_minor,
+                metrics.c.price_currency,
             )
             .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
             .outerjoin(
@@ -1831,11 +1865,16 @@ class SqlAdminCanonicalCatalogRepository:
             query = query.where(CanonicalProductModel.archived_at.is_(None))
 
         # Espejo SQL de `derive_quality_statuses` — ver la advertencia del docstring.
-        if f.quality_status is not None:
-            status = CanonicalQualityStatus(f.quality_status)
+        # Un valor desconocido (ej. `no_quality`, retirado, sobreviviendo en un bookmark) se IGNORA:
+        # que un filtro viejo tumbe la pantalla entera con un 500 es peor que no filtrar.
+        try:
+            status = CanonicalQualityStatus(f.quality_status) if f.quality_status else None
+        except ValueError:
+            status = None
+        if status is not None:
             if status is CanonicalQualityStatus.COMPLETE:
                 query = query.where(
-                    has_image, has_category, has_quality, provider_count > 0,
+                    has_image, has_category, provider_count > 0,
                     ~is_stale, dup_count == 0,
                 )
             elif status is CanonicalQualityStatus.NO_IMAGE:
@@ -1844,8 +1883,6 @@ class SqlAdminCanonicalCatalogRepository:
                 query = query.where(~has_category)
             elif status is CanonicalQualityStatus.NO_PROVIDERS:
                 query = query.where(provider_count == 0)
-            elif status is CanonicalQualityStatus.NO_QUALITY:
-                query = query.where(~has_quality)
             elif status is CanonicalQualityStatus.STALE_PRICE:
                 query = query.where(is_stale)
             elif status is CanonicalQualityStatus.POSSIBLE_DUPLICATE:
@@ -1853,7 +1890,7 @@ class SqlAdminCanonicalCatalogRepository:
 
         total = self._s.scalar(select(func.count()).select_from(query.subquery())) or 0
 
-        # Ordenar por completitud = ordenar por la SUMA de campos presentes (0-6). Da exactamente
+        # Ordenar por completitud = ordenar por la SUMA de campos presentes (0-5). Da exactamente
         # el mismo orden que el porcentaje y evita repetir la aritmética del dominio en SQL.
         present_sum = (
             _as_int(has_image)
@@ -1861,7 +1898,6 @@ class SqlAdminCanonicalCatalogRepository:
             + _as_int(provider_count > 0)
             + _as_int(has_brand)
             + _as_int(has_display_size)
-            + _as_int(has_quality)
         )
         order = {
             "name": CanonicalProductModel.name.asc(),
@@ -1913,6 +1949,10 @@ class SqlAdminCanonicalCatalogRepository:
                 matches.c.last_match_at,
                 func.coalesce(dups.c.dup_count, 0).label("dup_count"),
                 func.coalesce(top.name, TaxonomyNodeModel.name).label("category_top_name"),
+                eans.c.ean.label("ean"),
+                metrics.c.min_price_minor,
+                metrics.c.max_price_minor,
+                metrics.c.price_currency,
             )
             .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
             .outerjoin(
@@ -1942,6 +1982,10 @@ class SqlAdminCanonicalCatalogRepository:
             image_url=cp.image_url,
             category=r[2],
             category_top=r[8],
+            ean=r[9],
+            min_price_minor=r[10],
+            max_price_minor=r[11],
+            price_currency=r[12],
             quality=cp.quality,
             taxonomy_node_id=str(cp.taxonomy_node_id) if cp.taxonomy_node_id else None,
             origin_run_id=cp.origin_run_id,

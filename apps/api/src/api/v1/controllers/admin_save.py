@@ -23,6 +23,7 @@ from src.api.composition_root import (
     get_bulk_create_canonicals,
     get_bulk_resolve_review,
     get_create_basket_query,
+    get_archive_provider,
     get_list_admin_providers,
     get_create_canonical_and_link,
     get_set_product_category,
@@ -31,6 +32,7 @@ from src.api.composition_root import (
     get_create_source,
     get_list_basket_queries,
     get_list_review_queue,
+    get_list_store_product_images,
     get_list_sources_health,
     get_pause_source,
     get_remove_basket_query,
@@ -70,6 +72,7 @@ from src.contexts.save.application.dtos import (
 from src.contexts.save.application.get_review_detail import GetReviewDetail
 from src.contexts.save.application.list_review_queue import ListReviewQueue
 from src.contexts.save.application.providers import (
+    ArchiveProvider,
     CreateProvider,
     ListAdminProviders,
     SetProviderLogo,
@@ -97,6 +100,7 @@ from src.contexts.save.domain.entities import (
     StoreRegistry,
 )
 from src.contexts.save.domain.source_health import SourceHealth, SourceHealthRow
+from src.contexts.save.application.canonical_catalog import ListStoreProductImages
 from src.contexts.save.domain.taxonomy import slugify
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 from src.contexts.save.infrastructure.catalog_sources.source_auth import mask_auth
@@ -123,6 +127,20 @@ def get_admin_audit(
     """Recorder de auditoría del request (T2): el repo (misma Session/UoW) + el actor autenticado.
     Los handlers de mutación lo reciben por `Depends` y auditan en el borde, en la misma transacción."""
     return AdminAuditRecorder(audit_repo, actor_user_id)
+
+
+@router.get("/store-products/{store_product_id}/images", response_model=list[str])
+def list_store_product_images(
+    store_product_id: str,
+    use_case: ListStoreProductImages = Depends(get_list_store_product_images),
+) -> list[str]:
+    """Galería que publicó la TIENDA, en su orden (`position`).
+
+    Alimenta el lightbox de la Cola de revisión. Un id que no parsea devuelve `[]` y NO 404: es
+    una lectura de presentación, y romper la fila entera por un id mal formado sería peor que
+    mostrar la galería vacía.
+    """
+    return use_case.execute(store_product_id)
 
 
 @router.get("/review-queue")
@@ -513,6 +531,7 @@ class ProviderDto(BaseModel):
     platform: SourcePlatform
     market_id: str
     logo_url: str | None = None
+    archived_at: datetime | None = None  # SOFT-delete (§7.2); NULL = activo
 
     @classmethod
     def from_entity(cls, provider: Provider) -> ProviderDto:
@@ -523,6 +542,7 @@ class ProviderDto(BaseModel):
             platform=provider.platform,
             market_id=provider.market_id,
             logo_url=provider.logo_url,
+            archived_at=provider.archived_at,
         )
 
 
@@ -537,11 +557,20 @@ class CreateProviderRequest(BaseModel):
 @ingestion_router.get("/providers")
 def list_admin_providers(
     market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    include_archived: bool = Query(
+        False, description="Incluye los archivados — la vista de recuperación de la consola"
+    ),
     use_case: ListAdminProviders = Depends(get_list_admin_providers),
 ) -> list[ProviderDto]:
     """Listado ADMIN de providers con DTO completo (type/platform/market) — reemplaza el consumo
-    del endpoint PÚBLICO `listProviders` (parcial) desde la consola (T1/#11)."""
-    return [ProviderDto.from_entity(p) for p in use_case.execute(market)]
+    del endpoint PÚBLICO `listProviders` (parcial) desde la consola (T1/#11).
+
+    Excluye los archivados salvo que se pidan explícitamente: archivar tiene que sacarlos de la
+    consola, pero sin `include_archived` un archivado por error sería irrecuperable desde la UI."""
+    return [
+        ProviderDto.from_entity(p)
+        for p in use_case.execute(market, include_archived=include_archived)
+    ]
 
 
 @ingestion_router.post("/providers", status_code=status.HTTP_201_CREATED)
@@ -599,6 +628,54 @@ def update_provider(
         "provider",
         provider.id,
         body.model_dump(exclude_none=True),
+        market_id=provider.market_id,
+    )
+    return ProviderDto.from_entity(provider)
+
+
+@ingestion_router.post("/providers/{provider_id}/archive")
+def archive_provider(
+    provider_id: str,
+    use_case: ArchiveProvider = Depends(get_archive_provider),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> ProviderDto:
+    """Archiva un provider — SOFT-delete (§7.2).
+
+    NO borra la fila: `store_registry.provider_id` y `store_product.provider_id` apuntan acá por
+    FK, así que un DELETE real arrastraría el histórico de precios completo de la cadena. Archivar
+    solo lo saca de la consola y de la ingesta.
+    """
+    provider = use_case.execute(provider_id=provider_id, archived=True)
+    if provider is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proveedor no encontrado.")
+
+    audit.record(
+        "provider.archive",
+        "provider",
+        provider.id,
+        {"name": provider.name},
+        market_id=provider.market_id,
+    )
+    return ProviderDto.from_entity(provider)
+
+
+@ingestion_router.post("/providers/{provider_id}/unarchive")
+def unarchive_provider(
+    provider_id: str,
+    use_case: ArchiveProvider = Depends(get_archive_provider),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> ProviderDto:
+    """Restaura un provider archivado. Inversa exacta de `archive` — que esto pueda existir es
+    justamente lo que obliga a que archivar no destruya nada."""
+    provider = use_case.execute(provider_id=provider_id, archived=False)
+    if provider is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proveedor no encontrado.")
+
+    audit.record(
+        "provider.unarchive",
+        "provider",
+        provider.id,
+        {"name": provider.name},
         market_id=provider.market_id,
     )
     return ProviderDto.from_entity(provider)

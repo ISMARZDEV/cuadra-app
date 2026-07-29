@@ -1,5 +1,6 @@
 import type { AdminReviewQueueRowDto, BulkResolveResultDto } from "@cuadra/api-client";
 import {
+  listStoreProductImages as listStoreProductImagesRequest,
   bulkClassifyReview,
   bulkCreateCanonicals,
   bulkResolveReview,
@@ -197,4 +198,18 @@ export async function createCanonicalsFromSelection(
     },
   });
   return res.data ?? null;
+}
+
+
+/** Galería que publicó la tienda para un `store_product` (lightbox de la fila).
+ *
+ * Se pide al ABRIR el visor, no con el listado: una página de 100 filas traería cientos de URLs
+ * que casi nunca se miran. Un fallo devuelve `[]` y el visor se queda con la foto de la fila. */
+export async function listStoreProductImages(storeProductId: string): Promise<string[]> {
+  const res = await listStoreProductImagesRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { store_product_id: storeProductId },
+  });
+  return res.data ?? [];
 }

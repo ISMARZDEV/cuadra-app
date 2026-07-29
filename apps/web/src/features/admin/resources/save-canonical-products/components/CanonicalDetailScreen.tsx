@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui-base/table";
 import { CategoryBadge } from "@/features/admin/components/CategoryBadge";
+import { ThumbnailLightbox } from "@/features/admin/components/ThumbnailLightbox";
 import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
 import { MethodBadge } from "@/features/admin/components/MethodBadge";
 import { ProviderLogo } from "@/features/admin/components/ProviderLogo";
@@ -189,17 +190,18 @@ export function CanonicalDetailScreen() {
       {/* ── Header ───────────────────────────────────────────────────────────── */}
       <section className="rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
         <div className="flex flex-wrap items-start gap-5">
-          {product.image_url ? (
-            <img
-              src={product.image_url}
-              alt=""
-              className="size-28 rounded-2xl object-cover"
-            />
-          ) : (
-            <div className="flex size-28 items-center justify-center rounded-2xl bg-muted">
-              <Boxes className="size-10 text-muted-foreground" aria-hidden="true" />
-            </div>
-          )}
+          {/* Clickeable: abre la galería COMPLETA del canónico. Las imágenes ya están en estado
+              (vienen del SSR), así que el visor no pide nada — y de paso el encabezado y el panel
+              de galería no pueden discrepar. */}
+          <ThumbnailLightbox
+            src={product.image_url}
+            alt=""
+            title={product.name}
+            count={null}
+            emptyLabel={t("admin.canonicalProducts.noImage")}
+            className="size-28 rounded-2xl"
+            loadImages={async () => images.map((i) => i.url)}
+          />
 
           <div className="min-w-[16rem] flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">

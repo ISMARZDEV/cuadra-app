@@ -1,8 +1,10 @@
-import { ExternalLink, ImageOff, Users } from "lucide-react";
+import { ExternalLink, Users } from "lucide-react";
 
 import { MethodBadge } from "@/features/admin/components/MethodBadge";
+import { ThumbnailLightbox } from "@/features/admin/components/ThumbnailLightbox";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
 
+import { listStoreProductImages } from "../../api";
 import { ConfidenceDonut } from "./ConfidenceDonut";
 import type { StoreProductPanelProps } from "./interfaces";
 
@@ -29,6 +31,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // candidatos. Imagen con espacio reservado + `loading="lazy"`. El logo de la tienda se resuelve en el
 // front (`providerLogoByName`), con fallback al nombre en texto.
 export function StoreProductPanel({
+  storeProductId,
   name,
   brand,
   sizeText,
@@ -51,24 +54,19 @@ export function StoreProductPanel({
       </span>
 
       <div className="flex gap-3">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={name ?? "Producto de la tienda"}
-            loading="lazy"
-            width={72}
-            height={72}
-            className="size-18 shrink-0 rounded-xl object-cover"
-          />
-        ) : (
-          <div
-            className="flex size-18 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"
-            role="img"
-            aria-label="Sin imagen"
-          >
-            <ImageOff className="size-6" aria-hidden="true" />
-          </div>
-        )}
+        {/* Clickeable: abre la galería que publicó la TIENDA. Es la evidencia principal para
+            decidir si el match es el mismo producto, y una sola foto muchas veces no alcanza. */}
+        <ThumbnailLightbox
+          src={imageUrl}
+          alt={name ?? "Producto de la tienda"}
+          title={name ?? "Producto de la tienda"}
+          count={null}
+          emptyLabel="Sin imagen"
+          className="size-18 rounded-xl"
+          loadImages={
+            storeProductId ? () => listStoreProductImages(storeProductId) : undefined
+          }
+        />
         <p className="text-lg font-bold text-foreground">{name ?? "(sin nombre)"}</p>
       </div>
 

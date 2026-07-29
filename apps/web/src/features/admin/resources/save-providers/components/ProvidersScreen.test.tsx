@@ -13,11 +13,15 @@ const createProvider = vi.fn();
 const updateProvider = vi.fn();
 const setProviderLogo = vi.fn();
 const listProvidersEntries = vi.fn();
+const archiveProvider = vi.fn();
+const unarchiveProvider = vi.fn();
 vi.mock("../api", () => ({
   createProvider: (...args: unknown[]) => createProvider(...args),
   updateProvider: (...args: unknown[]) => updateProvider(...args),
   setProviderLogo: (...args: unknown[]) => setProviderLogo(...args),
   listProvidersEntries: (...args: unknown[]) => listProvidersEntries(...args),
+  archiveProvider: (...args: unknown[]) => archiveProvider(...args),
+  unarchiveProvider: (...args: unknown[]) => unarchiveProvider(...args),
 }));
 
 import { ProvidersScreen } from "./ProvidersScreen";
@@ -30,128 +34,144 @@ function provider(overrides: Partial<ProviderDto>): ProviderDto {
     platform: "vtex",
     market_id: "DO",
     logo_url: null,
+    archived_at: null,
     ...overrides,
   };
 }
 
+/** Abre el menú de acciones de una fila y dispara el ítem pedido. */
+async function rowAction(providerName: string, itemLabel: RegExp) {
+  fireEvent.click(
+    screen.getByRole("button", { name: new RegExp(`acciones de ${providerName}`, "i") }),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: itemLabel }));
+}
+
 describe("ProvidersScreen", () => {
   beforeEach(() => {
-    createProvider.mockReset();
-    updateProvider.mockReset();
-    setProviderLogo.mockReset();
-    listProvidersEntries.mockReset();
+    vi.clearAllMocks();
+    mockData = { providers: [] };
+    listProvidersEntries.mockResolvedValue([]);
+    createProvider.mockResolvedValue({ error: undefined });
+    updateProvider.mockResolvedValue({ error: undefined });
+    setProviderLogo.mockResolvedValue({ error: undefined });
+    archiveProvider.mockResolvedValue({ error: undefined });
+    unarchiveProvider.mockResolvedValue({ error: undefined });
   });
 
-  it("lists the existing providers by name", () => {
+  it("lista los proveedores en una tabla con su plataforma", () => {
     mockData = {
-      providers: [provider({ id: "p1", name: "Sirena" }), provider({ id: "p2", name: "Jumbo" })],
+      providers: [
+        provider({ id: "p1", name: "Sirena", platform: "vtex" }),
+        provider({ id: "p2", name: "Bravo", platform: "rest_catalog" }),
+      ],
     };
     render(<ProvidersScreen />);
-    // Sirena/Jumbo tienen logo bundleado por nombre (`provider-logos`) → se renderizan como <img>
-    // con `alt`=nombre (no texto), tras el fallback de `ProviderBadge`.
-    expect(screen.getByRole("img", { name: "Sirena" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Jumbo" })).toBeInTheDocument();
+
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByText("Sirena")).toBeInTheDocument();
+    // Etiqueta legible (`platformLabel`), no el valor crudo del enum.
+    expect(screen.getByText("REST Catalog")).toBeInTheDocument();
   });
 
-  it("shows the empty state when there are no providers yet", () => {
-    mockData = { providers: [] };
+  it("muestra el estado vacío cuando no hay proveedores", () => {
     render(<ProvidersScreen />);
     expect(screen.getByText("Sin proveedores todavía.")).toBeInTheDocument();
   });
 
-  it("renders the logo image for a provider that has one (backend or bundled), text badge for an unknown chain", () => {
+  // El formulario anterior estaba SIEMPRE desplegado sobre la lista. Ahora el alta vive detrás de
+  // un botón: si el modal apareciera solo, volveríamos a la pantalla que se pidió reemplazar.
+  it("no muestra el formulario de alta hasta pulsar el botón", async () => {
+    render(<ProvidersScreen />);
+
+    expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /añadir proveedor/i }));
+
+    expect(await screen.findByLabelText("Nombre")).toBeInTheDocument();
+  });
+
+  it("crea un proveedor desde el modal y refresca la lista sin recargar la página", async () => {
+    render(<ProvidersScreen />);
+    fireEvent.click(screen.getByRole("button", { name: /añadir proveedor/i }));
+
+    fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "Plaza Lama" } });
+    fireEvent.click(screen.getByRole("button", { name: /crear proveedor/i }));
+
+    await waitFor(() => expect(createProvider).toHaveBeenCalled());
+    expect(createProvider.mock.calls[0][0]).toMatchObject({ name: "Plaza Lama" });
+    await waitFor(() => expect(listProvidersEntries).toHaveBeenCalled());
+  });
+
+  it("permite editar tipo y plataforma, no solo el nombre", async () => {
+    mockData = { providers: [provider({})] };
+    render(<ProvidersScreen />);
+
+    await rowAction("Sirena", /editar/i);
+
+    expect(await screen.findByLabelText("Tipo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Plataforma")).toBeInTheDocument();
+  });
+
+  // El PATCH general y el del logo son endpoints DISTINTOS y se auditan por separado: emitir el
+  // segundo cuando el logo no cambió ensuciaría el audit log con una entrada por cada guardado.
+  it("al editar sin tocar el logo NO llama al endpoint de logo", async () => {
+    mockData = { providers: [provider({ logo_url: "https://cdn/x.png" })] };
+    render(<ProvidersScreen />);
+
+    await rowAction("Sirena", /editar/i);
+    fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "Sirena Market" } });
+    fireEvent.click(screen.getByRole("button", { name: /guardar cambios/i }));
+
+    await waitFor(() => expect(updateProvider).toHaveBeenCalled());
+    expect(setProviderLogo).not.toHaveBeenCalled();
+  });
+
+  // Archivar saca al proveedor de la INGESTA: deja de recogerse precio de esa cadena. Dispararlo
+  // con un solo clic del menú es exactamente el accidente que ConfirmDialog existe para evitar.
+  it("archivar pide confirmación antes de disparar la mutación", async () => {
+    mockData = { providers: [provider({})] };
+    render(<ProvidersScreen />);
+
+    await rowAction("Sirena", /archivar/i);
+    expect(archiveProvider).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByTestId("confirm-accept"));
+
+    await waitFor(() => expect(archiveProvider).toHaveBeenCalledWith("p1"));
+  });
+
+  // Asimetría deliberada: restaurar solo DESHACE. Ponerle fricción castiga a quien está corrigiendo.
+  it("restaurar un archivado no pide confirmación", async () => {
+    mockData = { providers: [provider({ archived_at: "2026-07-27T00:00:00Z" })] };
+    render(<ProvidersScreen />);
+
+    await rowAction("Sirena", /restaurar/i);
+
+    await waitFor(() => expect(unarchiveProvider).toHaveBeenCalledWith("p1"));
+    expect(screen.queryByTestId("confirm-accept")).not.toBeInTheDocument();
+  });
+
+  it("informa el fallo de archivado en vez de fingir que funcionó", async () => {
+    archiveProvider.mockResolvedValue({ error: { detail: "boom" } });
+    mockData = { providers: [provider({})] };
+    render(<ProvidersScreen />);
+
+    await rowAction("Sirena", /archivar/i);
+    fireEvent.click(await screen.findByTestId("confirm-accept"));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("filtra por el buscador", () => {
     mockData = {
-      providers: [
-        // "Colmado Local" NO está en `provider-logos` y no trae logo_url → badge de texto.
-        provider({ id: "p1", name: "Colmado Local", logo_url: null }),
-        provider({ id: "p2", name: "Jumbo", logo_url: "https://cdn.example.com/jumbo.png" }),
-      ],
+      providers: [provider({ id: "p1", name: "Sirena" }), provider({ id: "p2", name: "Bravo" })],
     };
     render(<ProvidersScreen />);
-    expect(screen.getByRole("img", { name: "Jumbo" })).toHaveAttribute(
-      "src",
-      "https://cdn.example.com/jumbo.png",
-    );
-    expect(screen.queryByRole("img", { name: "Colmado Local" })).not.toBeInTheDocument();
-    expect(screen.getByText("Colmado Local")).toBeInTheDocument();
-  });
 
-  it("creates a new provider from the form, refetches the list locally (no reload) and shows the new row", async () => {
-    mockData = { providers: [] };
-    // "Colmado Nuevo" no tiene logo bundleado → la fila nueva se ve como texto (verificable).
-    createProvider.mockResolvedValue({ data: { id: "p9", name: "Colmado Nuevo" } });
-    listProvidersEntries.mockResolvedValue([provider({ id: "p9", name: "Colmado Nuevo" })]);
-    render(<ProvidersScreen />);
+    fireEvent.change(screen.getByLabelText(/buscar proveedor/i), { target: { value: "bra" } });
 
-    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Colmado Nuevo" } });
-    fireEvent.change(screen.getByLabelText("Mercado"), { target: { value: "DO" } });
-    fireEvent.click(screen.getByRole("button", { name: "Crear proveedor" }));
-
-    await waitFor(() =>
-      expect(createProvider).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Colmado Nuevo", marketId: "DO" }),
-      ),
-    );
-    await waitFor(() => expect(listProvidersEntries).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText("Colmado Nuevo")).toBeInTheDocument());
-  });
-
-  it("shows an error and does not crash when create fails", async () => {
-    mockData = { providers: [] };
-    createProvider.mockResolvedValue({ error: "boom" });
-    render(<ProvidersScreen />);
-
-    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Nacional" } });
-    fireEvent.change(screen.getByLabelText("Mercado"), { target: { value: "DO" } });
-    fireEvent.click(screen.getByRole("button", { name: "Crear proveedor" }));
-
-    await waitFor(() =>
-      expect(screen.getByText("No se pudo crear el proveedor.")).toBeInTheDocument(),
-    );
-  });
-
-  it("saves a pasted logo URL for an existing provider, refetches locally (no reload) and shows the new logo", async () => {
-    mockData = { providers: [provider({ id: "p1", name: "Sirena", logo_url: null })] };
-    setProviderLogo.mockResolvedValue({ data: {} });
-    listProvidersEntries.mockResolvedValue([
-      provider({ id: "p1", name: "Sirena", logo_url: "https://cdn.example.com/sirena.png" }),
-    ]);
-    render(<ProvidersScreen />);
-
-    fireEvent.change(screen.getByLabelText("Logo de Sirena"), {
-      target: { value: "https://cdn.example.com/sirena.png" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Guardar logo de Sirena" }));
-
-    await waitFor(() =>
-      expect(setProviderLogo).toHaveBeenCalledWith({
-        providerId: "p1",
-        logoUrl: "https://cdn.example.com/sirena.png",
-      }),
-    );
-    await waitFor(() => expect(listProvidersEntries).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.getByRole("img", { name: "Sirena" })).toHaveAttribute(
-        "src",
-        "https://cdn.example.com/sirena.png",
-      ),
-    );
-  });
-
-  it("renames an existing provider inline", async () => {
-    mockData = { providers: [provider({ id: "p1", name: "Sirena" })] };
-    updateProvider.mockResolvedValue({ data: {} });
-    render(<ProvidersScreen />);
-
-    const nameInput = screen.getByLabelText("Nombre de Sirena");
-    fireEvent.change(nameInput, { target: { value: "Sirena Supermercados" } });
-    fireEvent.click(screen.getByRole("button", { name: "Guardar nombre de Sirena" }));
-
-    await waitFor(() =>
-      expect(updateProvider).toHaveBeenCalledWith({
-        providerId: "p1",
-        name: "Sirena Supermercados",
-      }),
-    );
+    expect(screen.getByText("Bravo")).toBeInTheDocument();
+    expect(screen.queryByText("Sirena")).not.toBeInTheDocument();
   });
 });

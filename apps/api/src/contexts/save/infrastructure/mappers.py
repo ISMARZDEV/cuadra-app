@@ -26,6 +26,7 @@ def provider_to_entity(m: ProviderModel) -> Provider:
     return Provider(
         str(m.id), m.name, ProviderType(m.type), SourcePlatform(m.platform), m.market_id,
         logo_url=m.logo_url,
+        archived_at=m.archived_at,
     )
 
 

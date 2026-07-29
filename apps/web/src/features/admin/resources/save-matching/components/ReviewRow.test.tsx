@@ -158,3 +158,25 @@ describe("ReviewRow (Batch 6 restyle)", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("ReviewRow · orden y diseño de columnas", () => {
+  it("Confianza va entre Peso y Descripción, no al principio de la fila", () => {
+    renderRow();
+
+    const cells = [...document.querySelectorAll("td")];
+    const confidence = cells.findIndex((c) => c.querySelector('[data-testid="confidence-badge"]'));
+    const name = cells.findIndex((c) => c.querySelector('[data-testid="review-row-name"]'));
+
+    // La decisión se toma leyendo primero QUÉ producto es y recién después con cuánta seguridad
+    // lo propuso el matcher.
+    expect(confidence).toBeGreaterThan(name);
+  });
+
+  it("el thumbnail usa el mismo primitivo que el catálogo canónico", () => {
+    renderRow();
+
+    const badge = screen.getByTestId("candidate-count-badge");
+    expect(badge).toHaveClass("bg-brand-forest");
+    expect(badge).toHaveClass("-bottom-1");
+  });
+});

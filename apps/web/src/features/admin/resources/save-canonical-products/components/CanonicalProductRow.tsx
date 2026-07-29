@@ -3,7 +3,6 @@ import {
   Archive,
   ArchiveRestore,
   Barcode,
-  Boxes,
   ExternalLink,
   Eye,
   MoreHorizontal,
@@ -21,8 +20,12 @@ import {
 import { TableCell, TableRow } from "@/components/ui-base/table";
 import { CategoryBadge } from "@/features/admin/components/CategoryBadge";
 import { SizePill } from "@/features/admin/components/SizePill";
+import { ThumbnailLightbox } from "@/features/admin/components/ThumbnailLightbox";
 import { TruncatedText } from "@/features/admin/components/TruncatedText";
+import { formatAdminDate, formatAdminTime } from "@/features/admin/lib/format-datetime";
 import { parseSize } from "@/features/admin/lib/parse-size";
+import { listCanonicalImages } from "../api";
+import { formatMoney } from "@/features/save/lib/format";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import type { Locale } from "@/i18n/config";
 import { cn } from "@/lib/utils";
@@ -34,7 +37,6 @@ import {
   QUALITY_PILL_CLASS,
   isQualityStatus,
 } from "../lib/quality-status";
-import { formatCatalogDate } from "../lib/format-date";
 
 interface CanonicalProductRowProps {
   row: AdminCanonicalProductRowDto;
@@ -91,27 +93,19 @@ export function CanonicalProductRow({
         </TableCell>
       ) : null}
 
-      {/* Imagen + badge con el nº de tiendas SOBRE la foto (patrón de ReviewRow). */}
+      {/* Imagen + badge con el nº de tiendas SOBRE la foto. Clickeable: abre la galería en
+          grande (`ThumbnailLightbox`), el mismo visor que la Cola de revisión. */}
       <TableCell>
-        <div className="relative size-12 shrink-0">
-          {row.image_url ? (
-            <img
-              src={row.image_url}
-              alt=""
-              className="size-12 rounded-lg object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <div className="flex size-12 items-center justify-center rounded-lg bg-muted">
-              <Boxes className="size-5 text-muted-foreground" aria-hidden="true" />
-            </div>
-          )}
-          {providers > 0 ? (
-            <span className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-brand-forest text-[10px] font-bold text-brand-lime">
-              {providers}
-            </span>
-          ) : null}
-        </div>
+        <ThumbnailLightbox
+          src={row.image_url}
+          alt=""
+          title={row.name}
+          count={providers > 0 ? providers : null}
+          emptyLabel={t("admin.canonicalProducts.noImage")}
+          loadImages={async () =>
+            (await listCanonicalImages(row.canonical_product_id))?.map((i) => i.url) ?? []
+          }
+        />
       </TableCell>
 
       {/* `max-w` va en el elemento INTERNO: en un <td> con table-layout auto el navegador
@@ -174,17 +168,39 @@ export function CanonicalProductRow({
         </div>
       </TableCell>
 
-      {/* EAN-alcanzable: decide si el job de matcheo por código de barras puede cubrir este
-          canónico, o si primero necesita que otra tienda lo siembre. */}
+      {/* EAN: el CÓDIGO, no la etiqueta. El barcode es lo que el operador copia para buscar el
+          producto fuera del admin; "EAN" a secas sólo repetía el nombre de la columna. La etiqueta
+          queda como fallback para el canónico alcanzable cuyo código todavía no llegó. */}
       <TableCell>
         {row.ean_reachable ? (
           <span
             title={t("admin.canonicalProducts.ean.reachableHint")}
-            className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300"
+            className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-700 tabular-nums dark:text-sky-300"
           >
-            <Barcode className="size-3" aria-hidden="true" />
-            EAN
+            <Barcode className="size-3 shrink-0" aria-hidden="true" />
+            {row.ean || "EAN"}
           </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </TableCell>
+
+      {/* Precio más bajo entre las tiendas enlazadas, con el más alto debajo. Sale del MISMO
+          universo que el modal de proveedores (todas las tiendas, sin filtrar disponibilidad), así
+          que la columna y su drill-down no pueden contradecirse. Cuando mínimo y máximo coinciden
+          se muestra UNO: repetir el mismo número sería ruido, no información. */}
+      <TableCell className="whitespace-nowrap">
+        {row.min_price_minor != null && row.price_currency ? (
+          <div className="flex flex-col leading-tight">
+            <span className="font-medium tabular-nums">
+              {formatMoney(row.min_price_minor, row.price_currency)}
+            </span>
+            {row.max_price_minor != null && row.max_price_minor !== row.min_price_minor ? (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {formatMoney(row.max_price_minor, row.price_currency)}
+              </span>
+            ) : null}
+          </div>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
@@ -225,8 +241,18 @@ export function CanonicalProductRow({
         </div>
       </TableCell>
 
-      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-        {formatCatalogDate(row.last_price_seen_at, locale)}
+      {/* Fecha Y hora, el mismo par que "Fecha del match" de la Cola de revisión. Se usan las
+          MISMAS funciones (`formatAdminDate`/`formatAdminTime`, fijas a UTC) y no una copia: dos
+          implementaciones del mismo formato se desincronizan en cuanto alguien toca una. */}
+      <TableCell className="whitespace-nowrap">
+        <div className="flex flex-col leading-tight">
+          <span className="text-sm text-foreground">
+            {formatAdminDate(row.last_price_seen_at, locale)}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {formatAdminTime(row.last_price_seen_at, locale)}
+          </span>
+        </div>
       </TableCell>
 
       <TableCell>
