@@ -301,8 +301,14 @@ class MatchStoreProduct:
         return max(scores) if scores else 0.0
 
     @staticmethod
-    def _exact_match(incoming: str, candidate: str | None) -> bool:
-        if not candidate:
+    def _exact_match(incoming: str | None, candidate: str | None) -> bool:
+        """Igualdad exacta para los boosts. Un lado ausente = NO hay coincidencia, nunca un boost.
+
+        Guarda los DOS lados: el entrante también puede venir vacío (Bravo y Nacional no publican
+        marca). Antes sólo se guardaba `candidate`, y un `incoming` nulo tumbaba la corrida entera
+        con `None.strip()` en vez de simplemente no dar boost.
+        """
+        if not candidate or not incoming:
             return False
         return incoming.strip().casefold() == candidate.strip().casefold()
 

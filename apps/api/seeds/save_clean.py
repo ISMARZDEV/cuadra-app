@@ -42,7 +42,7 @@ import sys
 
 from sqlalchemy import text
 
-# Las 16 tablas en orden FK-seguro (dependientes → padres) para el TRUNCATE del nuke.
+# Las 17 tablas en orden FK-seguro (dependientes → padres) para el TRUNCATE del nuke.
 _ALL_TABLES = [
     "review_candidate",
     "product_match",
@@ -59,12 +59,24 @@ _ALL_TABLES = [
     "store_registry",
     "provider",
     "push_token",
+    "taxonomy_node_market",
     "taxonomy_node",
 ]
 
 # Lo OBLIGATORIO para que Save funcione (estructura pura, sin depender de datos generados).
 # `--reset` conserva ESTAS y wipea el resto.
-_KEEP_TABLES = {"provider", "store_registry", "basket_query", "taxonomy_node"}
+#
+# `taxonomy_node_market` va con `taxonomy_node` y NO es opcional que estén juntas: ahí viven los
+# `classification_terms` y el `embedding` de las 133 hojas — data CURADA que costó una corrida de
+# LLM y un re-embed. Wipearla dejaría el árbol en pie pero al clasificador ciego, que es un estado
+# peor que no tener árbol: parece que está todo bien y no clasifica nada.
+_KEEP_TABLES = {
+    "provider",
+    "store_registry",
+    "basket_query",
+    "taxonomy_node",
+    "taxonomy_node_market",
+}
 
 # La CANASTA CURADA (`basket_query`) es DATO GESTIONADO (F1): la mantiene un admin desde la consola y
 # la puebla la migración de backfill (no un re-seed). NINGÚN reset la borra — ni `--reset` ni el NUKE
