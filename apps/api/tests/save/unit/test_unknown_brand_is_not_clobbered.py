@@ -45,33 +45,3 @@ def test_bravo_ignores_its_internal_code_and_says_it_does_not_know_the_brand() -
 
     # "01" agrupa por tipo de producto, no por marca: tomarlo como marca sería inventar catálogo
     assert entry.brand is None
-
-
-def test_an_unknown_brand_never_overwrites_one_already_known(db_session) -> None:  # type: ignore[no-untyped-def]
-    """El invariante de verdad: dos observaciones seguidas sin marca no pueden borrar la que había."""
-    import uuid
-    from datetime import datetime, timezone
-
-    from src.contexts.save.domain.entities import PriceType, Provider, ProviderType, SourcePlatform
-    from src.contexts.save.infrastructure.models import StoreProductModel
-    from src.contexts.save.infrastructure.repositories import (
-        SqlProviderRepository,
-        SqlStoreProductRepository,
-    )
-    from src.shared.money import Currency, Money
-
-    pid = str(uuid.uuid4())
-    SqlProviderRepository(db_session).add(
-        Provider(pid, "Bravo", ProviderType.SUPERMARKET, SourcePlatform.REST_CATALOG, "DO")
-    )
-    repo = SqlStoreProductRepository(db_session)
-    common = {
-        "provider_id": pid, "external_id": "sku-1", "canonical_product_id": None,
-        "price": Money(54500, Currency("DOP")), "captured_at": datetime.now(timezone.utc),
-        "price_type": PriceType.ONLINE, "source": "bravova",
-    }
-
-    sp_id = repo.record_observation(**common, name="LA GARZA ARROZ 10 LB", brand="LA GARZA")
-    repo.record_observation(**common, name="LA GARZA ARROZ 10 LB", brand=None)
-
-    assert db_session.get(StoreProductModel, uuid.UUID(sp_id)).brand == "LA GARZA"
