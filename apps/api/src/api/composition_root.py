@@ -30,6 +30,11 @@ from src.contexts.save.application.basket_query import (
 )
 from src.contexts.save.application.bulk_classify_review import BulkClassifyReview
 from src.contexts.save.application.bulk_create_canonicals import BulkCreateCanonicals
+from src.contexts.save.application.bulk_resolve_brands import (
+    BulkResolveCanonicalBrands,
+    BulkResolveMatchBrands,
+)
+from src.contexts.save.application.resolve_brand import ResolveBrand
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
 from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.set_product_category import SetProductCategory
@@ -46,6 +51,7 @@ from src.contexts.save.application.canonical_catalog import (
     CreateCanonicalProduct,
     GetCanonicalPriceHistory,
     GetCanonicalProduct,
+    GetCanonicalProductCursor,
     ListCanonicalAuditLog,
     ListCanonicalDuplicates,
     ListCanonicalEvidence,
@@ -86,6 +92,10 @@ from src.contexts.save.application.providers import (
     UpdateProvider,
 )
 from src.contexts.save.application.resolve_review import ResolveReview
+from src.contexts.save.application.discard_store_product import DiscardStoreProduct
+from src.contexts.save.application.promote_store_product import PromoteStoreProductToCanonical
+from src.contexts.save.application.relink_store_product import RelinkStoreProduct
+from src.contexts.save.application.unlink_store_product import UnlinkStoreProduct
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.application.store_registry import (
     CreateSource,
@@ -634,6 +644,49 @@ def get_create_canonical_and_link(
         # está resolviendo. Sin esto la creación funciona igual, pero `new_canonicals_count`
         # contaría siempre cero.
         match_repo=SqlProductMatchRepository(session),
+        # Herencia de la galería del proveedor: el canónico nace con las fotos que esa tienda ya
+        # publicó. MISMA `session` que el resto — la transacción única es el invariante más
+        # delicado de este flujo.
+        store_repo=SqlStoreProductRepository(session),
+        image_repo=SqlCanonicalImageRepository(session),
+    )
+
+
+def get_resolve_brand(session: Session = Depends(get_session)) -> ResolveBrand:
+    """Reconocedor de marca contra el catálogo conocido.
+
+    Existía sólo en el composition root de la INGESTA; el admin lo necesita ahora para la acción
+    en lote "Clasificar marcas". Cachea el índice por mercado dentro de la instancia, así que una
+    por request es exactamente lo que se quiere: un lote entero comparte el mismo índice.
+    """
+    return ResolveBrand(SqlCanonicalProductRepository(session))
+
+
+def get_bulk_resolve_match_brands(
+    session: Session = Depends(get_session),
+) -> BulkResolveMatchBrands:
+    """La `Session` entra por los SAVEPOINTS: una fila que falla no arrastra a las confirmadas."""
+    return BulkResolveMatchBrands(
+        scope=session,
+        products=SqlCategoryClassificationRepository(session),
+        store_repo=SqlStoreProductRepository(session),
+        resolver=get_resolve_brand(session),
+        market_id=SAVE_MARKET,
+    )
+
+
+def get_bulk_resolve_canonical_brands(
+    session: Session = Depends(get_session),
+) -> BulkResolveCanonicalBrands:
+    canonical_repo = SqlCanonicalProductRepository(session)
+    return BulkResolveCanonicalBrands(
+        scope=session,
+        catalog=canonical_repo,
+        # Las marcas de las tiendas enlazadas: es el dato OBSERVADO, y gana sobre lo deducido.
+        provider_brands=SqlStoreProductRepository(session),
+        writer=canonical_repo,
+        resolver=ResolveBrand(canonical_repo),
+        market_id=SAVE_MARKET,
     )
 
 
@@ -721,6 +774,12 @@ def get_get_canonical_product(
     return GetCanonicalProduct(SqlAdminCanonicalCatalogRepository(session))
 
 
+def get_get_canonical_product_cursor(
+    session: Session = Depends(get_session),
+) -> GetCanonicalProductCursor:
+    return GetCanonicalProductCursor(SqlAdminCanonicalCatalogRepository(session))
+
+
 def get_list_canonical_providers(
     session: Session = Depends(get_session),
 ) -> ListCanonicalProviders:
@@ -770,6 +829,46 @@ def get_commit_canonical_import(
         SqlCanonicalProductRepository(session),
         SqlAdminCanonicalCatalogRepository(session),
         session,
+    )
+
+
+# --------------------------------- acciones por proveedor del detalle canónico (menú de acciones)
+# Las cuatro comparten la Session del request: el invariante de misma-transacción (FK denormalizado
+# + product_match) solo se sostiene si repos y use case viven en la MISMA UoW.
+
+
+def get_discard_store_product(
+    session: Session = Depends(get_session),
+) -> DiscardStoreProduct:
+    return DiscardStoreProduct(
+        match_repo=SqlProductMatchRepository(session),
+        store_repo=SqlStoreProductRepository(session),
+    )
+
+
+def get_unlink_store_product(session: Session = Depends(get_session)) -> UnlinkStoreProduct:
+    return UnlinkStoreProduct(
+        match_repo=SqlProductMatchRepository(session),
+        store_repo=SqlStoreProductRepository(session),
+    )
+
+
+def get_relink_store_product(session: Session = Depends(get_session)) -> RelinkStoreProduct:
+    return RelinkStoreProduct(
+        match_repo=SqlProductMatchRepository(session),
+        store_repo=SqlStoreProductRepository(session),
+    )
+
+
+def get_promote_store_product(
+    session: Session = Depends(get_session),
+) -> PromoteStoreProductToCanonical:
+    return PromoteStoreProductToCanonical(
+        match_repo=SqlProductMatchRepository(session),
+        store_repo=SqlStoreProductRepository(session),
+        canonical_repo=SqlCanonicalProductRepository(session),
+        image_repo=SqlCanonicalImageRepository(session),
+        market_id=SAVE_MARKET,
     )
 
 

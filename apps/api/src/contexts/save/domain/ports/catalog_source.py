@@ -22,7 +22,11 @@ class RawCatalogEntry:
     market_id: str
     external_id: str        # sku/productId en la tienda de origen
     name: str
-    brand: str
+    # `None` = la fuente NO expone marca (distinto de exponerla vacía). La diferencia importa:
+    # `record_observation` conserva lo ya conocido ante `None` y lo PISA ante `""`, así que decir
+    # "vacío" cuando en realidad es "no sé" borraba en silencio, en cada corrida, cualquier marca
+    # resuelta por otra vía. Magento (Nacional/Jumbo) y Bravo no la exponen; VTEX (Sirena) sí.
+    brand: str | None
     size_text: str          # tamaño crudo ("5lb") → parse_size lo normaliza
     price: Money
     price_type: PriceType

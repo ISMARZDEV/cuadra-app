@@ -53,7 +53,9 @@ def test_map_bravova_item_full_fields() -> None:
         market_id="DO",
         external_id="13290",  # idexternoArticulo (SKU estable), no el id interno
         name="AZUCAR CREMA",
-        brand="",  # Bravo Va no expone marca → la resuelve el matching
+        # `None` = NO la expone (≠ exponerla vacía): su `marcaArticulo` son códigos internos por
+        # tipo de producto. `""` pisaría en cada corrida la marca resuelta por otra vía.
+        brand=None,
         size_text="",  # "AZUCAR CREMA" no trae tamaño
         price=Money(12400, DOP),  # 124.00 → minor units, sin float
         price_type=PriceType.ONLINE,

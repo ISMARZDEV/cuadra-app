@@ -20,14 +20,15 @@ responde DESPUÉS y por join contra lo que la corrida encoló; vive en la proyec
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Protocol
 
 from ..domain.classification import ClassifiableProduct
-from ..domain.ports import CatalogSource, StoreProductRepository
+from ..domain.ports import CatalogSource, RawCatalogEntry, StoreProductRepository
 from .classify_store_product import ClassifyStoreProduct
 from .match_store_product import IncomingStoreProduct, MatchStoreProduct
+from .resolve_brand import ResolveBrand
 
 
 class RelevanceGate(Protocol):
@@ -74,11 +75,28 @@ class RefreshCatalogPrices:
         matcher: MatchStoreProduct | None = None,
         classifier: ClassifyStoreProduct | None = None,
         relevance_gate: RelevanceGate | None = None,
+        brand_resolver: ResolveBrand | None = None,
     ) -> None:
         self._store_repo = store_repo
         self._matcher = matcher
         self._classifier = classifier
         self._relevance = relevance_gate
+        # Nacional (Magento) y Bravo no publican marca; se reconoce en el nombre contra el catálogo
+        # que sí llenó Sirena. `None` = enganche apagado → cero regresión.
+        self._brand_resolver = brand_resolver
+
+    def _with_resolved_brand(self, entry: RawCatalogEntry) -> RawCatalogEntry:
+        """Rellena la marca ANTES de que la entrada toque nada más.
+
+        Se hace en UN punto, arriba del bucle, y no en cada uso: así el gate de relevancia, el
+        clasificador de categoría y `record_observation` ven todos exactamente la misma marca. Una
+        marca que la tienda SÍ publica nunca se pisa — deducirla del nombre por encima de un dato
+        real sería degradarlo.
+        """
+        if self._brand_resolver is None or entry.brand or not entry.name:
+            return entry
+        resolved = self._brand_resolver.execute(entry.name, entry.market_id)
+        return replace(entry, brand=resolved) if resolved else entry
 
     def _classify(self, store_product_id: str, entry) -> None:  # type: ignore[no-untyped-def]
         """Enganche inline de la clasificación de categoría (save-category-classification). El
@@ -113,8 +131,9 @@ class RefreshCatalogPrices:
         ts = captured_at or datetime.now(timezone.utc)
         seen = refreshed = unmatched = matched = discarded = 0
         auto_linked = queued_for_review = 0
-        for entry in source.fetch():
+        for raw_entry in source.fetch():
             seen += 1
+            entry = self._with_resolved_brand(raw_entry)
             if not self._store_repo.exists(entry.provider_id, entry.external_id):
                 # R2: descarta EN DESCUBRIMIENTO el ruido fuera de scope (p.ej. Magento hace OR de
                 # tokens y trae comida de perro por "arroz") ANTES de materializar/matchear. Solo

@@ -32,5 +32,14 @@ export interface CanonicalDetailData {
   categorySuggestions: CategorySuggestionDto[];
   /** Galería ordenada; posición 1 = imagen pública. */
   images: CanonicalImageDto[];
+  /** Filtros/paginación/orden que trajo el operador desde la lista. */
+  params: CanonicalProductsParams;
+  /** Posición del producto dentro del listado filtrado + prev/next para el pager. */
+  cursor: {
+    total: number;
+    position: number | null;
+    previous_id: string | null;
+    next_id: string | null;
+  };
   locale?: Locale;
 }

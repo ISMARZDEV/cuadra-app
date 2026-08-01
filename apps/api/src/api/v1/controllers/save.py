@@ -6,7 +6,7 @@ mercado (multi-país: DO→US→CO). Los errores de aplicación se mapean a HTTP
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 
 from src.api.composition_root import (
@@ -78,6 +78,10 @@ from src.contexts.save.application.listing import (
 )
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.providers import GetProvider, ListProviders
+from src.contexts.save.infrastructure.catalog_sources.ssrf_guard import (
+    SsrfBlockedError,
+    guarded_image_get,
+)
 from src.contexts.save.application.search import SearchProducts
 
 router = APIRouter(prefix="/save", tags=["save"])
@@ -338,3 +342,31 @@ def unsubscribe_alert(
 ) -> None:
     if not use_case.execute(user_id, alert_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada")
+
+
+@router.get("/image-proxy")
+def public_proxy_image(
+    url: str = Query(..., description="URL HTTPS de la imagen a servir a través del proxy"),
+) -> Response:
+    """Proxy público de imágenes de tiendas para el sitio Save.
+
+    Los navegadores bloquean cross-origin imágenes de tiendas (CORS). El sitio público las sirve
+    a través de este endpoint, que aplica las mismas protecciones SSRF que el proxy admin
+    (https-only, host resoluble a IP pública, cap de tamaño) y valida que el contenido sea
+    `image/*`. No requiere autenticación porque la imagen en sí es pública.
+    """
+    try:
+        body, content_type = guarded_image_get(url)
+    except SsrfBlockedError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except Exception as exc:  # httpx, DNS, contenido no-imagen…
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"No se pudo obtener la imagen: {exc}") from exc
+
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

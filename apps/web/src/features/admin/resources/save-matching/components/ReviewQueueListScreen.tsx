@@ -25,6 +25,7 @@ import { format } from "@/i18n/messages";
 import {
   bulkResolveReviewMatches,
   classifySelected,
+  resolveBrandsSelected,
   createCanonicalsFromSelection,
   fetchReviewQueue,
   fetchTopCandidateId,
@@ -72,8 +73,16 @@ export function ReviewQueueListScreen() {
   // exacto en caliente.
   const { items: rows, refresh } = useAdminList<AdminReviewQueueRowDto>(initialRows, async () => {
     const res = await fetchReviewQueue(params);
-    return res?.rows ?? initialRows;
+    // `null` en vez de las filas del SSR: revertir a ellas tras un lote mostraba datos VIEJOS
+    // como si fueran el resultado de la acción. `useAdminList` conserva lo que hay y avisa.
+    return res?.rows ?? null;
   });
+
+  /** Refresca y AVISA si falló: tras un lote, quedarse callado con las filas viejas hace creer que
+   *  la acción no surtió efecto. */
+  const refreshOrWarn = async () => {
+    if (!(await refresh())) toast(t("admin.list.refreshFailed"));
+  };
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -100,7 +109,7 @@ export function ReviewQueueListScreen() {
         setSelected(new Set());
       }
       setShowCanonize(false);
-      await refresh();
+      await refreshOrWarn();
     } finally {
       setBulkBusy(false);
     }
@@ -109,6 +118,41 @@ export function ReviewQueueListScreen() {
   /** Clasifica lo seleccionado y REFRESCA: la tabla es donde el operador ve qué se llenó y qué no.
    *  El resumen se muestra completo —clasificadas · sin decidir · con error— porque el clasificador
    *  deja huecos a propósito, y un lote a medias no puede leerse como terminado. */
+  /** Rellena la MARCA de lo seleccionado. Mismo contrato que clasificar: no limpia la selección,
+   *  para que el operador pueda encadenar Aprobar/Canonizar sobre las mismas filas ya completas. */
+  async function handleBulkResolveBrands() {
+    const ids = [...selected];
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const result = await resolveBrandsSelected(ids);
+      if (result) {
+        const parts = [
+          format(locale, "admin.reviewQueue.brands.done", { n: String(result.resolved) }),
+        ];
+        // Los tres estados restantes SOLO se muestran si ocurrieron: un lote limpio no debe
+        // arrastrar tres ceros que hagan dudar al operador de si algo salió mal.
+        if (result.skipped > 0) {
+          parts.push(format(locale, "admin.reviewQueue.brands.skipped", { n: String(result.skipped) }));
+        }
+        if (result.unresolved > 0) {
+          parts.push(
+            format(locale, "admin.reviewQueue.brands.unresolved", { n: String(result.unresolved) }),
+          );
+        }
+        if (result.failed.length > 0) {
+          parts.push(
+            format(locale, "admin.reviewQueue.brands.failed", { n: String(result.failed.length) }),
+          );
+        }
+        toast(parts.join(" · "));
+      }
+      await refreshOrWarn();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function handleBulkClassify() {
     const ids = [...selected];
     if (ids.length === 0 || bulkBusy) return;
@@ -125,7 +169,7 @@ export function ReviewQueueListScreen() {
         }
         toast(parts.join(" · "));
       }
-      await refresh();
+      await refreshOrWarn();
     } finally {
       setBulkBusy(false);
     }
@@ -209,7 +253,7 @@ export function ReviewQueueListScreen() {
       failed: [...(server?.failed ?? []), ...localFailed],
     });
     setSelected(new Set());
-    await refresh();
+    await refreshOrWarn();
   };
 
   // Bulk-approve (feature #10, batch 2e): la lista SOLO trae `candidate_count` (nunca el id del
@@ -365,6 +409,7 @@ export function ReviewQueueListScreen() {
         hasCandidatesSelected={hasCandidatesSelected}
         onBulkReject={() => setShowBulkReject(true)}
         onBulkClassify={() => void handleBulkClassify()}
+          onBulkResolveBrands={() => void handleBulkResolveBrands()}
         onBulkCanonize={() => setShowCanonize(true)}
         bulkBusy={bulkBusy}
         locale={locale}

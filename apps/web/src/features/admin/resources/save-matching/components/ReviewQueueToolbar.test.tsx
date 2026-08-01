@@ -23,6 +23,7 @@ function renderToolbar(overrides: Partial<Parameters<typeof ReviewQueueToolbar>[
     onBulkApprove: vi.fn(),
     onBulkReject: vi.fn(),
     onBulkClassify: vi.fn(),
+  onBulkResolveBrands: vi.fn(),
     onBulkCanonize: vi.fn(),
     locale: "es" as const,
     ...overrides,

@@ -1,4 +1,4 @@
-import { CheckCheck, ChevronDown, LayoutGrid, List, PackagePlus, Search, Tags, X } from "lucide-react";
+import { CheckCheck, ChevronDown, LayoutGrid, List, PackagePlus, Search, Tag, Tags, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui-base/button";
@@ -47,6 +47,10 @@ export interface ReviewQueueToolbarProps {
   onBulkReject: () => void;
   /** Clasifica en lote lo seleccionado (llena la categoría, precondición para canonizar). */
   onBulkClassify: () => void;
+  /** Rellena la MARCA de lo seleccionado reconociéndola en el nombre contra el catálogo de
+   *  marcas conocidas. Va en el grupo "preparar" junto a clasificar: no decide nada sobre el
+   *  match, sólo completa el dato para que la decisión posterior sea con la ficha llena. */
+  onBulkResolveBrands: () => void;
   /** Crea canónicos NUEVOS a partir de lo seleccionado. Es la acción que sirve cuando no hay
    *  candidatos a los que enlazar — el caso normal en un catálogo en arranque en frío. */
   onBulkCanonize: () => void;
@@ -80,6 +84,7 @@ export function ReviewQueueToolbar({
   hasCandidatesSelected = true,
   onBulkReject,
   onBulkClassify,
+  onBulkResolveBrands,
   onBulkCanonize,
   bulkBusy,
   locale,
@@ -202,6 +207,14 @@ export function ReviewQueueToolbar({
             >
               <Tags className="text-violet-600 dark:text-violet-400" />
               {t("admin.toolbar.actions.classify")}
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={onBulkResolveBrands}
+              className="focus:bg-violet-500/10 focus:text-violet-600 not-data-[variant=destructive]:focus:**:text-violet-600 dark:focus:text-violet-400 dark:not-data-[variant=destructive]:focus:**:text-violet-400"
+            >
+              <Tag className="text-violet-600 dark:text-violet-400" />
+              {t("admin.toolbar.actions.resolveBrands")}
             </DropdownMenuItem>
 
             {/* El separador agrupa por TIPO DE ACTO: preparar · decidir · destruir. Sin él las

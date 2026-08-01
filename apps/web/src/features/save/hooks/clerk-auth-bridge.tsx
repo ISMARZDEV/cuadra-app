@@ -10,10 +10,14 @@ import { registerTokenGetter } from "./use-auth";
 export function ClerkAuthBridge() {
   const { isSignedIn, getToken } = useClerkAuth();
 
+  // Registro SÍNCRONO durante el render para ganarle a los efectos de los hijos que llaman
+  // `authHeaders()` (p. ej. el histórico del detalle de canónicos). Clerk tarda en hidratar el
+  // estado; si esperamos a useEffect, la primera petición autenticada sale sin token (401).
+  registerTokenGetter(isSignedIn ? () => getToken() : () => null);
+
   useEffect(() => {
-    registerTokenGetter(isSignedIn ? () => getToken() : () => null);
     return () => registerTokenGetter(() => null);
-  }, [isSignedIn, getToken]);
+  }, []);
 
   return null;
 }

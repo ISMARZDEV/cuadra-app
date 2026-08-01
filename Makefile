@@ -1,4 +1,4 @@
-.PHONY: help install api mobile db-up db-down migrate seed save-refresh openapi api-client test test-unit test-ctx eval
+.PHONY: help install api mobile db-up db-down migrate seed save-refresh save-backfill-brands save-repair-sizes openapi api-client test test-unit test-ctx eval
 
 help:
 	@echo "Cuadra — comandos del monorepo"
@@ -9,6 +9,8 @@ help:
 	@echo "  make migrate     alembic upgrade head"
 	@echo "  make seed        Carga el seed inicial"
 	@echo "  make save-refresh  Refresca precios vivos de Save (Sirena/Nacional/Jumbo)"
+	@echo "  make save-backfill-brands  Rellena marcas de productos ya ingeridos (idempotente)"
+	@echo "  make save-repair-sizes     Repara tamanos guardados desde una fraccion (idempotente)"
 	@echo "  make ingestion-dev Levanta Dagster (orquestador de ingesta, UI local)"
 	@echo "  make openapi     Vuelca openapi.json + regenera api-client"
 	@echo "  make test        Suite completa del backend (gate)"
@@ -40,6 +42,12 @@ seed:
 
 save-refresh:
 	cd apps/api && uv run python -m seeds.save_refresh
+
+save-backfill-brands:
+	cd apps/api && uv run python -m seeds.backfill_brands
+
+save-repair-sizes:
+	cd apps/api && uv run python -m seeds.repair_fraction_sizes
 
 ingestion-dev:
 	cd apps/api && uv run --group ingestion dagster dev -m ingestion.definitions

@@ -7,12 +7,8 @@ import {
   ArchiveRestore,
   ArrowLeft,
   Barcode,
-  Boxes,
-  Check,
   ExternalLink,
-  ImageOff,
   Link2,
-  Pencil,
   RefreshCw,
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
@@ -28,11 +24,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui-base/table";
-import { CategoryBadge } from "@/features/admin/components/CategoryBadge";
-import { ThumbnailLightbox } from "@/features/admin/components/ThumbnailLightbox";
 import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
 import { MethodBadge } from "@/features/admin/components/MethodBadge";
 import { ProviderLogo } from "@/features/admin/components/ProviderLogo";
+import { FunnelIcon } from "@/features/admin/resources/save-matching/components/toolbar-icons";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { formatMoney } from "@/features/save/lib/format";
 import { DEFAULT_LOCALE } from "@/i18n/config";
@@ -42,6 +37,8 @@ import { cn } from "@/lib/utils";
 import {
   archiveCanonicalProduct,
   getCanonicalProductHistory,
+  listCanonicalProducts,
+  listCanonicalProductProviders,
   previewCanonicalSlug,
   regenerateCanonicalSlug,
   setCanonicalCategory,
@@ -50,19 +47,24 @@ import {
   updateInternalNote,
 } from "../api";
 import type { CanonicalDetailData } from "../interfaces";
+import {
+  countActiveFilters,
+  serializeCanonicalProductsParams,
+  type CanonicalProductsParams,
+} from "../lib/canonical-products-params";
 import { formatCatalogDate } from "../lib/format-date";
 import { toGtin14 } from "../lib/gtin";
-import {
-  MEASURE_LABEL_KEY,
-  QUALITY_HINT_KEY,
-  QUALITY_LABEL_KEY,
-  QUALITY_PILL_CLASS,
-  isQualityStatus,
-} from "../lib/quality-status";
+import { MEASURE_LABEL_KEY } from "../lib/quality-status";
+import { CanonicalFiltersModal } from "./CanonicalFiltersModal";
 import { CanonicalFormModal, type CanonicalFormState } from "./CanonicalFormModal";
+import { CanonicalHero } from "./CanonicalHero";
+import { CanonicalPager } from "./CanonicalPager";
 import { CategoryPicker } from "./CategoryPicker";
 import { DescriptionPanel } from "./DescriptionPanel";
+import { DetailTabs, type DetailTabId, tabId, tabPanelId } from "./DetailTabs";
+import { IdentityPanel } from "./IdentityPanel";
 import { ImageGalleryPanel } from "./ImageGalleryPanel";
+import { ProvidersPanel } from "./ProvidersPanel";
 import { PriceHistoryChart } from "./PriceHistoryChart";
 
 const RANGES = ["15d", "1m", "3m", "6m", "1y", "all"] as const;
@@ -80,19 +82,33 @@ const RANGE_KEY = {
 export function CanonicalDetailScreen() {
   const {
     product: initialProduct,
-    providers,
+    providers: initialProviders,
     evidence,
     duplicates,
     auditLog,
     taxonomyLeaves = [],
     categorySuggestions = [],
     images: initialImages = [],
+    params,
+    cursor,
     locale = DEFAULT_LOCALE,
   } = useData<CanonicalDetailData>();
   const { t } = useAdminI18n(locale);
 
   const [product, setProduct] = useState(initialProduct);
+  // Los proveedores llegan por SSR, pero las cuatro acciones del menú por fila los MUTAN, así que
+  // viven en estado local para poder recargarlos sin un refresh completo de la página.
+  const [providers, setProviders] = useState(initialProviders);
   const [images, setImages] = useState(initialImages);
+
+  // Al navegar prev/next client-side Vike reutiliza el componente y cambia `initialProduct`.
+  // Sin esto el estado local conservaría el producto anterior aunque la URL y los props SSR ya
+  // sean del nuevo canónico.
+  useEffect(() => setProduct(initialProduct), [initialProduct]);
+  useEffect(() => setProviders(initialProviders), [initialProviders]);
+  useEffect(() => setImages(initialImages), [initialImages]);
+  const [tab, setTab] = useState<DetailTabId>("summary");
+  const [syncing, setSyncing] = useState(false);
   const [formState, setFormState] = useState<CanonicalFormState | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -104,6 +120,18 @@ export function CanonicalDetailScreen() {
     would_change: boolean;
   } | null>(null);
 
+  /**
+   * Recarga la tabla de proveedores desde el servidor tras una acción del menú por fila.
+   *
+   * Se REFETCHEA en vez de mutar el array en memoria: quitar una fila a mano dejaría los cuatro
+   * tiles (precio más bajo/más alto/diferencia) calculados sobre datos viejos, y "Mejor precio
+   * Save" apuntando a una tienda que ya no está. El servidor es el único que sabe el estado real.
+   */
+  const reloadProviders = async () => {
+    const fresh = await listCanonicalProductProviders(product.canonical_product_id);
+    if (fresh) setProviders(fresh);
+  };
+
   const [range, setRange] = useState<(typeof RANGES)[number]>("1m");
   const [history, setHistory] = useState<AdminCanonicalPriceHistoryDto | null>(null);
   // `null` solo no alcanza: "todavía cargando" y "falló" se ven igual (un panel en blanco) y el
@@ -112,6 +140,7 @@ export function CanonicalDetailScreen() {
   /** Contador de reintentos: cambiarlo re-dispara el efecto sin tocar el rango elegido. */
   const [historyReload, setHistoryReload] = useState(0);
   const [visibleSeries, setVisibleSeries] = useState<Set<string>>(new Set());
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const id = product.canonical_product_id;
   const archived = Boolean(product.archived_at);
@@ -140,7 +169,8 @@ export function CanonicalDetailScreen() {
       if (next.size === 0) {
         history?.series.forEach((s) => next.add(s.provider_id));
       }
-      next.has(providerId) ? next.delete(providerId) : next.add(providerId);
+      if (next.has(providerId)) next.delete(providerId);
+      else next.add(providerId);
       return next;
     });
 
@@ -176,244 +206,193 @@ export function CanonicalDetailScreen() {
 
   const publicHref = product.slug ? `/${locale}/do/save/producto/${product.slug}` : null;
 
+  const activeFilters = countActiveFilters(params);
+  const qs = serializeCanonicalProductsParams(params).toString();
+
+  const detailHref = (productId: string, query = qs) =>
+    `/admin/canonical-products/${productId}${query ? `?${query}` : ""}`;
+
+  const backToList = () => void navigate(`/admin/canonical-products${qs ? `?${qs}` : ""}`);
+
+  /**
+   * Vuelve a pedir el detalle al servidor.
+   *
+   * NO dispara una corrida de ingesta: no existe endpoint para refrescar un canónico suelto, y
+   * un botón que promete ir a las tiendas sin hacerlo sería peor que no tenerlo. Lo que sí
+   * resuelve es la pregunta real del curador mientras corre una ingesta — "¿ya bajaron los
+   * precios nuevos?" — releyendo el SSR sin perder la sección abierta.
+   */
+  const syncFromServer = async () => {
+    setSyncing(true);
+    try {
+      await navigate(detailHref(id), { overwriteLastHistoryEntry: true });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const goPrev = () => {
+    if (cursor.previous_id) void navigate(detailHref(cursor.previous_id));
+  };
+
+  const goNext = () => {
+    if (cursor.next_id) void navigate(detailHref(cursor.next_id));
+  };
+
+  const jumpToPosition = async (position: number) => {
+    const page = await listCanonicalProducts({
+      search: params.search,
+      brand_id: params.brand_id,
+      taxonomy_node_id: params.taxonomy_node_id,
+      quality_status: params.quality_status,
+      ean_reachable: params.ean_reachable,
+      min_provider_count: params.min_provider_count,
+      updated_since: params.updated_since,
+      include_archived: params.include_archived,
+      sort: params.sort,
+      limit: 1,
+      offset: Math.max(0, position - 1),
+    });
+    const target = page?.rows[0];
+    if (!target) return;
+    void navigate(detailHref(target.canonical_product_id));
+  };
+
+  const applyFilters = (patch: Partial<CanonicalProductsParams>) => {
+    const next = { ...params, ...patch, offset: 0 };
+    const nextQs = serializeCanonicalProductsParams(next).toString();
+    void navigate(detailHref(id, nextQs), { overwriteLastHistoryEntry: true });
+  };
+
+  // Navegación con flechas del teclado: prev/next sin salir del detalle.
+  // Se desactiva mientras un modal está abierto o el foco está en un campo de texto,
+  // para no interferir con formularios ni accesibilidad.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (archiveOpen || filtersOpen || slugPreview !== null || formState !== null || busy) {
+        return;
+      }
+      const target = event.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goPrev();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goNext();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [archiveOpen, filtersOpen, slugPreview, formState, busy, goPrev, goNext]);
+
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-      <button
-        type="button"
-        onClick={() => void navigate("/admin/canonical-products")}
-        className="inline-flex w-fit items-center gap-2 text-sm font-medium text-brand-forest hover:underline dark:text-brand-lime"
-      >
-        <ArrowLeft className="size-4" />
-        {t("admin.canonicalDetail.back")}
-      </button>
+    <div className="flex flex-1 flex-col p-4 md:p-6">
+      {/* MISMO envoltorio que `/admin/canonical-products`: card `bg-muted` de la consola. */}
+      <div className="flex-1 space-y-4 rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
+      {/* Header: volver + filtros + pager */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={backToList}
+          className="inline-flex w-fit items-center gap-2 text-sm font-medium text-brand-forest hover:underline dark:text-brand-lime"
+        >
+          <ArrowLeft className="size-4" />
+          {t("admin.canonicalDetail.back")}
+        </button>
 
-      {/* ── Header ───────────────────────────────────────────────────────────── */}
-      <section className="rounded-[32px] bg-muted p-4 shadow-sm md:p-6 dark:bg-muted [corner-shape:squircle]">
-        <div className="flex flex-wrap items-start gap-5">
-          {/* Clickeable: abre la galería COMPLETA del canónico. Las imágenes ya están en estado
-              (vienen del SSR), así que el visor no pide nada — y de paso el encabezado y el panel
-              de galería no pueden discrepar. */}
-          <ThumbnailLightbox
-            src={product.image_url}
-            alt=""
-            title={product.name}
-            count={null}
-            emptyLabel={t("admin.canonicalProducts.noImage")}
-            className="size-28 rounded-2xl"
-            loadImages={async () => images.map((i) => i.url)}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            aria-label={t("admin.canonicalProducts.filters.button")}
+            className="relative flex size-9 items-center justify-center rounded-full bg-brand-lime text-brand-forest hover:bg-brand-lime/90"
+          >
+            <FunnelIcon className="size-4" />
+            {activeFilters > 0 ? (
+              <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-brand-forest text-[10px] font-bold text-brand-lime">
+                {activeFilters}
+              </span>
+            ) : null}
+          </button>
+          <CanonicalPager
+            position={cursor.position}
+            total={cursor.total}
+            hasPrev={cursor.previous_id !== null}
+            hasNext={cursor.next_id !== null}
+            onPrev={goPrev}
+            onNext={goNext}
+            onJumpToPosition={jumpToPosition}
+            disabled={busy}
+            t={t}
           />
-
-          <div className="min-w-[16rem] flex-1 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-medium text-black dark:text-white">
-                {product.name}
-              </h1>
-              {archived ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/15 px-2 py-0.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-                  <Archive className="size-3" />
-                  {t("admin.canonicalProducts.archive.badge")}
-                </span>
-              ) : null}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {product.brand || "—"} · {product.slug}
-            </p>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Mismo criterio que la fila del listado: color por el TOPE (el mapa está cargado
-                  por slug de tope) y la hoja al lado. Que la lista y el detalle discrepen en la
-                  categoría es la clase de incoherencia que quema confianza. */}
-              <CategoryBadge
-                slug={product.category_top_slug}
-                name={product.category_top}
-                locale={locale}
-              />
-              {product.category && product.category !== product.category_top ? (
-                <span className="text-xs text-muted-foreground">{product.category}</span>
-              ) : null}
-              {product.ean_reachable ? (
-                <span
-                  title={t("admin.canonicalProducts.ean.reachableHint")}
-                  className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300"
-                >
-                  <Barcode className="size-3" />
-                  {t("admin.canonicalProducts.ean.reachable")}
-                </span>
-              ) : null}
-              {(product.quality_statuses ?? []).map((status) =>
-                isQualityStatus(status) ? (
-                  <span
-                    key={status}
-                    title={t(QUALITY_HINT_KEY[status])}
-                    className={cn(
-                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                      QUALITY_PILL_CLASS[status],
-                    )}
-                  >
-                    {t(QUALITY_LABEL_KEY[status])}
-                  </span>
-                ) : null,
-              )}
-              <span className="text-xs text-muted-foreground">
-                <span className="tabular-nums">{product.completeness_score}%</span> ·{" "}
-                {t("admin.canonicalProducts.col.completeness")}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setFormState({ mode: "edit", row: product })}
-              className="inline-flex h-9 items-center gap-2 rounded-full bg-brand-lime px-4 text-sm font-semibold text-brand-forest shadow-sm hover:bg-brand-lime/90"
-            >
-              <Pencil className="size-4" />
-              {t("admin.canonicalProducts.actions.edit")}
-            </button>
-            <a
-              href={publicHref ?? undefined}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-disabled={!publicHref}
-              className={cn(
-                "inline-flex h-9 items-center gap-2 rounded-full bg-brand-forest px-4 text-sm font-semibold text-brand-lime shadow-sm",
-                !publicHref && "pointer-events-none opacity-50",
-              )}
-            >
-              <ExternalLink className="size-4" />
-              {t("admin.canonicalProducts.actions.public")}
-            </a>
-            <Button
-              variant="outline"
-              onClick={() => void openSlugDialog()}
-              disabled={busy}
-              className="h-9 rounded-full"
-            >
-              <Link2 className="size-4" />
-              {t("admin.canonicalDetail.slug.action")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => (archived ? void toggleArchive() : setArchiveOpen(true))}
-              disabled={busy}
-              className="h-9 rounded-full"
-            >
-              {archived ? (
-                <ArchiveRestore className="size-4" />
-              ) : (
-                <Archive className="size-4" />
-              )}
-              {t(
-                archived
-                  ? "admin.canonicalProducts.actions.unarchive"
-                  : "admin.canonicalProducts.actions.archive",
-              )}
-            </Button>
-          </div>
         </div>
-      </section>
+      </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* ── Información canónica ──────────────────────────────────────────── */}
-        <Panel title={t("admin.canonicalDetail.section.info")}>
-          <dl className="space-y-2.5 text-sm">
-            <Row label={t("admin.canonicalDetail.info.size")}>
-              {product.display_size || "—"}{" "}
-              <span className="text-muted-foreground">
-                ({MEASURE_LABEL_KEY[product.size_measure]
-                  ? t(MEASURE_LABEL_KEY[product.size_measure])
-                  : product.size_measure})
-              </span>
-            </Row>
-            <Row label={t("admin.canonicalDetail.info.quality")}>{product.quality || "—"}</Row>
-            <Row label={t("admin.canonicalDetail.info.created")}>
-              {formatCatalogDate(product.created_at, locale)}
-            </Row>
-            <Row label={t("admin.canonicalDetail.info.originRun")}>
-              {product.origin_run_id ? (
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                  {product.origin_run_id}
-                </code>
-              ) : (
-                <span className="text-muted-foreground">
-                  {t("admin.canonicalDetail.info.originRunNone")}
-                </span>
-              )}
-            </Row>
-            <Row label={t("admin.canonicalDetail.info.lastMatch")}>
-              {formatCatalogDate(product.last_match_at, locale)}
-            </Row>
-            <Row label={t("admin.canonicalDetail.info.lastPrice")}>
-              {formatCatalogDate(product.last_price_seen_at, locale)}
-            </Row>
-          </dl>
-        </Panel>
+      {/* ── Hero: maqueta pública + identidad + indicadores ──────────────────── */}
+      <CanonicalHero
+        product={product}
+        providers={providers}
+        imageCount={images.length}
+        locale={locale}
+        t={t}
+        publicHref={publicHref}
+        onSync={syncFromServer}
+        onEdit={() => setFormState({ mode: "edit", row: product })}
+        syncing={syncing}
+        tabs={<DetailTabs active={tab} onChange={setTab} t={t} />}
+      >
+        <Button
+          variant="outline"
+          onClick={() => void openSlugDialog()}
+          disabled={busy}
+          className="h-9 rounded-full"
+        >
+          <Link2 className="size-4" />
+          {t("admin.canonicalDetail.slug.action")}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => (archived ? void toggleArchive() : setArchiveOpen(true))}
+          disabled={busy}
+          className="h-9 rounded-full"
+        >
+          {archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+          {t(
+            archived
+              ? "admin.canonicalProducts.actions.unarchive"
+              : "admin.canonicalProducts.actions.archive",
+          )}
+        </Button>
+      </CanonicalHero>
 
-        {/* ── Proveedores ───────────────────────────────────────────────────── */}
+      {/* ── Resumen: identidad + proveedores + histórico ─────────────────────── */}
+      <TabPanel id="summary" active={tab}>
+      <div className="grid items-start gap-4 lg:grid-cols-3">
+        <IdentityPanel product={product} locale={locale} t={t} />
+
         <Panel
+          id="canonical-providers-panel"
           title={t("admin.canonicalDetail.section.providers")}
           count={providers.length}
           className="lg:col-span-2"
         >
-          {providers.length === 0 ? (
-            <Empty>{t("admin.canonicalProducts.providers.empty")}</Empty>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>{t("admin.canonicalProducts.providers.col.provider")}</TableHead>
-                  <TableHead>{t("admin.canonicalProducts.providers.col.lastSeen")}</TableHead>
-                  <TableHead className="text-right">
-                    {t("admin.canonicalProducts.providers.col.price")}
-                  </TableHead>
-                  <TableHead className="text-right">
-                    {t("admin.canonicalProducts.providers.col.action")}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {providers.map((p) => (
-                  <TableRow key={p.store_product_id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <ProviderLogo
-                          name={p.provider_name}
-                          logoUrl={p.provider_logo_url}
-                          className="max-h-7 max-w-12 object-contain"
-                        />
-                        {p.is_cheapest ? (
-                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                            {t("admin.canonicalProducts.providers.cheapest")}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatCatalogDate(p.last_seen_at, locale)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {formatMoney(p.price_minor, p.currency)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {p.url ? (
-                        <a
-                          href={p.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                        >
-                          {t("admin.canonicalProducts.providers.open")}
-                          <ExternalLink className="size-3" />
-                        </a>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <ProvidersPanel
+            providers={providers}
+            locale={locale}
+            t={t}
+            canonicalProductId={product.canonical_product_id}
+            taxonomyLeaves={taxonomyLeaves}
+            onProvidersChanged={reloadProviders}
+          />
         </Panel>
       </div>
 
@@ -498,8 +477,10 @@ export function CanonicalDetailScreen() {
           />
         ) : null}
       </Panel>
+      </TabPanel>
 
       {/* ── Categoría con sugerencias (US-CP-D2c) ───────────────────────────── */}
+      <TabPanel id="categories" active={tab}>
       <Panel title={t("admin.canonicalDetail.category.title")}>
         <CategoryPicker
           currentId={product.taxonomy_node_id ?? null}
@@ -510,8 +491,10 @@ export function CanonicalDetailScreen() {
           t={t}
         />
       </Panel>
+      </TabPanel>
 
       {/* ── Descripción con las de cada tienda como candidatas (US-CP-D2) ──── */}
+      <TabPanel id="description" active={tab}>
       <Panel title={t("admin.canonicalDetail.description.title")}>
         <DescriptionPanel
           canonicalProductId={id}
@@ -521,8 +504,10 @@ export function CanonicalDetailScreen() {
           t={t}
         />
       </Panel>
+      </TabPanel>
 
       {/* ── Imagen del producto: galería ORDENADA (US-CP-D3/D4b) ───────────── */}
+      <TabPanel id="images" active={tab}>
       <Panel title={t("admin.canonicalDetail.section.image")} count={images.length}>
         <ImageGalleryPanel
           canonicalProductId={id}
@@ -533,7 +518,10 @@ export function CanonicalDetailScreen() {
           locale={locale}
         />
       </Panel>
+      </TabPanel>
 
+      {/* ── Auditoría: evidencia + duplicados + actividad ────────────────────── */}
+      <TabPanel id="audit" active={tab}>
       {/* ── Evidencia ───────────────────────────────────────────────────────── */}
       <Panel title={t("admin.canonicalDetail.section.evidence")} count={evidence.length}>
         {evidence.length === 0 ? (
@@ -708,13 +696,25 @@ export function CanonicalDetailScreen() {
           )}
         </Panel>
       </div>
+      </TabPanel>
+
+      </div>
 
       <CanonicalFormModal
         state={formState}
         onClose={() => setFormState(null)}
-        onSaved={() => void navigate(`/admin/canonical-products/${id}`)}
+        onSaved={() => void navigate(detailHref(id))}
         t={t}
         taxonomyLeaves={taxonomyLeaves}
+      />
+
+      <CanonicalFiltersModal
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        params={params}
+        onApply={applyFilters}
+        t={t}
+        locale={locale}
       />
 
       <ConfirmDialog
@@ -794,12 +794,43 @@ function auditActionLabel(action: string, t: (key: MessageKey) => string): strin
   return t(map[action] ?? "admin.canonicalDetail.activity.action.unknown");
 }
 
+/**
+ * Contenedor de una sección.
+ *
+ * Se DESMONTA cuando no está activa en vez de esconderse con CSS: los paneles dormidos traen
+ * inputs (la nota interna, el buscador de categoría) que, ocultos pero en el DOM, siguen siendo
+ * alcanzables con el tabulador y el lector de pantalla los sigue anunciando.
+ */
+function TabPanel({
+  id,
+  active,
+  children,
+}: {
+  id: DetailTabId;
+  active: DetailTabId;
+  children: React.ReactNode;
+}) {
+  if (id !== active) return null;
+  return (
+    <div
+      role="tabpanel"
+      id={tabPanelId(id)}
+      aria-labelledby={tabId(id)}
+      className="flex flex-col gap-4"
+    >
+      {children}
+    </div>
+  );
+}
+
 function Panel({
+  id,
   title,
   count,
   className,
   children,
 }: {
+  id?: string;
   title: string;
   count?: number;
   className?: string;
@@ -809,6 +840,7 @@ function Panel({
     // Sin sombra: el borde y el radio ya separan. Apilar borde + sombra en los 9 paneles es la
     // misma frase dicha dos veces, y deja a Evidencia pesando igual que Duplicados.
     <section
+      id={id}
       className={cn(
         "rounded-2xl border border-black/5 bg-white p-4 md:p-5 dark:border-white/10 dark:bg-card",
         className,

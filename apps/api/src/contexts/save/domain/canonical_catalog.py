@@ -177,6 +177,21 @@ class CanonicalCatalogPage:
 
 
 @dataclass(frozen=True, slots=True)
+class CanonicalCatalogCursor:
+    """Posición de un canónico dentro de un listado filtrado/ordenado, más sus vecinos.
+
+    `position` es 1-based. Si el producto no está en el resultado filtrado (por ejemplo, el
+    operador aplicó filtros que lo excluyen), `position` y los vecinos son `None` pero `total`
+    sigue siendo el total de productos que SÍ cumplen.
+    """
+
+    total: int
+    position: int | None
+    previous_id: str | None
+    next_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class CanonicalCatalogFilters:
     """Filtros del listado (US-CP-L2/L9). Value object para no arrastrar 8 argumentos sueltos
     por cada capa."""
@@ -186,6 +201,9 @@ class CanonicalCatalogFilters:
     taxonomy_node_id: str | None = None
     quality_status: CanonicalQualityStatus | None = None
     ean_reachable: bool | None = None
+    # `False` = "sin marca" — el conjunto sobre el que se corre "Clasificar marcas". Sin este
+    # filtro la acción existe pero obliga a cazar filas con "—" a ojo, página por página.
+    has_brand: bool | None = None
     min_provider_count: int | None = None
     updated_since: datetime | None = None
     # Por defecto el catálogo muestra sólo lo ACTIVO: archivar tiene que limpiar la vista de
@@ -212,10 +230,25 @@ class CanonicalProviderPriceRow:
     # Descripción que publica ESA tienda. Es una CANDIDATA: el operador elige cuál representa al
     # canónico (o la ajusta). Copiarla nunca modifica la de la tienda.
     store_product_description: str | None = None
+    # Cómo llama la TIENDA a este producto — los mismos tres datos que muestra la pestaña Auditoría
+    # ("Nombre en la tienda" + tamaño). NO confundir con `store_product_description`: el nombre es
+    # "Arroz Selecto Líder 10 Lb" y la descripción es prosa comercial ("Arroz blanco de grano largo").
+    #
+    # Viajan porque son EXACTAMENTE lo que el servidor deriva al crear un canónico nuevo desde esta
+    # tienda (`PromoteStoreProductToCanonical` → `get_raw_attrs` + `parse_size`). El diálogo tiene que
+    # poder mostrar lo que va a pasar; mostrar la descripción en su lugar prometía otro producto.
+    store_product_name: str | None = None
+    store_product_brand: str | None = None
+    store_product_size_text: str | None = None
     url: str | None = None
     last_seen_at: datetime | None = None
     price_type: str | None = None
     is_cheapest: bool = False
+    # Último precio DISTINTO al vigente, derivado de `price` (append-only). `None` cuando la
+    # tienda nunca movió el precio: es lo que apaga el tachado en la UI. Ojo — NO es "la
+    # penúltima observación": la ingesta escribe una fila por corrida aunque el precio no
+    # cambie, así que la penúltima suele repetir el precio de hoy.
+    previous_price_minor: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

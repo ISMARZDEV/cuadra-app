@@ -404,3 +404,59 @@ class SqlProductMatchRepository:
         if reason_note is not None:
             m.reason_note = reason_note
         self._s.flush()
+
+    # ------------------------------------------------ acciones por proveedor del detalle canónico
+
+    def get_match_id_by_store_product(self, store_product_id: str) -> str | None:
+        """El `match_id` de un store_product. Total y sin ambigüedad porque `product_match` es
+        UNIQUE por `store_product_id` — es la clave natural desde el detalle canónico, que no
+        conoce el id del match. `ProductMatch` (dataclass PURO) no lleva `id`, así que el id no
+        puede viajar en la entidad y se devuelve suelto."""
+        spid = _parse_uuid(store_product_id)
+        if spid is None:
+            return None
+        row = self._s.execute(
+            select(ProductMatchModel.id).where(ProductMatchModel.store_product_id == spid)
+        ).scalar_one_or_none()
+        return str(row) if row is not None else None
+
+    def reopen_review(
+        self,
+        match_id: str,
+        decided_by: str,
+        *,
+        reason_code: str | None = None,
+        reason_note: str | None = None,
+    ) -> None:
+        """Devuelve el match a la cola: `pending_review` + sin canónico.
+
+        Es un TERCER desenlace, no un caso de `resolve_review`: ese fuerza `auto_linked` o
+        `rejected` según haya canónico, y "vuelve a la cola" no es ninguno de los dos. Se estampa
+        `decided_by`/`decided_at` igual que una resolución — reabrir también es una decisión humana
+        y tiene que quedar trazada."""
+        mid = _parse_uuid(match_id)
+        m = self._s.get(ProductMatchModel, mid) if mid else None
+        if m is None:
+            return
+        m.canonical_product_id = None
+        m.status = "pending_review"
+        m.method = "human"
+        m.decided_by = decided_by
+        m.decided_at = datetime.now(timezone.utc)
+        if reason_code is not None:
+            m.reason_code = reason_code
+        if reason_note is not None:
+            m.reason_note = reason_note
+        self._s.flush()
+
+    def delete_by_store_product(self, store_product_id: str) -> None:
+        """Borra el `product_match` de un store_product. Paso OBLIGATORIO y previo al DELETE de la
+        fila: `product_match.store_product_id` es `ON DELETE NO ACTION`, así que mientras el match
+        exista la base RECHAZA borrar el `store_product`."""
+        spid = _parse_uuid(store_product_id)
+        if spid is None:
+            return
+        self._s.execute(
+            delete(ProductMatchModel).where(ProductMatchModel.store_product_id == spid)
+        )
+        self._s.flush()

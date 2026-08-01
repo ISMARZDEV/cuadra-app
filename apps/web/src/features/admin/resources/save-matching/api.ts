@@ -2,6 +2,7 @@ import type { AdminReviewQueueRowDto, BulkResolveResultDto } from "@cuadra/api-c
 import {
   listStoreProductImages as listStoreProductImagesRequest,
   bulkClassifyReview,
+  bulkResolveReviewBrands,
   bulkCreateCanonicals,
   bulkResolveReview,
   createCanonicalAndLink,
@@ -124,8 +125,8 @@ export async function createCanonicalAndLinkMatch(params: {
   decidedBy: string;
   name: string;
   brand: string;
-  quantityAmount: number;
-  quantityMeasure: "mass" | "volume" | "count";
+  /** Tamaño como TEXTO ("355 Ml"). El servidor lo convierte con `parse_size` del dominio. */
+  sizeText: string;
   taxonomyNodeId: string;
   marketId: string;
 }) {
@@ -137,8 +138,7 @@ export async function createCanonicalAndLinkMatch(params: {
       decided_by: params.decidedBy,
       name: params.name,
       brand: params.brand,
-      quantity_amount: params.quantityAmount,
-      quantity_measure: params.quantityMeasure,
+      size_text: params.sizeText,
       taxonomy_node_id: params.taxonomyNodeId,
       market_id: params.marketId,
     },
@@ -212,4 +212,15 @@ export async function listStoreProductImages(storeProductId: string): Promise<st
     path: { store_product_id: storeProductId },
   });
   return res.data ?? [];
+}
+
+/** Rellena la MARCA de lo seleccionado. Devuelve CUATRO contadores: fundir "ya tenía marca" con
+ * "sin reconocer" haría que un lote ya resuelto se leyera como un lote fallido. */
+export async function resolveBrandsSelected(matchIds: string[]) {
+  const res = await bulkResolveReviewBrands({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: { match_ids: matchIds },
+  });
+  return res.data ?? null;
 }

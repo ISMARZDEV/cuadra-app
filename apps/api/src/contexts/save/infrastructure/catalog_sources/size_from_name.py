@@ -8,7 +8,9 @@ from __future__ import annotations
 import re
 
 _SIZE_IN_NAME = re.compile(
-    r"\d+(?:[.,]\d+)?\s*"
+    # El prefijo `n/` OPCIONAL captura la fracción ENTERA. Sin él, "ALBAHACA VERDE 1/2 LB" enganchaba
+    # con el "2 LB" del denominador y el producto se guardaba pesando 2 libras en vez de media.
+    r"(?:\d+\s*/\s*)?\d+(?:[.,]\d+)?\s*"
     r"(?:lbs?|libras?|kg|kgs|kilos?|gr?|grs|gramos?|oz|onz(?:as?)?|lt?s?|litros?|ml|gl|gal|gal[oó]n"
     r"|und|un|uds|unidad(?:es)?)\b",
     re.IGNORECASE,

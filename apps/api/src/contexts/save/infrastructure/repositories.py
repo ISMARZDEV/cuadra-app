@@ -23,6 +23,7 @@ from ..domain.classification import (
 )
 from ..domain.canonical_catalog import (
     PRICE_STALENESS_THRESHOLD,
+    CanonicalCatalogCursor,
     CanonicalCatalogFilters,
     CanonicalCatalogPage,
     CanonicalCatalogRow,
@@ -32,7 +33,7 @@ from ..domain.canonical_catalog import (
     CanonicalQualityStatus,
 )
 from ..domain.canonical_image import CanonicalImage
-from ..domain.canonical_import import normalize_amount_key
+from ..domain.canonical_import import brand_key, normalize_amount_key, normalize_brand
 from ..domain.comparison import StoreQuote
 from ..domain.drops import PriceChange
 from ..domain.coverage import CoveragePair, StaleCovered
@@ -49,6 +50,7 @@ from ..domain.entities import (
 )
 from ..domain.history import PricePoint
 from ..domain.listing import OfferingRow
+from ..domain.store_product_identity import StoreProductLocator
 from ..domain.review_queue import StoreProductRawAttrs
 from ..domain.slug import product_slug
 from ..domain.taxonomy import CategoryNode, slugify
@@ -89,6 +91,20 @@ def _parse_uuid(value: str) -> uuid.UUID | None:
         return uuid.UUID(value)
     except ValueError:
         return None
+
+
+# Plegado de identidad de marca EN SQL — espejo de `brand_key` del dominio. Vive acá (no en el
+# dominio) porque es una expresión SQLAlchemy: el dominio es PURO y no conoce la base (ADR 31).
+# ⚠️ La misma expresión la usa el índice único de `save.brand` (migración `d7c4b2e91f58`). No hay
+# `unaccent` instalada, y además `unaccent()` no es IMMUTABLE, así que no serviría para un índice:
+# `translate()` sí lo es.
+_BRAND_ACCENTS = "ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ"
+_BRAND_PLAIN = "AAAAAEEEEIIIIOOOOOUUUUNC"
+
+
+def brand_key_sql(column):  # type: ignore[no-untyped-def]
+    """`brand_key` como expresión SQL, para comparar e indexar sin traer filas a Python."""
+    return func.translate(func.upper(func.btrim(column)), _BRAND_ACCENTS, _BRAND_PLAIN)
 
 
 class SqlProviderRepository:
@@ -319,19 +335,51 @@ class SqlCanonicalProductRepository:
         self._s = session
 
     def _get_or_create_brand_id(self, name: str, market_id: str) -> uuid.UUID | None:
+        """Busca por IDENTIDAD (`brand_key`), no por nombre exacto.
+
+        La comparación exacta anterior es la que llenó la tabla de duplicados: `Bravo` y `BRAVO`,
+        `LIDER`/`Líder`/`LÍDER` entraban como marcas distintas, ensuciando el filtro por marca y
+        haciendo que reconocer una marca dependiera de cuál variante hubiera llegado primero.
+
+        Se GUARDA `normalize_brand` (mayúscula, con acentos) y se COMPARA `brand_key` (además sin
+        acentos): el nombre que se muestra sigue siendo el correcto, y aun así no puede duplicarse.
+        """
         if not name.strip():
             return None
+        # El plegado se hace en SQL (no cargando las marcas del mercado en memoria) para que use el
+        # índice único funcional: la importación masiva crea muchos canónicos seguidos, y un
+        # escaneo de la tabla por cada uno sería un N+1 encubierto.
         existing = self._s.scalars(
-            select(BrandModel).where(
-                BrandModel.market_id == market_id, BrandModel.name == name
-            )
+            select(BrandModel)
+            .where(BrandModel.market_id == market_id)
+            .where(brand_key_sql(BrandModel.name) == brand_key(name))
         ).first()
         if existing:
             return existing.id
-        brand = BrandModel(name=name, market_id=market_id)
+        brand = BrandModel(name=normalize_brand(name), market_id=market_id)
         self._s.add(brand)
         self._s.flush()
         return brand.id
+
+    def name_and_brand_of(self, canonical_product_id: str) -> tuple[str, str | None] | None:
+        """`(nombre, marca actual)` — lo justo que necesita "Clasificar marcas" para decidir si
+        rellenar o saltar. `None` si el canónico ya no existe."""
+        product = self.get_by_id(canonical_product_id)
+        return (product.name, product.brand or None) if product is not None else None
+
+    def set_brand(self, canonical_product_id: str, brand: str) -> None:
+        """Delega en `update_attributes`, que ya resuelve el FK con get-or-create. Como la marca
+        siempre viene RECONOCIDA del catálogo, ese get-or-create nunca crea filas nuevas."""
+        self.update_attributes(canonical_product_id, brand=brand)
+
+    def list_brand_names(self, market_id: str) -> list[str]:
+        return list(
+            self._s.scalars(
+                select(BrandModel.name)
+                .where(BrandModel.market_id == market_id)
+                .where(BrandModel.name.isnot(None))
+            ).all()
+        )
 
     def add(self, product: CanonicalProduct) -> None:
         # Unidades canónicas también en el canónico: el display_size se guarda normalizado ("10 Lb").
@@ -639,6 +687,28 @@ class SqlStoreProductRepository:
             )
         ) or 0
 
+    def set_brand(self, store_product_id: str, brand: str) -> None:
+        sp = self._s.get(StoreProductModel, _parse_uuid(store_product_id))
+        if sp is None:
+            return
+        sp.brand = brand
+        self._s.flush()
+
+    def brands_by_canonical(self, canonical_ids: list[str]) -> dict[str, list[str]]:
+        """UNA query para todo el lote — misma técnica que las galerías de `list_providers`."""
+        ids = [pid for pid in (_parse_uuid(cid) for cid in canonical_ids) if pid is not None]
+        if not ids:
+            return {}
+        brands: dict[str, list[str]] = {}
+        for canonical_id, brand in self._s.execute(
+            select(StoreProductModel.canonical_product_id, StoreProductModel.brand)
+            .where(StoreProductModel.canonical_product_id.in_(ids))
+            .where(StoreProductModel.brand.isnot(None))
+            .order_by(StoreProductModel.id)  # orden estable → desempate reproducible
+        ).all():
+            brands.setdefault(str(canonical_id), []).append(brand)
+        return brands
+
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         # Escritor del FK denormalizado (F2.0 matching). No commitea: la Session es el UoW y el
         # use case de la cascada confirma la transacción junto al product_match correspondiente.
@@ -646,6 +716,52 @@ class SqlStoreProductRepository:
         if sp is None:
             return
         sp.canonical_product_id = uuid.UUID(canonical_product_id)
+        self._s.flush()
+
+    # ------------------------------------------------ acciones por proveedor del detalle canónico
+
+    def unlink_from_canonical(self, store_product_id: str) -> None:
+        """Limpia el FK denormalizado. Inversa exacta de `link_to_canonical`, y por la misma razón
+        no commitea: el use case (`UnlinkStoreProduct`) confirma junto al `product_match`."""
+        sp = self._s.get(StoreProductModel, uuid.UUID(store_product_id))
+        if sp is None:
+            return
+        sp.canonical_product_id = None
+        self._s.flush()
+
+    def get_locator(self, store_product_id: str) -> StoreProductLocator | None:
+        """El par `(provider_id, external_id)` que IDENTIFICA al producto para la ingesta — lo que
+        `RefreshPrices` consulta con `exists(...)`. Se lee antes de un borrado duro porque después
+        no hay de dónde sacarlo, y sin él la auditoría no podría decir qué se destruyó."""
+        sp = self._s.get(StoreProductModel, uuid.UUID(store_product_id))
+        if sp is None:
+            return None
+        return StoreProductLocator(
+            provider_id=str(sp.provider_id), external_id=sp.external_id
+        )
+
+    def count_prices(self, store_product_id: str) -> int:
+        """Cuántas observaciones de precio se llevaría un borrado duro (`price` es ON DELETE
+        CASCADE). Alimenta el diálogo de confirmación: un borrado irreversible tiene que decir
+        cuánto cuesta ANTES de ejecutarse."""
+        return self._s.scalar(
+            select(func.count(PriceModel.id)).where(
+                PriceModel.store_product_id == uuid.UUID(store_product_id)
+            )
+        ) or 0
+
+    def delete(self, store_product_id: str) -> None:
+        """Borrado DURO. Libera la identidad `(provider_id, external_id)` para que la próxima
+        corrida lo re-ingiera desde cero (`refresh_prices.py:118`).
+
+        REQUIERE que su `product_match` ya no exista (`ON DELETE NO ACTION`); el orden lo garantiza
+        `DiscardStoreProduct`. La base propaga en cascada a `price`, `store_product_image` y
+        `category_classification`, y pone en NULL `canonical_product_image.source_store_product_id`.
+        """
+        sp = self._s.get(StoreProductModel, uuid.UUID(store_product_id))
+        if sp is None:
+            return
+        self._s.delete(sp)
         self._s.flush()
 
     def record_observation(
@@ -1857,6 +1973,10 @@ class SqlAdminCanonicalCatalogRepository:
             query = query.where(
                 eans.c.cp_id.isnot(None) if f.ean_reachable else eans.c.cp_id.is_(None)
             )
+        if f.has_brand is not None:
+            # `has_brand` ya estaba calculada acá arriba para el score de completitud; el filtro
+            # sólo la expone, sin sumar una expresión nueva.
+            query = query.where(has_brand if f.has_brand else ~has_brand)
         if f.min_provider_count is not None:
             query = query.where(provider_count >= f.min_provider_count)
         if f.updated_since is not None:
@@ -1968,6 +2088,172 @@ class SqlAdminCanonicalCatalogRepository:
         ).first()
         return self._to_row(row) if row is not None else None
 
+    def get_catalog_cursor(
+        self,
+        *,
+        market_id: str,
+        canonical_product_id: str,
+        filters: CanonicalCatalogFilters | None = None,
+        sort: str = "name",
+        now: datetime | None = None,
+    ) -> CanonicalCatalogCursor:
+        """Posición de un canónico dentro de un listado filtrado/ordenado, más sus vecinos.
+
+        Implementado con UNA sola query CTE + window functions para que el prev/next sea
+        determinista y escale sin traer páginas enteras. El orden SIEMPRE incluye `id` como
+        tie-breaker para que dos productos con la misma clave no bailen de posición.
+        """
+        pid = _parse_uuid(canonical_product_id)
+        if pid is None:
+            return CanonicalCatalogCursor(total=0, position=None, previous_id=None, next_id=None)
+
+        f = filters or CanonicalCatalogFilters()
+        now = now or datetime.now(timezone.utc)
+        metrics = self._provider_metrics()
+        eans = self._ean_reachable()
+        matches = self._last_match()
+        dups = self._duplicate_counts()
+
+        provider_count = func.coalesce(metrics.c.provider_count, 0)
+        dup_count = func.coalesce(dups.c.dup_count, 0)
+        has_image = func.coalesce(CanonicalProductModel.image_url, "") != ""
+        has_category = CanonicalProductModel.taxonomy_node_id.isnot(None)
+        has_display_size = func.coalesce(CanonicalProductModel.display_size, "") != ""
+        has_brand = CanonicalProductModel.brand_id.isnot(None)
+        stale_cutoff = now - PRICE_STALENESS_THRESHOLD
+        is_stale = and_(
+            provider_count > 0,
+            or_(
+                metrics.c.last_price_seen_at.is_(None),
+                metrics.c.last_price_seen_at < stale_cutoff,
+            ),
+        )
+
+        top = aliased(TaxonomyNodeModel)
+        present_sum = (
+            _as_int(has_image)
+            + _as_int(has_category)
+            + _as_int(provider_count > 0)
+            + _as_int(has_brand)
+            + _as_int(has_display_size)
+        )
+        query = (
+            select(
+                CanonicalProductModel.id,
+                CanonicalProductModel.name,
+                provider_count.label("provider_count"),
+                metrics.c.last_price_seen_at,
+                dup_count.label("dup_count"),
+                present_sum.label("present_sum"),
+            )
+            .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
+            .outerjoin(
+                TaxonomyNodeModel,
+                CanonicalProductModel.taxonomy_node_id == TaxonomyNodeModel.id,
+            )
+            .outerjoin(top, top.id == TaxonomyNodeModel.parent_id)
+            .outerjoin(metrics, CanonicalProductModel.id == metrics.c.cp_id)
+            .outerjoin(eans, CanonicalProductModel.id == eans.c.cp_id)
+            .outerjoin(matches, CanonicalProductModel.id == matches.c.cp_id)
+            .outerjoin(dups, CanonicalProductModel.id == dups.c.cp_id)
+            .where(CanonicalProductModel.market_id == market_id)
+        )
+
+        if f.search:
+            term = f"%{f.search}%"
+            query = query.where(
+                or_(
+                    CanonicalProductModel.name.ilike(term),
+                    CanonicalProductModel.slug.ilike(term),
+                    BrandModel.name.ilike(term),
+                )
+            )
+        if f.brand_id:
+            brand_uuid = _parse_uuid(f.brand_id)
+            if brand_uuid is None:
+                return CanonicalCatalogCursor(total=0, position=None, previous_id=None, next_id=None)
+            query = query.where(CanonicalProductModel.brand_id == brand_uuid)
+        if f.taxonomy_node_id:
+            node_uuid = _parse_uuid(f.taxonomy_node_id)
+            if node_uuid is None:
+                return CanonicalCatalogCursor(total=0, position=None, previous_id=None, next_id=None)
+            query = query.where(CanonicalProductModel.taxonomy_node_id == node_uuid)
+        if f.ean_reachable is not None:
+            query = query.where(
+                eans.c.cp_id.isnot(None) if f.ean_reachable else eans.c.cp_id.is_(None)
+            )
+        if f.has_brand is not None:
+            # `has_brand` ya estaba calculada acá arriba para el score de completitud; el filtro
+            # sólo la expone, sin sumar una expresión nueva.
+            query = query.where(has_brand if f.has_brand else ~has_brand)
+        if f.min_provider_count is not None:
+            query = query.where(provider_count >= f.min_provider_count)
+        if f.updated_since is not None:
+            query = query.where(metrics.c.last_price_seen_at >= f.updated_since)
+        if not f.include_archived:
+            query = query.where(CanonicalProductModel.archived_at.is_(None))
+
+        try:
+            status = CanonicalQualityStatus(f.quality_status) if f.quality_status else None
+        except ValueError:
+            status = None
+        if status is not None:
+            if status is CanonicalQualityStatus.COMPLETE:
+                query = query.where(
+                    has_image, has_category, provider_count > 0,
+                    ~is_stale, dup_count == 0,
+                )
+            elif status is CanonicalQualityStatus.NO_IMAGE:
+                query = query.where(~has_image)
+            elif status is CanonicalQualityStatus.NO_CATEGORY:
+                query = query.where(~has_category)
+            elif status is CanonicalQualityStatus.NO_PROVIDERS:
+                query = query.where(provider_count == 0)
+            elif status is CanonicalQualityStatus.STALE_PRICE:
+                query = query.where(is_stale)
+            elif status is CanonicalQualityStatus.POSSIBLE_DUPLICATE:
+                query = query.where(dup_count > 0)
+
+        base = query.subquery()
+        order = {
+            "name": [base.c.name.asc(), base.c.id.asc()],
+            "-name": [base.c.name.desc(), base.c.id.desc()],
+            "providers": [base.c.provider_count.asc(), base.c.id.asc()],
+            "-providers": [base.c.provider_count.desc(), base.c.id.desc()],
+            "completeness": [base.c.present_sum.asc(), base.c.id.asc()],
+            "-completeness": [base.c.present_sum.desc(), base.c.id.desc()],
+            "updated": [base.c.last_price_seen_at.asc().nullsfirst(), base.c.id.asc()],
+            "-updated": [base.c.last_price_seen_at.desc().nullslast(), base.c.id.desc()],
+        }.get(sort, [base.c.name.asc(), base.c.id.asc()])
+
+        ranked = (
+            select(
+                base.c.id,
+                func.row_number().over(order_by=order).label("position"),
+                func.lag(base.c.id).over(order_by=order).label("prev_id"),
+                func.lead(base.c.id).over(order_by=order).label("next_id"),
+                func.count().over().label("total"),
+            )
+            .select_from(base)
+            .cte("ranked")
+        )
+
+        result = self._s.execute(
+            select(ranked.c.position, ranked.c.prev_id, ranked.c.next_id, ranked.c.total)
+            .where(ranked.c.id == pid)
+        ).first()
+
+        if result is None:
+            total = self._s.scalar(select(func.count()).select_from(base)) or 0
+            return CanonicalCatalogCursor(total=total, position=None, previous_id=None, next_id=None)
+
+        return CanonicalCatalogCursor(
+            total=result.total,
+            position=result.position,
+            previous_id=str(result.prev_id) if result.prev_id is not None else None,
+            next_id=str(result.next_id) if result.next_id is not None else None,
+        )
+
     @staticmethod
     def _to_row(r) -> CanonicalCatalogRow:  # type: ignore[no-untyped-def]
         cp = r[0]
@@ -2057,6 +2343,11 @@ class SqlAdminCanonicalCatalogRepository:
                 StoreProductModel.last_seen_at,
                 StoreProductModel.image_url,
                 StoreProductModel.description,
+                # Los tres crudos de la tienda: son lo que el servidor deriva al promover a canónico
+                # nuevo, y lo que la pestaña Auditoría muestra como "Nombre en la tienda".
+                StoreProductModel.name,
+                StoreProductModel.brand,
+                StoreProductModel.size_text,
             )
             .join(ProviderModel, StoreProductModel.provider_id == ProviderModel.id)
             .where(StoreProductModel.canonical_product_id == pid)
@@ -2075,6 +2366,8 @@ class SqlAdminCanonicalCatalogRepository:
         ).all():
             galleries.setdefault(str(sp_id), []).append(url)
 
+        previous = self._previous_prices([r[0] for r in rows])
+
         return [
             CanonicalProviderPriceRow(
                 store_product_id=str(r[0]),
@@ -2088,10 +2381,39 @@ class SqlAdminCanonicalCatalogRepository:
                 store_product_image_url=r[8],
                 store_product_image_urls=galleries.get(str(r[0]), []),
                 store_product_description=r[9],
+                store_product_name=r[10],
+                store_product_brand=r[11],
+                store_product_size_text=r[12],
                 is_cheapest=(r[4] == cheapest),
+                previous_price_minor=previous.get(str(r[0])),
             )
             for r in rows
         ]
+
+    def _previous_prices(self, store_product_ids: list[uuid.UUID]) -> dict[str, int]:
+        """Último precio DISTINTO al vigente, por store_product, en UNA query.
+
+        `DISTINCT ON` sobre `(store_product_id)` ordenado por `captured_at DESC` se queda con la
+        observación más reciente de cada tienda entre las que YA se filtraron por ser distintas
+        al precio de hoy. El índice `ix_price_store_product_captured` cubre exactamente ese orden.
+
+        El filtro `value_minor != current_price_minor` es el corazón: sin él, la respuesta sería
+        casi siempre el mismo precio vigente (la ingesta escribe una fila por corrida aunque nada
+        se mueva) y la UI pintaría un tachado que no representa ninguna bajada.
+        """
+        if not store_product_ids:
+            return {}
+        rows = self._s.execute(
+            select(PriceModel.store_product_id, PriceModel.value_minor)
+            .join(StoreProductModel, StoreProductModel.id == PriceModel.store_product_id)
+            .where(
+                PriceModel.store_product_id.in_(store_product_ids),
+                PriceModel.value_minor != StoreProductModel.current_price_minor,
+            )
+            .distinct(PriceModel.store_product_id)
+            .order_by(PriceModel.store_product_id, PriceModel.captured_at.desc())
+        ).all()
+        return {str(sp_id): value for sp_id, value in rows}
 
     # ----------------------------------------------------------------------------- evidencia --
 

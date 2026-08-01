@@ -10,6 +10,8 @@ sería inventar catálogo.
 """
 from __future__ import annotations
 
+import unicodedata
+
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -38,8 +40,28 @@ def normalize_brand(raw: str | None) -> str:
 
     `save.brand` tiene unicidad por (mercado, nombre): sin normalizar, `goya`, `Goya` y `GOYA`
     entran como TRES marcas distintas y el filtro por marca deja de servir.
+
+    Conserva los ACENTOS a propósito: es el nombre que se GUARDA y se muestra, y convertir "LÍDER"
+    en "LIDER" sería escribir mal el nombre de una marca real. Para comparar, `brand_key`.
     """
     return (raw or "").strip().upper()
+
+
+def brand_key(raw: str | None) -> str:
+    """IDENTIDAD de una marca — se compara, NUNCA se muestra.
+
+    `normalize_brand` no bastaba: sólo unifica el casing, así que `LIDER` y `LÍDER` seguían siendo
+    dos marcas. Medido sobre la base real había 4 grupos duplicados (`Bravo`/`BRAVO`,
+    `La Famosa`/`LA FAMOSA`, `LIDER`/`Líder`/`LÍDER`, `One`/`ONE`) que ensuciaban el filtro por
+    marca y hacían que el reconocimiento de marcas dependiera de cuál variante viniera primero.
+
+    ⚠️ El índice único de `save.brand` replica este plegado en SQL con `translate()`. Si se cambia
+    la regla acá hay que cambiarla allá — y en esa dirección, no al revés: esta función pliega un
+    SUPERCONJUNTO de lo que pliega el índice, así que nunca intentará insertar algo que el índice
+    rechace.
+    """
+    decomposed = unicodedata.normalize("NFKD", (raw or "").strip())
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).upper()
 
 
 @dataclass(frozen=True, slots=True)

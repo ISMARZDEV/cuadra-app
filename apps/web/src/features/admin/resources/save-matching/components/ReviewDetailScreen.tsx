@@ -107,8 +107,7 @@ export function ReviewDetailScreen() {
       decidedBy: ADMIN_DECIDED_BY,
       name: payload.name,
       brand: payload.brand,
-      quantityAmount: payload.quantityAmount,
-      quantityMeasure: payload.quantityMeasure,
+      sizeText: payload.sizeText,
       taxonomyNodeId: payload.taxonomyNodeId,
       marketId: detail.market_id ?? "DO",
     });

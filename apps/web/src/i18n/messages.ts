@@ -382,7 +382,9 @@ type MessageKey =
   | "admin.reviewQueue.category.edit"
   | "admin.reviewQueue.category.search"
   | "admin.reviewQueue.category.noMatch"
+  | "admin.list.refreshFailed"
   | "admin.toolbar.actions.classify"
+  | "admin.toolbar.actions.resolveBrands"
   | "admin.toolbar.actions.canonize"
   | "admin.reviewQueue.canonize.title"
   | "admin.reviewQueue.canonize.description"
@@ -398,6 +400,10 @@ type MessageKey =
   | "admin.reviewQueue.canonize.next"
   | "admin.toolbar.actions.approve.noCandidates"
   | "admin.reviewQueue.classify.done"
+  | "admin.reviewQueue.brands.done"
+  | "admin.reviewQueue.brands.skipped"
+  | "admin.reviewQueue.brands.unresolved"
+  | "admin.reviewQueue.brands.failed"
   | "admin.reviewQueue.classify.undecided"
   | "admin.reviewQueue.classify.failed"
   | "admin.method.ean"
@@ -726,6 +732,7 @@ type MessageKey =
   | "admin.canonicalProducts.statusHint.possible_duplicate"
   | "admin.canonicalProducts.ean.reachable"
   | "admin.canonicalProducts.ean.reachableHint"
+  | "admin.canonicalProducts.ean.products"
   | "admin.canonicalProducts.actions.menuLabel"
   | "admin.canonicalProducts.actions.view"
   | "admin.canonicalProducts.actions.edit"
@@ -793,15 +800,119 @@ type MessageKey =
   | "admin.canonicalProducts.form.description"
   | "admin.nav.save.canonicalProducts"
   | "admin.canonicalDetail.back"
+  | "admin.canonicalDetail.pager.label"
+  | "admin.canonicalDetail.pager.prev"
+  | "admin.canonicalDetail.pager.next"
+  | "admin.canonicalDetail.pager.position"
+  | "admin.canonicalDetail.pager.positionHint"
   | "admin.canonicalDetail.notFound"
-  | "admin.canonicalDetail.section.info"
+  | "admin.canonicalDetail.tabs.label"
+  | "admin.canonicalDetail.tab.summary"
+  | "admin.canonicalDetail.tab.categories"
+  | "admin.canonicalDetail.tab.description"
+  | "admin.canonicalDetail.tab.images"
+  | "admin.canonicalDetail.tab.audit"
+  | "admin.canonicalDetail.providers.col.access"
+  | "admin.canonicalDetail.providers.lowest"
+  | "admin.canonicalDetail.providers.highest"
+  | "admin.canonicalDetail.providers.spread"
+  | "admin.canonicalDetail.providers.activeStores"
+  | "admin.canonicalDetail.providers.col.store"
+  | "admin.canonicalDetail.providers.col.actions"
+  | "admin.canonicalDetail.providers.col.standing"
+  | "admin.canonicalDetail.providers.col.currentPrice"
+  | "admin.canonicalDetail.providers.col.previousPrice"
+  | "admin.canonicalDetail.providers.col.difference"
+  | "admin.canonicalDetail.providers.bestPrice"
+  | "admin.canonicalDetail.providers.priciest"
+  | "admin.canonicalDetail.providers.pricier"
+  | "admin.canonicalDetail.providers.same"
+  | "admin.canonicalDetail.providers.search"
+  | "admin.canonicalDetail.providers.noMatch"
+  | "admin.canonicalDetail.providers.actions.unlink"
+  | "admin.canonicalDetail.providers.actions.relink"
+  | "admin.canonicalDetail.providers.actions.promote"
+  | "admin.canonicalDetail.providers.actions.discard"
+  | "admin.canonicalDetail.providers.dialog.cancel"
+  | "admin.canonicalDetail.providers.discard.title"
+  | "admin.canonicalDetail.providers.discard.warning"
+  | "admin.canonicalDetail.providers.discard.detail"
+  | "admin.canonicalDetail.providers.discard.reingest"
+  | "admin.canonicalDetail.providers.discard.typeToConfirm"
+  | "admin.canonicalDetail.providers.discard.typeToConfirmLabel"
+  | "admin.canonicalDetail.providers.discard.confirm"
+  | "admin.canonicalDetail.providers.unlink.title"
+  | "admin.canonicalDetail.providers.unlink.description"
+  | "admin.canonicalDetail.providers.unlink.confirm"
+  | "admin.canonicalDetail.providers.unlink.keepsHistory"
+  | "admin.canonicalDetail.providers.relink.title"
+  | "admin.canonicalDetail.providers.relink.description"
+  | "admin.canonicalDetail.providers.relink.searchPlaceholder"
+  | "admin.canonicalDetail.providers.relink.typeMore"
+  | "admin.canonicalDetail.providers.relink.searching"
+  | "admin.canonicalDetail.providers.relink.noResults"
+  | "admin.canonicalDetail.providers.relink.confirm"
+  | "admin.canonicalDetail.providers.relink.sourceLabel"
+  | "admin.canonicalDetail.providers.relink.targetLabel"
+  | "admin.canonicalDetail.providers.relink.willMove"
+  | "admin.canonicalDetail.providers.relink.blockedNoPick"
+  | "admin.canonicalDetail.providers.promote.title"
+  | "admin.canonicalDetail.providers.promote.description"
+  | "admin.canonicalDetail.providers.promote.category"
+  | "admin.canonicalDetail.providers.promote.confirm"
+  | "admin.canonicalDetail.providers.promote.derived"
+  | "admin.canonicalDetail.providers.promote.fromStore"
+  | "admin.canonicalDetail.providers.promote.noTaxonomy"
+  | "admin.canonicalDetail.providers.promote.pickCategory"
+  | "admin.canonicalDetail.providers.promote.noName"
+  | "admin.canonicalDetail.providers.dialog.close"
+  | "admin.canonicalDetail.providers.dialog.noPhoto"
+  | "admin.canonicalDetail.providers.promote.blockedNoCategory"
+  | "admin.canonicalDetail.providers.promote.keepsCurrent"
+  | "admin.canonicalDetail.providers.promote.noNameShort"
+  | "admin.canonicalDetail.providers.promote.noPhoto"
+  | "admin.canonicalDetail.providers.promote.categoryHint"
+  | "admin.canonicalDetail.providers.promote.categoryPicked"
+  | "admin.canonicalDetail.providers.promote.fieldSize"
+  | "admin.canonicalDetail.providers.promote.fieldBrand"
+  | "admin.canonicalDetail.identity.title"
+  | "admin.canonicalDetail.identity.subtitle"
+  | "admin.canonicalDetail.identity.weight"
+  | "admin.canonicalDetail.identity.subcategory"
+  | "admin.canonicalDetail.hero.sync"
+  | "admin.canonicalDetail.hero.syncHint"
+  | "admin.canonicalDetail.hero.before"
+  | "admin.canonicalDetail.hero.perUnit"
+  | "admin.canonicalDetail.hero.drop"
+  | "admin.canonicalDetail.hero.images"
+  | "admin.canonicalDetail.hero.active"
+  | "admin.canonicalDetail.hero.brand"
+  | "admin.canonicalDetail.hero.eanSku"
+  | "admin.canonicalDetail.hero.noEan"
+  | "admin.canonicalDetail.hero.qualityUndefined"
+  | "admin.canonicalDetail.hero.completenessHigh"
+  | "admin.canonicalDetail.hero.completenessMid"
+  | "admin.canonicalDetail.hero.completenessLow"
+  | "admin.canonicalDetail.hero.lastPriceUpdate"
+  | "admin.canonicalDetail.hero.matchedProviders"
+  | "admin.canonicalDetail.hero.viewMore"
+  | "admin.canonicalDetail.hero.providers"
+  | "admin.canonicalDetail.hero.demoData"
+  | "admin.canonicalDetail.hero.actions"
+  | "admin.canonicalDetail.kpi.visits"
+  | "admin.canonicalDetail.kpi.visitsHint"
+  | "admin.canonicalDetail.kpi.searches"
+  | "admin.canonicalDetail.kpi.searchesHint"
+  | "admin.canonicalDetail.kpi.reach"
+  | "admin.canonicalDetail.kpi.reachHint"
+  | "admin.canonicalDetail.kpi.popularity"
+  | "admin.canonicalDetail.kpi.popularityHint"
   | "admin.canonicalDetail.section.providers"
   | "admin.canonicalDetail.section.history"
   | "admin.canonicalDetail.section.evidence"
   | "admin.canonicalDetail.section.duplicates"
   | "admin.canonicalDetail.section.activity"
   | "admin.canonicalDetail.info.slug"
-  | "admin.canonicalDetail.info.size"
   | "admin.canonicalDetail.info.quality"
   | "admin.canonicalDetail.info.category"
   | "admin.canonicalDetail.info.description"
@@ -895,6 +1006,7 @@ type MessageKey =
   | "admin.canonicalDetail.category.signal.lexicon"
   | "admin.canonicalProducts.bulk.actions"
   | "admin.canonicalProducts.bulk.assignCategory"
+  | "admin.canonicalProducts.bulk.resolveBrands"
   | "admin.canonicalProducts.bulk.selectAll"
   | "admin.canonicalProducts.bulk.title"
   | "admin.canonicalProducts.bulk.subtitle"
@@ -929,6 +1041,12 @@ type MessageKey =
   | "admin.canonicalDetail.image.confirmRemoveAccept"
   | "admin.canonicalDetail.image.confirmReorderAccept"
   | "admin.canonicalDetail.image.confirmCancel"
+  | "admin.canonicalDetail.image.unsaved"
+  | "admin.canonicalDetail.image.save"
+  | "admin.canonicalDetail.image.saving"
+  | "admin.canonicalDetail.image.saved"
+  | "admin.canonicalDetail.image.cancel"
+  | "admin.canonicalDetail.image.saveError"
   | "admin.canonicalDetail.description.title"
   | "admin.canonicalDetail.description.current"
   | "admin.canonicalDetail.description.hint"
@@ -1321,6 +1439,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.category.search": "Buscar categoría...",
     "admin.reviewQueue.category.noMatch": "Ninguna categoría coincide",
     "admin.toolbar.actions.classify": "Clasificar seleccionados",
+    "admin.list.refreshFailed": "No se pudo actualizar la lista. Se muestra la última versión conocida.",
+    "admin.toolbar.actions.resolveBrands": "Clasificar marcas",
     "admin.toolbar.actions.canonize": "Aprobar y crear canónico",
     "admin.reviewQueue.canonize.title": "Crear canónicos",
     "admin.reviewQueue.canonize.description": "Se crearán {n} productos canónicos nuevos y se enlazarán a estas filas. No se puede deshacer.",
@@ -1336,6 +1456,10 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.canonize.next": "Página siguiente",
     "admin.toolbar.actions.approve.noCandidates": "Ninguna de las filas seleccionadas tiene candidatos. Usá \"Aprobar y crear canónico\".",
     "admin.reviewQueue.classify.done": "{n} clasificadas",
+    "admin.reviewQueue.brands.done": "{n} con marca",
+    "admin.reviewQueue.brands.skipped": "{n} ya tenían",
+    "admin.reviewQueue.brands.unresolved": "{n} sin reconocer",
+    "admin.reviewQueue.brands.failed": "{n} con error",
     "admin.reviewQueue.classify.undecided": "{n} sin decidir",
     "admin.reviewQueue.classify.failed": "{n} con error",
     "admin.method.ean": "EAN",
@@ -1663,6 +1787,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.statusHint.possible_duplicate": "Otro canónico comparte EAN o marca y tamaño con este. Revisalo antes de que contamine las comparaciones.",
     "admin.canonicalProducts.ean.reachable": "Alcanzable por EAN",
     "admin.canonicalProducts.ean.reachableHint": "Al menos una tienda enlazada trae EAN: el matcheo por código de barras puede cubrirlo.",
+    "admin.canonicalProducts.ean.products": "Productos ({count})",
     "admin.canonicalProducts.actions.menuLabel": "Acciones del producto",
     "admin.canonicalProducts.actions.view": "Ver detalle",
     "admin.canonicalProducts.actions.edit": "Editar",
@@ -1730,15 +1855,120 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.form.description": "Descripción",
     "admin.nav.save.canonicalProducts": "Productos canónicos",
     "admin.canonicalDetail.back": "Volver al catálogo",
+    "admin.canonicalDetail.pager.label": "Navegación entre productos del catálogo",
+    "admin.canonicalDetail.pager.prev": "Producto anterior",
+    "admin.canonicalDetail.pager.next": "Producto siguiente",
+    "admin.canonicalDetail.pager.position": "Posición en el catálogo",
+    "admin.canonicalDetail.pager.positionHint": "Escribí una posición y presioná Enter",
     "admin.canonicalDetail.notFound": "Este producto canónico no existe.",
-    "admin.canonicalDetail.section.info": "Información canónica",
+    "admin.canonicalDetail.tabs.label": "Secciones del producto",
+    "admin.canonicalDetail.tab.summary": "Resumen",
+    "admin.canonicalDetail.tab.categories": "Categorías",
+    "admin.canonicalDetail.tab.description": "Descripción",
+    "admin.canonicalDetail.tab.images": "Imágenes del producto",
+    "admin.canonicalDetail.tab.audit": "Auditoría",
+    "admin.canonicalDetail.providers.col.access": "Accesibilidad",
+    "admin.canonicalDetail.hero.sync": "Sincronizar",
+    "admin.canonicalDetail.hero.syncHint":
+      "Vuelve a pedirle al servidor los datos de este producto.",
+    "admin.canonicalDetail.hero.before": "Antes",
+    "admin.canonicalDetail.providers.lowest": "Precio más bajo",
+    "admin.canonicalDetail.providers.highest": "Precio más alto",
+    "admin.canonicalDetail.providers.spread": "Diferencia",
+    "admin.canonicalDetail.providers.activeStores": "Tiendas activas",
+    "admin.canonicalDetail.providers.col.store": "Tienda",
+    "admin.canonicalDetail.providers.col.actions": "Acciones",
+    "admin.canonicalDetail.providers.col.standing": "Posición",
+    "admin.canonicalDetail.providers.col.currentPrice": "Precio actual",
+    "admin.canonicalDetail.providers.col.previousPrice": "Precio anterior",
+    "admin.canonicalDetail.providers.col.difference": "Diferencia",
+    "admin.canonicalDetail.providers.bestPrice": "Mejor precio Save",
+    "admin.canonicalDetail.providers.priciest": "Precio más alto",
+    "admin.canonicalDetail.providers.pricier": "más caro",
+    "admin.canonicalDetail.providers.same": "Mismo precio",
+    "admin.canonicalDetail.providers.search": "Buscar tienda…",
+    "admin.canonicalDetail.providers.noMatch": "Ninguna tienda coincide con la búsqueda.",
+    "admin.canonicalDetail.providers.actions.unlink": "Devolver a la cola de revisión",
+    "admin.canonicalDetail.providers.actions.relink": "Matchear con otro canónico",
+    "admin.canonicalDetail.providers.actions.promote": "Crear nuevo canónico",
+    "admin.canonicalDetail.providers.actions.discard": "Eliminar permanentemente",
+    "admin.canonicalDetail.providers.dialog.cancel": "Cancelar",
+    "admin.canonicalDetail.providers.discard.title": "Eliminar permanentemente",
+    "admin.canonicalDetail.providers.discard.warning": "Esta acción no se puede deshacer.",
+    "admin.canonicalDetail.providers.discard.detail": "Se borrará el producto de {provider} ({price}) y TODO su histórico de precios.",
+    "admin.canonicalDetail.providers.discard.reingest": "El producto no queda bloqueado: si más adelante hace falta, la próxima corrida de ingesta lo vuelve a traer y a matchear desde cero. Lo que no vuelve es el histórico.",
+    "admin.canonicalDetail.providers.discard.typeToConfirm": "Escribí «{provider}» para confirmar",
+    "admin.canonicalDetail.providers.discard.typeToConfirmLabel": "Nombre de la tienda para confirmar",
+    "admin.canonicalDetail.providers.discard.confirm": "Eliminar permanentemente",
+    "admin.canonicalDetail.providers.unlink.title": "Devolver a la cola de revisión",
+    "admin.canonicalDetail.providers.unlink.description": "Se desenlaza de este canónico y vuelve a la cola para que una persona lo resuelva.",
+    "admin.canonicalDetail.providers.unlink.confirm": "Devolver a la cola",
+    "admin.canonicalDetail.providers.unlink.keepsHistory": "No se borra nada: la fila y su histórico de precios quedan intactos.",
+    "admin.canonicalDetail.providers.relink.title": "Matchear con otro canónico",
+    "admin.canonicalDetail.providers.relink.description": "Elegí el canónico correcto. El producto se mueve ahí y este canónico deja de mostrarlo.",
+    "admin.canonicalDetail.providers.relink.searchPlaceholder": "Buscar producto canónico…",
+    "admin.canonicalDetail.providers.relink.typeMore": "Escribí al menos 2 caracteres para buscar.",
+    "admin.canonicalDetail.providers.relink.searching": "Buscando…",
+    "admin.canonicalDetail.providers.relink.noResults": "Ningún canónico coincide con la búsqueda.",
+    "admin.canonicalDetail.providers.relink.confirm": "Mover a este canónico",
+    "admin.canonicalDetail.providers.relink.sourceLabel": "Producto que se mueve",
+    "admin.canonicalDetail.providers.relink.targetLabel": "Canónico destino",
+    "admin.canonicalDetail.providers.relink.willMove": "El canónico actual deja de mostrar este producto.",
+    "admin.canonicalDetail.providers.relink.blockedNoPick": "Elegí un canónico destino para continuar.",
+    "admin.canonicalDetail.providers.promote.title": "Crear canónico nuevo desde este producto",
+    "admin.canonicalDetail.providers.promote.description": "Se crea un canónico nuevo con los datos de este producto y se mueve ahí. El canónico actual no se toca.",
+    "admin.canonicalDetail.providers.promote.category": "Categoría",
+    "admin.canonicalDetail.providers.promote.confirm": "Crear y mover",
+    "admin.canonicalDetail.providers.promote.derived": "Se creará a partir de",
+    "admin.canonicalDetail.providers.promote.fromStore": "Nombre, marca y tamaño se toman de lo que informa {provider}.",
+    "admin.canonicalDetail.providers.promote.noTaxonomy": "No hay categorías cargadas: sin categoría no se puede crear el canónico.",
+    "admin.canonicalDetail.providers.promote.pickCategory": "Elegir categoría",
+    "admin.canonicalDetail.providers.promote.noName": "Esta tienda no informa un nombre: no se puede crear el canónico desde ella.",
+    "admin.canonicalDetail.providers.dialog.close": "Cerrar",
+    "admin.canonicalDetail.providers.dialog.noPhoto": "Sin foto",
+    "admin.canonicalDetail.providers.promote.blockedNoCategory": "Elegí una categoría para continuar.",
+    "admin.canonicalDetail.providers.promote.keepsCurrent": "El canónico actual no se toca.",
+    "admin.canonicalDetail.providers.promote.noNameShort": "Esta tienda no informa un nombre",
+    "admin.canonicalDetail.providers.promote.noPhoto": "Sin foto",
+    "admin.canonicalDetail.providers.promote.categoryHint": "Obligatoria: el canónico se crea con ella.",
+    "admin.canonicalDetail.providers.promote.categoryPicked": "Dentro de {top}",
+    "admin.canonicalDetail.providers.promote.fieldSize": "Tamaño",
+    "admin.canonicalDetail.providers.promote.fieldBrand": "Marca",
+    "admin.canonicalDetail.identity.title": "Identidad canónica",
+    "admin.canonicalDetail.identity.subtitle": "Datos maestros del producto",
+    "admin.canonicalDetail.identity.weight": "Peso",
+    "admin.canonicalDetail.identity.subcategory": "Sub categoría",
+    "admin.canonicalDetail.hero.perUnit": "por unidad",
+    "admin.canonicalDetail.hero.drop": "Bajó",
+    "admin.canonicalDetail.hero.images": "en la galería",
+    "admin.canonicalDetail.hero.active": "Activo",
+    "admin.canonicalDetail.hero.brand": "Marca",
+    "admin.canonicalDetail.hero.eanSku": "EAN/SKU",
+    "admin.canonicalDetail.hero.noEan": "Sin EAN",
+    "admin.canonicalDetail.hero.qualityUndefined": "No definida",
+    "admin.canonicalDetail.hero.completenessHigh": "Alta",
+    "admin.canonicalDetail.hero.completenessMid": "Media",
+    "admin.canonicalDetail.hero.completenessLow": "Baja",
+    "admin.canonicalDetail.hero.lastPriceUpdate": "Última actualización de precio",
+    "admin.canonicalDetail.hero.matchedProviders": "Proveedores matcheados",
+    "admin.canonicalDetail.hero.viewMore": "Ver más",
+    "admin.canonicalDetail.hero.providers": "Proveedores",
+    "admin.canonicalDetail.hero.demoData": "Datos de demostración",
+    "admin.canonicalDetail.hero.actions": "Acciones",
+    "admin.canonicalDetail.kpi.visits": "Visitas",
+    "admin.canonicalDetail.kpi.visitsHint": "vs. últimos 30 días",
+    "admin.canonicalDetail.kpi.searches": "Búsquedas",
+    "admin.canonicalDetail.kpi.searchesHint": "enlace automático",
+    "admin.canonicalDetail.kpi.reach": "Alcance",
+    "admin.canonicalDetail.kpi.reachHint": "usuarios",
+    "admin.canonicalDetail.kpi.popularity": "Popularidad",
+    "admin.canonicalDetail.kpi.popularityHint": "vs. categoría",
     "admin.canonicalDetail.section.providers": "Proveedores matcheados",
     "admin.canonicalDetail.section.history": "Histórico y KPIs",
     "admin.canonicalDetail.section.evidence": "Evidencia",
     "admin.canonicalDetail.section.duplicates": "Duplicados posibles",
     "admin.canonicalDetail.section.activity": "Actividad y notas",
     "admin.canonicalDetail.info.slug": "Slug público",
-    "admin.canonicalDetail.info.size": "Tamaño",
     "admin.canonicalDetail.info.quality": "Calidad",
     "admin.canonicalDetail.info.category": "Categoría",
     "admin.canonicalDetail.info.description": "Descripción",
@@ -1831,7 +2061,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.current": "Actual",
     "admin.canonicalDetail.category.signal.lexicon": "léxico",
     "admin.canonicalProducts.bulk.actions": "Acciones",
-    "admin.canonicalProducts.bulk.assignCategory": "Asignar categoría ({count})",
+    "admin.canonicalProducts.bulk.assignCategory": "Asignar categoría",
+    "admin.canonicalProducts.bulk.resolveBrands": "Clasificar marcas",
     "admin.canonicalProducts.bulk.selectAll": "Seleccionar todo",
     "admin.canonicalProducts.bulk.title": "Asignar categoría en lote",
     "admin.canonicalProducts.bulk.subtitle": "Se aplicará a {count} productos seleccionados.",
@@ -1868,6 +2099,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.confirmRemoveAccept": "Quitar igual",
     "admin.canonicalDetail.image.confirmReorderAccept": "Mover igual",
     "admin.canonicalDetail.image.confirmCancel": "Cancelar",
+    "admin.canonicalDetail.image.unsaved": "Cambios sin guardar",
+    "admin.canonicalDetail.image.save": "Guardar cambios",
+    "admin.canonicalDetail.image.saving": "Guardando…",
+    "admin.canonicalDetail.image.saved": "Cambios guardados",
+    "admin.canonicalDetail.image.cancel": "Cancelar",
+    "admin.canonicalDetail.image.saveError": "No se pudieron guardar las imágenes",
     "admin.canonicalDetail.description.title": "Descripción",
     "admin.canonicalDetail.description.current": "Descripción del canónico",
     "admin.canonicalDetail.description.hint": "Es la que se publica. Elegí una de las tiendas y ajustala si hace falta.",
@@ -2258,6 +2495,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.category.search": "Search category...",
     "admin.reviewQueue.category.noMatch": "No category matches",
     "admin.toolbar.actions.classify": "Classify selected",
+    "admin.list.refreshFailed": "Could not refresh the list. Showing the last known version.",
+    "admin.toolbar.actions.resolveBrands": "Resolve brands",
     "admin.toolbar.actions.canonize": "Approve and create canonical",
     "admin.reviewQueue.canonize.title": "Create canonicals",
     "admin.reviewQueue.canonize.description": "{n} new canonical products will be created and linked to these rows. This cannot be undone.",
@@ -2273,6 +2512,10 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.canonize.next": "Next page",
     "admin.toolbar.actions.approve.noCandidates": "None of the selected rows has candidates. Use \"Approve and create canonical\".",
     "admin.reviewQueue.classify.done": "{n} classified",
+    "admin.reviewQueue.brands.done": "{n} branded",
+    "admin.reviewQueue.brands.skipped": "{n} already had one",
+    "admin.reviewQueue.brands.unresolved": "{n} not recognised",
+    "admin.reviewQueue.brands.failed": "{n} failed",
     "admin.reviewQueue.classify.undecided": "{n} undecided",
     "admin.reviewQueue.classify.failed": "{n} failed",
     "admin.method.ean": "EAN",
@@ -2600,6 +2843,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.statusHint.possible_duplicate": "Another canonical shares an EAN or brand and size with this one. Review it before it pollutes comparisons.",
     "admin.canonicalProducts.ean.reachable": "EAN-reachable",
     "admin.canonicalProducts.ean.reachableHint": "At least one linked store carries an EAN: barcode matching can cover it.",
+    "admin.canonicalProducts.ean.products": "Products ({count})",
     "admin.canonicalProducts.actions.menuLabel": "Product actions",
     "admin.canonicalProducts.actions.view": "View detail",
     "admin.canonicalProducts.actions.edit": "Edit",
@@ -2667,15 +2911,120 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.form.description": "Description",
     "admin.nav.save.canonicalProducts": "Canonical products",
     "admin.canonicalDetail.back": "Back to catalog",
+    "admin.canonicalDetail.pager.label": "Navigation between catalog products",
+    "admin.canonicalDetail.pager.prev": "Previous product",
+    "admin.canonicalDetail.pager.next": "Next product",
+    "admin.canonicalDetail.pager.position": "Position in catalog",
+    "admin.canonicalDetail.pager.positionHint": "Type a position and press Enter",
     "admin.canonicalDetail.notFound": "This canonical product does not exist.",
-    "admin.canonicalDetail.section.info": "Canonical information",
+    "admin.canonicalDetail.tabs.label": "Product sections",
+    "admin.canonicalDetail.tab.summary": "Summary",
+    "admin.canonicalDetail.tab.categories": "Categories",
+    "admin.canonicalDetail.tab.description": "Description",
+    "admin.canonicalDetail.tab.images": "Product images",
+    "admin.canonicalDetail.tab.audit": "Audit",
+    "admin.canonicalDetail.providers.col.access": "Standing",
+    "admin.canonicalDetail.hero.sync": "Sync",
+    "admin.canonicalDetail.hero.syncHint":
+      "Asks the server again for this product's data.",
+    "admin.canonicalDetail.hero.before": "Before",
+    "admin.canonicalDetail.providers.lowest": "Lowest price",
+    "admin.canonicalDetail.providers.highest": "Highest price",
+    "admin.canonicalDetail.providers.spread": "Difference",
+    "admin.canonicalDetail.providers.activeStores": "Active stores",
+    "admin.canonicalDetail.providers.col.store": "Store",
+    "admin.canonicalDetail.providers.col.actions": "Actions",
+    "admin.canonicalDetail.providers.col.standing": "Standing",
+    "admin.canonicalDetail.providers.col.currentPrice": "Current price",
+    "admin.canonicalDetail.providers.col.previousPrice": "Previous price",
+    "admin.canonicalDetail.providers.col.difference": "Difference",
+    "admin.canonicalDetail.providers.bestPrice": "Best Save price",
+    "admin.canonicalDetail.providers.priciest": "Highest price",
+    "admin.canonicalDetail.providers.pricier": "more",
+    "admin.canonicalDetail.providers.same": "Same price",
+    "admin.canonicalDetail.providers.search": "Search store…",
+    "admin.canonicalDetail.providers.noMatch": "No store matches the search.",
+    "admin.canonicalDetail.providers.actions.unlink": "Send back to review queue",
+    "admin.canonicalDetail.providers.actions.relink": "Match with another canonical",
+    "admin.canonicalDetail.providers.actions.promote": "Create new canonical",
+    "admin.canonicalDetail.providers.actions.discard": "Delete permanently",
+    "admin.canonicalDetail.providers.dialog.cancel": "Cancel",
+    "admin.canonicalDetail.providers.discard.title": "Delete permanently",
+    "admin.canonicalDetail.providers.discard.warning": "This action cannot be undone.",
+    "admin.canonicalDetail.providers.discard.detail": "This deletes the {provider} product ({price}) and ALL of its price history.",
+    "admin.canonicalDetail.providers.discard.reingest": "The product is not blocked: if you need it later, the next ingestion run brings it back and re-matches it from scratch. What does not come back is the history.",
+    "admin.canonicalDetail.providers.discard.typeToConfirm": "Type “{provider}” to confirm",
+    "admin.canonicalDetail.providers.discard.typeToConfirmLabel": "Store name to confirm",
+    "admin.canonicalDetail.providers.discard.confirm": "Delete permanently",
+    "admin.canonicalDetail.providers.unlink.title": "Send back to review queue",
+    "admin.canonicalDetail.providers.unlink.description": "It gets unlinked from this canonical and returns to the queue for a person to resolve.",
+    "admin.canonicalDetail.providers.unlink.confirm": "Send back to queue",
+    "admin.canonicalDetail.providers.unlink.keepsHistory": "Nothing is deleted: the row and its price history stay intact.",
+    "admin.canonicalDetail.providers.relink.title": "Match with another canonical",
+    "admin.canonicalDetail.providers.relink.description": "Pick the right canonical. The product moves there and this canonical stops showing it.",
+    "admin.canonicalDetail.providers.relink.searchPlaceholder": "Search canonical product…",
+    "admin.canonicalDetail.providers.relink.typeMore": "Type at least 2 characters to search.",
+    "admin.canonicalDetail.providers.relink.searching": "Searching…",
+    "admin.canonicalDetail.providers.relink.noResults": "No canonical matches the search.",
+    "admin.canonicalDetail.providers.relink.confirm": "Move to this canonical",
+    "admin.canonicalDetail.providers.relink.sourceLabel": "Product being moved",
+    "admin.canonicalDetail.providers.relink.targetLabel": "Target canonical",
+    "admin.canonicalDetail.providers.relink.willMove": "The current canonical stops showing this product.",
+    "admin.canonicalDetail.providers.relink.blockedNoPick": "Pick a target canonical to continue.",
+    "admin.canonicalDetail.providers.promote.title": "Create new canonical from this product",
+    "admin.canonicalDetail.providers.promote.description": "A new canonical is created from this product's data and the product moves there. The current canonical is untouched.",
+    "admin.canonicalDetail.providers.promote.category": "Category",
+    "admin.canonicalDetail.providers.promote.confirm": "Create and move",
+    "admin.canonicalDetail.providers.promote.derived": "Will be created from",
+    "admin.canonicalDetail.providers.promote.fromStore": "Name, brand and size come from what {provider} reports.",
+    "admin.canonicalDetail.providers.promote.noTaxonomy": "No categories loaded: a canonical cannot be created without one.",
+    "admin.canonicalDetail.providers.promote.pickCategory": "Pick a category",
+    "admin.canonicalDetail.providers.promote.noName": "This store reports no name: a canonical cannot be created from it.",
+    "admin.canonicalDetail.providers.dialog.close": "Close",
+    "admin.canonicalDetail.providers.dialog.noPhoto": "No photo",
+    "admin.canonicalDetail.providers.promote.blockedNoCategory": "Pick a category to continue.",
+    "admin.canonicalDetail.providers.promote.keepsCurrent": "The current canonical is untouched.",
+    "admin.canonicalDetail.providers.promote.noNameShort": "This store reports no name",
+    "admin.canonicalDetail.providers.promote.noPhoto": "No photo",
+    "admin.canonicalDetail.providers.promote.categoryHint": "Required: the canonical is created with it.",
+    "admin.canonicalDetail.providers.promote.categoryPicked": "Inside {top}",
+    "admin.canonicalDetail.providers.promote.fieldSize": "Size",
+    "admin.canonicalDetail.providers.promote.fieldBrand": "Brand",
+    "admin.canonicalDetail.identity.title": "Canonical identity",
+    "admin.canonicalDetail.identity.subtitle": "Product master data",
+    "admin.canonicalDetail.identity.weight": "Weight",
+    "admin.canonicalDetail.identity.subcategory": "Subcategory",
+    "admin.canonicalDetail.hero.perUnit": "per unit",
+    "admin.canonicalDetail.hero.drop": "Down",
+    "admin.canonicalDetail.hero.images": "in the gallery",
+    "admin.canonicalDetail.hero.active": "Active",
+    "admin.canonicalDetail.hero.brand": "Brand",
+    "admin.canonicalDetail.hero.eanSku": "EAN/SKU",
+    "admin.canonicalDetail.hero.noEan": "No EAN",
+    "admin.canonicalDetail.hero.qualityUndefined": "Undefined",
+    "admin.canonicalDetail.hero.completenessHigh": "High",
+    "admin.canonicalDetail.hero.completenessMid": "Medium",
+    "admin.canonicalDetail.hero.completenessLow": "Low",
+    "admin.canonicalDetail.hero.lastPriceUpdate": "Last price update",
+    "admin.canonicalDetail.hero.matchedProviders": "Matched providers",
+    "admin.canonicalDetail.hero.viewMore": "View more",
+    "admin.canonicalDetail.hero.providers": "Providers",
+    "admin.canonicalDetail.hero.demoData": "Demo data",
+    "admin.canonicalDetail.hero.actions": "Actions",
+    "admin.canonicalDetail.kpi.visits": "Views",
+    "admin.canonicalDetail.kpi.visitsHint": "vs. last 30 days",
+    "admin.canonicalDetail.kpi.searches": "Searches",
+    "admin.canonicalDetail.kpi.searchesHint": "auto-matched",
+    "admin.canonicalDetail.kpi.reach": "Reach",
+    "admin.canonicalDetail.kpi.reachHint": "users",
+    "admin.canonicalDetail.kpi.popularity": "Popularity",
+    "admin.canonicalDetail.kpi.popularityHint": "vs. category",
     "admin.canonicalDetail.section.providers": "Matched providers",
     "admin.canonicalDetail.section.history": "History and KPIs",
     "admin.canonicalDetail.section.evidence": "Evidence",
     "admin.canonicalDetail.section.duplicates": "Possible duplicates",
     "admin.canonicalDetail.section.activity": "Activity and notes",
     "admin.canonicalDetail.info.slug": "Public slug",
-    "admin.canonicalDetail.info.size": "Size",
     "admin.canonicalDetail.info.quality": "Quality",
     "admin.canonicalDetail.info.category": "Category",
     "admin.canonicalDetail.info.description": "Description",
@@ -2768,7 +3117,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.current": "Current",
     "admin.canonicalDetail.category.signal.lexicon": "lexicon",
     "admin.canonicalProducts.bulk.actions": "Actions",
-    "admin.canonicalProducts.bulk.assignCategory": "Assign category ({count})",
+    "admin.canonicalProducts.bulk.assignCategory": "Assign category",
+    "admin.canonicalProducts.bulk.resolveBrands": "Resolve brands",
     "admin.canonicalProducts.bulk.selectAll": "Select all",
     "admin.canonicalProducts.bulk.title": "Assign category in bulk",
     "admin.canonicalProducts.bulk.subtitle": "It will apply to {count} selected products.",
@@ -2805,6 +3155,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.confirmRemoveAccept": "Remove anyway",
     "admin.canonicalDetail.image.confirmReorderAccept": "Move anyway",
     "admin.canonicalDetail.image.confirmCancel": "Cancel",
+    "admin.canonicalDetail.image.unsaved": "Unsaved changes",
+    "admin.canonicalDetail.image.save": "Save changes",
+    "admin.canonicalDetail.image.saving": "Saving…",
+    "admin.canonicalDetail.image.saved": "Changes saved",
+    "admin.canonicalDetail.image.cancel": "Cancel",
+    "admin.canonicalDetail.image.saveError": "Could not save images",
     "admin.canonicalDetail.description.title": "Description",
     "admin.canonicalDetail.description.current": "Canonical description",
     "admin.canonicalDetail.description.hint": "This is what gets published. Pick one from the stores and adjust it if needed.",
@@ -3195,6 +3551,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.category.search": "Buscar categoria...",
     "admin.reviewQueue.category.noMatch": "Nenhuma categoria corresponde",
     "admin.toolbar.actions.classify": "Classificar selecionados",
+    "admin.list.refreshFailed": "Não foi possível atualizar a lista. A mostrar a última versão conhecida.",
+    "admin.toolbar.actions.resolveBrands": "Classificar marcas",
     "admin.toolbar.actions.canonize": "Aprovar e criar canônico",
     "admin.reviewQueue.canonize.title": "Criar canônicos",
     "admin.reviewQueue.canonize.description": "Serão criados {n} produtos canônicos novos e vinculados a estas linhas. Não pode ser desfeito.",
@@ -3210,6 +3568,10 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.canonize.next": "Próxima página",
     "admin.toolbar.actions.approve.noCandidates": "Nenhuma das linhas selecionadas tem candidatos. Use \"Aprovar e criar canônico\".",
     "admin.reviewQueue.classify.done": "{n} classificadas",
+    "admin.reviewQueue.brands.done": "{n} com marca",
+    "admin.reviewQueue.brands.skipped": "{n} já tinham",
+    "admin.reviewQueue.brands.unresolved": "{n} não reconhecidas",
+    "admin.reviewQueue.brands.failed": "{n} com erro",
     "admin.reviewQueue.classify.undecided": "{n} sem decidir",
     "admin.reviewQueue.classify.failed": "{n} com erro",
     "admin.method.ean": "EAN",
@@ -3537,6 +3899,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.statusHint.possible_duplicate": "Outro canônico compartilha EAN ou marca e tamanho com este. Revise antes que contamine as comparações.",
     "admin.canonicalProducts.ean.reachable": "Alcançável por EAN",
     "admin.canonicalProducts.ean.reachableHint": "Pelo menos uma loja vinculada traz EAN: o matching por código de barras pode cobri-lo.",
+    "admin.canonicalProducts.ean.products": "Produtos ({count})",
     "admin.canonicalProducts.actions.menuLabel": "Ações do produto",
     "admin.canonicalProducts.actions.view": "Ver detalhe",
     "admin.canonicalProducts.actions.edit": "Editar",
@@ -3604,15 +3967,120 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalProducts.form.description": "Descrição",
     "admin.nav.save.canonicalProducts": "Produtos canônicos",
     "admin.canonicalDetail.back": "Voltar ao catálogo",
+    "admin.canonicalDetail.pager.label": "Navegação entre produtos do catálogo",
+    "admin.canonicalDetail.pager.prev": "Produto anterior",
+    "admin.canonicalDetail.pager.next": "Produto seguinte",
+    "admin.canonicalDetail.pager.position": "Posição no catálogo",
+    "admin.canonicalDetail.pager.positionHint": "Digite uma posição e pressione Enter",
+    "admin.canonicalDetail.tabs.label": "Seções do produto",
+    "admin.canonicalDetail.tab.summary": "Resumo",
+    "admin.canonicalDetail.tab.categories": "Categorias",
+    "admin.canonicalDetail.tab.description": "Descrição",
+    "admin.canonicalDetail.tab.images": "Imagens do produto",
+    "admin.canonicalDetail.tab.audit": "Auditoria",
+    "admin.canonicalDetail.providers.col.access": "Acessibilidade",
+    "admin.canonicalDetail.hero.sync": "Sincronizar",
+    "admin.canonicalDetail.hero.syncHint":
+      "Pede novamente ao servidor os dados deste produto.",
+    "admin.canonicalDetail.hero.before": "Antes",
+    "admin.canonicalDetail.providers.lowest": "Preço mais baixo",
+    "admin.canonicalDetail.providers.highest": "Preço mais alto",
+    "admin.canonicalDetail.providers.spread": "Diferença",
+    "admin.canonicalDetail.providers.activeStores": "Lojas ativas",
+    "admin.canonicalDetail.providers.col.store": "Loja",
+    "admin.canonicalDetail.providers.col.actions": "Ações",
+    "admin.canonicalDetail.providers.col.standing": "Posição",
+    "admin.canonicalDetail.providers.col.currentPrice": "Preço atual",
+    "admin.canonicalDetail.providers.col.previousPrice": "Preço anterior",
+    "admin.canonicalDetail.providers.col.difference": "Diferença",
+    "admin.canonicalDetail.providers.bestPrice": "Melhor preço Save",
+    "admin.canonicalDetail.providers.priciest": "Preço mais alto",
+    "admin.canonicalDetail.providers.pricier": "mais caro",
+    "admin.canonicalDetail.providers.same": "Mesmo preço",
+    "admin.canonicalDetail.providers.search": "Buscar loja…",
+    "admin.canonicalDetail.providers.noMatch": "Nenhuma loja corresponde à busca.",
+    "admin.canonicalDetail.providers.actions.unlink": "Devolver à fila de revisão",
+    "admin.canonicalDetail.providers.actions.relink": "Vincular a outro canônico",
+    "admin.canonicalDetail.providers.actions.promote": "Criar novo canônico",
+    "admin.canonicalDetail.providers.actions.discard": "Excluir permanentemente",
+    "admin.canonicalDetail.providers.dialog.cancel": "Cancelar",
+    "admin.canonicalDetail.providers.discard.title": "Excluir permanentemente",
+    "admin.canonicalDetail.providers.discard.warning": "Esta ação não pode ser desfeita.",
+    "admin.canonicalDetail.providers.discard.detail": "O produto da {provider} ({price}) e TODO o seu histórico de preços serão apagados.",
+    "admin.canonicalDetail.providers.discard.reingest": "O produto não fica bloqueado: se precisar mais adiante, a próxima execução de ingestão o traz de volta e o vincula de novo do zero. O que não volta é o histórico.",
+    "admin.canonicalDetail.providers.discard.typeToConfirm": "Digite «{provider}» para confirmar",
+    "admin.canonicalDetail.providers.discard.typeToConfirmLabel": "Nome da loja para confirmar",
+    "admin.canonicalDetail.providers.discard.confirm": "Excluir permanentemente",
+    "admin.canonicalDetail.providers.unlink.title": "Devolver à fila de revisão",
+    "admin.canonicalDetail.providers.unlink.description": "Ele é desvinculado deste canônico e volta à fila para que uma pessoa resolva.",
+    "admin.canonicalDetail.providers.unlink.confirm": "Devolver à fila",
+    "admin.canonicalDetail.providers.unlink.keepsHistory": "Nada é apagado: a linha e o histórico de preços ficam intactos.",
+    "admin.canonicalDetail.providers.relink.title": "Vincular a outro canônico",
+    "admin.canonicalDetail.providers.relink.description": "Escolha o canônico correto. O produto passa para lá e este canônico deixa de exibi-lo.",
+    "admin.canonicalDetail.providers.relink.searchPlaceholder": "Buscar produto canônico…",
+    "admin.canonicalDetail.providers.relink.typeMore": "Digite ao menos 2 caracteres para buscar.",
+    "admin.canonicalDetail.providers.relink.searching": "Buscando…",
+    "admin.canonicalDetail.providers.relink.noResults": "Nenhum canônico corresponde à busca.",
+    "admin.canonicalDetail.providers.relink.confirm": "Mover para este canônico",
+    "admin.canonicalDetail.providers.relink.sourceLabel": "Produto que será movido",
+    "admin.canonicalDetail.providers.relink.targetLabel": "Canônico de destino",
+    "admin.canonicalDetail.providers.relink.willMove": "O canônico atual deixa de exibir este produto.",
+    "admin.canonicalDetail.providers.relink.blockedNoPick": "Escolha um canônico de destino para continuar.",
+    "admin.canonicalDetail.providers.promote.title": "Criar canônico novo a partir deste produto",
+    "admin.canonicalDetail.providers.promote.description": "Um canônico novo é criado com os dados deste produto e o produto passa para lá. O canônico atual não é alterado.",
+    "admin.canonicalDetail.providers.promote.category": "Categoria",
+    "admin.canonicalDetail.providers.promote.confirm": "Criar e mover",
+    "admin.canonicalDetail.providers.promote.derived": "Será criado a partir de",
+    "admin.canonicalDetail.providers.promote.fromStore": "Nome, marca e tamanho vêm do que a {provider} informa.",
+    "admin.canonicalDetail.providers.promote.noTaxonomy": "Não há categorias carregadas: sem categoria não é possível criar o canônico.",
+    "admin.canonicalDetail.providers.promote.pickCategory": "Escolher categoria",
+    "admin.canonicalDetail.providers.promote.noName": "Esta loja não informa um nome: não é possível criar o canônico a partir dela.",
+    "admin.canonicalDetail.providers.dialog.close": "Fechar",
+    "admin.canonicalDetail.providers.dialog.noPhoto": "Sem foto",
+    "admin.canonicalDetail.providers.promote.blockedNoCategory": "Escolha uma categoria para continuar.",
+    "admin.canonicalDetail.providers.promote.keepsCurrent": "O canônico atual não é alterado.",
+    "admin.canonicalDetail.providers.promote.noNameShort": "Esta loja não informa um nome",
+    "admin.canonicalDetail.providers.promote.noPhoto": "Sem foto",
+    "admin.canonicalDetail.providers.promote.categoryHint": "Obrigatória: o canônico é criado com ela.",
+    "admin.canonicalDetail.providers.promote.categoryPicked": "Dentro de {top}",
+    "admin.canonicalDetail.providers.promote.fieldSize": "Tamanho",
+    "admin.canonicalDetail.providers.promote.fieldBrand": "Marca",
+    "admin.canonicalDetail.identity.title": "Identidade canônica",
+    "admin.canonicalDetail.identity.subtitle": "Dados mestres do produto",
+    "admin.canonicalDetail.identity.weight": "Peso",
+    "admin.canonicalDetail.identity.subcategory": "Subcategoria",
+    "admin.canonicalDetail.hero.perUnit": "por unidade",
+    "admin.canonicalDetail.hero.drop": "Caiu",
+    "admin.canonicalDetail.hero.images": "na galeria",
+    "admin.canonicalDetail.hero.active": "Ativo",
+    "admin.canonicalDetail.hero.brand": "Marca",
+    "admin.canonicalDetail.hero.eanSku": "EAN/SKU",
+    "admin.canonicalDetail.hero.noEan": "Sem EAN",
+    "admin.canonicalDetail.hero.qualityUndefined": "Não definida",
+    "admin.canonicalDetail.hero.completenessHigh": "Alta",
+    "admin.canonicalDetail.hero.completenessMid": "Média",
+    "admin.canonicalDetail.hero.completenessLow": "Baixa",
+    "admin.canonicalDetail.hero.lastPriceUpdate": "Última atualização de preço",
+    "admin.canonicalDetail.hero.matchedProviders": "Provedores correspondidos",
+    "admin.canonicalDetail.hero.viewMore": "Ver mais",
+    "admin.canonicalDetail.hero.providers": "Provedores",
+    "admin.canonicalDetail.hero.demoData": "Dados de demonstração",
+    "admin.canonicalDetail.hero.actions": "Ações",
+    "admin.canonicalDetail.kpi.visits": "Visitas",
+    "admin.canonicalDetail.kpi.visitsHint": "vs. últimos 30 dias",
+    "admin.canonicalDetail.kpi.searches": "Buscas",
+    "admin.canonicalDetail.kpi.searchesHint": "auto-ligados",
+    "admin.canonicalDetail.kpi.reach": "Alcance",
+    "admin.canonicalDetail.kpi.reachHint": "usuários",
+    "admin.canonicalDetail.kpi.popularity": "Popularidade",
+    "admin.canonicalDetail.kpi.popularityHint": "vs. categoria",
     "admin.canonicalDetail.notFound": "Este produto canônico não existe.",
-    "admin.canonicalDetail.section.info": "Informação canônica",
     "admin.canonicalDetail.section.providers": "Fornecedores correspondidos",
     "admin.canonicalDetail.section.history": "Histórico e KPIs",
     "admin.canonicalDetail.section.evidence": "Evidência",
     "admin.canonicalDetail.section.duplicates": "Possíveis duplicados",
     "admin.canonicalDetail.section.activity": "Atividade e notas",
     "admin.canonicalDetail.info.slug": "Slug público",
-    "admin.canonicalDetail.info.size": "Tamanho",
     "admin.canonicalDetail.info.quality": "Qualidade",
     "admin.canonicalDetail.info.category": "Categoria",
     "admin.canonicalDetail.info.description": "Descrição",
@@ -3705,7 +4173,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.category.current": "Atual",
     "admin.canonicalDetail.category.signal.lexicon": "léxico",
     "admin.canonicalProducts.bulk.actions": "Ações",
-    "admin.canonicalProducts.bulk.assignCategory": "Atribuir categoria ({count})",
+    "admin.canonicalProducts.bulk.assignCategory": "Atribuir categoria",
+    "admin.canonicalProducts.bulk.resolveBrands": "Classificar marcas",
     "admin.canonicalProducts.bulk.selectAll": "Selecionar tudo",
     "admin.canonicalProducts.bulk.title": "Atribuir categoria em lote",
     "admin.canonicalProducts.bulk.subtitle": "Será aplicado a {count} produtos selecionados.",
@@ -3742,6 +4211,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.canonicalDetail.image.confirmRemoveAccept": "Remover mesmo assim",
     "admin.canonicalDetail.image.confirmReorderAccept": "Mover mesmo assim",
     "admin.canonicalDetail.image.confirmCancel": "Cancelar",
+    "admin.canonicalDetail.image.unsaved": "Mudanças não salvas",
+    "admin.canonicalDetail.image.save": "Salvar mudanças",
+    "admin.canonicalDetail.image.saving": "Salvando…",
+    "admin.canonicalDetail.image.saved": "Mudanças salvas",
+    "admin.canonicalDetail.image.cancel": "Cancelar",
+    "admin.canonicalDetail.image.saveError": "Não foi possível salvar as imagens",
     "admin.canonicalDetail.description.title": "Descrição",
     "admin.canonicalDetail.description.current": "Descrição do canônico",
     "admin.canonicalDetail.description.hint": "É a que se publica. Escolha uma das lojas e ajuste se necessário.",

@@ -109,3 +109,19 @@ def guarded_post(url: str, payload: dict, headers: dict[str, str]) -> dict:
         response.raise_for_status()
         body = _read_capped(response)
     return json.loads(body)
+
+
+def guarded_image_get(url: str) -> tuple[bytes, str]:
+    """Proxy SSRF-guardado para imágenes: devuelve `(body, content_type)`.
+
+    Reusa las mismas protecciones que `guarded_get` (https-only, resolución DNS previa,
+    IPs privadas bloqueadas, cap de tamaño). No sigue redirects para no abrir un hueco SSRF.
+    """
+    _assert_https_and_safe_host(url)
+    with _make_client() as client, client.stream("GET", url, headers={"User-Agent": "Cuadra/Save"}) as response:
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "application/octet-stream")
+        if not content_type.startswith("image/"):
+            raise SsrfBlockedError(f"El contenido no es una imagen: {content_type!r}")
+        body = _read_capped(response)
+    return body, content_type

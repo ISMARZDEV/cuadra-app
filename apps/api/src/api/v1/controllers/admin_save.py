@@ -12,7 +12,6 @@ propósito (un rol con solo una de las dos no debe poder tocar la otra).
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -21,6 +20,7 @@ from src.api.composition_root import (
     get_admin_audit_repo,
     get_bulk_classify_review,
     get_bulk_create_canonicals,
+    get_bulk_resolve_match_brands,
     get_bulk_resolve_review,
     get_create_basket_query,
     get_archive_provider,
@@ -58,6 +58,7 @@ from src.contexts.save.application.basket_query import (
 )
 from src.contexts.save.application.bulk_classify_review import BulkClassifyReview
 from src.contexts.save.application.bulk_create_canonicals import BulkCreateCanonicals
+from src.contexts.save.application.bulk_resolve_brands import BulkResolveMatchBrands
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview, BulkResolveRow
 from src.contexts.save.application.set_product_category import SetProductCategory
 from src.contexts.save.application.create_canonical_and_link import (
@@ -102,7 +103,7 @@ from src.contexts.save.domain.entities import (
 from src.contexts.save.domain.source_health import SourceHealth, SourceHealthRow
 from src.contexts.save.application.canonical_catalog import ListStoreProductImages
 from src.contexts.save.domain.taxonomy import slugify
-from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
+from src.contexts.save.domain.value_objects import parse_size
 from src.contexts.save.infrastructure.catalog_sources.source_auth import mask_auth
 
 MARKET = "DO"  # single-market, igual que el resto del admin
@@ -238,12 +239,16 @@ class CreateCanonicalRequest(BaseModel):
     decided_by: str
     name: str
     brand: str
-    quantity_amount: Decimal
-    quantity_measure: UnitMeasure
+    # El TAMAÑO viaja como TEXTO ("355 Ml"), no como cantidad ya convertida. Convertir a unidad
+    # base es una REGLA DE DOMINIO (`parse_size`): si el navegador mandara `quantity_amount` +
+    # `quantity_measure` tendría que conocer los factores, y dos implementaciones de la misma
+    # regla —una en TS, otra en Python— se separan en cuanto aparece una unidad rara. Fue
+    # exactamente lo que pasó: "355 Ml" llegaba como `Quantity(355, VOLUME)`, o sea 355 LITROS.
+    # Mismo criterio que `BulkCreateCanonicals` y `PromoteStoreProductToCanonical`.
+    size_text: str
     taxonomy_node_id: str
     market_id: str
     quality: str | None = None
-    display_size: str | None = None
     image_url: str | None = None
 
 
@@ -253,16 +258,28 @@ def create_canonical_and_link(
     use_case: CreateCanonicalAndLink = Depends(get_create_canonical_and_link),
     audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> dict[str, str]:
+    try:
+        quantity = parse_size(body.size_text)
+    except ValueError as exc:
+        # Unidad desconocida: se REPORTA con el mensaje del dominio. Inventar una cantidad sería
+        # peor que decirle al operador que ese tamaño no se pudo convertir.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
     canonical_id = use_case.execute(
         match_id=body.match_id,
         product=NewCanonicalProduct(
             name=body.name,
             brand=body.brand,
-            quantity=Quantity(body.quantity_amount, body.quantity_measure),
+            quantity=quantity,
             taxonomy_node_id=body.taxonomy_node_id,
             market_id=body.market_id,
             quality=body.quality,
-            display_size=body.display_size,
+            # El texto crudo es lo que la consola RENDERIZA (`CanonicalProductRow` lee
+            # `display_size`, no `size_amount`/`size_measure`). `SqlCanonicalProductRepository.add`
+            # lo canoniza con `normalize_size_text` ("20 Lbs" → "20 Lb").
+            display_size=body.size_text,
             image_url=body.image_url,
         ),
         decided_by=body.decided_by,
@@ -425,6 +442,58 @@ class BulkClassifyResultDto(BaseModel):
     undecided: int
     rows: list[BulkClassifyRowDto]
     failed: list[BulkClassifyFailureDto]
+
+
+class BulkResolveBrandsRequest(BaseModel):
+    match_ids: list[str]
+
+
+class BulkBrandRowDto(BaseModel):
+    ref_id: str
+    brand: str | None
+    source: str
+
+
+class BulkBrandFailureDto(BaseModel):
+    ref_id: str
+    error: str
+
+
+class BulkBrandResultDto(BaseModel):
+    resolved: int
+    unresolved: int
+    skipped: int
+    rows: list[BulkBrandRowDto]
+    failed: list[BulkBrandFailureDto]
+
+
+@router.post("/review-queue/bulk-resolve-brands", response_model=BulkBrandResultDto)
+def bulk_resolve_review_brands(
+    body: BulkResolveBrandsRequest,
+    use_case: BulkResolveMatchBrands = Depends(get_bulk_resolve_match_brands),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> BulkBrandResultDto:
+    """Rellena la marca de las filas seleccionadas de la cola, reconociéndola en el nombre.
+
+    Auditoría AGREGADA (una entrada por lote), como el resto de acciones de la cola: acá se toca el
+    dato crudo de una tienda, que la próxima corrida de ingesta puede volver a derivar — a
+    diferencia del canónico, que es catálogo público y se audita fila por fila.
+    """
+    result = use_case.execute(body.match_ids)
+    audit.record(
+        "review.bulk_resolve_brands",
+        "product_match",
+        "bulk",
+        {"count": len(body.match_ids), "resolved": result.resolved, "skipped": len(result.skipped)},
+        market_id=MARKET,
+    )
+    return BulkBrandResultDto(
+        resolved=result.resolved,
+        unresolved=result.unresolved,
+        skipped=len(result.skipped),
+        rows=[BulkBrandRowDto(ref_id=r.ref_id, brand=r.brand, source=r.source) for r in result.rows],
+        failed=[BulkBrandFailureDto(ref_id=f.ref_id, error=f.error) for f in result.failed],
+    )
 
 
 @router.post("/review-queue/bulk-classify", response_model=BulkClassifyResultDto)
@@ -892,7 +961,10 @@ class SampleEntryDto(BaseModel):
 
     external_id: str
     name: str
-    brand: str
+    # `None` = la tienda NO publica marca (Magento y Bravo no la exponen), distinto de publicarla
+    # vacía. Espeja `RawCatalogEntry.brand`; tenerlo como `str` a secas hacía que el dry-run
+    # respondiera 500 en cuanto la fuente era una de esas dos.
+    brand: str | None = None
     price_minor: int
     currency: str
     ean: str | None = None
