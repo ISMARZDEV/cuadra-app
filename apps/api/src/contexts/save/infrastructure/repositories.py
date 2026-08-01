@@ -948,6 +948,24 @@ class SqlStoreProductRepository:
             .limit(1)
         ).scalar_one_or_none()
 
+    def has_other_product_from_provider(
+        self, canonical_product_id: str, provider_id: str, excluding_store_product_id: str
+    ) -> bool:
+        """Invariante de proveedor único — ver el puerto. Ids malformados → `False` (no bloquea):
+        el gate nunca puede convertir un dato raro en un rechazo silencioso."""
+        cid = _parse_uuid(canonical_product_id)
+        pid = _parse_uuid(provider_id)
+        if cid is None or pid is None:
+            return False
+        stmt = select(StoreProductModel.id).where(
+            StoreProductModel.canonical_product_id == cid,
+            StoreProductModel.provider_id == pid,
+        )
+        excluded = _parse_uuid(excluding_store_product_id)
+        if excluded is not None:
+            stmt = stmt.where(StoreProductModel.id != excluded)
+        return self._s.execute(stmt.limit(1)).first() is not None
+
     def list_stale_covered(
         self,
         market_id: str,

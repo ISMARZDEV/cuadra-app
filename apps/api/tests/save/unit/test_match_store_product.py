@@ -121,17 +121,28 @@ class FakeStoreProductLinkRepository:
     """Fake del escritor del FK denormalizado (store_product.canonical_product_id) + la consulta
     del EAN conocido de un canónico (gate de falso-merge EAN-negativo)."""
 
-    def __init__(self, canonical_eans: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        canonical_eans: dict[str, str] | None = None,
+        provider_siblings: set[tuple[str, str]] | None = None,
+    ) -> None:
         self.links: list[tuple[str, str]] = []
         # canonical_product_id -> un EAN conocido de alguno de sus store_products enlazados
         # ({} = ninguno tiene EAN conocido → sin señal negativa).
         self._canonical_eans = canonical_eans or {}
+        # (canonical_product_id, provider_id) que YA tienen un store_product enlazado.
+        self._provider_siblings = provider_siblings or set()
 
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         self.links.append((store_product_id, canonical_product_id))
 
     def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
         return self._canonical_eans.get(canonical_product_id)
+
+    def has_other_product_from_provider(
+        self, canonical_product_id: str, provider_id: str, excluding_store_product_id: str
+    ) -> bool:
+        return (canonical_product_id, provider_id) in self._provider_siblings
 
 
 class FakeEmbeddingProvider:
@@ -221,6 +232,7 @@ def _incoming(
     ean: str | None = None,
     source_category: str = "",
     run_id: str | None = None,
+    provider_id: str = "p-sirena",
 ) -> IncomingStoreProduct:
     return IncomingStoreProduct(
         store_product_id=store_product_id,
@@ -231,6 +243,7 @@ def _incoming(
         ean=ean,
         source_category=source_category,
         run_id=run_id,
+        provider_id=provider_id,
     )
 
 
@@ -765,6 +778,113 @@ def test_generic_canonical_without_brand_is_never_gated() -> None:
     result = use_case.execute(
         _incoming(name="PLATANO BARAHONERO UNIDAD", brand="", size="5 LB")
     )
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+# ------------------------------------------------- proveedor único (una tienda no vende lo mismo 2x) --
+# Medido 2026-08-01: de 61 auto-enlaces, CINCO canónicos habían absorbido SKUs distintos de la MISMA
+# tienda. Los ejes eran cuatro y todos distintos (línea de calidad, seco/verde, con vegetales, estilo
+# americano) — perseguirlos de a uno es una carrera sin final. Este invariante los cubre TODOS, y
+# también los ejes que no se nos ocurrieron: una tienda no publica el mismo producto dos veces, así
+# que un segundo SKU sobre el mismo canónico es, por construcción, otro producto.
+
+
+def test_a_second_sku_from_the_same_provider_never_auto_links() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    # canon-1 ya tiene un producto de p-nacional (el "Guandules Secos con Coco" que llegó primero).
+    store_repo = FakeStoreProductLinkRepository(provider_siblings={("canon-1", "p-nacional")})
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    result = use_case.execute(_incoming(provider_id="p-nacional"))
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []
+
+
+def test_a_first_sku_from_that_provider_still_auto_links() -> None:
+    # Contraparte: el invariante NO puede impedir el primer enlace de cada tienda — que es
+    # justamente lo que hace comparable un canónico entre supermercados.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    # canon-1 tiene productos de OTRA tienda: eso no estorba.
+    store_repo = FakeStoreProductLinkRepository(provider_siblings={("canon-1", "p-sirena")})
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    result = use_case.execute(_incoming(provider_id="p-nacional"))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+# ---------------------------------------------------------------- quality gate (línea de calidad) --
+# Medido 2026-08-01 en la primera corrida con catálogo poblado: `Arroz Pimco Selecto 10 Lbs` había
+# absorbido TRES SKUs distintos de Nacional (Premium, Selecto, Super Selecto Gourmet) — una tienda
+# no vende el mismo producto tres veces. Llegaban a confianza 1.000: misma marca + mismo tamaño +
+# misma categoría hacen que los tres boosts empujen al tope justo a esta clase de error.
+
+
+def test_a_different_quality_line_blocks_auto_link_at_the_top_of_the_band() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Pimco Selecto", brand="Pimco")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="Arroz Premium Pimco Funda", brand="Pimco", size="5 LB")
+    )
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []  # Premium ≠ Selecto: distinto SKU
+
+
+def test_super_selecto_is_not_selecto() -> None:
+    # El caso que un match por token suelto NO ve: los dos nombres contienen "selecto".
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Pimco Selecto", brand="Pimco")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="Arroz Super Selecto Pimco", brand="Pimco", size="5 LB")
+    )
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []
+
+
+def test_the_same_quality_line_still_auto_links() -> None:
+    # Contraparte OBLIGATORIA: de los 3 SKUs fusionados, éste era el enlace BUENO.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Pimco Selecto", brand="Pimco")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="Arroz Selecto Pimco", brand="Pimco", size="5 LB"))
 
     assert result.status == "auto_linked"
     assert c["store_repo"].links == [("sp-1", "canon-1")]

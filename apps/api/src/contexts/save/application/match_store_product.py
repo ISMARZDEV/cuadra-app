@@ -39,6 +39,7 @@ from ..infrastructure.matching.cascade.brand_gate import brand_unsupported
 from ..infrastructure.matching.cascade.category_gate import categories_conflict, category_boost
 from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
+from ..infrastructure.matching.cascade.quality_gate import qualities_conflict
 from ..infrastructure.matching.cascade.scoring import apply_boosts
 from ..infrastructure.matching.cascade.size_gate import sizes_conflict
 from ..infrastructure.matching.cascade.variant_gate import variants_conflict
@@ -64,6 +65,10 @@ class IncomingStoreProduct:
     # del use-case porque es propiedad de este hallazgo, no del matcher. Se estampa en el
     # `ProductMatch` para poder filtrar la cola por corrida y atribuir los canónicos que salgan.
     run_id: str | None = None
+    # Tienda que lo publicó — para el invariante de proveedor único (ver `execute`). Viaja con la
+    # observación por la misma razón que `run_id`: es propiedad del hallazgo, no del matcher.
+    # "" = desconocido → el invariante no se aplica (conservador).
+    provider_id: str = ""
 
     def __post_init__(self) -> None:
         if not self.store_product_id.strip():
@@ -204,6 +209,28 @@ class MatchStoreProduct:
             product.brand, product.name, canonical.brand if canonical else None
         )
 
+        # Quality gate: la LÍNEA de calidad (Premium / Selecto / Super Selecto…) distingue SKUs que
+        # comparten marca, tamaño y categoría. Medido 2026-08-01: 5 canónicos habían absorbido SKUs
+        # distintos de la MISMA tienda, y con confianza de hasta 1.000 — los boosts empujan al tope
+        # justo a esta clase de error, porque premian las dimensiones que no discriminan acá.
+        quality_conflict = qualities_conflict(
+            product.name,
+            canonical.name if canonical else "",
+            canonical.quality if canonical else None,
+        )
+
+        # Invariante de PROVEEDOR ÚNICO: una tienda no publica el mismo producto dos veces, así que
+        # si el canónico ganador ya tiene un `store_product` de ESTA tienda, el entrante es otro SKU.
+        #
+        # A diferencia de los demás, este gate no es semántico sino ESTRUCTURAL, y por eso cubre los
+        # ejes que no anticipamos. Medido 2026-08-01: los 5 falsos merges de la primera corrida real
+        # tenían CUATRO ejes distintos (línea de calidad, seco/verde, con vegetales, estilo
+        # americano) — perseguirlos de a uno es una carrera sin final; este invariante los ataja a
+        # todos y bloquea 6 enlaces malos sin tocar ninguno bueno.
+        provider_dup = bool(product.provider_id) and self._store_repo.has_other_product_from_provider(
+            winner_id, product.provider_id, product.store_product_id
+        )
+
         if band == "auto_link":
             if (
                 size_conflict
@@ -211,6 +238,8 @@ class MatchStoreProduct:
                 or ean_conflict
                 or variant_conflict
                 or brand_missing
+                or quality_conflict
+                or provider_dup
             ):
                 return self._to_review(
                     product, method=stage_method, confidence=final_score,
@@ -257,6 +286,8 @@ class MatchStoreProduct:
                 and not ean_conflict
                 and not variant_conflict
                 and not brand_missing
+                and not quality_conflict
+                and not provider_dup
             ):
                 return self._auto_link(
                     product, winner_id, confidence=verdict.confidence, method="llm",

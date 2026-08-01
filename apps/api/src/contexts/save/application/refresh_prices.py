@@ -185,6 +185,7 @@ class RefreshCatalogPrices:
                         ean=entry.ean,
                         source_category=" > ".join(entry.category_path),  # Etapa C: señal de categoría
                         run_id=run_id,
+                        provider_id=entry.provider_id,  # invariante de proveedor único
                     )
                 )
                 self._classify(store_product_id, entry)  # clasifica el nuevo store_product

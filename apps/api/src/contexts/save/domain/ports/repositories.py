@@ -393,6 +393,16 @@ class StoreProductRepository(Protocol):
         para la consulta dirigida EAN-first cuando la tienda destino soporta búsqueda por barcode."""
         ...
 
+    def has_other_product_from_provider(
+        self, canonical_product_id: str, provider_id: str, excluding_store_product_id: str
+    ) -> bool:
+        """¿Ese canónico ya tiene OTRO `store_product` de ese proveedor?
+
+        Invariante de la cascada: una tienda no publica el mismo producto dos veces, así que un
+        segundo SKU sobre el mismo canónico es —por construcción— otro producto. Se excluye el
+        entrante para que no se cuente a sí mismo (ya está materializado, aún sin enlazar)."""
+        ...
+
     def repair_locator(self, store_product_id: str, external_id: str, url: str | None) -> None:
         """F3.2b (recovery): la tienda le cambió el localizador al producto (Bravo rota el
         `idArticulo`) → se apunta el `store_product` al nuevo id/url SIN tocar su enlace al canónico:

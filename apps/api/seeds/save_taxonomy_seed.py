@@ -1,12 +1,14 @@
 """Seed de la taxonomía canónica REAL de Save (save-category-classification, Batch 2).
 
-Puebla `taxonomy_node` con las 15 categorías tope + subcategorías de
-`docs/research/save-fable/Categorias_y_Subcategorias.md` (2 niveles), para `market_id="DO"`.
+Puebla `taxonomy_node` (concepto GLOBAL) + `taxonomy_node_market` (qué lleva cada mercado) con las
+17 categorías tope + subcategorías de `docs/research/save-fable/Categorias_y_Subcategorias.md`.
 
-IDEMPOTENTE y COMPATIBLE con el seed demo: reusa `_taxonomy_leaf` (mismo namespace `_NS` +
-esquema `uuid5(taxonomy:{market}/{cat}/{sub})`), así que un nodo ya sembrado por `save_seed`
-(p.ej. "Despensa & Abarrotes" / "Arroz, Granos & Legumbres") obtiene el MISMO id — sin
-duplicar, sin conflicto. Las hojas más profundas de la demo quedan como hijos extra.
+IDEMPOTENTE, y la identidad es la **key** del markdown, no el nombre: `_upsert_node` busca por
+`(market_id, key)` y ACTUALIZA la etiqueta, así que renombrar una categoría ya no crea un nodo
+nuevo ni orfana el viejo (Fase 1). El id sólo se calcula al nacer y después es opaco.
+
+Distinto del seed DEMO (`save_seed._taxonomy_leaf`), que deriva el id del NOMBRE porque sus hojas
+son fixtures y no vienen del markdown — ésas quedan con `key` NULL, como hijos extra más profundos.
 
 Correr: `uv run python -m seeds.save_taxonomy_seed` (o vía el orquestador de seeds).
 """
