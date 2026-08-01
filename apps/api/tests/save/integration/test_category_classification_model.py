@@ -21,9 +21,12 @@ from src.contexts.save.infrastructure.models import (
 
 from .test_product_match_repository import _seed_provider_and_canonical, _seed_store_product
 
+from ._taxonomy import taxonomy_node
+
+
 
 def _seed_leaf(db_session, market_id: str) -> str:  # type: ignore[no-untyped-def]
-    node = TaxonomyNodeModel(name="Arroz, Granos & Legumbres", level=1, market_id=market_id)
+    node = taxonomy_node(db_session, name="Arroz, Granos & Legumbres", level=1, market_id=market_id)
     db_session.add(node)
     db_session.flush()
     return str(node.id)
@@ -117,7 +120,7 @@ def test_partial_unique_allows_superseded_plus_active(db_session) -> None:  # ty
 
 def test_taxonomy_node_embedding_roundtrips(db_session) -> None:  # type: ignore[no-untyped-def]
     market = f"T{uuid.uuid4().hex[:6]}"
-    node = TaxonomyNodeModel(name="Despensa & Abarrotes", level=0, market_id=market)
+    node = taxonomy_node(db_session, name="Despensa & Abarrotes", level=0, market_id=market)
     db_session.add(node)
     db_session.flush()
 

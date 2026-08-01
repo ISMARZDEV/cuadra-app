@@ -194,9 +194,13 @@ class CreateCanonicalProduct:
     ajeno (F4 hace `count WHERE origin_run_id = X`).
     """
 
-    def __init__(self, canonical_repo, catalog_repo) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, canonical_repo, catalog_repo, embedder=None) -> None:  # type: ignore[no-untyped-def]
         self._canonical = canonical_repo
         self._catalog = catalog_repo
+        # US-CP-L14. Opcional a propósito, como los colaboradores de `CreateCanonicalAndLink`: sin
+        # él el canónico nace con `embedding` NULL, que es justo lo que el backfill busca. Ningún
+        # vector vale bloquear un alta.
+        self._embedder = embedder
 
     def execute(
         self,
@@ -227,6 +231,8 @@ class CreateCanonicalProduct:
                 description=description or None,
             )
         )
+        if self._embedder is not None:
+            self._embedder.execute(product_id)
         row = self._catalog.get_catalog_row(
             market_id=market_id, canonical_product_id=product_id
         )
@@ -236,11 +242,18 @@ class CreateCanonicalProduct:
 
 
 class UpdateCanonicalProduct:
-    """Edición básica del canónico (US-CP-L5/D2). El slug NO se regenera."""
+    """Edición básica del canónico (US-CP-L5/D2). El slug NO se regenera.
 
-    def __init__(self, canonical_repo, catalog_repo) -> None:  # type: ignore[no-untyped-def]
+    Si la edición cambió el texto que se embebe, el repo ya dejó el `embedding` en NULL (ver
+    `SqlCanonicalProductRepository._embedding_text`) — un vector que describe al producto viejo es
+    PEOR que ninguno. Este use case sólo cierra la ventana re-embebiendo en el acto; sin embedder
+    inyectado el NULL sobrevive y lo levanta el backfill.
+    """
+
+    def __init__(self, canonical_repo, catalog_repo, embedder=None) -> None:  # type: ignore[no-untyped-def]
         self._canonical = canonical_repo
         self._catalog = catalog_repo
+        self._embedder = embedder
 
     def execute(
         self,
@@ -276,6 +289,8 @@ class UpdateCanonicalProduct:
         )
         if updated is None:
             return None
+        if self._embedder is not None:
+            self._embedder.execute(canonical_product_id)
         return self._catalog.get_catalog_row(
             market_id=market_id, canonical_product_id=canonical_product_id
         )

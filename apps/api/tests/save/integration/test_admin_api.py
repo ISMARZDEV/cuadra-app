@@ -29,6 +29,9 @@ from src.main import app
 
 from .test_product_match_repository import _seed_provider_and_canonical, _seed_store_product
 
+from ._taxonomy import taxonomy_node
+
+
 
 def _seed_role_user(db_session, role_key: str) -> str:  # type: ignore[no-untyped-def]
     seed_identity(db_session)
@@ -370,12 +373,11 @@ def test_bulk_resolve_is_per_row_atomic_and_reports_partial_failure(db_session) 
 def _seed_taxonomy_leaf(db_session, name: str = "Zarandaja") -> tuple[str, str]:  # type: ignore[no-untyped-def]
     """(top_id, leaf_id) — la taxonomía es de DOS niveles y la clasificación guarda la HOJA,
     mientras el badge de la cola muestra su TOPE."""
-    from src.contexts.save.infrastructure.models import TaxonomyNodeModel
 
-    top = TaxonomyNodeModel(name="Despensa", level=0, market_id="DO", parent_id=None)
+    top = taxonomy_node(db_session, name="Despensa", level=0, market_id="DO", parent_id=None)
     db_session.add(top)
     db_session.flush()
-    leaf = TaxonomyNodeModel(name=name, level=1, market_id="DO", parent_id=top.id)
+    leaf = taxonomy_node(db_session, name=name, level=1, market_id="DO", parent_id=top.id)
     db_session.add(leaf)
     db_session.flush()
     return str(top.id), str(leaf.id)

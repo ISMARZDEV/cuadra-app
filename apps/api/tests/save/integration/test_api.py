@@ -21,7 +21,6 @@ from src.contexts.save.domain.entities import (
     SourcePlatform,
 )
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
-from src.contexts.save.infrastructure.models import TaxonomyNodeModel
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlProviderRepository,
@@ -29,6 +28,9 @@ from src.contexts.save.infrastructure.repositories import (
 )
 from src.main import app
 from src.shared.money import Currency, Money
+
+from ._taxonomy import taxonomy_node
+
 
 DOP = Currency("DOP")
 
@@ -47,7 +49,7 @@ def _seed(db_session: Session, market_id: str = "DO") -> str:
     prov.add(
         Provider(p_sirena, "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, market_id)
     )
-    node = TaxonomyNodeModel(name="Arroz", level=0, market_id=market_id)
+    node = taxonomy_node(db_session, name="Arroz", level=0, market_id=market_id)
     db_session.add(node)
     db_session.flush()
     cid = str(uuid.uuid4())
@@ -158,10 +160,10 @@ def test_drops_endpoint_empty_without_drops(db_session: Session) -> None:
 
 
 def _seed_taxonomy(db_session: Session, market: str) -> str:
-    despensa = TaxonomyNodeModel(name="Despensa & Abarrotes", level=0, market_id=market)
+    despensa = taxonomy_node(db_session, name="Despensa & Abarrotes", level=0, market_id=market)
     db_session.add(despensa)
     db_session.flush()
-    granos = TaxonomyNodeModel(
+    granos = taxonomy_node(db_session, 
         name="Arroz, Granos & Legumbres", level=1, market_id=market, parent_id=despensa.id
     )
     db_session.add(granos)

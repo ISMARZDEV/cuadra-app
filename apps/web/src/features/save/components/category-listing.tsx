@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { categoryLabel } from "@/i18n/categories";
 import { marketOf } from "@/i18n/config";
 import { format } from "@/i18n/messages";
 import { usePageI18n } from "@/i18n/usePageI18n";
@@ -87,7 +88,11 @@ export function CategoryListing() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <Breadcrumbs trail={cat.breadcrumb.slice(0, -1)} currentName={cat.name} />
+      <Breadcrumbs
+        trail={cat.breadcrumb.slice(0, -1)}
+        currentName={cat.name}
+        currentKey={cat.key}
+      />
 
       <div className="mt-4 grid grid-cols-1 gap-8 md:grid-cols-[220px_minmax(0,1fr)]">
         <CategoryFilters facets={cat.facets} locale={locale} />
@@ -95,7 +100,7 @@ export function CategoryListing() {
         <div>
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h1 className="text-2xl font-bold">{cat.name}</h1>
+              <h1 className="text-2xl font-bold">{categoryLabel(cat.key, cat.name, locale)}</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 {cat.total} {t("category.products")}
               </p>
@@ -129,7 +134,7 @@ export function CategoryListing() {
                     <span className="flex size-7 items-center justify-center rounded-full bg-secondary">
                       <Icon className="size-4 text-secondary-foreground" strokeWidth={1.5} />
                     </span>
-                    {s.name}
+                    {categoryLabel(s.key, s.name, locale)}
                   </a>
                 );
               })}

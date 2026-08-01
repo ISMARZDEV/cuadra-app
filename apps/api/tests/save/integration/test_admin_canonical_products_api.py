@@ -25,6 +25,9 @@ from src.contexts.save.infrastructure.models import (
 )
 from src.main import app
 
+from ._taxonomy import taxonomy_node
+
+
 
 def _seed_role_user(db_session, role_key: str) -> str:  # type: ignore[no-untyped-def]
     seed_identity(db_session)
@@ -127,7 +130,7 @@ class TestListCanonicalProducts:
         ).first()
         if not existing_tax:
             db_session.add(
-                TaxonomyNodeModel(
+                taxonomy_node(db_session, 
                     id=self.TAXONOMY_ID, name="Arroz Catalog Test", level=1,
                     market_id=self.MARKET_ID, parent_id=None,
                 )
@@ -347,7 +350,7 @@ class TestCanonicalProductProviders:
         ).first()
         if not existing_tax:
             db_session.add(
-                TaxonomyNodeModel(
+                taxonomy_node(db_session, 
                     id=self.TAXONOMY_ID, name="Arroz Providers Test", level=1,
                     market_id=self.MARKET_ID, parent_id=None,
                 )
@@ -493,7 +496,7 @@ class TestCanonicalProviderPreviousPrice:
             sa_select(TaxonomyNodeModel).where(TaxonomyNodeModel.id == self.TAXONOMY_ID)
         ).first():
             db_session.add(
-                TaxonomyNodeModel(
+                taxonomy_node(db_session, 
                     id=self.TAXONOMY_ID, name="Arroz Prev Price", level=1,
                     market_id=self.MARKET_ID, parent_id=None,
                 )
@@ -1036,13 +1039,13 @@ class TestCategoryCarriesLeafAndTop:
             BrandModel(id=self.BRAND_ID, name="LEAFTOP_TEST", market_id=self.MARKET_ID)
         )
         db_session.add(
-            TaxonomyNodeModel(
+            taxonomy_node(db_session, 
                 id=self.TOP_ID, name="Despensa & Abarrotes", level=0,
                 market_id=self.MARKET_ID, parent_id=None,
             )
         )
         db_session.add(
-            TaxonomyNodeModel(
+            taxonomy_node(db_session, 
                 id=self.LEAF_ID, name="Arroz LeafTop", level=1,
                 market_id=self.MARKET_ID, parent_id=self.TOP_ID,
             )
@@ -1260,7 +1263,7 @@ class TestCanonicalProductCursor:
         ).first()
         if not existing_tax:
             db_session.add(
-                TaxonomyNodeModel(
+                taxonomy_node(db_session, 
                     id=self.TAXONOMY_ID, name="Cursor Category", level=1,
                     market_id=self.MARKET_ID, parent_id=None,
                 )

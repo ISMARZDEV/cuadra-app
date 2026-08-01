@@ -20,9 +20,11 @@ from src.contexts.save.infrastructure.models import (
     AdminAuditLogModel,
     CanonicalProductModel,
     CategoryClassificationModel,
-    TaxonomyNodeModel,
 )
 from src.main import app
+
+from ._taxonomy import taxonomy_node
+
 
 MARKET = "DO"
 
@@ -175,10 +177,10 @@ class TestCategorySuggestions:
 
     @pytest.fixture
     def taxonomy(self, db_session):  # type: ignore[no-untyped-def]
-        parent = TaxonomyNodeModel(name="Despensa Sug", level=0, market_id=MARKET, parent_id=None)
+        parent = taxonomy_node(db_session, name="Despensa Sug", level=0, market_id=MARKET, parent_id=None)
         db_session.add(parent)
         db_session.flush()
-        leaf = TaxonomyNodeModel(
+        leaf = taxonomy_node(db_session, 
             name="Zarzaparrilla", level=1, market_id=MARKET, parent_id=parent.id
         )
         db_session.add(leaf)
@@ -238,10 +240,10 @@ class TestCategorySuggestions:
 class TestSetCategoryRecordsTheHuman:
     @pytest.fixture
     def leaf(self, db_session):  # type: ignore[no-untyped-def]
-        parent = TaxonomyNodeModel(name="Despensa Hum", level=0, market_id=MARKET, parent_id=None)
+        parent = taxonomy_node(db_session, name="Despensa Hum", level=0, market_id=MARKET, parent_id=None)
         db_session.add(parent)
         db_session.flush()
-        node = TaxonomyNodeModel(name="Granos Hum", level=1, market_id=MARKET, parent_id=parent.id)
+        node = taxonomy_node(db_session, name="Granos Hum", level=1, market_id=MARKET, parent_id=parent.id)
         db_session.add(node)
         db_session.flush()
         return node
@@ -310,10 +312,10 @@ class TestBulkCategory:
 
     @pytest.fixture
     def leaf(self, db_session):  # type: ignore[no-untyped-def]
-        parent = TaxonomyNodeModel(name="Despensa Bulk", level=0, market_id=MARKET, parent_id=None)
+        parent = taxonomy_node(db_session, name="Despensa Bulk", level=0, market_id=MARKET, parent_id=None)
         db_session.add(parent)
         db_session.flush()
-        node = TaxonomyNodeModel(name="Granos Bulk", level=1, market_id=MARKET, parent_id=parent.id)
+        node = taxonomy_node(db_session, name="Granos Bulk", level=1, market_id=MARKET, parent_id=parent.id)
         db_session.add(node)
         db_session.flush()
         return node
@@ -421,10 +423,10 @@ class TestBulkCategory:
 class TestBulkSuggestions:
     @pytest.fixture
     def leaf(self, db_session):  # type: ignore[no-untyped-def]
-        parent = TaxonomyNodeModel(name="Despensa BSug", level=0, market_id=MARKET, parent_id=None)
+        parent = taxonomy_node(db_session, name="Despensa BSug", level=0, market_id=MARKET, parent_id=None)
         db_session.add(parent)
         db_session.flush()
-        node = TaxonomyNodeModel(
+        node = taxonomy_node(db_session, 
             name="Chinola", level=1, market_id=MARKET, parent_id=parent.id
         )
         db_session.add(node)

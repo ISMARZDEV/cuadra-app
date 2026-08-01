@@ -17,6 +17,7 @@ from src.contexts.save.application.create_canonical_and_link import (
     CreateCanonicalAndLink,
     NewCanonicalProduct,
 )
+from src.contexts.save.application.embed_canonical_product import EmbedCanonicalProduct
 from src.contexts.save.application.resolve_review import ResolveReview
 from src.contexts.save.domain.classification import CategoryClassification, ClassifiableProduct
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
@@ -29,7 +30,6 @@ from src.contexts.save.infrastructure.models import (
     ProductMatchModel,
     StoreProductImageModel,
     StoreProductModel,
-    TaxonomyNodeModel,
 )
 from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalImageRepository,
@@ -39,8 +39,11 @@ from src.contexts.save.infrastructure.repositories import (
 
 from .test_product_match_repository import _seed_provider_and_canonical, _seed_store_product
 
+from ._taxonomy import taxonomy_node
 
-def _make_use_case(db_session) -> CreateCanonicalAndLink:  # type: ignore[no-untyped-def]
+
+
+def _make_use_case(db_session, embedder=None) -> CreateCanonicalAndLink:  # type: ignore[no-untyped-def]
     match_repo = SqlProductMatchRepository(db_session)
     return CreateCanonicalAndLink(
         canonical_repo=SqlCanonicalProductRepository(db_session),
@@ -50,7 +53,20 @@ def _make_use_case(db_session) -> CreateCanonicalAndLink:  # type: ignore[no-unt
         match_repo=match_repo,
         store_repo=SqlStoreProductRepository(db_session),
         image_repo=SqlCanonicalImageRepository(db_session),
+        embedder=embedder,
     )
+
+
+class _StubEmbeddingProvider:
+    """BGE-M3 falso: 1024 dims (la dimensión de la columna) sin red ni modelo."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1] * 1024 for _ in texts]
+
+
+class _ExplodingEmbeddingProvider:
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("BGE-M3 endpoint caído")
 
 
 def _seed_store_images(db_session, store_product_id: str, urls: list[str]) -> None:  # type: ignore[no-untyped-def]
@@ -84,7 +100,7 @@ def _new_product(taxonomy_node_id: str, name: str = "Bebida Gasificada Zero 330 
 
 
 def _leaf(db_session, name: str = "Bebidas Hidratantes") -> str:  # type: ignore[no-untyped-def]
-    node = TaxonomyNodeModel(name=name, level=0, market_id="DO")
+    node = taxonomy_node(db_session, name=name, level=0, market_id="DO")
     db_session.add(node)
     db_session.flush()
     return str(node.id)
@@ -124,7 +140,7 @@ def test_creates_canonical_with_autogen_slug_and_links_the_match(db_session) -> 
         store_product_id=sp_id, canonical_product_id=None,
         confidence=0.3, method="human", status="pending_review",
     )
-    node = TaxonomyNodeModel(name="Arroz", level=0, market_id="DO")
+    node = taxonomy_node(db_session, name="Arroz", level=0, market_id="DO")
     db_session.add(node)
     db_session.flush()
     use_case = _make_use_case(db_session)
@@ -153,9 +169,59 @@ def test_creates_canonical_with_autogen_slug_and_links_the_match(db_session) -> 
     assert str(sp_row.canonical_product_id) == canonical_id
 
 
+def _create_one(db_session, embedder, name: str) -> str:  # type: ignore[no-untyped-def]
+    """Crea un canónico desde una fila pendiente de la cola y devuelve su id."""
+    pid, _existing_cid = _seed_provider_and_canonical(db_session)
+    sp_id = _seed_store_product(db_session, pid)
+    match_id = SqlProductMatchRepository(db_session).record_match(
+        store_product_id=sp_id, canonical_product_id=None,
+        confidence=0.3, method="human", status="pending_review",
+    )
+    node = taxonomy_node(db_session, name="Arroz", level=0, market_id="DO")
+    db_session.add(node)
+    db_session.flush()
+    return _make_use_case(db_session, embedder=embedder).execute(
+        match_id=match_id,
+        product=NewCanonicalProduct(
+            name=name, brand="La Garza",
+            quantity=Quantity(Decimal("4.5359237"), UnitMeasure.MASS),
+            taxonomy_node_id=str(node.id), market_id="DO",
+        ),
+        decided_by="admin-123",
+    )
+
+
+def test_the_new_canonical_is_embedded_on_creation(db_session) -> None:  # type: ignore[no-untyped-def]
+    """US-CP-L14: nacía SIN vector, o sea invisible para la etapa semántica hasta el próximo
+    backfill. Como la cola es donde nacen los canónicos, esa ventana se retroalimentaba."""
+    embedder = EmbedCanonicalProduct(
+        SqlCanonicalProductRepository(db_session), _StubEmbeddingProvider()
+    )
+
+    cid = _create_one(db_session, embedder, "Zqx Arroz Embebido Al Nacer")
+
+    row = db_session.get(CanonicalProductModel, uuid.UUID(cid))
+    assert row is not None
+    assert row.embedding is not None
+
+
+def test_a_dead_embedding_service_never_blocks_the_creation(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Fail-safe: ningún vector vale bloquear la resolución de una fila de la cola. El canónico se
+    crea igual y queda con `embedding` NULL — que es exactamente lo que el backfill busca."""
+    embedder = EmbedCanonicalProduct(
+        SqlCanonicalProductRepository(db_session), _ExplodingEmbeddingProvider()
+    )
+
+    cid = _create_one(db_session, embedder, "Zqx Arroz Sin Servicio")
+
+    row = db_session.get(CanonicalProductModel, uuid.UUID(cid))
+    assert row is not None
+    assert row.embedding is None
+
+
 def test_two_canonicals_with_same_name_get_distinct_slugs(db_session) -> None:  # type: ignore[no-untyped-def]
     pid, _existing_cid = _seed_provider_and_canonical(db_session)
-    node = TaxonomyNodeModel(name="Detergentes", level=0, market_id="DO")
+    node = taxonomy_node(db_session, name="Detergentes", level=0, market_id="DO")
     db_session.add(node)
     db_session.flush()
 

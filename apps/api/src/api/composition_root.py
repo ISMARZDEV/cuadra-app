@@ -42,6 +42,7 @@ from src.contexts.save.infrastructure.classification.lexicon import build_lexico
 from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
+from src.contexts.save.application.embed_canonical_product import EmbedCanonicalProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.canonical_catalog import (
     AddCanonicalImage,
@@ -108,6 +109,7 @@ from src.contexts.save.application.preview_basket_query import PreviewBasketQuer
 from src.contexts.save.application.test_source import TestSource
 from src.contexts.save.domain.ports.orchestrator import PipelineOrchestrator
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
+from src.contexts.save.infrastructure.matching.embeddings import BgeM3EmbeddingProvider
 from src.contexts.save.application.orchestration_policies import CreateProviderFlow
 from src.contexts.save.infrastructure.catalog_sources.factory import directed_capability
 from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
@@ -649,6 +651,10 @@ def get_create_canonical_and_link(
         # delicado de este flujo.
         store_repo=SqlStoreProductRepository(session),
         image_repo=SqlCanonicalImageRepository(session),
+        # US-CP-L14: el canónico entra al índice semántico al nacer. Sin esto quedaba invisible
+        # para la etapa vectorial hasta el próximo backfill — y como la cola es JUSTO donde nacen
+        # los canónicos, esa ventana se retroalimentaba.
+        embedder=build_inline_canonical_embedder(session),
     )
 
 
@@ -798,11 +804,37 @@ def get_list_canonical_duplicates(
     return ListCanonicalDuplicates(SqlAdminCanonicalCatalogRepository(session))
 
 
+def build_inline_canonical_embedder(session: Session) -> EmbedCanonicalProduct | None:
+    """Embebe en el acto lo que el admin escribe (US-CP-L14). `None` = se deja al backfill.
+
+    Dos condiciones, y ninguna es caprichosa:
+
+    - `save_matching_cascade_enabled`: con la cascada dark NADIE lee embeddings, así que embeber
+      sería puro costo. Mismo gate que `build_canonical_embedder` en la ingesta, y MISMO modelo —
+      vectores de modelos distintos no son comparables.
+    - `save_bge_m3_endpoint_url`: sin endpoint, `build_embedding_provider` caería al BGE-M3
+      IN-PROCESS (sentence-transformers), que dentro de un worker de FastAPI significa cargar el
+      modelo en el proceso que atiende requests. Eso no se hace por conveniencia: en el API el
+      embebido inline existe SÓLO contra el servicio dedicado.
+
+    En ambos casos el `embedding` queda NULL y el backfill lo levanta — la corrección no depende de
+    esto, sólo la latencia con que el canónico entra al índice semántico.
+    """
+    if not settings.save_matching_cascade_enabled or not settings.save_bge_m3_endpoint_url:
+        return None
+    return EmbedCanonicalProduct(
+        SqlCanonicalProductRepository(session),
+        BgeM3EmbeddingProvider(settings.save_bge_m3_endpoint_url),
+    )
+
+
 def get_create_canonical_product(
     session: Session = Depends(get_session),
 ) -> CreateCanonicalProduct:
     return CreateCanonicalProduct(
-        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+        SqlCanonicalProductRepository(session),
+        SqlAdminCanonicalCatalogRepository(session),
+        embedder=build_inline_canonical_embedder(session),
     )
 
 
@@ -810,7 +842,9 @@ def get_update_canonical_product(
     session: Session = Depends(get_session),
 ) -> UpdateCanonicalProduct:
     return UpdateCanonicalProduct(
-        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+        SqlCanonicalProductRepository(session),
+        SqlAdminCanonicalCatalogRepository(session),
+        embedder=build_inline_canonical_embedder(session),
     )
 
 

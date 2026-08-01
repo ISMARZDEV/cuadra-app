@@ -164,6 +164,6 @@ def seed_category_terms(session: "Session", market_id: str) -> int:
     for node_id, name, _parent in index.leaves_without_terms(market_id, limit=10_000):
         terms = CATEGORY_TERMS.get(name)
         if terms:
-            index.set_terms(node_id, terms)
+            index.set_terms(node_id, terms, market_id)
             seeded += 1
     return seeded

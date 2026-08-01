@@ -49,7 +49,8 @@ class TaxonomyNodeModel(Base):
 
     __tablename__ = "taxonomy_node"
     __table_args__ = (
-        UniqueConstraint("market_id", "parent_id", "name", name="uq_taxonomy_market_parent_name"),
+        UniqueConstraint("parent_id", "name", name="uq_taxonomy_parent_name"),
+        UniqueConstraint("key", name="uq_taxonomy_key"),
         {"schema": _SCHEMA},
     )
 
@@ -59,9 +60,38 @@ class TaxonomyNodeModel(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("save.taxonomy_node.id", ondelete="CASCADE")
     )
+    # IDENTIDAD del nodo, estable e independiente del idioma ("despensa-abarrotes.cafe"). `name` es
+    # sólo la ETIQUETA: renombrarla no toca la key, así que el seed ACTUALIZA el nodo en vez de
+    # crear uno nuevo. Antes el id se derivaba del nombre y cada rename orfanaba el nodo viejo.
+    # Nullable por los nodos hijos de la demo (nivel ≥2), que no vienen del markdown.
+    # Ver docs/research/save-fable/taxonomia-multi-idioma.md.
+    key: Mapped[str | None] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     level: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
-    market_id: Mapped[str] = mapped_column(Text, nullable=False)  # cross-context, sin FK
+
+
+class TaxonomyNodeMarketModel(Base):
+    """Lo que un MERCADO concreto sabe de un concepto de la taxonomía (Fase 2b).
+
+    El árbol (`taxonomy_node`) es GLOBAL: un concepto = una fila, así que dos países comparten el
+    mismo nodo y se pueden comparar precios por categoría entre ellos. El RECONOCIMIENTO, en cambio,
+    no se comparte: depende del idioma Y del país. Un producto brasileño dice "Arroz Branco Tipo 1"
+    y los términos en español no lo pegan; y `víveres` en RD son las raíces mientras en otros países
+    hispanohablantes significa "abarrotes" — mismo idioma, distinto significado.
+
+    Las ETIQUETAS localizadas no viven acá: se resuelven en el cliente contra la `key` del nodo
+    (`apps/web/src/i18n/categories.ts`). `taxonomy_node.name` es la etiqueta por defecto y fallback.
+    """
+
+    __tablename__ = "taxonomy_node_market"
+    __table_args__ = {"schema": _SCHEMA}
+
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("save.taxonomy_node.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    market_id: Mapped[str] = mapped_column(Text, primary_key=True)  # cross-context, sin FK
     # Descriptores del dominio de la hoja para la receta de embedding del clasificador
     # ("arroz, habichuelas, guandules") — data curable (generada offline + revisada), editable
     # desde el admin. Sembrar/editar esto DEBE poner `embedding=NULL` (re-embed). NULL = fallback
@@ -70,6 +100,9 @@ class TaxonomyNodeModel(Base):
     # BGE-M3 (mismo modelo que canonical_product.embedding) — índice semántico de categorías
     # (save-category-classification). NULL hasta que EmbedCategories lo puebla. Solo hojas (level=1).
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
+    # ¿Este mercado LLEVA esta categoría? El árbol es la unión de todos los mercados: mamajuana es
+    # dominicana y un súper en Texas tiene pasillos que RD no tiene.
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
 
 class CollectionModel(Base):

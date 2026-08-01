@@ -220,7 +220,12 @@ class CategoryCandidateRepository(Protocol):
 
 
 class CategoryIndexRepository(Protocol):
-    """Index-side de embeddings de categoría (para EmbedCategories)."""
+    """Index-side de embeddings de categoría (para EmbedCategories).
+
+    Todo acá va por MERCADO (Fase 2b): el árbol de conceptos es global pero los términos y el
+    vector son del idioma Y del país, así que se guardan en `taxonomy_node_market`. Por eso las
+    escrituras también reciben `market_id` — sin él estarían pisando el reconocimiento de otro país.
+    """
 
     def leaves_without_embedding(
         self, market_id: str, limit: int
@@ -228,8 +233,8 @@ class CategoryIndexRepository(Protocol):
         """(node_id, name, parent_name, classification_terms) de las hojas nivel-1 sin embedding."""
         ...
 
-    def set_embedding(self, node_id: str, embedding: list[float]) -> None:
-        """Persiste el embedding BGE-M3 de una hoja."""
+    def set_embedding(self, node_id: str, embedding: list[float], market_id: str) -> None:
+        """Persiste el embedding BGE-M3 de una hoja EN ESE MERCADO."""
         ...
 
     def leaves_without_terms(
@@ -238,9 +243,9 @@ class CategoryIndexRepository(Protocol):
         """(node_id, name, parent_name) de las hojas nivel-1 aún sin `classification_terms`."""
         ...
 
-    def set_terms(self, node_id: str, terms: str) -> None:
-        """Persiste `classification_terms` de una hoja E INVALIDA su embedding (=NULL): el input del
-        vector cambió, así que EmbedCategories debe re-embeberla con la receta nueva."""
+    def set_terms(self, node_id: str, terms: str, market_id: str) -> None:
+        """Persiste `classification_terms` de una hoja EN ESE MERCADO e INVALIDA su embedding
+        (=NULL): el input del vector cambió, así que EmbedCategories debe re-embeberla."""
         ...
 
 

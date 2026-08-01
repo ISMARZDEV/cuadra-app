@@ -1,5 +1,6 @@
 import { useData } from "vike-react/useData";
 
+import { categoryLabel } from "@/i18n/categories";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
 
@@ -24,7 +25,7 @@ export function CategoryOverview() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <Breadcrumbs trail={trail} currentName={cat.name} />
+      <Breadcrumbs trail={trail} currentName={cat.name} currentKey={cat.key} />
 
       <div className="mt-4 grid grid-cols-1 gap-8 md:grid-cols-[220px_minmax(0,1fr)]">
         <nav className="flex flex-col gap-0.5">
@@ -42,14 +43,14 @@ export function CategoryOverview() {
                 }
               >
                 <Icon className="size-4" strokeWidth={1.5} />
-                {c.name}
+                {categoryLabel(c.key, c.name, locale)}
               </a>
             );
           })}
         </nav>
 
         <div>
-          <h1 className="text-2xl font-bold">{cat.name}</h1>
+          <h1 className="text-2xl font-bold">{categoryLabel(cat.key, cat.name, locale)}</h1>
 
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {cat.subcategories.map((s) => {
@@ -64,7 +65,9 @@ export function CategoryOverview() {
                     className="size-9 text-muted-foreground group-hover:text-primary"
                     strokeWidth={1.25}
                   />
-                  <span className="text-sm font-medium">{s.name}</span>
+                  <span className="text-sm font-medium">
+                    {categoryLabel(s.key, s.name, locale)}
+                  </span>
                 </a>
               );
             })}

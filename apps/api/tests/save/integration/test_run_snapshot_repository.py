@@ -16,15 +16,18 @@ from __future__ import annotations
 
 import uuid
 
-from src.contexts.save.infrastructure.models import CanonicalProductModel, TaxonomyNodeModel
+from src.contexts.save.infrastructure.models import CanonicalProductModel
 from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
     SqlRunSnapshotRepository,
 )
 from src.contexts.save.domain.entities.orchestration_run import RunMetrics
 
+from ._taxonomy import taxonomy_node
+
+
 
 def _taxonomy(db_session) -> uuid.UUID:  # type: ignore[no-untyped-def]
-    node = TaxonomyNodeModel(id=uuid.uuid4(), name=f"Cat {uuid.uuid4().hex[:6]}", level=1,
+    node = taxonomy_node(db_session, id=uuid.uuid4(), name=f"Cat {uuid.uuid4().hex[:6]}", level=1,
                              market_id="DO")
     db_session.add(node)
     db_session.flush()

@@ -15,8 +15,9 @@ from src.contexts.save.infrastructure.repositories import (
 )
 
 _ENTRIES = [
-    ("Despensa & Abarrotes", ["Arroz, Granos & Legumbres", "Aceite & Vinagre"]),
-    ("Cuidado Del Hogar", ["Lavado De Ropa"]),
+    (("Despensa & Abarrotes", "despensa"), [("Arroz, Granos & Legumbres", "despensa.arroz"),
+                                            ("Aceite & Vinagre", "despensa.aceite")]),
+    (("Cuidado Del Hogar", "hogar"), [("Lavado De Ropa", "hogar.lavado")]),
 ]
 
 
@@ -49,7 +50,7 @@ def test_find_leaves_vector_ranks_by_cosine(db_session) -> None:  # type: ignore
     for i, (node_id, name, _parent, _terms) in enumerate(leaves):
         vec = [0.0] * 1024
         vec[i] = 1.0
-        index.set_embedding(node_id, vec)
+        index.set_embedding(node_id, vec, market)
         if name == "Lavado De Ropa":
             target_id, target_i = node_id, i
     db_session.flush()
@@ -65,7 +66,9 @@ def test_find_leaves_vector_ranks_by_cosine(db_session) -> None:  # type: ignore
 
 
 def test_set_terms_persists_and_invalidates_embedding(db_session) -> None:  # type: ignore[no-untyped-def]
-    from src.contexts.save.infrastructure.models import TaxonomyNodeModel
+    from src.contexts.save.infrastructure.models import (
+    TaxonomyNodeMarketModel,
+)
 
     market = f"T{uuid.uuid4().hex[:6]}"
     _seed(db_session, market)
@@ -75,20 +78,22 @@ def test_set_terms_persists_and_invalidates_embedding(db_session) -> None:  # ty
     pending = index.leaves_without_terms(market, limit=50)
     assert len(pending) == 3  # las 3 hojas del _seed
     node_id, name, parent = pending[0]
-    index.set_embedding(node_id, [0.1] * 1024)
+    index.set_embedding(node_id, [0.1] * 1024, market)
     db_session.flush()
 
-    index.set_terms(node_id, "arroz, habichuelas, guandules")
+    index.set_terms(node_id, "arroz, habichuelas, guandules", market)
     db_session.flush()
 
-    node = db_session.get(TaxonomyNodeModel, uuid.UUID(node_id))
-    assert node.classification_terms == "arroz, habichuelas, guandules"
-    assert node.embedding is None  # invalidado → EmbedCategories la re-embebe
+    row = db_session.get(TaxonomyNodeMarketModel, (uuid.UUID(node_id), market))
+    assert row.classification_terms == "arroz, habichuelas, guandules"
+    assert row.embedding is None  # invalidado → EmbedCategories la re-embebe
     # ya no aparece como "sin términos", pero SÍ como "sin embedding" (re-embed pendiente)
     assert node_id not in {n for n, _, _ in index.leaves_without_terms(market, limit=50)}
     assert node_id in {n for n, _, _, _ in index.leaves_without_embedding(market, limit=50)}
 
 
 def _names(db_session, node_ids: list[str]) -> list[str]:  # type: ignore[no-untyped-def]
-    from src.contexts.save.infrastructure.models import TaxonomyNodeModel
+    from src.contexts.save.infrastructure.models import (
+    TaxonomyNodeModel,
+)
     return [db_session.get(TaxonomyNodeModel, uuid.UUID(i)).name for i in node_ids]

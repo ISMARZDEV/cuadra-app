@@ -53,7 +53,10 @@ class GetCategory:
         return CategoryPageDto(
             name=node.name,
             slug=node.slug,
-            breadcrumb=[CategoryRefDto(name=n.name, slug=n.slug) for n in path],
-            subcategories=[CategoryRefDto(name=c.name, slug=c.slug) for c in node.children],
+            key=node.key,
+            breadcrumb=[CategoryRefDto(name=n.name, slug=n.slug, key=n.key) for n in path],
+            subcategories=[
+                CategoryRefDto(name=c.name, slug=c.slug, key=c.key) for c in node.children
+            ],
             products=[ProductSearchDto.from_entity(p) for p in products],
         )

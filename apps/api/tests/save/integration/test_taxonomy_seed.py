@@ -12,19 +12,24 @@ from sqlalchemy import func, select
 
 from seeds.save_taxonomy_seed import seed_taxonomy
 from src.contexts.save.application.categories import ListCategories
-from src.contexts.save.infrastructure.models import TaxonomyNodeModel
+from src.contexts.save.infrastructure.models import (
+    TaxonomyNodeMarketModel,
+    TaxonomyNodeModel,
+)
 from src.contexts.save.infrastructure.repositories import SqlTaxonomyRepository
 
 _ENTRIES = [
-    ("Despensa & Abarrotes", ["Aceite & Vinagre", "Arroz, Granos & Legumbres"]),
-    ("Frutas & Verduras", ["Frutas", "Vegetales"]),
+    (("Despensa & Abarrotes", "despensa"), [("Aceite & Vinagre", "despensa.aceite"),
+                                            ("Arroz, Granos & Legumbres", "despensa.arroz")]),
+    (("Frutas & Verduras", "frutas"), [("Frutas", "frutas.frutas"), ("Vegetales", "frutas.vegetales")]),
 ]
 
 
 def _count_nodes(db_session, market: str) -> int:  # type: ignore[no-untyped-def]
     return db_session.scalar(
         select(func.count()).select_from(TaxonomyNodeModel).where(
-            TaxonomyNodeModel.market_id == market
+            TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
+            TaxonomyNodeMarketModel.market_id == market,
         )
     )
 
@@ -46,7 +51,9 @@ def test_seed_creates_roots_and_subcategories(db_session) -> None:  # type: igno
     # 2 categorías tope (level 0) + 4 subcategorías (level 1) = 6 nodos
     roots = db_session.scalars(
         select(TaxonomyNodeModel).where(
-            TaxonomyNodeModel.market_id == market, TaxonomyNodeModel.level == 0
+            TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
+            TaxonomyNodeMarketModel.market_id == market,
+            TaxonomyNodeModel.level == 0,
         )
     ).all()
     assert {r.name for r in roots} == {"Despensa & Abarrotes", "Frutas & Verduras"}

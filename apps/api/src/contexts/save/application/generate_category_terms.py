@@ -36,7 +36,7 @@ class GenerateCategoryTerms:
                 terms = self._generator.generate(name, parent)
                 if not terms or not terms.strip():
                     continue  # LLM no produjo nada útil → no persistir basura, reintentar luego
-                self._repo.set_terms(node_id, terms.strip())
+                self._repo.set_terms(node_id, terms.strip(), market_id)
                 persisted_this_batch += 1
             total += persisted_this_batch
             # Si nada de este lote se persistió, otra pasada devolvería el MISMO lote → corta el loop.

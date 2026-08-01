@@ -19,7 +19,7 @@ class _FakeIndexRepo:
         pending = [lf for lf in self._leaves if lf[0] not in self.embeddings]
         return pending[:limit]
 
-    def set_embedding(self, node_id: str, embedding: list[float]) -> None:
+    def set_embedding(self, node_id: str, embedding: list[float], market_id: str) -> None:
         self.embeddings[node_id] = embedding
 
 

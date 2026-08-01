@@ -55,6 +55,7 @@ from ..domain.review_queue import StoreProductRawAttrs
 from ..domain.slug import product_slug
 from ..domain.taxonomy import CategoryNode, slugify
 from ..domain.value_objects import Quantity, UnitMeasure, normalize_size_text
+from .matching.cascade.embedding_text import build_embedding_text
 from .mappers import (
     basket_query_to_entity,
     canonical_to_entity,
@@ -81,6 +82,7 @@ from .models import (
     PushTokenModel,
     StoreProductModel,
     StoreRegistryModel,
+    TaxonomyNodeMarketModel,
     TaxonomyNodeModel,
 )
 
@@ -431,6 +433,9 @@ class SqlCanonicalProductRepository:
         `None` significa "no cambiar". Para VACIAR la categoría hay que pedirlo con
         `clear_taxonomy=True` — si no, no habría forma de distinguir "dejala como está" de
         "sacásela".
+
+        Si la edición cambia el TEXTO que se embebe (nombre/marca/tamaño de empaque) el `embedding`
+        se invalida — ver `_embedding_text`.
         """
         pid = _parse_uuid(canonical_product_id)
         if pid is None:
@@ -438,6 +443,7 @@ class SqlCanonicalProductRepository:
         m = self._s.get(CanonicalProductModel, pid)
         if m is None:
             return None
+        embedding_text_before = self._embedding_text(m)
 
         if name is not None:
             m.name = name
@@ -458,6 +464,9 @@ class SqlCanonicalProductRepository:
             m.taxonomy_node_id = None
         elif taxonomy_node_id is not None:
             m.taxonomy_node_id = _parse_uuid(taxonomy_node_id)
+
+        if self._embedding_text(m) != embedding_text_before:
+            m.embedding = None  # el input del embedding cambió → invalidar para re-embed
 
         self._s.flush()
         return canonical_to_entity(m, self._brand_name(m.brand_id))
@@ -561,6 +570,20 @@ class SqlCanonicalProductRepository:
             return ""
         b = self._s.get(BrandModel, brand_id)
         return b.name if b else ""
+
+    def _embedding_text(self, m: CanonicalProductModel) -> str:
+        """El texto que la etapa vectorial embebe para este canónico.
+
+        Se compara ANTES y DESPUÉS de una edición para saber si el `embedding` guardado quedó
+        describiendo al producto VIEJO. Un vector obsoleto es PEOR que uno ausente: el ausente sólo
+        vuelve invisible al producto, el obsoleto lo devuelve como candidato por un nombre que ya
+        no existe. Y `list_without_embedding` sólo levanta los NULL, así que sin invalidar acá el
+        backfill NUNCA podría repararlo. Mismo patrón que `SqlTaxonomyRepository.set_terms`.
+
+        Deriva de `build_embedding_text`, no de una lista de campos copiada a mano: si la receta
+        cambia, esta comparación la sigue sola.
+        """
+        return build_embedding_text(m.name, self._brand_name(m.brand_id), m.display_size or "")
 
     def get_by_id(self, product_id: str) -> CanonicalProduct | None:
         pid = _parse_uuid(product_id)
@@ -1375,7 +1398,8 @@ class SqlAlertRepository:
 
 
 class SqlTaxonomyRepository:
-    """Read-only sobre `taxonomy_node` (árbol self-FK). El slug se deriva del nombre (sin columna)."""
+    """Read-only sobre `taxonomy_node` (árbol self-FK). El slug sale de la KEY (identidad estable),
+    no de la etiqueta — ver `domain/taxonomy.py`. Sin key (nivel ≥2) cae a `slugify(name)`."""
 
     def __init__(self, session: Session) -> None:
         self._s = session
@@ -1386,17 +1410,27 @@ class SqlTaxonomyRepository:
         return CategoryNode(
             id=str(m.id),
             name=m.name,
-            slug=slugify(m.name),
+            slug=m.key.rsplit(".", 1)[-1] if m.key else slugify(m.name),
             level=m.level,
             parent_id=str(m.parent_id) if m.parent_id else None,
+            key=m.key,
             children=children,
         )
 
     def _market_nodes(self, market_id: str) -> list[TaxonomyNodeModel]:
+        """Nodos que ESE mercado lleva (Fase 2b): el árbol es global, `taxonomy_node_market.active`
+        dice cuáles usa cada país — mamajuana es dominicana, y US tiene pasillos que RD no tiene."""
         return list(
             self._s.scalars(
                 select(TaxonomyNodeModel)
-                .where(TaxonomyNodeModel.market_id == market_id)
+                .join(
+                    TaxonomyNodeMarketModel,
+                    TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
+                )
+                .where(
+                    TaxonomyNodeMarketModel.market_id == market_id,
+                    TaxonomyNodeMarketModel.active.is_(True),
+                )
                 .order_by(TaxonomyNodeModel.level, TaxonomyNodeModel.name)
             ).all()
         )
@@ -1429,11 +1463,19 @@ class SqlTaxonomyRepository:
         return list(reversed(chain))
 
     def descendant_ids(self, node_id: str) -> list[str]:
+        """Ids del nodo + toda su descendencia.
+
+        Recorre el árbol GLOBAL (Fase 2b): el nodo ya no sabe a qué mercado pertenece, y no debe —
+        la rama de conceptos es la misma para todos. Filtrar por mercado acá recortaría la rama y
+        haría que un producto colgado de una hoja "inactiva en este país" desapareciera del listado
+        de su categoría padre. Quién LLEVA cada categoría se decide en `list_tree`, que es la que
+        arma el árbol navegable.
+        """
         node = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
         if node is None:
             return []
         children_of: dict[str | None, list[str]] = {}
-        for m in self._market_nodes(node.market_id):
+        for m in self._s.scalars(select(TaxonomyNodeModel)).all():
             children_of.setdefault(str(m.parent_id) if m.parent_id else None, []).append(str(m.id))
         # BFS: node_id + todos sus descendientes
         ids: list[str] = []
@@ -1634,22 +1676,26 @@ class SqlCategoryIndexRepository:
                 TaxonomyNodeModel.id,
                 TaxonomyNodeModel.name,
                 parent.name,
-                TaxonomyNodeModel.classification_terms,
+                TaxonomyNodeMarketModel.classification_terms,
+            )
+            .join(
+                TaxonomyNodeMarketModel,
+                TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
             )
             .outerjoin(parent, parent.id == TaxonomyNodeModel.parent_id)
             .where(
-                TaxonomyNodeModel.market_id == market_id,
+                TaxonomyNodeMarketModel.market_id == market_id,
+                TaxonomyNodeMarketModel.active.is_(True),
                 TaxonomyNodeModel.level == 1,
-                TaxonomyNodeModel.embedding.is_(None),
+                TaxonomyNodeMarketModel.embedding.is_(None),
             )
             .limit(limit)
         ).all()
         return [(str(r[0]), r[1], r[2], r[3]) for r in rows]
 
-    def set_embedding(self, node_id: str, embedding: list[float]) -> None:
-        node = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
-        assert node is not None
-        node.embedding = embedding
+    def set_embedding(self, node_id: str, embedding: list[float], market_id: str) -> None:
+        row = self._market_row(node_id, market_id)
+        row.embedding = embedding
         self._s.flush()
 
     def leaves_without_terms(
@@ -1658,22 +1704,36 @@ class SqlCategoryIndexRepository:
         parent = aliased(TaxonomyNodeModel)
         rows = self._s.execute(
             select(TaxonomyNodeModel.id, TaxonomyNodeModel.name, parent.name)
+            .join(
+                TaxonomyNodeMarketModel,
+                TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
+            )
             .outerjoin(parent, parent.id == TaxonomyNodeModel.parent_id)
             .where(
-                TaxonomyNodeModel.market_id == market_id,
+                TaxonomyNodeMarketModel.market_id == market_id,
+                TaxonomyNodeMarketModel.active.is_(True),
                 TaxonomyNodeModel.level == 1,
-                TaxonomyNodeModel.classification_terms.is_(None),
+                TaxonomyNodeMarketModel.classification_terms.is_(None),
             )
             .limit(limit)
         ).all()
         return [(str(r[0]), r[1], r[2]) for r in rows]
 
-    def set_terms(self, node_id: str, terms: str) -> None:
-        node = self._s.get(TaxonomyNodeModel, uuid.UUID(node_id))
-        assert node is not None
-        node.classification_terms = terms
-        node.embedding = None  # el input del embedding cambió → invalidar para re-embed
+    def set_terms(self, node_id: str, terms: str, market_id: str) -> None:
+        row = self._market_row(node_id, market_id)
+        row.classification_terms = terms
+        row.embedding = None  # el input del embedding cambió → invalidar para re-embed
         self._s.flush()
+
+    def _market_row(self, node_id: str, market_id: str) -> TaxonomyNodeMarketModel:
+        """La fila (nodo, mercado). La crea si falta: un concepto puede existir globalmente y que
+        este mercado todavía no lo tenga registrado — pedir términos para él lo da de alta."""
+        nid = uuid.UUID(node_id)
+        row = self._s.get(TaxonomyNodeMarketModel, (nid, market_id))
+        if row is None:
+            row = TaxonomyNodeMarketModel(node_id=nid, market_id=market_id)
+            self._s.add(row)
+        return row
 
 
 class SqlCategoryCandidateRepository:
@@ -1686,7 +1746,15 @@ class SqlCategoryCandidateRepository:
         score = func.similarity(TaxonomyNodeModel.name, name)
         rows = self._s.execute(
             select(TaxonomyNodeModel.id, TaxonomyNodeModel.name, score)
-            .where(TaxonomyNodeModel.market_id == market_id, TaxonomyNodeModel.level == 1)
+            .join(
+                TaxonomyNodeMarketModel,
+                TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
+            )
+            .where(
+                TaxonomyNodeMarketModel.market_id == market_id,
+                TaxonomyNodeMarketModel.active.is_(True),
+                TaxonomyNodeModel.level == 1,
+            )
             .order_by(score.desc())
             .limit(limit)
         ).all()
@@ -1700,13 +1768,18 @@ class SqlCategoryCandidateRepository:
     def find_leaves_vector(
         self, embedding: list[float], market_id: str, limit: int
     ) -> list[CategoryCandidate]:
-        dist = TaxonomyNodeModel.embedding.cosine_distance(embedding)
+        dist = TaxonomyNodeMarketModel.embedding.cosine_distance(embedding)
         rows = self._s.execute(
             select(TaxonomyNodeModel.id, TaxonomyNodeModel.name, dist)
+            .join(
+                TaxonomyNodeMarketModel,
+                TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
+            )
             .where(
-                TaxonomyNodeModel.market_id == market_id,
+                TaxonomyNodeMarketModel.market_id == market_id,
+                TaxonomyNodeMarketModel.active.is_(True),
                 TaxonomyNodeModel.level == 1,
-                TaxonomyNodeModel.embedding.is_not(None),
+                TaxonomyNodeMarketModel.embedding.is_not(None),
             )
             .order_by(dist.asc())
             .limit(limit)
