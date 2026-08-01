@@ -75,13 +75,18 @@ export async function resumeSourceConfig(sourceId: string) {
   });
 }
 
-export async function listSourcesHealthEntries(market?: string): Promise<SourceHealthDto[]> {
+export async function listSourcesHealthEntries(
+  market?: string,
+): Promise<SourceHealthDto[] | null> {
   const res = await listSourcesHealthRequest({
     client: apiClient,
     headers: await authHeaders(),
     query: market ? { market } : undefined,
   });
-  return res.data ?? [];
+// `null` = falló la petición, y NO `[]`: colapsar el error a lista vacía deja la tabla en
+// "0 resultados", indistinguible de que de verdad no haya nada. `useAdminList` conserva lo
+// que ya se mostraba y la pantalla avisa.
+  return res.data ?? null;
 }
 
 // Resultado discriminado de la prueba (3.11-3.12, SAGRADO: nunca colapsar a `null`) — la UI debe

@@ -1,6 +1,7 @@
 import type { ProviderFlowDto } from "@cuadra/api-client";
 import { Info } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useData } from "vike-react/useData";
 
 import {
@@ -100,6 +101,13 @@ export function OrchestrationScreen() {
   } = useData<OrchestrationData & { locale?: Locale }>();
   const { t } = useAdminI18n(locale);
   const { items: flows, refresh } = useAdminList(initialFlows, listProviderFlowEntries);
+
+  /** Refresca y AVISA si falló. Sin esto, un fallo de red tras mutar dejaba la tabla como estaba
+   *  (o vacía) sin decir nada: el operador leía "no hay nada" cuando lo que hubo fue una petición
+   *  caída. Datos viejos son mejores que una tabla que miente, pero hay que decir que son viejos. */
+  const refreshOrWarn = async () => {
+    if (!(await refresh())) toast(t("admin.list.refreshFailed"));
+  };
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -149,6 +157,9 @@ export function OrchestrationScreen() {
   const live = flows.some((f) => isInFlight(f.last_run_state));
   useEffect(() => {
     if (!live) return;
+    // El SONDEO no avisa: falla cada 5 s mientras dure el corte y llenaría la pantalla de toasts.
+    // `refresh` ya conserva lo último bueno, y el siguiente ciclo se recupera solo. Avisar es para
+    // lo que el operador PIDIÓ (mutar, filtrar), donde el silencio sí se interpreta como resultado.
     const id = setInterval(() => void refresh(), LIVE_POLL_MS);
     return () => clearInterval(id);
     // `refresh` es estable en la práctica (viene de `useAdminList`); lo que gobierna es `live`.
@@ -499,7 +510,7 @@ export function OrchestrationScreen() {
         <PolicyModal
           policy={editing}
           onClose={() => setEditing(null)}
-          refresh={refresh}
+          refresh={refreshOrWarn}
           t={t}
           locale={locale}
         />
@@ -514,7 +525,7 @@ export function OrchestrationScreen() {
             .map((f) => f.policy.provider_id)
             .filter((id): id is string => id != null)}
           onClose={() => setCreating(false)}
-          refresh={refresh}
+          refresh={refreshOrWarn}
           t={t}
           locale={locale}
         />

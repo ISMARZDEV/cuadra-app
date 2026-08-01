@@ -1,6 +1,7 @@
 import type { ProviderDto } from "@cuadra/api-client";
 import { Archive, Plus, Search, Settings2, Store } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useData } from "vike-react/useData";
 
 import { Button } from "@/components/ui-base/button";
@@ -76,6 +77,13 @@ export function ProvidersScreen() {
     listProvidersEntries("DO", { includeArchived: applied.status !== "active" }),
   );
 
+  /** Refresca y AVISA si falló. Sin esto, un fallo de red tras mutar dejaba la tabla como estaba
+   *  (o vacía) sin decir nada: el operador leía "no hay nada" cuando lo que hubo fue una petición
+   *  caída. Datos viejos son mejores que una tabla que miente, pero hay que decir que son viejos. */
+  const refreshOrWarn = async () => {
+    if (!(await refresh())) toast(t("admin.list.refreshFailed"));
+  };
+
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -94,7 +102,7 @@ export function ProvidersScreen() {
   useEffect(() => {
     if (lastStatus.current === applied.status) return;
     lastStatus.current = applied.status;
-    void refresh();
+    void refreshOrWarn();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applied.status]);
 
@@ -296,7 +304,7 @@ export function ProvidersScreen() {
                     selected={selected.has(row.id)}
                     onToggleSelect={() => toggleSelect(row.id)}
                     onEdit={() => setModal({ mode: "edit", provider: row })}
-                    refresh={refresh}
+                    refresh={refreshOrWarn}
                     t={t}
                     locale={locale}
                   />
@@ -432,7 +440,7 @@ export function ProvidersScreen() {
         <ProviderModal
           state={modal}
           onClose={() => setModal(null)}
-          refresh={refresh}
+          refresh={refreshOrWarn}
           t={t}
           locale={locale}
         />

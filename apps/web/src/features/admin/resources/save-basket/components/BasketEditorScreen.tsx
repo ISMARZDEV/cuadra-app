@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { ChevronDown, Info, ListChecks, Plus, Search, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useData } from "vike-react/useData";
 
 import {
@@ -69,6 +70,13 @@ export function BasketEditorScreen() {
   const { items: entries, refresh } = useAdminList(initialEntries, () =>
     listBasketQueryEntries(DEFAULT_BASKET_MARKET),
   );
+
+  /** Refresca y AVISA si falló. Sin esto, un fallo de red tras mutar dejaba la tabla como estaba
+   *  (o vacía) sin decir nada: el operador leía "no hay nada" cuando lo que hubo fue una petición
+   *  caída. Datos viejos son mejores que una tabla que miente, pero hay que decir que son viejos. */
+  const refreshOrWarn = async () => {
+    if (!(await refresh())) toast(t("admin.list.refreshFailed"));
+  };
 
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<ModalState>(null);
@@ -128,7 +136,8 @@ export function BasketEditorScreen() {
   const toggleSelect = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   const toggleSelectAll = () =>
@@ -289,7 +298,7 @@ export function BasketEditorScreen() {
                       onMoveUp={() => moveByIndex(row.id, -1)}
                       onMoveDown={() => moveByIndex(row.id, 1)}
                       onEdit={() => setModal({ mode: "edit", entry: row })}
-                      refresh={refresh}
+                      refresh={refreshOrWarn}
                       dragDisabled={dragDisabled}
                       locale={locale}
                     />
@@ -362,7 +371,7 @@ export function BasketEditorScreen() {
         <BasketQueryModal
           state={modal}
           onClose={() => setModal(null)}
-          refresh={refresh}
+          refresh={refreshOrWarn}
           locale={locale}
         />
       ) : null}

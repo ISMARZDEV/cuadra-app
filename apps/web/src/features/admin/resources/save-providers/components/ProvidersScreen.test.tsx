@@ -8,6 +8,10 @@ import type { ProvidersData } from "../interfaces";
 // pantalla lee vía `useData` y las mutaciones se aíslan mockeando `../api` (nunca la red real).
 let mockData: ProvidersData;
 vi.mock("vike-react/useData", () => ({ useData: () => mockData }));
+// `toast` se pinta en un PORTAL que estos tests no montan: se espía la llamada, que es
+// donde vive el contrato (qué se le dice al operador).
+const toast = vi.fn();
+vi.mock("sonner", () => ({ toast: (...args: unknown[]) => toast(...args) }));
 
 const createProvider = vi.fn();
 const updateProvider = vi.fn();
@@ -173,5 +177,22 @@ describe("ProvidersScreen", () => {
 
     expect(screen.getByText("Bravo")).toBeInTheDocument();
     expect(screen.queryByText("Sirena")).not.toBeInTheDocument();
+  });
+
+  it("si el refresco FALLA, conserva la tabla y avisa — nunca la vacía en silencio", async () => {
+    // El bug: `listProvidersEntries` devolvía `[]` ante error, así que un fallo de red tras
+    // archivar dejaba "0 proveedores" en pantalla. El operador concluía que no había ninguno.
+    // restaurar NO pide confirmación (archivar sí), así que llega directo al refresco
+    mockData = {
+      providers: [provider({ id: "p1", name: "Sirena", archived_at: "2026-07-01T00:00:00Z" })],
+    };
+    listProvidersEntries.mockResolvedValue(null); // el contrato de error del repo
+    render(<ProvidersScreen />);
+
+    await rowAction("Sirena", /restaurar/i);
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    // la fila sigue ahí: datos viejos son mejores que una tabla que miente
+    expect(screen.getByText("Sirena")).toBeInTheDocument();
   });
 });
