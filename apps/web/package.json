@@ -9,7 +9,8 @@
     "server": "node server/index.js",
     "preview": "npm run build && npm run server",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -46,9 +47,12 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
     "express": "^4.21.0",
     "jsdom": "^25.0.0",
     "typescript": "^5.9.0",
+    "typescript-eslint": "^8",
     "vite": "^7.1.0",
     "vitest": "^3.0.0"
   }

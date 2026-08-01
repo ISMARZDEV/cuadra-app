@@ -21,13 +21,16 @@ const DEFAULT_MARKET = "DO";
 export async function listProvidersEntries(
   market: string = DEFAULT_MARKET,
   options: { includeArchived?: boolean } = {},
-): Promise<ProviderDto[]> {
+): Promise<ProviderDto[] | null> {
   const res = await listAdminProvidersRequest({
     client: apiClient,
     headers: await authHeaders(),
     query: { market, include_archived: options.includeArchived ?? false },
   });
-  return res.data ?? [];
+// `null` = falló la petición, y NO `[]`: colapsar el error a lista vacía deja la tabla en
+// "0 resultados", indistinguible de que de verdad no haya nada. `useAdminList` conserva lo
+// que ya se mostraba y la pantalla avisa.
+  return res.data ?? null;
 }
 
 export async function createProvider(params: {

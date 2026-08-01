@@ -12,13 +12,16 @@ import { apiClient } from "@/lib/api";
 
 // Mutaciones client-side del editor de Canasta curada (3.16): MISMO mecanismo de auth que
 // `save-providers/api.ts` y `save-sources/api.ts` (`authHeaders()`, token async de Clerk).
-export async function listBasketQueryEntries(market?: string): Promise<BasketQueryDto[]> {
+export async function listBasketQueryEntries(market?: string): Promise<BasketQueryDto[] | null> {
   const res = await listBasketQueriesRequest({
     client: apiClient,
     headers: await authHeaders(),
     query: market ? { market } : undefined,
   });
-  return res.data ?? [];
+// `null` = falló la petición, y NO `[]`: colapsar el error a lista vacía deja la tabla en
+// "0 resultados", indistinguible de que de verdad no haya nada. `useAdminList` conserva lo
+// que ya se mostraba y la pantalla avisa.
+  return res.data ?? null;
 }
 
 // Resultado discriminado del alta (SAGRADO, mismo patrón que `probeSource` en
@@ -94,13 +97,15 @@ export async function updateBasketQueryEntry(
 export async function previewBasketQueryTerm(
   queryText: string,
   market: string = "DO",
-): Promise<BasketPreviewGroupDto[]> {
+): Promise<BasketPreviewGroupDto[] | null> {
   const res = await previewBasketQueryRequest({
     client: apiClient,
     headers: await authHeaders(),
     body: { query_text: queryText, market_id: market },
   });
-  return res.data ?? [];
+  // `null` = falló el dry-run. Devolver `[]` hacía que un 500 del servidor se leyera como "ninguna
+  // tienda devuelve nada para este término", que es justo la conclusión contraria a la verdadera.
+  return res.data ?? null;
 }
 
 export async function removeBasketQueryEntry(id: string) {

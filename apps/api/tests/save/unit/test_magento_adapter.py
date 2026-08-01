@@ -49,7 +49,9 @@ def test_map_magento_product_full_fields() -> None:
         market_id="DO",
         external_id="2140283",
         name="Arroz Selecto Líder 10 Lb",
-        brand="",  # Magento de CCN no expone marca (manufacturer=null) → la resuelve el matching
+        # `None` = NO la expone (≠ exponerla vacía). Re-verificado en vivo 2026-07-30: `brand_text`
+        # existe en el esquema pero viene vacío en todo el catálogo y no hay faceta de marca.
+        brand=None,
         size_text="10 Lb",
         price=Money(32795, DOP),  # 327.95 → minor units, sin float
         price_type=PriceType.ONLINE,

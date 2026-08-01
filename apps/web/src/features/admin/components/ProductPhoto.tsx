@@ -53,7 +53,7 @@ export function ProductPhoto({
       data-testid="product-photo"
       style={{ backgroundColor: PRODUCT_CARD_BG }}
       className={cn(
-        "flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-black/[0.06] p-1",
+        "flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg",
         className,
       )}
     >

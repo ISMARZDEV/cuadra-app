@@ -65,7 +65,18 @@ export function registerTokenGetter(getter: TokenGetter): void {
 
 // Header Authorization para las llamadas autenticadas (client-side). Async: el getter de Clerk lo es.
 export async function authHeaders(): Promise<Record<string, string>> {
-  const token = await tokenGetter();
+  let token = await tokenGetter();
+
+  // En modo Clerk el getter puede registrarse tarde o devolver null mientras hidrata.
+  // Esperamos unos ciclos para evitar 401 en la primera petición client-side.
+  if (CLERK_ENABLED && !token) {
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      token = await tokenGetter();
+      if (token) break;
+    }
+  }
+
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

@@ -37,8 +37,11 @@ export interface KpiCardProps {
   /** Etiqueta accesible del botón de menú (kebab). */
   menuLabel: string;
   /** El `value` es una AUSENCIA (`—`), no una cifra. Se renderiza chico y apagado: un em-dash a
-   * 40px se lee como una barra de censura, no como "no hay dato". */
+    * 40px se lee como una barra de censura, no como "no hay dato". */
   placeholder?: boolean;
+  /** Variante compacta: reduce padding, tamaños de texto y charts. Solo para el hero del
+    * detalle canónico — no afecta a la Cola de revisión ni a Orquestación. */
+  compact?: boolean;
 }
 
 // Shell reutilizable de un KPI card de la cola de revisión — valores EXACTOS del Figma (número 40px
@@ -54,25 +57,26 @@ export function KpiCard({
   demoLabel,
   menuLabel,
   placeholder,
+  compact,
 }: KpiCardProps) {
   return (
-    <div className="relative flex min-w-0 flex-col rounded-[50px] border-[1.5px] border-border bg-card p-4 shadow-sm [corner-shape:squircle]">
+    <div className={`relative flex h-full min-w-0 flex-col rounded-[50px] border-[1.5px] border-border bg-card shadow-sm [corner-shape:squircle] ${compact ? "p-3" : "p-4"}`}>
       {/* Kebab: círculo lima claro en la esquina superior-derecha (Figma). */}
       <button
         type="button"
         aria-label={menuLabel}
-        className="absolute top-3 right-3 flex size-4 items-center justify-center rounded-full border border-brand-lime/50 bg-brand-lime/40 text-brand-forest hover:bg-brand-lime/60 dark:text-brand-lime"
+        className={`absolute flex items-center justify-center rounded-full border border-brand-lime/50 bg-brand-lime/40 text-brand-forest hover:bg-brand-lime/60 dark:text-brand-lime ${compact ? "top-2 right-2 size-3.5" : "top-3 right-3 size-4"}`}
       >
-        <MoreHorizontal className="size-2.5" />
+        <MoreHorizontal className={compact ? "size-2" : "size-2.5"} />
       </button>
 
-      <div className="flex items-center gap-1.5 pr-6">
-        <h3 className="truncate text-[11px] font-semibold tracking-tight text-brand-forest dark:text-brand-lime">
+      <div className={`flex items-center gap-1.5 ${compact ? "pr-4" : "pr-5"}`}>
+        <h3 className={`truncate font-semibold tracking-tight text-brand-forest dark:text-brand-lime ${compact ? "text-[10px]" : "text-[11px]"}`}>
           {title}
         </h3>
         {demo ? (
           <span
-            className="rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold tracking-wide text-amber-700 uppercase dark:bg-amber-500/20 dark:text-amber-300"
+            className={`shrink-0 rounded-full bg-amber-100 px-1 py-px font-semibold tracking-wide text-amber-700 uppercase dark:bg-amber-500/20 dark:text-amber-300 ${compact ? "text-[8px]" : "text-[9px]"}`}
             title={demoLabel}
           >
             demo
@@ -80,28 +84,32 @@ export function KpiCard({
         ) : null}
       </div>
 
-      <div className="mt-1.5 flex items-center gap-1.5">
+      <div className={`mt-1.5 flex items-center gap-1.5 ${compact ? "mt-1" : ""}`}>
         <span
           className={
             placeholder
-              ? "text-[28px] leading-none font-semibold text-muted-foreground/50"
-              : "text-[40px] leading-none font-semibold tracking-[-0.04em] text-brand-forest tabular-nums dark:text-brand-lime"
+              ? compact
+                ? "text-[24px] leading-none font-semibold text-muted-foreground/50"
+                : "text-[28px] leading-none font-semibold text-muted-foreground/50"
+              : compact
+                ? "text-[32px] leading-none font-semibold tracking-[-0.04em] text-brand-forest tabular-nums dark:text-brand-lime"
+                : "text-[40px] leading-none font-semibold tracking-[-0.04em] text-brand-forest tabular-nums dark:text-brand-lime"
           }
         >
           {value}
         </span>
         {badge ? (
           <span
-            className={`rounded-full px-2 py-1 text-[13px] font-semibold whitespace-nowrap ${SENTIMENT_BADGE[badge.sentiment]}`}
+            className={`rounded-full font-semibold whitespace-nowrap ${SENTIMENT_BADGE[badge.sentiment]} ${compact ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1 text-[13px]"}`}
           >
             {badge.label}
           </span>
         ) : null}
       </div>
 
-      <p className="mt-1.5 truncate text-[11px] font-medium text-muted-foreground">{subtitle}</p>
+      <p className={`truncate font-medium text-muted-foreground ${compact ? "mt-1 text-[10px]" : "mt-1.5 text-[11px]"}`}>{subtitle}</p>
 
-      {children ? <div className="mt-4">{children}</div> : null}
+      {children ? <div className={compact ? "mt-3" : "mt-4"}>{children}</div> : null}
     </div>
   );
 }

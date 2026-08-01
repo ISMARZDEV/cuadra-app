@@ -11,16 +11,20 @@ Bulk-resolve: cada fila se resuelve de forma ATÓMICA e INDEPENDIENTE — el fal
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 
 from seeds.identity_seed import seed_identity
 from src.api.composition_root import get_session
 from src.api.extensions.security import get_current_user_id
 from src.contexts.identity.infrastructure.models import UserModel, UserRoleModel
+from src.contexts.save.domain.value_objects import normalize_size_text, parse_size
 from src.contexts.save.infrastructure.matching.repository.product_match_repository import (
     SqlProductMatchRepository,
 )
+from src.contexts.save.infrastructure.models import CanonicalProductModel
 from src.main import app
 
 from .test_product_match_repository import _seed_provider_and_canonical, _seed_store_product
@@ -186,13 +190,111 @@ def test_super_admin_gets_201_on_create_canonical(db_session) -> None:  # type: 
             "/v1/admin/save/review-queue/create-canonical",
             json={
                 "match_id": match_id, "decided_by": admin_id, "name": "Producto Nuevo",
-                "brand": "Marca", "quantity_amount": "500", "quantity_measure": "mass",
+                "brand": "Marca", "size_text": "500 Gr",
                 "taxonomy_node_id": _taxonomy_node_id_of(db_session, existing_cid),
                 "market_id": "DO",
             },
         )
         assert r.status_code == 201, r.text
         assert "canonical_product_id" in r.json()
+    finally:
+        _clear()
+
+
+# ------------------------------------------------------------- tamaño: el SERVIDOR lo deriva --
+#
+# El panel del detalle mandaba `quantity_amount`/`quantity_measure` calculados en TypeScript, sin
+# convertir a unidad base y sin `display_size`: "355 Ml" se guardaba como 355 LITROS y la columna
+# Tamaño/Peso de Productos Canónicos salía vacía. Ahora manda el texto crudo y la conversión la
+# hace `parse_size` del dominio, igual que el lote y que "Promover a canónico".
+
+
+def _create_canonical(client, db_session, admin_id: str, match_id: str, cid: str, size_text: str):  # type: ignore[no-untyped-def]
+    return client.post(
+        "/v1/admin/save/review-queue/create-canonical",
+        json={
+            "match_id": match_id, "decided_by": admin_id, "name": "Producto Nuevo",
+            "brand": "Marca", "size_text": size_text,
+            "taxonomy_node_id": _taxonomy_node_id_of(db_session, cid),
+            "market_id": "DO",
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("size_text", "expected_amount", "expected_measure", "expected_display"),
+    [
+        # el caso de la captura: 355 Ml son 0.355 L, NUNCA 355
+        ("355 Ml", Decimal("0.355"), "volume", "355 Ml"),
+        # el caso más común de la cola real. 15 × 0.028349523125 = 0.425242846875, que la columna
+        # `Numeric(18, 8)` redondea al guardar.
+        ("15 Oz", Decimal("0.42524285"), "mass", "15 Oz"),
+        # la ortografía se canoniza al guardar ("Lbs" → "Lb"), sin convertir de unidad
+        ("20 Lbs", Decimal("9.0718474"), "mass", "20 Lb"),
+    ],
+)
+def test_create_canonical_converts_the_size_to_the_base_unit(  # type: ignore[no-untyped-def]
+    db_session, size_text, expected_amount, expected_measure, expected_display
+) -> None:
+    admin_id = _seed_role_user(db_session, "super_admin")
+    match_id = _seed_pending_match(db_session)
+    _, existing_cid = _seed_provider_and_canonical(db_session)
+    client = _client(db_session, admin_id)
+    try:
+        r = _create_canonical(client, db_session, admin_id, match_id, existing_cid, size_text)
+
+        assert r.status_code == 201, r.text
+        row = db_session.get(
+            CanonicalProductModel, uuid.UUID(r.json()["canonical_product_id"])
+        )
+        assert row.size_amount == expected_amount
+        assert row.size_measure == expected_measure
+        # `display_size` es lo que la consola de Productos Canónicos renderiza (lenguaje de
+        # operador); sin él las píldoras de Tamaño/Peso salen vacías.
+        assert row.display_size == expected_display
+    finally:
+        _clear()
+
+
+def test_create_canonical_rejects_an_unknown_unit_instead_of_inventing_a_quantity(db_session) -> None:  # type: ignore[no-untyped-def]
+    admin_id = _seed_role_user(db_session, "super_admin")
+    match_id = _seed_pending_match(db_session)
+    _, existing_cid = _seed_provider_and_canonical(db_session)
+    client = _client(db_session, admin_id)
+    try:
+        r = _create_canonical(client, db_session, admin_id, match_id, existing_cid, "355 Cc")
+
+        assert r.status_code == 422, r.text
+        # y NO quedó ningún canónico a medias
+        assert (
+            db_session.query(CanonicalProductModel)
+            .filter(CanonicalProductModel.name == "Producto Nuevo")
+            .count()
+            == 0
+        )
+    finally:
+        _clear()
+
+
+def test_the_panel_and_the_bulk_path_produce_the_same_size(db_session) -> None:  # type: ignore[no-untyped-def]
+    """El bug nació de que los dos caminos derivaban la cantidad por su cuenta. Este test es el
+    que impide que vuelvan a separarse."""
+    admin_id = _seed_role_user(db_session, "super_admin")
+    match_id = _seed_pending_match(db_session)
+    _, existing_cid = _seed_provider_and_canonical(db_session)
+    client = _client(db_session, admin_id)
+    try:
+        r = _create_canonical(client, db_session, admin_id, match_id, existing_cid, "15 Oz")
+        assert r.status_code == 201, r.text
+        row = db_session.get(
+            CanonicalProductModel, uuid.UUID(r.json()["canonical_product_id"])
+        )
+
+        # lo que el lote habría producido para el mismo texto (a la escala de `Numeric(18, 8)`)
+        expected = parse_size("15 Oz")
+        assert row.size_amount == expected.amount.quantize(Decimal("1.00000000"))
+        assert row.size_measure == expected.measure.value
+        assert row.display_size == normalize_size_text("15 Oz")
     finally:
         _clear()
 
@@ -459,3 +561,111 @@ class TestBulkClassifyEndpoint:
             _clear()
 
         assert res.status_code == 403
+
+
+class TestBulkResolveBrandsEndpoint:
+    """`POST /review-queue/bulk-resolve-brands` — rellena la marca de lo seleccionado.
+
+    RECONOCE, no inventa: sólo acepta marcas que ya existen en `save.brand`. Y nunca pisa una marca
+    puesta antes — rellenar un hueco es reversible; sobrescribir una decisión, no.
+    """
+
+    def _store_product(self, db_session, match_id: str):  # type: ignore[no-untyped-def]
+        from src.contexts.save.infrastructure.models import StoreProductModel
+
+        return db_session.get(StoreProductModel, uuid.UUID(_store_product_of(db_session, match_id)))
+
+    def test_recognises_a_known_brand_inside_the_product_name(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)
+        # `_seed_provider_and_canonical` deja un canónico con marca "La Garza" → ya es conocida.
+        sp = self._store_product(db_session, match_id)
+        sp.name = "LA GARZA ARROZ PREMIUM 10 LB"
+        sp.brand = None
+        db_session.flush()
+        client = _client(db_session, admin_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-resolve-brands",
+                json={"match_ids": [match_id]},
+            )
+
+            assert res.status_code == 200, res.text
+            body = res.json()
+            assert body["resolved"] == 1
+            assert body["unresolved"] == 0
+            assert body["skipped"] == 0
+            # Se afirma que RECONOCIÓ la marca, no CUÁL de sus variantes: `save.brand` tiene
+            # duplicados que sólo difieren en casing ("LA GARZA" / "La Garza"), y cuál gana es un
+            # artefacto de ese catálogo sucio (deuda aparte), no la conducta bajo prueba. Lo que
+            # sí importa —y `test_bulk_resolve_brands.py` lo fija— es que sea DETERMINISTA.
+            assert self._store_product(db_session, match_id).brand.upper() == "LA GARZA"
+        finally:
+            _clear()
+
+    def test_a_name_without_any_known_brand_is_left_alone_not_invented(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)
+        sp = self._store_product(db_session, match_id)
+        sp.name = "PRODUCTO SIN NINGUNA MARCA CONOCIDA"
+        sp.brand = None
+        db_session.flush()
+        client = _client(db_session, admin_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-resolve-brands",
+                json={"match_ids": [match_id]},
+            )
+
+            assert res.status_code == 200, res.text
+            assert res.json()["unresolved"] == 1
+            assert self._store_product(db_session, match_id).brand is None
+        finally:
+            _clear()
+
+    def test_a_row_that_already_had_a_brand_is_reported_as_skipped_not_overwritten(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)
+        sp = self._store_product(db_session, match_id)
+        sp.name = "LA GARZA ARROZ PREMIUM 10 LB"
+        sp.brand = "Marca Puesta A Mano"
+        db_session.flush()
+        client = _client(db_session, admin_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-resolve-brands",
+                json={"match_ids": [match_id]},
+            )
+
+            body = res.json()
+            assert body["skipped"] == 1 and body["resolved"] == 0
+            assert self._store_product(db_session, match_id).brand == "Marca Puesta A Mano"
+        finally:
+            _clear()
+
+    def test_a_match_that_no_longer_exists_is_failed_not_dropped(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        ghost = str(uuid.uuid4())
+        client = _client(db_session, admin_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-resolve-brands",
+                json={"match_ids": [ghost]},
+            )
+
+            assert res.status_code == 200, res.text
+            assert [f["ref_id"] for f in res.json()["failed"]] == [ghost]
+        finally:
+            _clear()
+
+    def test_requires_the_review_capability(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "normal_user")
+        client = _client(db_session, user_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-resolve-brands", json={"match_ids": []}
+            )
+
+            assert res.status_code == 403
+        finally:
+            _clear()

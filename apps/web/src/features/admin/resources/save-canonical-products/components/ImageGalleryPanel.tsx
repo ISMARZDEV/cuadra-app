@@ -2,19 +2,21 @@ import type {
   AdminCanonicalProviderPriceDto,
   CanonicalImageDto,
 } from "@cuadra/api-client";
-import { ArrowLeft, ArrowRight, ImageOff, Plus, Trash2, Upload } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, ArrowRight, Plus, Trash2, Upload } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 
 import { Dialog } from "@base-ui/react/dialog";
 
 import { Button } from "@/components/ui-base/button";
 import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
+import { ProxiedImage } from "@/features/admin/components/ProxiedImage";
 import type { Locale } from "@/i18n/config";
 import { format, type MessageKey } from "@/i18n/messages";
 import { cn } from "@/lib/utils";
 
 import {
   addCanonicalImage,
+  listCanonicalImages,
   removeCanonicalImage,
   reorderCanonicalImages,
 } from "../api";
@@ -34,12 +36,26 @@ interface ImageGalleryPanelProps {
   locale: Locale;
 }
 
+const DRAFT_PREFIX = "draft-";
+
+function isDraftId(id: string): boolean {
+  return id.startsWith(DRAFT_PREFIX);
+}
+
+function nextDraftId(): string {
+  return `${DRAFT_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 /**
  * Galería ORDENADA del canónico (US-CP-D3/D4b). La posición 1 es la que ve el público, y por eso
  * el orden no es cosmético: reordenar cambia la imagen del sitio.
  *
  * El orden se mueve con flechas y no con drag & drop a propósito: son 2-4 imágenes, el drag es
  * inoperable con teclado y en una tabla admin la precisión importa más que la fluidez.
+ *
+ * EDITAR la galería ahora usa un borrador: agregar/quitar/reordenar solo mutan el estado local
+ * hasta que el operador guarda. Esto permite deshacer una secuencia de cambios y evita que un
+ * error de red deje el catálogo en un estado intermedio invisible.
  */
 export function ImageGalleryPanel({
   canonicalProductId,
@@ -49,12 +65,23 @@ export function ImageGalleryPanel({
   t,
   locale,
 }: ImageGalleryPanelProps) {
+  const [draftImages, setDraftImages] = useState<CanonicalImageDto[]>(images);
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState(false);
   // Acción que toca la posición 1 y espera confirmación. `null` = no hay nada pendiente.
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const titleId = useId();
 
-  const usedUrls = new Set(images.map((i) => i.url));
+  // Si el canónico se recarga desde afuera (navegación, archivar), el borrador se re-siembra.
+  useEffect(() => {
+    setDraftImages(images);
+    setSaved(false);
+    setSaveError(null);
+  }, [images]);
+
+  const usedUrls = new Set(draftImages.map((i) => i.url));
   // Una entrada por IMAGEN, no por tienda: Sirena publica la bolsa y la etiqueta nutricional, y
   // ofrecer sólo la primera dejaría la segunda inalcanzable desde el admin.
   const candidates = providers.flatMap((p) => {
@@ -73,22 +100,108 @@ export function ImageGalleryPanel({
     }));
   });
 
-  const move = async (index: number, delta: number) => {
+  const dirty =
+    draftImages.length !== images.length ||
+    draftImages.some((d, i) => d.id !== images[i]?.id || d.url !== images[i]?.url);
+
+  const moveDraft = (index: number, delta: number) => {
     const target = index + delta;
-    if (target < 0 || target >= images.length) return;
-    const ids = images.map((i) => i.id);
-    [ids[index], ids[target]] = [ids[target], ids[index]];
-    setBusy(true);
-    const updated = await reorderCanonicalImages(canonicalProductId, ids);
-    setBusy(false);
-    if (updated) onChanged(updated);
+    if (target < 0 || target >= draftImages.length) return;
+    setDraftImages((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+    setSaved(false);
   };
 
-  const remove = async (imageId: string) => {
+  const removeDraft = (imageId: string) => {
+    setDraftImages((prev) => prev.filter((img) => img.id !== imageId));
+    setSaved(false);
+  };
+
+  const addDraft = (url: string, storeProductId: string) => {
+    setDraftImages((prev) => [
+      ...prev,
+      {
+        id: nextDraftId(),
+        url,
+        position: prev.length + 1,
+        source_store_product_id: storeProductId,
+        is_primary: false,
+      },
+    ]);
+    setSaved(false);
+  };
+
+  const cancel = () => {
+    setDraftImages(images);
+    setSaveError(null);
+    setSaved(false);
+  };
+
+  const save = async () => {
+    if (!dirty) return;
     setBusy(true);
-    const updated = await removeCanonicalImage(canonicalProductId, imageId);
-    setBusy(false);
-    if (updated) onChanged(updated);
+    setSaved(false);
+    setSaveError(null);
+    try {
+      const originalIds = new Set(images.map((i) => i.id));
+      const removed = images.filter((o) => !draftImages.some((d) => d.id === o.id));
+      const added = draftImages.filter((d) => !originalIds.has(d.id));
+
+      // 1. Eliminar imágenes que ya no están en el borrador.
+      await Promise.all(removed.map((img) => removeCanonicalImage(canonicalProductId, img.id)));
+
+      // 2. Agregar nuevas imágenes y recolectar sus ids reales.
+      const addedResults = await Promise.all(
+        added.map((img) =>
+          addCanonicalImage(canonicalProductId, img.url, img.source_store_product_id ?? undefined),
+        ),
+      );
+
+    // 3. Mapear ids temporarios a reales y construir el orden final deseado.
+    const idMap = new Map<string, string>();
+    added.forEach((draft, i) => {
+      const created = addedResults[i];
+      if (created) idMap.set(draft.id, created.id);
+    });
+    const finalIds = draftImages.map((img) => idMap.get(img.id) ?? img.id);
+
+    // 4. Reordenar solo si el orden cambió (incluyendo las agregadas). El servidor
+    //    coloca las imágenes agregadas al final; si el operador las subió de posición,
+    //    hay que reflejarlo.
+    const keptOrder = images
+      .filter((o) => !removed.some((r) => r.id === o.id))
+      .map((o) => o.id);
+    const addedServerOrder = addedResults.filter((img): img is CanonicalImageDto => Boolean(img)).map((img) => img.id);
+    const serverOrderAfterAddRemove = [...keptOrder, ...addedServerOrder];
+    const needsReorder =
+      finalIds.length > 0 && JSON.stringify(serverOrderAfterAddRemove) !== JSON.stringify(finalIds);
+
+    if (needsReorder) {
+      const updated = await reorderCanonicalImages(canonicalProductId, finalIds);
+      if (updated) {
+        onChanged(updated);
+      } else {
+        // Fallback: pedir la lista fresca al servidor si reorder no devolvió nada.
+        const fresh = await listCanonicalImages(canonicalProductId);
+        if (fresh) onChanged(fresh);
+      }
+    } else {
+      // Sin reordenamiento, pedir la lista fresca para reflejar ids reales y posiciones.
+      const fresh = await listCanonicalImages(canonicalProductId);
+      if (fresh) onChanged(fresh);
+    }
+
+      setSaved(true);
+    } catch (err) {
+      // Mostrar siempre el mensaje localizado amigable; el error técnico queda para la consola.
+      console.error("[ImageGalleryPanel] save failed", err);
+      setSaveError(t("admin.canonicalDetail.image.saveError"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   // ── Fricción proporcional al riesgo ──────────────────────────────────────────
@@ -97,13 +210,13 @@ export function ImageGalleryPanel({
 
   const requestMove = (index: number, delta: number) => {
     const target = index + delta;
-    if (target < 0 || target >= images.length) return;
+    if (target < 0 || target >= draftImages.length) return;
     // Tanto sacar la 1ª de su puesto como promover otra a él cambian lo que se publica.
     if (index === 0 || target === 0) {
       setPending({ kind: "move", index, delta });
       return;
     }
-    void move(index, delta);
+    moveDraft(index, delta);
   };
 
   const requestRemove = (image: CanonicalImageDto) => {
@@ -111,37 +224,49 @@ export function ImageGalleryPanel({
       setPending({ kind: "remove", imageId: image.id });
       return;
     }
-    void remove(image.id);
+    removeDraft(image.id);
   };
 
   const runPending = () => {
     if (!pending) return;
     const action = pending;
     setPending(null);
-    if (action.kind === "remove") void remove(action.imageId);
-    else void move(action.index, action.delta);
+    if (action.kind === "remove") removeDraft(action.imageId);
+    else moveDraft(action.index, action.delta);
   };
 
-  const add = async (url: string, storeProductId: string) => {
-    setBusy(true);
-    const created = await addCanonicalImage(canonicalProductId, url, storeProductId);
-    setBusy(false);
-    if (created) onChanged([...images, created]);
-  };
+  const recalculatePositions = (list: CanonicalImageDto[]): CanonicalImageDto[] =>
+    list.map((img, i) => ({ ...img, position: i + 1 }));
+
+  const displayImages = recalculatePositions(draftImages);
 
   return (
     <div className="space-y-6">
       {/* ── Galería ordenada ─────────────────────────────────────────────── */}
       <section className="space-y-3">
-        <h3 className="text-sm font-semibold">{t("admin.canonicalDetail.image.gallery")}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 id={titleId} className="text-sm font-semibold">
+            {t("admin.canonicalDetail.image.gallery")}
+          </h3>
+          {dirty ? (
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+              {t("admin.canonicalDetail.image.unsaved")}
+            </span>
+          ) : null}
+          {saved && !dirty ? (
+            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+              {t("admin.canonicalDetail.image.saved")}
+            </span>
+          ) : null}
+        </div>
 
-        {images.length === 0 ? (
+        {displayImages.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             {t("admin.canonicalDetail.image.emptyGallery")}
           </p>
         ) : (
           <ol className="flex flex-wrap gap-4">
-            {images.map((image, index) => (
+            {displayImages.map((image, index) => (
               <li
                 key={image.id}
                 className={cn(
@@ -152,7 +277,7 @@ export function ImageGalleryPanel({
                 )}
               >
                 <div className="relative">
-                  <img
+                  <ProxiedImage
                     src={image.url}
                     alt=""
                     className="size-32 w-full rounded-xl bg-white object-contain"
@@ -190,7 +315,7 @@ export function ImageGalleryPanel({
                   </IconButton>
                   <IconButton
                     label={t("admin.canonicalDetail.image.moveDown")}
-                    disabled={busy || index === images.length - 1}
+                    disabled={busy || index === displayImages.length - 1}
                     onClick={() => requestMove(index, 1)}
                   >
                     <ArrowRight className="size-3.5" />
@@ -208,6 +333,31 @@ export function ImageGalleryPanel({
             ))}
           </ol>
         )}
+
+        {/* Acciones del borrador */}
+        {dirty || saveError ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={busy || !dirty}
+              className="inline-flex h-8 items-center rounded-full bg-brand-forest px-3 text-xs font-semibold text-brand-lime disabled:opacity-50"
+            >
+              {busy ? t("admin.canonicalDetail.image.saving") : t("admin.canonicalDetail.image.save")}
+            </button>
+            <button
+              type="button"
+              onClick={cancel}
+              disabled={busy}
+              className="inline-flex h-8 items-center rounded-full border border-border px-3 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+            >
+              {t("admin.canonicalDetail.image.cancel")}
+            </button>
+            {saveError ? (
+              <p className="text-xs text-destructive">{saveError}</p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       {/* ── Candidatas por tienda ────────────────────────────────────────── */}
@@ -240,7 +390,7 @@ export function ImageGalleryPanel({
                 return (
                   <li key={c.key} className="w-28 space-y-1.5">
                     <div className="relative">
-                      <img
+                      <ProxiedImage
                         src={c.url}
                         alt={c.providerName}
                         className={cn(
@@ -258,7 +408,7 @@ export function ImageGalleryPanel({
                     <button
                       type="button"
                       disabled={already || busy}
-                      onClick={() => void add(c.url, c.storeProductId)}
+                      onClick={() => addDraft(c.url, c.storeProductId)}
                       className={cn(
                         "inline-flex h-7 w-full items-center justify-center gap-1 rounded-full text-xs font-semibold",
                         already

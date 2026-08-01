@@ -17,6 +17,7 @@ from src.contexts.save.application.refresh_prices import (
     RefreshResult,
     RelevanceGate,
 )
+from src.contexts.save.application.resolve_brand import ResolveBrand
 from src.contexts.save.domain.ports import CatalogSource, StoreProductRepository
 
 
@@ -30,6 +31,7 @@ def refresh_source(
     pace: Callable[[], None] | None = None,
     relevance_gate: RelevanceGate | None = None,
     run_id: str | None = None,
+    brand_resolver: ResolveBrand | None = None,
 ) -> RefreshResult:
     """Corre el refresh sobre cada adapter de la fuente y agrega los conteos.
 
@@ -45,7 +47,11 @@ def refresh_source(
     `None` = sin espera (tests); prod wirea `build_pace()`.
     """
     use_case = RefreshCatalogPrices(
-        store_repo, matcher=matcher, classifier=classifier, relevance_gate=relevance_gate
+        store_repo,
+        matcher=matcher,
+        classifier=classifier,
+        relevance_gate=relevance_gate,
+        brand_resolver=brand_resolver,
     )
     seen = refreshed = unmatched = matched = discarded = 0
     auto_linked = queued_for_review = 0

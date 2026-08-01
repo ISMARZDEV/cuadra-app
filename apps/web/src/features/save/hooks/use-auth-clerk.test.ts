@@ -14,7 +14,24 @@ vi.mock("@clerk/clerk-react", () => ({
 vi.mock("@cuadra/api-client", () => ({ devLogin: vi.fn() }));
 vi.mock("@/lib/api", () => ({ apiClient: {} }));
 
-import { useAuth } from "./use-auth";
+import { authHeaders, registerTokenGetter, useAuth } from "./use-auth";
+
+describe("authHeaders (Clerk mode)", () => {
+  test("espera a que el getter registrado devuelva un token (evita 401 en hidratación)", async () => {
+    let ready = false;
+    registerTokenGetter(async () => (ready ? "clerk-jwt" : null));
+
+    const promise = authHeaders();
+    ready = true;
+
+    expect(await promise).toEqual({ Authorization: "Bearer clerk-jwt" });
+  });
+
+  test("devuelve headers vacíos si nunca llega token tras el timeout", async () => {
+    registerTokenGetter(() => null);
+    expect(await authHeaders()).toEqual({});
+  });
+});
 
 describe("useAuth (Clerk mode)", () => {
   test("isAuthed reflects Clerk isSignedIn", () => {

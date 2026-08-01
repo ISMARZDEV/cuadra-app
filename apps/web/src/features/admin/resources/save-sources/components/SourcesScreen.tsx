@@ -1,6 +1,7 @@
 import type { SourceHealthDto } from "@cuadra/api-client";
 import { ChevronDown, LayoutGrid, List, ListChecks, Play, Plus, Power, Search } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useData } from "vike-react/useData";
 
 import { cn } from "@/lib/utils";
@@ -55,6 +56,13 @@ export function SourcesScreen() {
   const { t } = useAdminI18n(locale);
   const { items: sources, refresh } = useAdminList(initialSources, () => listSourcesHealthEntries());
 
+  /** Refresca y AVISA si falló. Sin esto, un fallo de red tras mutar dejaba la tabla como estaba
+   *  (o vacía) sin decir nada: el operador leía "no hay nada" cuando lo que hubo fue una petición
+   *  caída. Datos viejos son mejores que una tabla que miente, pero hay que decir que son viejos. */
+  const refreshOrWarn = async () => {
+    if (!(await refresh())) toast(t("admin.list.refreshFailed"));
+  };
+
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [modal, setModal] = useState<SourceModalState | null>(null);
@@ -102,7 +110,8 @@ export function SourcesScreen() {
   const toggleSelect = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   const toggleSelectAll = () =>
@@ -282,7 +291,7 @@ export function SourcesScreen() {
                     selected={selected.has(row.id)}
                     onToggleSelect={() => toggleSelect(row.id)}
                     onEdit={() => setModal({ mode: "edit", source: row })}
-                    refresh={refresh}
+                    refresh={refreshOrWarn}
                     t={t}
                     locale={locale}
                   />
@@ -325,7 +334,7 @@ export function SourcesScreen() {
                     selected={selected.has(row.id)}
                     onToggleSelect={() => toggleSelect(row.id)}
                     onEdit={() => setModal({ mode: "edit", source: row })}
-                    refresh={refresh}
+                    refresh={refreshOrWarn}
                     t={t}
                     locale={locale}
                   />
@@ -343,7 +352,7 @@ export function SourcesScreen() {
           state={modal}
           providers={providers}
           onClose={() => setModal(null)}
-          refresh={refresh}
+          refresh={refreshOrWarn}
           t={t}
           locale={locale}
         />

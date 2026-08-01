@@ -20,6 +20,10 @@ vi.mock("vike-react/usePageContext", () => ({
   usePageContext: () => ({ urlPathname: "/admin/review-queue" }),
 }));
 vi.mock("vike/client/router", () => ({ navigate: vi.fn() }));
+// `toast` de sonner se pinta en un PORTAL que estos tests no montan; se espía la
+// llamada, que es donde vive el contrato (qué resumen ve el operador).
+const toast = vi.fn();
+vi.mock("sonner", () => ({ toast: (...args: unknown[]) => toast(...args) }));
 
 const bulkResolveReviewMatches = vi.fn();
 const fetchTopCandidateId = vi.fn();
@@ -28,10 +32,12 @@ const fetchReviewQueue = vi.fn();
 // TOTAL (no parcial), así que omitir un export rompe el import del screen, no solo la llamada.
 const setStoreProductCategory = vi.fn().mockResolvedValue(true);
 const classifySelected = vi.fn().mockResolvedValue(null);
+const resolveBrandsSelected = vi.fn().mockResolvedValue(null);
 const createCanonicalsFromSelection = vi.fn().mockResolvedValue(null);
 vi.mock("../api", () => ({
   setStoreProductCategory: (...args: unknown[]) => setStoreProductCategory(...args),
   classifySelected: (...args: unknown[]) => classifySelected(...args),
+  resolveBrandsSelected: (...args: unknown[]) => resolveBrandsSelected(...args),
   createCanonicalsFromSelection: (...args: unknown[]) => createCanonicalsFromSelection(...args),
   bulkResolveReviewMatches: (...args: unknown[]) => bulkResolveReviewMatches(...args),
   fetchTopCandidateId: (...args: unknown[]) => fetchTopCandidateId(...args),
@@ -62,6 +68,8 @@ describe("ReviewQueueListScreen bulk actions", () => {
     bulkResolveReviewMatches.mockReset();
     fetchTopCandidateId.mockReset();
     fetchReviewQueue.mockReset();
+    resolveBrandsSelected.mockReset();
+    toast.mockReset();
     fetchReviewQueue.mockResolvedValue({ rows: [], total: 0 });
     mockData = {
       rows: [row({ match_id: "m1" }), row({ match_id: "m2", store_product_name: "Aceite Mazorca" })],
@@ -130,5 +138,44 @@ describe("ReviewQueueListScreen bulk actions", () => {
     expect(result.textContent).toMatch(/1/);
     const failures = screen.getAllByTestId("bulk-result-failure").map((el) => el.textContent);
     expect(failures).toEqual(["m2 — Sin candidatos para auto-aprobar"]);
+  });
+
+  it("clasificar marcas manda las filas seleccionadas y resume los CUATRO estados", async () => {
+    resolveBrandsSelected.mockResolvedValue({
+      resolved: 1,
+      unresolved: 1,
+      skipped: 2,
+      rows: [],
+      failed: [{ ref_id: "m9", error: "reventó" }],
+    });
+
+    render(<ReviewQueueListScreen />);
+
+    fireEvent.click(screen.getByTestId("row-select-m1"));
+    fireEvent.click(screen.getByTestId("row-select-m2"));
+    fireEvent.click(screen.getByRole("button", { name: "Acciones" }));
+    fireEvent.click(screen.getByText("Clasificar marcas"));
+
+    await waitFor(() => expect(resolveBrandsSelected).toHaveBeenCalledWith(["m1", "m2"]));
+    // "ya tenían" no puede fundirse con "sin reconocer": un lote ya resuelto se leería como fallido
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        "1 con marca · 2 ya tenían · 1 sin reconocer · 1 con error",
+      ),
+    );
+  });
+
+  it("un lote LIMPIO no arrastra ceros que hagan dudar al operador", async () => {
+    resolveBrandsSelected.mockResolvedValue({
+      resolved: 2, unresolved: 0, skipped: 0, rows: [], failed: [],
+    });
+
+    render(<ReviewQueueListScreen />);
+
+    fireEvent.click(screen.getByTestId("row-select-m1"));
+    fireEvent.click(screen.getByRole("button", { name: "Acciones" }));
+    fireEvent.click(screen.getByText("Clasificar marcas"));
+
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("2 con marca"));
   });
 });

@@ -50,6 +50,8 @@ interface CanonicalProductRowProps {
   onUnarchive: (row: AdminCanonicalProductRowDto) => void;
   /** URL pública del producto; `null` si el slug no sirve → la acción queda deshabilitada. */
   publicHref: string | null;
+  /** Querystring de los filtros de la lista para que "Volver" regrese al mismo contexto. */
+  queryString?: string;
 }
 
 // Fila del catálogo canónico, en el mismo lenguaje que `ReviewRow` de la Cola de revisión:
@@ -65,13 +67,14 @@ export function CanonicalProductRow({
   onArchive,
   onUnarchive,
   publicHref,
+  queryString = "",
 }: CanonicalProductRowProps) {
   const { t } = useAdminI18n(locale);
   const providers = row.matched_provider_count ?? 0;
   const completeness = row.completeness_score ?? 0;
   const archived = Boolean(row.archived_at);
   const size = parseSize(row.display_size);
-  const detailHref = `/admin/canonical-products/${row.canonical_product_id}`;
+  const detailHref = `/admin/canonical-products/${row.canonical_product_id}${queryString ? `?${queryString}` : ""}`;
 
   return (
     <TableRow

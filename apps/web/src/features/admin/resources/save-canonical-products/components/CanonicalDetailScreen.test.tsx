@@ -9,6 +9,7 @@ import { CanonicalDetailScreen } from "./CanonicalDetailScreen";
 const getHistory = vi.fn();
 vi.mock("../api", () => ({
   getCanonicalProductHistory: (...args: unknown[]) => getHistory(...args),
+  listCanonicalProducts: vi.fn(),
   addCanonicalImage: vi.fn(),
   reorderCanonicalImages: vi.fn(),
   removeCanonicalImage: vi.fn(),
@@ -127,6 +128,16 @@ const DATA: CanonicalDetailData = {
     { taxonomy_node_id: "tax-1", name: "Arroz", matched_tokens: ["arroz"], signal: "lexicon" },
   ],
   images: [],
+  params: {
+    limit: 20,
+    offset: 0,
+  },
+  cursor: {
+    total: 1,
+    position: 1,
+    previous_id: null,
+    next_id: null,
+  },
   locale: "es",
 };
 
@@ -140,42 +151,86 @@ async function renderDetail() {
   });
 }
 
+/** Cambia de sección. Los paneles viven en tabs, así que casi todo se mira desde alguna. */
+async function openTab(name: string) {
+  await act(async () => {
+    screen.getByRole("tab", { name }).click();
+  });
+}
+
 describe("CanonicalDetailScreen", () => {
   beforeEach(() => {
     getHistory.mockReset();
     getHistory.mockResolvedValue(null);
   });
 
-  it("muestra los ocho paneles del SDD", async () => {
+  // ── Reparto de los paneles entre las cinco secciones ───────────────────────
+
+  it("Resumen trae identidad, proveedores e histórico — y nada de auditoría", async () => {
     await renderDetail();
 
-    for (const title of [
-      "Información canónica",
-      "Proveedores matcheados",
-      "Histórico y KPIs",
-      "Imagen del producto",
-      "Evidencia",
-      "Duplicados posibles",
-      "Actividad y notas",
-    ]) {
+    // Por encabezado y no por texto suelto: "Proveedores matcheados" también rotula el chip del
+    // hero, y un `getByText` no distingue el resumen de arriba del panel de abajo.
+    for (const title of ["Identidad canónica", "Proveedores matcheados", "Histórico y KPIs"]) {
+      expect(
+        screen.getByRole("heading", { level: 2, name: new RegExp(title) }),
+      ).toBeInTheDocument();
+    }
+    // Evidencia en la primera pantalla es ruido: el operador viene a ver precios, no el rastro
+    // de cómo se enlazó cada tienda.
+    expect(screen.queryByText(/Evidencia/)).not.toBeInTheDocument();
+  });
+
+  it("Auditoría junta evidencia, duplicados y actividad", async () => {
+    await renderDetail();
+    await openTab("Auditoría");
+
+    for (const title of ["Evidencia", "Duplicados posibles", "Actividad y notas"]) {
       expect(screen.getByText(new RegExp(title))).toBeInTheDocument();
     }
   });
 
+  it("cada sección abre su propio panel etiquetado", async () => {
+    await renderDetail();
+
+    const panel = screen.getByRole("tabpanel");
+    expect(panel).toHaveAttribute("id", "canonical-detail-panel-summary");
+    expect(panel).toHaveAttribute("aria-labelledby", "canonical-detail-tab-summary");
+  });
+
+  it("Categorías y Descripción tienen su propia sección", async () => {
+    await renderDetail();
+
+    await openTab("Categorías");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute(
+      "id",
+      "canonical-detail-panel-categories",
+    );
+
+    await openTab("Descripción");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute(
+      "id",
+      "canonical-detail-panel-description",
+    );
+  });
+
   it("normaliza el EAN a GTIN-14 en Evidencia", async () => {
     await renderDetail();
+    await openTab("Auditoría");
     expect(screen.getByText("00781086020518")).toBeInTheDocument();
   });
 
   it("un match humano no muestra 0% de confianza", async () => {
     // La fila guarda 0 porque no hubo modelo; "0%" se leería como que el sistema dudó.
     await renderDetail();
+    await openTab("Auditoría");
     expect(screen.queryByText("0%")).not.toBeInTheDocument();
     expect(screen.getByText("Decidido por una persona")).toBeInTheDocument();
   });
 
   it("el audit log traduce la acción y muestra quién y qué campos", async () => {
     await renderDetail();
+    await openTab("Auditoría");
 
     expect(screen.getByText("Edición")).toBeInTheDocument();
     // El fixture trae los 11 tipos de acción, todos del mismo actor.
@@ -185,16 +240,19 @@ describe("CanonicalDetailScreen", () => {
 
   it("una colisión de EAN se destaca por encima de las señales léxicas", async () => {
     await renderDetail();
+    await openTab("Auditoría");
     expect(screen.getByText("Mismo EAN")).toBeInTheDocument();
   });
 
   it("ofrece la imagen de la tienda como candidata de la galería", async () => {
     await renderDetail();
+    await openTab("Imágenes del producto");
     expect(screen.getByRole("button", { name: /Agregar/ })).toBeInTheDocument();
   });
 
   it("con la galería vacía lo dice en vez de mostrar un hueco", async () => {
     await renderDetail();
+    await openTab("Imágenes del producto");
     expect(screen.getByText(/todavía no tiene imágenes/i)).toBeInTheDocument();
   });
 
@@ -202,6 +260,7 @@ describe("CanonicalDetailScreen", () => {
     // Esconderlo dejaría al operador buscando una función que sí vamos a tener; al tocarlo se
     // explica por qué todavía no hace nada.
     await renderDetail();
+    await openTab("Imágenes del producto");
     expect(screen.getByRole("button", { name: /Subir imagen/ })).toBeInTheDocument();
   });
 
@@ -212,6 +271,7 @@ describe("CanonicalDetailScreen", () => {
 
   it("la nota interna avisa que nunca sale a la página pública", async () => {
     await renderDetail();
+    await openTab("Auditoría");
     expect(screen.getByText(/Nunca aparece en la página pública/i)).toBeInTheDocument();
   });
 
@@ -226,11 +286,13 @@ describe("CanonicalDetailScreen", () => {
     // `auditActionLabel` caía a `return action` cuando faltaba el mapeo, y el operador terminaba
     // leyendo "canonical_product.reorder_images" en la pantalla.
     await renderDetail();
+    await openTab("Auditoría");
     expect(screen.queryByText(/canonical_product\./)).not.toBeInTheDocument();
   });
 
   it("traduce las acciones de imagen y de categoría", async () => {
     await renderDetail();
+    await openTab("Auditoría");
     expect(screen.getByText("Imagen agregada")).toBeInTheDocument();
     expect(screen.getByText("Imagen quitada")).toBeInTheDocument();
     expect(screen.getByText("Imágenes reordenadas")).toBeInTheDocument();

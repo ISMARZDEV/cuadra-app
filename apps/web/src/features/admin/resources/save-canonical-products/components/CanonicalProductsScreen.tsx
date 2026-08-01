@@ -1,6 +1,7 @@
 import type { AdminCanonicalProductRowDto } from "@cuadra/api-client";
-import { ChevronDown, ListChecks, Plus, Search, Tags, Upload } from "lucide-react";
+import { ChevronDown, ListChecks, Plus, Search, Tag, Tags, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
 
@@ -36,7 +37,12 @@ import { cn } from "@/lib/utils";
 
 import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
 
-import { archiveCanonicalProduct, listCanonicalProducts, unarchiveCanonicalProduct } from "../api";
+import {
+  archiveCanonicalProduct,
+  listCanonicalProducts,
+  resolveCanonicalBrands,
+  unarchiveCanonicalProduct,
+} from "../api";
 import type { CanonicalProductsData } from "../interfaces";
 import {
   type CanonicalProductsParams,
@@ -107,7 +113,11 @@ export function CanonicalProductsScreen() {
       limit: next.limit,
       offset: next.offset,
     });
+    // `null` = falló la petición. Antes se salía en silencio y la tabla se quedaba CONGELADA
+    // mostrando el resultado anterior: el operador creía que su filtro no encontró nada,
+    // cuando en realidad nunca llegó a aplicarse.
     if (result) setList(result);
+    else toast(t("admin.list.refreshFailed"));
     setLoading(false);
   }
 
@@ -132,6 +142,7 @@ export function CanonicalProductsScreen() {
   const to = Math.min(params.offset + params.limit, total);
   const activeFilters = countActiveFilters(params);
   const hasQuery = Boolean(params.search) || activeFilters > 0;
+  const rowQs = serializeCanonicalProductsParams(params).toString();
 
   const refresh = () => void applyParams({ offset: params.offset });
 
@@ -141,7 +152,8 @@ export function CanonicalProductsScreen() {
   const toggleSelect = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
 
@@ -157,6 +169,42 @@ export function CanonicalProductsScreen() {
       pageIds.forEach((id) => next.add(id));
       return next;
     });
+
+  /** "Clasificar marcas": rellena la marca de lo seleccionado sin diálogo previo — no hay nada que
+   *  elegir (a diferencia de la categoría, cuyo modal existe para pedir la hoja), sólo rellena
+   *  huecos y nunca pisa una marca existente. La selección se conserva: el operador acaba de
+   *  filtrar "sin marca" y querrá ver el resultado sobre esas mismas filas. */
+  const [resolvingBrands, setResolvingBrands] = useState(false);
+  const resolveBrands = async () => {
+    const ids = [...selected];
+    if (ids.length === 0 || resolvingBrands) return;
+    setResolvingBrands(true);
+    try {
+      const result = await resolveCanonicalBrands(ids);
+      if (result) {
+        const parts = [
+          format(locale, "admin.reviewQueue.brands.done", { n: String(result.resolved) }),
+        ];
+        if (result.skipped > 0) {
+          parts.push(format(locale, "admin.reviewQueue.brands.skipped", { n: String(result.skipped) }));
+        }
+        if (result.unresolved > 0) {
+          parts.push(
+            format(locale, "admin.reviewQueue.brands.unresolved", { n: String(result.unresolved) }),
+          );
+        }
+        if (result.failed.length > 0) {
+          parts.push(
+            format(locale, "admin.reviewQueue.brands.failed", { n: String(result.failed.length) }),
+          );
+        }
+        toast(parts.join(" · "));
+      }
+      refresh();
+    } finally {
+      setResolvingBrands(false);
+    }
+  };
 
   const confirmArchive = async () => {
     if (!archiveTarget) return;
@@ -225,19 +273,42 @@ export function CanonicalProductsScreen() {
           <div className="flex flex-wrap items-center gap-3">
             <DropdownMenu>
               <DropdownMenuTrigger
-                disabled={selected.size === 0}
+                // el menú POR FILA también se llama "Acciones": sin testid, buscarlo por rol
+                // es ambiguo en cuanto la tabla tiene datos
+                data-testid="canonical-bulk-actions"
+                disabled={selected.size === 0 || resolvingBrands}
                 className="flex h-9 items-center gap-1.5 rounded-full bg-brand-forest px-4 text-sm font-semibold text-brand-lime disabled:opacity-50"
               >
                 <ListChecks className="size-[18px]" />
                 {t("admin.canonicalProducts.bulk.actions")}
                 <ChevronDown className="size-3.5" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => setBulkCategoryOpen(true)}>
-                  <Tags />
-                  {format(locale, "admin.canonicalProducts.bulk.assignCategory", {
-                    count: String(selected.size),
-                  })}
+              {/* `align="end"` + `min-w-56` + `nowrap`: lo MISMO que el menú de la Cola de revisión
+                  (`ReviewQueueToolbar`), y por la misma razón medida allí — sin esto el menú se
+                  queda en ~139px, "Asignar categoría (1)" se parte en dos líneas y el panel se
+                  desborda a la derecha de la tabla. Son dos consolas hermanas: el operador salta
+                  de una a otra y el mismo gesto tiene que verse igual. */}
+              <DropdownMenuContent
+                align="end"
+                className="min-w-56 [&_[role=menuitem]]:whitespace-nowrap"
+              >
+                {/* Las dos son acciones de PREPARAR (completan la ficha, no deciden nada sobre el
+                    producto), así que llevan el violeta que la Cola de revisión reserva para ese
+                    grupo. El código de color es el mismo en todo el OFV: violeta prepara, verde
+                    decide, rojo destruye. */}
+                <DropdownMenuItem
+                  onClick={() => setBulkCategoryOpen(true)}
+                  className="focus:bg-violet-500/10 focus:text-violet-600 not-data-[variant=destructive]:focus:**:text-violet-600 dark:focus:text-violet-400 dark:not-data-[variant=destructive]:focus:**:text-violet-400"
+                >
+                  <Tags className="text-violet-600 dark:text-violet-400" />
+                  {t("admin.canonicalProducts.bulk.assignCategory")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => void resolveBrands()}
+                  className="focus:bg-violet-500/10 focus:text-violet-600 not-data-[variant=destructive]:focus:**:text-violet-600 dark:focus:text-violet-400 dark:not-data-[variant=destructive]:focus:**:text-violet-400"
+                >
+                  <Tag className="text-violet-600 dark:text-violet-400" />
+                  {t("admin.canonicalProducts.bulk.resolveBrands")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -331,6 +402,7 @@ export function CanonicalProductsScreen() {
                     onArchive={setArchiveTarget}
                     onUnarchive={(r) => void unarchive(r)}
                     publicHref={row.slug ? `/${locale}/do/save/producto/${row.slug}` : null}
+                    queryString={rowQs}
                   />
                 ))}
               </TableBody>

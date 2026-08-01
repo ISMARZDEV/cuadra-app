@@ -115,7 +115,11 @@ def map_magento_product(
         market_id=market_id,
         external_id=str(item.get("sku", "")),
         name=name,
-        brand="",  # no expuesto por la API → lo resuelve el matching
+        # No expuesto por la API → lo resuelve el matching. Verificado en vivo (2026-07-30): el
+        # esquema SÍ tiene `brand_text`, pero viene VACÍO en todo el catálogo, y `aggregations`
+        # sólo ofrece la faceta de categorías — no hay atributo de marca poblado.
+        # `None` (no `""`) para no pisar una marca ya conocida en cada corrida.
+        brand=None,
         size_text=extract_size(name),
         price=price,
         price_type=PriceType.ONLINE,

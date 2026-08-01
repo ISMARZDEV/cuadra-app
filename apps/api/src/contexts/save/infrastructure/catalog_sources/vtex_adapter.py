@@ -76,7 +76,9 @@ def map_vtex_product(item: dict, provider_id: str, market_id: str) -> RawCatalog
         market_id=market_id,
         external_id=str(item.get("productId", "")),
         name=name,
-        brand=item.get("brand", ""),
+        # VTEX sí publica marca. Un `brand` ausente o vacío es "no la sé" → `None`, para no pisar
+        # con vacío una marca que ya conocíamos de una observación anterior.
+        brand=item.get("brand") or None,
         size_text=extract_size(name),
         price=price,
         price_type=PriceType.ONLINE,

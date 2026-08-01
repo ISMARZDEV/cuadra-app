@@ -19,7 +19,12 @@ from src.contexts.save.domain.entities import (
     SourcePlatform,
 )
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
-from src.contexts.save.infrastructure.models import PriceModel, StoreProductModel, TaxonomyNodeModel
+from src.contexts.save.infrastructure.models import (
+    CanonicalProductModel,
+    PriceModel,
+    StoreProductModel,
+    TaxonomyNodeModel,
+)
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
     SqlCanonicalProductRepository,
@@ -170,7 +175,11 @@ def test_canonical_get_by_id_reconstructs_brand_and_quantity(db_session) -> None
     got = SqlCanonicalProductRepository(db_session).get_by_id(cid)
     assert got is not None
     assert got.name == "Arroz La Garza"
-    assert got.brand == "La Garza"
+    # La marca se guarda en el casing CANÓNICO (`normalize_brand`, US-CP-L7) aunque quien llame al
+    # repo la pase con otro. Antes el repo la persistía tal cual y sólo la capa de aplicación
+    # normalizaba, así que todo lo que no pasara por ahí —la cola de revisión, la ingesta— metía
+    # variantes: así entraron `Bravo` junto a `BRAVO` y `La Famosa` junto a `LA FAMOSA`.
+    assert got.brand == "LA GARZA"
     assert got.quantity == Quantity(Decimal("4.5359237"), UnitMeasure.MASS)
 
 
@@ -384,3 +393,54 @@ def test_alert_mark_notifications_read_sets_read_at_and_is_idempotent(db_session
     assert repo.mark_notifications_read(user) == 1         # marca 1
     assert repo.mark_notifications_read(user) == 0         # idempotente (ya no hay no-leídas)
     assert repo.list_notifications(user)[0].read is True   # ahora leída
+
+
+class TestUnaMarcaNoPuedeEntrarDosVeces:
+    """REGRESIÓN — `_get_or_create_brand_id` comparaba por nombre EXACTO.
+
+    Así se llenó `save.brand` de duplicados (`Bravo`/`BRAVO`, `LIDER`/`Líder`/`LÍDER`): el filtro
+    por marca dejaba fuera la mitad del catálogo y reconocer una marca dependía de cuál variante
+    hubiera llegado primero. Ahora se compara por IDENTIDAD (`brand_key`).
+    """
+
+    def _add(self, db_session, brand: str, name: str) -> str:  # type: ignore[no-untyped-def]
+        from src.contexts.save.domain.entities import CanonicalProduct
+
+        repo = SqlCanonicalProductRepository(db_session)
+        node = TaxonomyNodeModel(name="Zz Test", level=0, market_id="DO")
+        db_session.add(node)
+        db_session.flush()
+        cid = str(uuid.uuid4())
+        repo.add(CanonicalProduct(
+            cid, name, brand, Quantity(Decimal("1"), UnitMeasure.MASS), str(node.id), "DO",
+        ))
+        return cid
+
+    def _brand_id(self, db_session, cid: str):  # type: ignore[no-untyped-def]
+        return db_session.get(CanonicalProductModel, uuid.UUID(cid)).brand_id
+
+    def test_distinto_casing_resuelve_a_la_MISMA_marca(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        a = self._add(db_session, "Zqbravo", "Producto A Zq")
+        b = self._add(db_session, "ZQBRAVO", "Producto B Zq")
+
+        assert self._brand_id(db_session, a) == self._brand_id(db_session, b)
+
+    def test_con_y_sin_acento_resuelven_a_la_MISMA_marca(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        a = self._add(db_session, "Zqlíder", "Producto C Zq")
+        b = self._add(db_session, "ZQLIDER", "Producto D Zq")
+
+        assert self._brand_id(db_session, a) == self._brand_id(db_session, b)
+
+    def test_se_guarda_el_nombre_CON_acento_no_la_llave_plegada(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """La llave se compara, nunca se muestra: guardar "ZQLIDER" sería escribir mal la marca."""
+        from src.contexts.save.infrastructure.models import BrandModel
+
+        cid = self._add(db_session, "Zqlíder", "Producto E Zq")
+
+        assert db_session.get(BrandModel, self._brand_id(db_session, cid)).name == "ZQLÍDER"
+
+    def test_marcas_de_verdad_distintas_no_se_fusionan(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        a = self._add(db_session, "Zqgoya", "Producto F Zq")
+        b = self._add(db_session, "Zqgoyita", "Producto G Zq")
+
+        assert self._brand_id(db_session, a) != self._brand_id(db_session, b)

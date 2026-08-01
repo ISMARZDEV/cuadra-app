@@ -36,6 +36,7 @@ from .composition import (
     build_basket_queries,
     build_canonical_embedder,
     build_category_embedder,
+    build_brand_resolver,
     build_classifier,
     build_cover_canonicals,
     build_matcher,
@@ -175,6 +176,7 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             SqlStoreProductRepository(session), adapters,
             matcher=build_matcher(session), classifier=build_classifier(session),
             relevance_gate=build_relevance_gate(session),
+            brand_resolver=build_brand_resolver(session),
             # El progreso se PERSISTE en cada query, no solo se loguea: sin esto la consola no
             # tiene qué mostrar hasta que la corrida termina, y la barra aparece siempre al 100%.
             # Va en sesión propia (ver `build_progress_recorder`) porque la de la ingesta commitea
@@ -289,6 +291,7 @@ def rest_catalog_prices(context) -> dg.MaterializeResult:
             SqlStoreProductRepository(session), [source],
             matcher=build_matcher(session), classifier=build_classifier(session),
             relevance_gate=build_relevance_gate(session),
+            brand_resolver=build_brand_resolver(session),
         )
         session.commit()
     context.log.info(

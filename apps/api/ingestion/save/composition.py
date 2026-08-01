@@ -21,6 +21,7 @@ from src.contexts.save.application.embed_canonical_products import EmbedCanonica
 from src.contexts.save.application.embed_categories import EmbedCategories
 from src.contexts.save.application.match_store_product import MatchStoreProduct
 from src.contexts.save.application.refresh_prices import RefreshResult
+from src.contexts.save.application.resolve_brand import ResolveBrand
 from src.contexts.save.domain.ports import CatalogSource
 from src.contexts.save.domain.ports.repositories import EmbeddingProvider
 from src.contexts.save.infrastructure.classification.category_judge import CategoryJudge
@@ -176,7 +177,10 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
     (misma UoW que el matcher, por el invariante FK+product_match)."""
     store_repo = SqlStoreProductRepository(session)
     refresh = RefreshCatalogPrices(
-        store_repo, matcher=build_matcher(session), classifier=build_classifier(session)
+        store_repo,
+        matcher=build_matcher(session),
+        classifier=build_classifier(session),
+        brand_resolver=build_brand_resolver(session),
     )
     return CoverCanonicals(
         store_repo=store_repo,
@@ -212,7 +216,11 @@ def build_refresh_covered_prices(session: Session, *, known: bool = False) -> Re
     from ingestion.save.sources import SAVE_MARKET  # local: evita import circular (patrón del módulo)
 
     store_repo = SqlStoreProductRepository(session)
-    refresh = RefreshCatalogPrices(store_repo, matcher=None, classifier=None)
+    # Sin matcher (camino A sólo re-precia), pero SÍ con marca: un producto ya ingerido sin
+    # marca la gana en cuanto el catálogo aprende la suya.
+    refresh = RefreshCatalogPrices(
+        store_repo, matcher=None, classifier=None, brand_resolver=build_brand_resolver(session)
+    )
     registries = {
         r.provider_id: r
         for r in SqlStoreRegistryRepository(session).list_by_market(SAVE_MARKET)
@@ -428,6 +436,17 @@ def _build_lexicon(session: Session, market_id: str):  # type: ignore[no-untyped
     tree = SqlTaxonomyRepository(session).list_tree(market_id)
     leaves = [(child.id, child.name) for root in tree for child in root.children]
     return build_lexicon_index(leaves)
+
+
+def build_brand_resolver(session: Session) -> ResolveBrand:
+    """Reconocedor de marca dentro del nombre (Nacional y Bravo no la publican; Sirena sí).
+
+    Sin flag: no llama a ningún modelo ni servicio externo, sólo lee la tabla de marcas UNA vez y
+    hace comparación de tokens en memoria. Y no puede inventar nada — únicamente reconoce marcas
+    que YA están en el catálogo, así que su peor caso es no encontrar ninguna y dejar el campo
+    intacto. Comparte la `session` del refresh.
+    """
+    return ResolveBrand(SqlCanonicalProductRepository(session))
 
 
 def build_classifier(session: Session) -> ClassifyStoreProduct | None:

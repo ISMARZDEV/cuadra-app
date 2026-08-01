@@ -36,6 +36,11 @@ export default function Head() {
       <meta property="og:title" content={`${comparison.name} — precios en RD`} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
+      {/* og:image va a la URL DIRECTA de la tienda, NUNCA por el proxy. El proxy existe para saltar
+          el CORS del NAVEGADOR en las etiquetas `<img>`; quien lee og:image es un crawler externo
+          (WhatsApp, Facebook), que no tiene CORS. Enrutarlo por el proxy no aporta nada y añade dos
+          formas de romper la preview: en dev apunta a `localhost:8005` (inalcanzable para el
+          crawler) y en prod la deja colgando de que nuestro backend responda. */}
       {comparison.image_url ? (
         <meta property="og:image" content={comparison.image_url} />
       ) : null}

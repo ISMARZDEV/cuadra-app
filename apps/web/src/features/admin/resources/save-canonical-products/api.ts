@@ -1,9 +1,13 @@
 import {
+  bulkResolveCanonicalBrands as bulkResolveCanonicalBrandsRequest,
   type AdminCanonicalDuplicateDto,
   type AdminCanonicalEvidenceDto,
   type AdminCanonicalProductListDto,
   type AdminCanonicalProductRowDto,
   type AdminCanonicalProviderPriceDto,
+  type PromoteStoreProductRequest,
+  type RelinkStoreProductRequest,
+  type UnlinkStoreProductRequest,
   type CreateCanonicalProductRequest,
   type ImportCommitDto,
   type ImportPreviewDto,
@@ -21,6 +25,10 @@ import {
   bulkSetCanonicalCategory as bulkSetCanonicalCategoryRequest,
   commitCanonicalImport as commitCanonicalImportRequest,
   createCanonicalProduct as createCanonicalProductRequest,
+  discardStoreProduct as discardStoreProductRequest,
+  promoteStoreProduct as promoteStoreProductRequest,
+  relinkStoreProduct as relinkStoreProductRequest,
+  unlinkStoreProduct as unlinkStoreProductRequest,
   listCanonicalProductDuplicates as listCanonicalProductDuplicatesRequest,
   listCanonicalImages as listCanonicalImagesRequest,
   listCanonicalProductEvidence as listCanonicalProductEvidenceRequest,
@@ -175,6 +183,78 @@ export async function unarchiveCanonicalProduct(
     path: { canonical_product_id: canonicalProductId },
   });
   return res.data ?? null;
+}
+
+// ------------------------------- acciones por proveedor del detalle (menú de acciones de la fila)
+
+/**
+ * Borra DURO el producto de esa tienda. IRREVERSIBLE — se lleva su histórico de precios por
+ * CASCADE. Devuelve cuántos precios destruyó, que es lo que la UI muestra en el resumen posterior.
+ *
+ * Es re-ingerible a propósito: libera el par `(provider_id, external_id)` y la próxima corrida lo
+ * vuelve a traer y a matchear desde cero.
+ */
+export async function discardStoreProduct(
+  canonicalProductId: string,
+  storeProductId: string,
+  decidedBy: string,
+): Promise<{ deleted_price_count: number } | null> {
+  const res = await discardStoreProductRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId, store_product_id: storeProductId },
+    query: { decided_by: decidedBy },
+  });
+  return (res.data as { deleted_price_count: number } | undefined) ?? null;
+}
+
+/** Devuelve el producto a la cola de revisión. `reasonCode` es OBLIGATORIO (el backend da 422). */
+export async function unlinkStoreProduct(
+  canonicalProductId: string,
+  storeProductId: string,
+  body: UnlinkStoreProductRequest,
+): Promise<void> {
+  await unlinkStoreProductRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId, store_product_id: storeProductId },
+    body,
+  });
+}
+
+/** Mueve el producto a OTRO canónico existente. */
+export async function relinkStoreProduct(
+  canonicalProductId: string,
+  storeProductId: string,
+  body: RelinkStoreProductRequest,
+): Promise<void> {
+  await relinkStoreProductRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId, store_product_id: storeProductId },
+    body,
+  });
+}
+
+/**
+ * Crea un canónico NUEVO desde este producto y lo mueve ahí. Devuelve el id del nuevo canónico.
+ *
+ * Solo viaja la CATEGORÍA: nombre, marca y cantidad los deriva el servidor del propio store_product
+ * (igual que `bulk-create-canonical`). La conversión "500 g" → unidad base es regla de dominio y el
+ * navegador no debe tener una segunda implementación de ella.
+ */
+export async function promoteStoreProduct(
+  canonicalProductId: string,
+  storeProductId: string,
+  body: PromoteStoreProductRequest,
+): Promise<string | null> {
+  const res = await promoteStoreProductRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    path: { canonical_product_id: canonicalProductId, store_product_id: storeProductId },
+    body,
+  });
+  return (res.data as { canonical_product_id: string } | undefined)?.canonical_product_id ?? null;
 }
 
 /** Histórico + KPIs del rango. `providerIds` vacío = todas las tiendas (US-CP-D6/D7). */
@@ -346,6 +426,17 @@ export async function removeCanonicalImage(
     client: apiClient,
     headers: await authHeaders(),
     path: { canonical_product_id: canonicalProductId, image_id: imageId },
+  });
+  return res.data ?? null;
+}
+
+/** Rellena la MARCA de los canónicos seleccionados (proveedor → nombre). CUATRO contadores: fundir
+ * "ya tenía marca" con "sin reconocer" haría que un lote ya resuelto se leyera como fallido. */
+export async function resolveCanonicalBrands(canonicalProductIds: string[]) {
+  const res = await bulkResolveCanonicalBrandsRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: { canonical_product_ids: canonicalProductIds },
   });
   return res.data ?? null;
 }

@@ -56,10 +56,34 @@ _UNITS: dict[str, tuple[UnitMeasure, str]] = {
 
 _MULTIPACK = re.compile(r"^\s*(\d+)\s*[x×]\s*(.+)$", re.IGNORECASE)
 _SIZE = re.compile(r"^\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Zá]+)\.?\s*$")
+# El fresco dominicano se vende por FRACCIÓN ("ALBAHACA VERDE 1/2 LB"). Sin esta rama, `_SIZE`
+# enganchaba con el denominador —"1/2 LB" se guardaba como 2 Lb, "1/4 LB" como 4 Lb— o sea 4× y 16×
+# de error, y en la dirección peor: media libra pasaba a dos.
+_FRACTION = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*([a-zA-Zá]+)\.?\s*$")
+
+
+def _amount_and_token(text: str) -> tuple[Decimal, str]:
+    """`(cantidad, token de unidad)` de un tamaño simple o fraccionario.
+
+    La UNIDAD es obligatoria en las dos formas: es la única guarda que impide que un "24/7" del
+    nombre de un producto se convierta en un tamaño inventado.
+    """
+    fraction = _FRACTION.match(text)
+    if fraction:
+        denominator = Decimal(fraction.group(2))
+        if denominator == 0:
+            raise ValueError(f"Fracción con denominador cero: {text!r}")
+        return Decimal(fraction.group(1)) / denominator, fraction.group(3)
+
+    simple = _SIZE.match(text)
+    if not simple:
+        raise ValueError(f"No se pudo parsear el tamaño: {text!r}")
+    return Decimal(simple.group(1).replace(",", ".")), simple.group(2)
 
 
 def parse_size(text: str) -> Quantity:
-    """`"5lb"` → `Quantity(2.26796185, MASS)`. Multipack `NxM` multiplica la unidad interna.
+    """`"5lb"` → `Quantity(2.26796185, MASS)`; `"1/2 lb"` → la MITAD, no el denominador.
+    Multipack `NxM` multiplica la unidad interna.
 
     Levanta `ValueError` si no se puede parsear o la unidad es desconocida.
     """
@@ -69,12 +93,8 @@ def parse_size(text: str) -> Quantity:
         inner = parse_size(multi.group(2))
         return Quantity(inner.amount * n, inner.measure)
 
-    m = _SIZE.match(text)
-    if not m:
-        raise ValueError(f"No se pudo parsear el tamaño: {text!r}")
-
-    number = Decimal(m.group(1).replace(",", "."))
-    token = m.group(2).lower().rstrip(".")
+    number, raw_token = _amount_and_token(text)
+    token = raw_token.lower().rstrip(".")
     if token not in _UNITS:
         raise ValueError(f"Unidad desconocida: {token!r} en {text!r}")
 
@@ -119,10 +139,14 @@ def normalize_size_text(text: str | None) -> str | None:
     descriptor = _DISPLAY_DESCRIPTOR.get(stripped.lower())
     if descriptor:
         return descriptor
-    m = _SIZE.match(stripped)
-    if not m:
+    try:
+        number, raw_token = _amount_and_token(stripped)
+    except ValueError:
         return text
-    unit = _DISPLAY_UNIT.get(m.group(2).lower().rstrip("."))
+    unit = _DISPLAY_UNIT.get(raw_token.lower().rstrip("."))
     if unit is None:
         return text
-    return f"{_clean_amount(m.group(1))} {unit}"
+    # La fracción se muestra en DECIMAL ("1/2 Lb" → "0.5 Lb"): el resto de la columna ya es decimal
+    # (`_clean_amount` convierte "1,5" → "1.5"), y mezclar las dos notaciones haría los tamaños
+    # incomparables de un vistazo, que es justo para lo que existe esta columna.
+    return f"{_clean_amount(str(number))} {unit}"

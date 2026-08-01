@@ -17,7 +17,7 @@ export function MiniBarChart({ data, height = 56, className }: MiniBarChartProps
 
   return (
     <div
-      className={`flex items-end justify-center gap-5 ${className ?? ""}`}
+      className={`flex w-full items-end justify-center gap-1 ${className ?? ""}`}
       style={{ height }}
       role="img"
       aria-hidden="true"
@@ -30,7 +30,7 @@ export function MiniBarChart({ data, height = 56, className }: MiniBarChartProps
         return (
           <div
             key={d.label + i}
-            className={`w-5 shrink-0 rounded-[4px] ${color}`}
+            className={`min-w-[3px] flex-1 max-w-[14px] shrink-0 rounded-[4px] ${color}`}
             style={{ height: barHeight }}
             title={`${d.label}: ${d.value}`}
           />

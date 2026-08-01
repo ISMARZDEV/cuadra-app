@@ -17,23 +17,24 @@ describe("ClerkAuthBridge (web)", () => {
     registerTokenGetterMock.mockReset();
   });
 
-  test("registers a getter yielding Clerk's fresh token when signed in", async () => {
+  test("registers a getter synchronously during render when signed in", async () => {
     const getToken = vi.fn().mockResolvedValue("clerk-jwt");
     useAuthMock.mockReturnValue({ isSignedIn: true, getToken });
 
     render(<ClerkAuthBridge />);
 
-    await waitFor(() => expect(registerTokenGetterMock).toHaveBeenCalled());
+    // El registro debe haber ocurrido en el render, no esperar a useEffect.
+    expect(registerTokenGetterMock).toHaveBeenCalled();
     const getter = registerTokenGetterMock.mock.calls.at(-1)![0];
     expect(await getter()).toBe("clerk-jwt");
   });
 
-  test("registers a null getter when signed out", async () => {
+  test("registers a null getter synchronously during render when signed out", async () => {
     useAuthMock.mockReturnValue({ isSignedIn: false, getToken: vi.fn() });
 
     render(<ClerkAuthBridge />);
 
-    await waitFor(() => expect(registerTokenGetterMock).toHaveBeenCalled());
+    expect(registerTokenGetterMock).toHaveBeenCalled();
     const getter = registerTokenGetterMock.mock.calls.at(-1)![0];
     expect(await getter()).toBeNull();
   });

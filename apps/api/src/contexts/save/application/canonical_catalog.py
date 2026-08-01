@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from src.shared.money import primary_currency_for_market
 
 from ..domain.canonical_catalog import (
+    CanonicalCatalogCursor,
     CanonicalCatalogFilters,
     CanonicalCatalogPage,
     CanonicalCatalogRow,
@@ -51,6 +52,7 @@ from ..domain.canonical_import import (
 from ..domain.classification import CategoryClassification
 from ..domain.entities import CanonicalProduct
 from ..domain.history import PricePoint
+from ..domain.ports import CanonicalImageRepository, StoreProductRepository
 from ..domain.value_objects import Quantity, UnitMeasure
 from ..infrastructure.classification.lexicon import build_lexicon_index, lexicon_suggestions
 
@@ -101,6 +103,31 @@ class ListCanonicalProducts:
             offset=offset,
             sort=sort,
             now=now or datetime.now(timezone.utc),
+        )
+
+
+class GetCanonicalProductCursor:
+    """Posición de un canónico dentro de un listado filtrado/ordenado, más sus vecinos.
+
+    El use-case es orquestación pura: el SQL complejo vive en el repositorio.
+    """
+
+    def __init__(self, catalog_repo) -> None:  # type: ignore[no-untyped-def]
+        self._repo = catalog_repo
+
+    def execute(
+        self,
+        *,
+        market_id: str,
+        canonical_product_id: str,
+        filters: CanonicalCatalogFilters | None = None,
+        sort: str = "name",
+    ) -> CanonicalCatalogCursor:
+        return self._repo.get_catalog_cursor(
+            market_id=market_id,
+            canonical_product_id=canonical_product_id,
+            filters=filters,
+            sort=sort,
         )
 
 
@@ -774,7 +801,7 @@ class BulkSetCanonicalCategory:
 class ListCanonicalImages:
     """Galería ordenada del canónico (F5)."""
 
-    def __init__(self, image_repo) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, image_repo: CanonicalImageRepository) -> None:
         self._repo = image_repo
 
     def execute(self, canonical_product_id: str) -> list[CanonicalImage]:
@@ -789,7 +816,7 @@ class ListStoreProductImages:
     mismo producto, y una sola foto muchas veces no alcanza para decidirlo.
     """
 
-    def __init__(self, store_product_repo) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, store_product_repo: StoreProductRepository) -> None:
         self._repo = store_product_repo
 
     def execute(self, store_product_id: str) -> list[str]:
@@ -803,7 +830,7 @@ class AddCanonicalImage:
     imagen es dato de la tienda, y el canónico sólo elige cuál lo representa.
     """
 
-    def __init__(self, image_repo) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, image_repo: CanonicalImageRepository) -> None:
         self._repo = image_repo
 
     def execute(
@@ -823,7 +850,7 @@ class AddCanonicalImage:
 class ReorderCanonicalImages:
     """Fija el orden de la galería. La posición 1 pasa a ser la imagen pública."""
 
-    def __init__(self, image_repo) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, image_repo: CanonicalImageRepository) -> None:
         self._repo = image_repo
 
     def execute(self, *, canonical_product_id: str, image_ids: list[str]) -> bool:
@@ -833,7 +860,7 @@ class ReorderCanonicalImages:
 class RemoveCanonicalImage:
     """Quita una imagen y compacta el resto. Si era la primera, la siguiente pasa a ser pública."""
 
-    def __init__(self, image_repo) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, image_repo: CanonicalImageRepository) -> None:
         self._repo = image_repo
 
     def execute(self, *, canonical_product_id: str, image_id: str) -> bool:

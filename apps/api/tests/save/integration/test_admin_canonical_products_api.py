@@ -6,7 +6,7 @@ calculen correctamente desde la DB real.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -54,6 +54,15 @@ class TestTheGateIsOn:
         [
             ("get", "/v1/admin/save/canonical-products"),
             ("get", "/v1/admin/save/canonical-products/some-slug"),
+            # Acciones por proveedor del detalle (menú de acciones). La primera BORRA una fila y su
+            # histórico de precios: si quedara sin gatear, cualquier usuario autenticado podría
+            # destruir datos irreversiblemente.
+            ("delete", "/v1/admin/save/canonical-products/cid/providers/spid"),
+            ("post", "/v1/admin/save/canonical-products/cid/providers/spid/unlink"),
+            ("post", "/v1/admin/save/canonical-products/cid/providers/spid/relink"),
+            ("post", "/v1/admin/save/canonical-products/cid/providers/spid/promote"),
+            # Proxy de imágenes: sin gatear sería un proxy abierto a Internet.
+            ("get", "/v1/admin/save/image-proxy?url=https://example.com/a.jpg"),
         ],
     )
     def test_no_route_is_reachable_without_a_token(self, client, method, path) -> None:  # type: ignore[no-untyped-def]
@@ -426,6 +435,158 @@ class TestCanonicalProductProviders:
         res = self._get(db_session, user_id, "00000000-0000-4000-8000-000000000000")
 
         assert res.status_code == 404
+
+
+class TestCanonicalProviderPreviousPrice:
+    """`previous_price_minor` por tienda — el tachado y el `-N%` del detalle (rediseño Figma).
+
+    Se DERIVA de `save.price`, que es append-only: el precio anterior es la última observación
+    cuyo valor DIFIERE del vigente. No hay columna nueva ni migración.
+
+    La distinción importa: la ingesta escribe una fila por corrida aunque el precio no se mueva,
+    así que "la penúltima fila" casi siempre es el MISMO precio de hoy. Tacharlo mostraría
+    "$74 antes $74", que no es un descuento — es ruido de la ingesta.
+    """
+
+    MARKET_ID = "DO"
+    PROVIDER_ID = "66666666-6666-4666-8666-666666666667"
+    BRAND_ID = "77777777-7777-4777-8777-777777777778"
+    TAXONOMY_ID = "88888888-8888-4888-8888-888888888889"
+    CANONICAL_ID = "99999999-9999-4999-8999-99999999999a"
+    STORE_PRODUCT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab"
+
+    def _seed(self, db_session, price_history: list[tuple[int, int]]) -> None:  # type: ignore[no-untyped-def]
+        """Siembra el canónico + 1 tienda y su histórico.
+
+        `price_history` es una lista de `(value_minor, days_ago)`; se inserta tal cual en
+        `save.price`. El precio VIGENTE es `current_price_minor` del store_product.
+        """
+        from sqlalchemy import select as sa_select
+
+        from src.contexts.save.infrastructure.models import PriceModel
+
+        if not db_session.scalars(
+            sa_select(ProviderModel).where(ProviderModel.id == self.PROVIDER_ID)
+        ).first():
+            db_session.add(
+                ProviderModel(
+                    id=self.PROVIDER_ID, name="Sirena Prev Price", type="supermarket",
+                    platform="vtex", market_id=self.MARKET_ID,
+                )
+            )
+            db_session.flush()
+
+        brand = db_session.scalars(
+            sa_select(BrandModel).where(
+                BrandModel.market_id == self.MARKET_ID, BrandModel.name == "GOYA_PREV_PRICE",
+            )
+        ).first()
+        if brand:
+            brand_id = brand.id
+        else:
+            brand = BrandModel(id=self.BRAND_ID, name="GOYA_PREV_PRICE", market_id=self.MARKET_ID)
+            db_session.add(brand)
+            db_session.flush()
+            brand_id = brand.id
+
+        if not db_session.scalars(
+            sa_select(TaxonomyNodeModel).where(TaxonomyNodeModel.id == self.TAXONOMY_ID)
+        ).first():
+            db_session.add(
+                TaxonomyNodeModel(
+                    id=self.TAXONOMY_ID, name="Arroz Prev Price", level=1,
+                    market_id=self.MARKET_ID, parent_id=None,
+                )
+            )
+            db_session.flush()
+
+        if not db_session.scalars(
+            sa_select(CanonicalProductModel).where(CanonicalProductModel.id == self.CANONICAL_ID)
+        ).first():
+            db_session.add(
+                CanonicalProductModel(
+                    id=self.CANONICAL_ID, slug="arroz-goya-prev-price",
+                    name="Arroz Goya Prev Price", brand_id=brand_id, quality="premium",
+                    display_size="10 LB", image_url="https://example.com/arroz.jpg",
+                    size_amount=Decimal("10.0"), size_measure="mass",
+                    taxonomy_node_id=self.TAXONOMY_ID, market_id=self.MARKET_ID,
+                )
+            )
+            db_session.flush()
+
+        current = price_history[0][0]
+        if not db_session.scalars(
+            sa_select(StoreProductModel).where(StoreProductModel.id == self.STORE_PRODUCT_ID)
+        ).first():
+            db_session.add(
+                StoreProductModel(
+                    id=self.STORE_PRODUCT_ID, provider_id=self.PROVIDER_ID,
+                    canonical_product_id=self.CANONICAL_ID, external_id="ext-prev-price-1",
+                    current_price_minor=current, currency="DOP",
+                    url="https://sirena.do/arroz-goya-prev", ean="041383009999",
+                    last_seen_at=datetime.now(UTC), is_available=True,
+                    name="Arroz Goya 10 LB", brand="GOYA_PREV_PRICE", size_text="10 LB",
+                )
+            )
+            db_session.flush()
+
+        for value_minor, days_ago in price_history:
+            db_session.add(
+                PriceModel(
+                    store_product_id=self.STORE_PRODUCT_ID, value_minor=value_minor,
+                    currency="DOP", captured_at=datetime.now(UTC) - timedelta(days=days_ago),
+                    price_type="online", source="test",
+                )
+            )
+        db_session.flush()
+
+    def _get(self, db_session, user_id):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                return c.get(
+                    f"/v1/admin/save/canonical-products/{self.CANONICAL_ID}/providers"
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_previous_price_is_last_different_value(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """El precio anterior salta las observaciones que repiten el precio vigente.
+
+        Histórico: 9500 (hace 10d) → 7400 (hace 3d) → 7400 (hoy, la corrida de ayer no movió
+        nada). El anterior es 9500, no 7400.
+        """
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session, [(7400, 0), (7400, 3), (9500, 10)])
+
+        res = self._get(db_session, user_id)
+
+        assert res.status_code == 200, res.text
+        provider = next(
+            (p for p in res.json() if p["store_product_id"] == self.STORE_PRODUCT_ID), None
+        )
+        assert provider is not None
+        assert provider["price_minor"] == 7400
+        assert provider["previous_price_minor"] == 9500
+
+    def test_previous_price_is_null_without_a_different_observation(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Sin ninguna observación distinta al precio vigente, el anterior es `None`.
+
+        Un producto que nunca cambió de precio NO tiene tachado. Devolver el mismo número haría
+        que la UI pintara "antes $74" al lado de "$74".
+        """
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session, [(7400, 0), (7400, 5)])
+
+        res = self._get(db_session, user_id)
+
+        assert res.status_code == 200, res.text
+        provider = next(
+            (p for p in res.json() if p["store_product_id"] == self.STORE_PRODUCT_ID), None
+        )
+        assert provider is not None
+        assert provider["previous_price_minor"] is None
 
 
 class TestCreateCanonicalProduct:
@@ -1054,3 +1215,266 @@ class TestEanCodeAndPriceRange:
         row = self._rows(db_session, user_id)[self.CANONICAL_ID]
 
         assert "no_quality" not in row["quality_statuses"]
+
+
+class TestCanonicalProductCursor:
+    """GET /admin/save/canonical-products/{id}/cursor — posición + prev/next para el pager (US-CP-D?)."""
+
+    MARKET_ID = "DO"
+    PROVIDER_ID = "b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1"
+    BRAND_ID = "b2b2b2b2-b2b2-42b2-82b2-b2b2b2b2b2b2"
+    TAXONOMY_ID = "b3b3b3b3-b3b3-43b3-83b3-b3b3b3b3b3b3"
+    CANONICAL_A = "c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1"
+    CANONICAL_B = "c2c2c2c2-c2c2-42c2-82c2-c2c2c2c2c2c2"
+    CANONICAL_C = "c3c3c3c3-c3c3-43c3-83c3-c3c3c3c3c3c3"
+    STORE_A = "d1d1d1d1-d1d1-41d1-81d1-d1d1d1d1d1d1"
+    STORE_B = "d2d2d2d2-d2d2-42d2-82d2-d2d2d2d2d2d2"
+    STORE_C = "d3d3d3d3-d3d3-43d3-83d3-d3d3d3d3d3d3"
+
+    def _seed(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        from sqlalchemy import select as sa_select
+
+        existing = db_session.scalars(
+            sa_select(ProviderModel).where(ProviderModel.id == self.PROVIDER_ID)
+        ).first()
+        if not existing:
+            db_session.add(
+                ProviderModel(
+                    id=self.PROVIDER_ID, name="Sirena Cursor Test", type="supermarket",
+                    platform="vtex", market_id=self.MARKET_ID,
+                )
+            )
+            db_session.flush()
+
+        existing_brand = db_session.scalars(
+            sa_select(BrandModel).where(BrandModel.id == self.BRAND_ID)
+        ).first()
+        if not existing_brand:
+            db_session.add(
+                BrandModel(id=self.BRAND_ID, name="CURSOR_BRAND", market_id=self.MARKET_ID)
+            )
+            db_session.flush()
+
+        existing_tax = db_session.scalars(
+            sa_select(TaxonomyNodeModel).where(TaxonomyNodeModel.id == self.TAXONOMY_ID)
+        ).first()
+        if not existing_tax:
+            db_session.add(
+                TaxonomyNodeModel(
+                    id=self.TAXONOMY_ID, name="Cursor Category", level=1,
+                    market_id=self.MARKET_ID, parent_id=None,
+                )
+            )
+            db_session.flush()
+
+        defaults = {
+            "brand_id": self.BRAND_ID,
+            "quality": "premium",
+            "display_size": "1 LB",
+            "image_url": "https://example.com/cursor.jpg",
+            "size_amount": Decimal("1.0"),
+            "size_measure": "mass",
+            "taxonomy_node_id": self.TAXONOMY_ID,
+            "market_id": self.MARKET_ID,
+        }
+        cps = [
+            (self.CANONICAL_A, "Cursor Alpha"),
+            (self.CANONICAL_B, "Cursor Beta"),
+            (self.CANONICAL_C, "Cursor Gamma"),
+        ]
+        for cp_id, name in cps:
+            existing_cp = db_session.scalars(
+                sa_select(CanonicalProductModel).where(CanonicalProductModel.id == cp_id)
+            ).first()
+            if not existing_cp:
+                db_session.add(
+                    CanonicalProductModel(
+                        id=cp_id,
+                        slug=name.lower().replace(" ", "-"),
+                        name=name,
+                        **defaults,
+                    )
+                )
+                db_session.flush()
+
+        # Store products para los 3 canónicos (1 proveedor cada uno).
+        for i, cp_id in enumerate((self.CANONICAL_A, self.CANONICAL_B, self.CANONICAL_C)):
+            sp_id = getattr(self, ("STORE_A", "STORE_B", "STORE_C")[i])
+            existing_sp = db_session.scalars(
+                sa_select(StoreProductModel).where(StoreProductModel.id == sp_id)
+            ).first()
+            if not existing_sp:
+                db_session.add(
+                    StoreProductModel(
+                        id=sp_id,
+                        provider_id=self.PROVIDER_ID,
+                        canonical_product_id=cp_id,
+                        external_id=f"ext-cursor-{i}",
+                        current_price_minor=10000 + i * 1000,
+                        currency="DOP",
+                        ean="123456789012",
+                        last_seen_at=datetime.now(UTC),
+                        is_available=True,
+                        name=f"Cursor SP {i}",
+                        size_text="1 LB",
+                    )
+                )
+                db_session.flush()
+
+    def _get(self, db_session, user_id, canonical_id, query=""):  # type: ignore[no-untyped-def]
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            with TestClient(app) as c:
+                return c.get(f"/v1/admin/save/canonical-products/{canonical_id}/cursor{query}")
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_cursor_returns_position_and_neighbors(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """El canónico del medio tiene position=2, prev del primero y next del tercero."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        res = self._get(db_session, user_id, self.CANONICAL_B, "?sort=name&search=Cursor")
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["total"] == 3
+        assert body["position"] == 2
+        assert body["previous_id"] == self.CANONICAL_A
+        assert body["next_id"] == self.CANONICAL_C
+
+    def test_cursor_respects_search_filter(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Con un search que excluye al primero, el segundo pasa a ser position=1."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        res = self._get(db_session, user_id, self.CANONICAL_B, "?sort=name&search=Cursor+Beta")
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["total"] == 1
+        assert body["position"] == 1
+        assert body["previous_id"] is None
+        assert body["next_id"] is None
+
+    def test_cursor_returns_null_position_when_filtered_out(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Si el producto actual no cumple los filtros, total sigue contando los que sí."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._seed(db_session)
+
+        # Search que no matchea al canónico B pero sí a A y C.
+        res = self._get(db_session, user_id, self.CANONICAL_B, "?sort=name&search=Cursor+Gamma")
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["total"] == 1
+        assert body["position"] is None
+        assert body["previous_id"] is None
+        assert body["next_id"] is None
+
+    def test_cursor_requires_auth(self, client) -> None:  # type: ignore[no-untyped-def]
+        """Sin token no se puede consultar el cursor."""
+        res = client.get(f"/v1/admin/save/canonical-products/{self.CANONICAL_A}/cursor")
+        assert res.status_code in (401, 403)
+
+
+class TestBulkResolveCanonicalBrands:
+    """`POST /canonical-products/bulk-resolve-brands` — "Clasificar marcas" del menú Acciones.
+
+    Precedencia PROVEEDOR → NOMBRE: la marca que ya reporta una tienda enlazada es un dato
+    OBSERVADO en la fuente; reconocerla dentro del nombre es una deducción. Preferir la deducción
+    sobre la observación sería degradar el mejor dato que tenemos.
+    """
+
+    def _create(self, db_session, user_id, name: str, brand: str = "") -> str:  # type: ignore[no-untyped-def]
+        res = _call(db_session, user_id, "post", "/canonical-products", json={
+            "name": name, "brand": brand, "size_amount": 1.0, "size_measure": "mass",
+        })
+        assert res.status_code == 201, res.text
+        return res.json()["canonical_product_id"]
+
+    def _brand_of(self, db_session, canonical_id: str) -> str | None:  # type: ignore[no-untyped-def]
+        import uuid as _uuid
+
+        from src.contexts.save.infrastructure.models import BrandModel, CanonicalProductModel
+
+        row = db_session.get(CanonicalProductModel, _uuid.UUID(canonical_id))
+        if row is None or row.brand_id is None:
+            return None
+        return db_session.get(BrandModel, row.brand_id).name
+
+    def _brand_count(self, db_session) -> int:  # type: ignore[no-untyped-def]
+        from sqlalchemy import func, select
+
+        from src.contexts.save.infrastructure.models import BrandModel
+
+        return db_session.execute(select(func.count()).select_from(BrandModel)).scalar_one()
+
+    def test_recognises_a_known_brand_in_the_name_without_creating_new_brands(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        # este canónico SIEMBRA la marca en el catálogo…
+        self._create(db_session, user_id, "Arroz Cualquiera", brand="MARCAFARO")
+        # …y este otro, sin marca, la lleva dentro del nombre
+        target = self._create(db_session, user_id, "Arroz Marcafaro Premium 5 Lb")
+        before = self._brand_count(db_session)
+
+        res = _call(db_session, user_id, "post", "/canonical-products/bulk-resolve-brands",
+                    json={"canonical_product_ids": [target]})
+
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["resolved"] == 1 and body["skipped"] == 0
+        assert body["rows"][0]["source"] == "name"
+        assert self._brand_of(db_session, target) == "MARCAFARO"
+        # RECONOCE, no inventa: no puede haber aparecido ninguna marca nueva
+        assert self._brand_count(db_session) == before
+
+    def test_a_canonical_that_already_has_a_brand_is_skipped_not_overwritten(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        self._create(db_session, user_id, "Arroz Cualquiera", brand="MARCAFARO")
+        target = self._create(db_session, user_id, "Arroz Marcafaro Premium", brand="YAPUESTA")
+
+        res = _call(db_session, user_id, "post", "/canonical-products/bulk-resolve-brands",
+                    json={"canonical_product_ids": [target]})
+
+        assert res.json()["skipped"] == 1
+        assert self._brand_of(db_session, target) == "YAPUESTA"
+
+    def test_a_name_without_any_known_brand_is_left_alone(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        target = self._create(db_session, user_id, "Zzqqxx Producto Sin Marca Conocida")
+
+        res = _call(db_session, user_id, "post", "/canonical-products/bulk-resolve-brands",
+                    json={"canonical_product_ids": [target]})
+
+        assert res.json()["unresolved"] == 1
+        assert self._brand_of(db_session, target) is None
+
+    def test_requires_the_catalog_capability(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "normal_user")
+
+        res = _call(db_session, user_id, "post", "/canonical-products/bulk-resolve-brands",
+                    json={"canonical_product_ids": []})
+
+        assert res.status_code == 403
+
+
+class TestFilterByMissingBrand:
+    """`?has_brand=false` — el conjunto sobre el que se corre "Clasificar marcas"."""
+
+    def test_lists_only_the_ones_without_brand(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        user_id = _seed_role_user(db_session, "super_admin")
+        with_brand = _call(db_session, user_id, "post", "/canonical-products", json={
+            "name": "Producto Con Marca Zzq", "brand": "TIENEMARCA",
+            "size_amount": 1.0, "size_measure": "mass",
+        }).json()["canonical_product_id"]
+        without = _call(db_session, user_id, "post", "/canonical-products", json={
+            "name": "Producto Sin Marca Zzq", "brand": "",
+            "size_amount": 1.0, "size_measure": "mass",
+        }).json()["canonical_product_id"]
+
+        res = _call(db_session, user_id, "get",
+                    "/canonical-products?has_brand=false&search=Zzq&limit=200")
+
+        assert res.status_code == 200, res.text
+        ids = [r["canonical_product_id"] for r in res.json()["rows"]]
+        assert without in ids
+        assert with_brand not in ids

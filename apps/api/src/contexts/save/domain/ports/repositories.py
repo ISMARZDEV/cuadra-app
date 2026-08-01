@@ -13,6 +13,7 @@ from src.shared.money import Money
 
 from ..admin_audit import AdminAuditEntry
 from ..alerts import Alert, AlertNotification, AlertSubscription
+from ..canonical_image import CanonicalImage
 from ..classification import (
     CategoryCandidate,
     CategoryClassification,
@@ -36,6 +37,7 @@ from ..entities import (
 )
 from ..history import PricePoint
 from ..listing import OfferingRow
+from ..store_product_identity import StoreProductLocator
 from ..review_queue import ReviewCandidateView, ReviewQueueRow, StoreProductRawAttrs
 from ..taxonomy import CategoryNode
 
@@ -280,6 +282,39 @@ class CanonicalProductRepository(Protocol):
         """Escribe el vector de embedding de un canónico (índice de la etapa vectorial)."""
         ...
 
+    def list_brand_names(self, market_id: str) -> list[str]:
+        """Marcas CONOCIDAS del mercado — el vocabulario contra el que se reconoce la marca dentro
+        del nombre de un producto cuya tienda no la publica (`domain/brand_from_name.py`)."""
+        ...
+
+
+class CanonicalImageRepository(Protocol):
+    """Galería ORDENADA del canónico (`position` 1 = la pública).
+
+    ⚠️ Toda implementación DEBE mantener sola el espejo `canonical_product.image_url` = URL de la
+    posición 1. El sitio público lee esa columna (og:image, canonical, tarjetas, rails), así que
+    desincronizarla haría que el admin muestre una imagen y el público otra.
+    """
+
+    def list_images(self, canonical_product_id: str) -> list[CanonicalImage]: ...
+
+    def add_image(
+        self,
+        canonical_product_id: str,
+        *,
+        url: str,
+        source_store_product_id: str | None = None,
+    ) -> CanonicalImage | None:
+        """Agrega AL FINAL. Levanta `DuplicateImageError` si esa URL ya está en la galería;
+        devuelve `None` si el canónico no existe."""
+        ...
+
+    def reorder(self, canonical_product_id: str, image_ids: list[str]) -> bool:
+        """Exige la lista COMPLETA de ids: un subconjunto dejaría imágenes sin posición."""
+        ...
+
+    def remove_image(self, canonical_product_id: str, image_id: str) -> bool: ...
+
 
 class StoreProductRepository(Protocol):
     def exists(self, provider_id: str, external_id: str) -> bool:
@@ -318,13 +353,18 @@ class StoreProductRepository(Protocol):
         name: str | None = None,
         brand: str | None = None,
         size_text: str | None = None,
-        image_url: str | None = None,
+        # El puerto se quedó DESFASADO cuando llegó la galería (F5): declaraba `image_url` (una)
+        # mientras la implementación ya recibía `image_urls` (todas) + `description`. Nadie lo
+        # notó porque `Protocol` es estructural y no hay type-checker en CI — mypy lo destapó al
+        # entrar. Ahora coinciden.
+        image_urls: tuple[str, ...] = (),
+        description: str | None = None,
         source_category: str | None = None,
         source_ref: dict | None = None,
     ) -> str:
         """Change-only (SCD-4): inserta `price` solo si cambió; si no, actualiza last_seen_at.
 
-        `name`/`brand`/`size_text`/`image_url` (F2·B1, tarea 1.9-1.10) son los atributos CRUDOS
+        `name`/`brand`/`size_text`/`image_urls` (F2·B1, tarea 1.9-1.10) son los atributos CRUDOS
         del catálogo — se persisten tal cual llegan (se sobreescriben en cada observación cuando
         no son `None`), no participan en el change-only del precio.
         """
@@ -403,12 +443,47 @@ class StoreProductRepository(Protocol):
         `None` si el `store_product_id` no existe."""
         ...
 
+    def set_brand(self, store_product_id: str, brand: str) -> None:
+        """Fija la marca de un producto de tienda (acción "Clasificar marcas" de la cola).
+
+        Sólo se llama para RELLENAR un hueco — quien decide si había marca previa es el use-case,
+        no el repo."""
+        ...
+
+    def brands_by_canonical(self, canonical_ids: list[str]) -> dict[str, list[str]]:
+        """Marcas que reportan las tiendas enlazadas a cada canónico, TODO el lote en una query.
+
+        Alimenta la precedencia "proveedor sobre nombre" al clasificar marcas de canónicos: una
+        marca observada en la fuente vale más que una deducida del nombre."""
+        ...
+
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         """Escribe el FK denormalizado `store_product.canonical_product_id` (F2.0 matching).
 
         Invariante de la cascada (`MatchStoreProduct`): se llama SOLO junto al `product_match`
         correspondiente, en la MISMA transacción — el use case es el dueño de esa frontera.
         """
+        ...
+
+    # ------------------------------------------------ acciones por proveedor del detalle canónico
+
+    def unlink_from_canonical(self, store_product_id: str) -> None:
+        """Pone en NULL el FK denormalizado. Inversa de `link_to_canonical`, mismo invariante de
+        misma-transacción (`UnlinkStoreProduct`)."""
+        ...
+
+    def get_locator(self, store_product_id: str) -> StoreProductLocator | None:
+        """Identidad EXTERNA `(provider_id, external_id)` — la que `exists(...)` consulta. Se lee
+        antes de un borrado duro, cuando todavía existe la fila."""
+        ...
+
+    def count_prices(self, store_product_id: str) -> int:
+        """Observaciones de precio que un borrado duro se llevaría (`price` es ON DELETE CASCADE)."""
+        ...
+
+    def delete(self, store_product_id: str) -> None:
+        """Borrado DURO: libera la identidad para que la próxima corrida re-ingiera el producto.
+        Exige que su `product_match` ya no exista (`ON DELETE NO ACTION`)."""
         ...
 
     def list_price_history(self, canonical_product_id: str) -> list[PricePoint]:
@@ -579,6 +654,30 @@ class ProductMatchRepository(Protocol):
         Fuerza `method="human"` (la decisión ya no es de la cascada). `reason_code`/`reason_note`
         se persisten tal cual llegan (la validación de "reason_code requerido al rechazar" vive en
         el use case `ResolveReview`, no aquí — este método es I/O puro, ADR 31)."""
+        ...
+
+    # ------------------------------------------------ acciones por proveedor del detalle canónico
+
+    def get_match_id_by_store_product(self, store_product_id: str) -> str | None:
+        """El `match_id` de un store_product (la fila es UNIQUE por store_product). Necesario porque
+        el detalle canónico solo conoce el `store_product_id`, y `ProductMatch` no lleva `id`."""
+        ...
+
+    def reopen_review(
+        self,
+        match_id: str,
+        decided_by: str,
+        *,
+        reason_code: str | None = None,
+        reason_note: str | None = None,
+    ) -> None:
+        """Devuelve el match a la cola: `pending_review` + `canonical_product_id=None`. Tercer
+        desenlace, distinto de `resolve_review` (que solo produce `auto_linked` o `rejected`)."""
+        ...
+
+    def delete_by_store_product(self, store_product_id: str) -> None:
+        """Borra el match de un store_product. Previo OBLIGATORIO al borrado duro de la fila:
+        el FK es `ON DELETE NO ACTION` y bloquearía el DELETE."""
         ...
 
     def record_candidates(

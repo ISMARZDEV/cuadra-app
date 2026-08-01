@@ -17,6 +17,7 @@ import { SectionRail } from "../components/section-rail";
 import { useAuth } from "../hooks/use-auth";
 import { useShoppingList } from "../hooks/use-shopping-list";
 import { formatMoney } from "../lib/format";
+import { publicImageProxyUrl } from "../lib/image-proxy";
 import type { ProductData } from "../types";
 
 // Producto (Imagen #2): breadcrumb · cabecera (rango de precio + agregar a lista) · tabla
@@ -103,7 +104,7 @@ export function ProductScreen() {
         <div className="relative">
           {comparison.image_url ? (
             <img
-              src={comparison.image_url}
+              src={publicImageProxyUrl(comparison.image_url) ?? comparison.image_url}
               alt={comparison.name}
               className="aspect-square w-full rounded-lg border border-border object-contain p-2"
             />

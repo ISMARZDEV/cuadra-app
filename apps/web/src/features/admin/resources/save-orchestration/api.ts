@@ -27,9 +27,12 @@ import { apiClient } from "@/lib/api";
 // (`authHeaders()`, token async). Sin TanStack Query en web: la lista viene por SSR (`+data.ts`) y
 // se refresca con `useAdminList` tras cada mutación.
 
-export async function listProviderFlowEntries(): Promise<ProviderFlowDto[]> {
+export async function listProviderFlowEntries(): Promise<ProviderFlowDto[] | null> {
   const res = await listProviderFlowsRequest({ client: apiClient, headers: await authHeaders() });
-  return res.data?.flows ?? [];
+// `null` = falló la petición, y NO `[]`: colapsar el error a lista vacía deja la tabla en
+// "0 resultados", indistinguible de que de verdad no haya nada. `useAdminList` conserva lo
+// que ya se mostraba y la pantalla avisa.
+  return res.data?.flows ?? null;
 }
 
 export async function runPolicy(policyId: string) {

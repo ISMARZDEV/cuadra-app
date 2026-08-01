@@ -19,17 +19,23 @@ from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from src.api.composition_root import (
+    get_discard_store_product,
+    get_promote_store_product,
+    get_relink_store_product,
+    get_unlink_store_product,
     get_add_canonical_image,
     get_archive_canonical_product,
+    get_bulk_resolve_canonical_brands,
     get_bulk_set_canonical_category,
     get_canonical_price_history,
     get_commit_canonical_import,
     get_create_canonical_product,
     get_get_canonical_product,
+    get_get_canonical_product_cursor,
     get_list_canonical_audit_log,
     get_list_canonical_duplicates,
     get_list_canonical_evidence,
@@ -50,6 +56,13 @@ from src.api.composition_root import (
 from src.api.extensions.security import require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
 from src.contexts.save.application.admin_audit_recorder import AdminAuditRecorder
+from src.contexts.save.application.discard_store_product import DiscardStoreProduct
+from src.contexts.save.application.promote_store_product import (
+    PromoteStoreProductToCanonical,
+)
+from src.contexts.save.application.relink_store_product import RelinkStoreProduct
+from src.contexts.save.application.unlink_store_product import UnlinkStoreProduct
+from src.contexts.save.application.bulk_resolve_brands import BulkResolveCanonicalBrands
 from src.contexts.save.application.canonical_catalog import (
     AddCanonicalImage,
     ArchiveCanonicalProduct,
@@ -58,6 +71,7 @@ from src.contexts.save.application.canonical_catalog import (
     CreateCanonicalProduct,
     GetCanonicalPriceHistory,
     GetCanonicalProduct,
+    GetCanonicalProductCursor,
     InvalidMeasureError,
     MixedCurrencyHistoryError,
     ListCanonicalAuditLog,
@@ -86,6 +100,10 @@ from src.contexts.save.domain.canonical_catalog import (
 )
 from src.contexts.save.domain.canonical_import import ImportRowInput
 from src.contexts.save.infrastructure.repositories import DuplicateImageError
+from src.contexts.save.infrastructure.catalog_sources.ssrf_guard import (
+    SsrfBlockedError,
+    guarded_image_get,
+)
 
 from .admin_save import get_admin_audit
 
@@ -195,6 +213,20 @@ class AdminCanonicalProductListDto(BaseModel):
     total: int
 
 
+class AdminCanonicalProductCursorDto(BaseModel):
+    """Posición de un canónico dentro de un listado filtrado/ordenado, más sus vecinos.
+
+    `position` es 1-based. Si el producto no está en los resultados filtrados (por ejemplo, el
+    operador aplicó un filtro que lo excluye), `position` y los vecinos son `None` pero `total`
+    sigue siendo el total de productos que SÍ cumplen.
+    """
+
+    total: int
+    position: int | None
+    previous_id: str | None
+    next_id: str | None
+
+
 class AdminCanonicalProviderPriceDto(BaseModel):
     """Una tienda del modal de proveedores (US-CP-L4).
 
@@ -214,9 +246,19 @@ class AdminCanonicalProviderPriceDto(BaseModel):
     store_product_image_urls: list[str] = []
     # Descripción de esa tienda: una CANDIDATA para la del canónico (US-CP-D2).
     store_product_description: str | None = None
+    # Cómo llama la TIENDA al producto (lo que muestra la pestaña Auditoría). Distinto de la
+    # descripción: `store_product_name` = "Arroz Selecto Líder 10 Lb", descripción = prosa comercial.
+    # Son los datos que el servidor deriva al crear un canónico nuevo desde esta tienda, así que el
+    # diálogo puede mostrar exactamente lo que va a crear.
+    store_product_name: str | None = None
+    store_product_brand: str | None = None
+    store_product_size_text: str | None = None
     url: str | None = None
     last_seen_at: datetime | None = None
     is_cheapest: bool = False
+    # Último precio DISTINTO al vigente (derivado de `price`, append-only). `None` = esta tienda
+    # nunca movió el precio → la UI no tacha nada.
+    previous_price_minor: int | None = None
 
 
 class AdminCanonicalEvidenceDto(BaseModel):
@@ -338,6 +380,9 @@ def list_canonical_products(
         None, description="complete|no_image|no_category|no_providers|stale_price|possible_duplicate"
     ),
     ean_reachable: bool | None = Query(None),
+    has_brand: bool | None = Query(
+        None, description="false = sólo los que NO tienen marca (conjunto de 'Clasificar marcas')"
+    ),
     include_archived: bool = Query(
         False, description="Incluir archivados (por defecto el catálogo muestra sólo activos)"
     ),
@@ -361,6 +406,7 @@ def list_canonical_products(
             taxonomy_node_id=taxonomy_node_id,
             quality_status=quality_status,
             ean_reachable=ean_reachable,
+            has_brand=has_brand,
             min_provider_count=min_provider_count,
             updated_since=updated_since,
             include_archived=include_archived,
@@ -490,6 +536,55 @@ def get_canonical_product(
     return AdminCanonicalProductRowDto.from_row(row)
 
 
+@catalog_router.get(
+    "/canonical-products/{canonical_product_id}/cursor",
+    response_model=AdminCanonicalProductCursorDto,
+)
+def get_canonical_product_cursor(
+    canonical_product_id: str,
+    search: str | None = Query(None),
+    brand_id: str | None = Query(None),
+    taxonomy_node_id: str | None = Query(None),
+    quality_status: CanonicalQualityStatus | None = Query(None),
+    ean_reachable: bool | None = Query(None),
+    has_brand: bool | None = Query(
+        None, description="false = sólo los que NO tienen marca (conjunto de 'Clasificar marcas')"
+    ),
+    include_archived: bool = Query(False),
+    min_provider_count: int | None = Query(None, ge=0),
+    updated_since: datetime | None = Query(None),
+    sort: str = Query("name"),
+    use_case: GetCanonicalProductCursor = Depends(get_get_canonical_product_cursor),
+) -> AdminCanonicalProductCursorDto:
+    """Posición de un canónico dentro del listado filtrado/ordenado, más prev/next.
+
+    El detalle usa este endpoint para dibujar el pager "1 / total" y navegar al producto
+    anterior/siguiente respetando exactamente los mismos filtros y orden que la lista.
+    """
+    cursor = use_case.execute(
+        market_id=MARKET,
+        canonical_product_id=canonical_product_id,
+        filters=CanonicalCatalogFilters(
+            search=search,
+            brand_id=brand_id,
+            taxonomy_node_id=taxonomy_node_id,
+            quality_status=quality_status,
+            ean_reachable=ean_reachable,
+            has_brand=has_brand,
+            min_provider_count=min_provider_count,
+            updated_since=updated_since,
+            include_archived=include_archived,
+        ),
+        sort=sort,
+    )
+    return AdminCanonicalProductCursorDto(
+        total=cursor.total,
+        position=cursor.position,
+        previous_id=cursor.previous_id,
+        next_id=cursor.next_id,
+    )
+
+
 @catalog_router.patch(
     "/canonical-products/{canonical_product_id}", response_model=AdminCanonicalProductRowDto
 )
@@ -568,12 +663,216 @@ def list_canonical_product_providers(
             store_product_image_url=p.store_product_image_url,
             store_product_image_urls=p.store_product_image_urls,
             store_product_description=p.store_product_description,
+            store_product_name=p.store_product_name,
+            store_product_brand=p.store_product_brand,
+            store_product_size_text=p.store_product_size_text,
             url=p.url,
             last_seen_at=p.last_seen_at,
             is_cheapest=p.is_cheapest,
+            previous_price_minor=p.previous_price_minor,
         )
         for p in use_case.execute(canonical_product_id)
     ]
+
+
+# --------------------------------- acciones por proveedor del detalle canónico (menú de acciones)
+# Las cuatro operan sobre UN `store_product` de la tabla "Proveedores matcheados". Todas se
+# identifican por `store_product_id` (lo que la fila tiene a mano) y auditan en el borde (T2).
+
+
+class UnlinkStoreProductRequest(BaseModel):
+    """`reason_code` es OBLIGATORIO — misma regla que rechazar en la cola (regla sagrada #4):
+    desenlazar sin motivo no es una decisión trazable."""
+
+    decided_by: str
+    reason_code: str
+    reason_note: str | None = None
+
+
+class RelinkStoreProductRequest(BaseModel):
+    canonical_product_id: str
+    decided_by: str
+
+
+class PromoteStoreProductRequest(BaseModel):
+    """Solo la CATEGORÍA y quién decide.
+
+    Nombre, marca y cantidad los deriva el SERVIDOR del propio `store_product` (mismo criterio que
+    `bulk-create-canonical`): la conversión "500 g" → `Quantity(0.5, MASS)` es una regla de dominio y
+    el navegador no puede tener una segunda implementación de ella.
+    """
+
+    decided_by: str
+    taxonomy_node_id: str
+
+
+@catalog_router.delete(
+    "/canonical-products/{canonical_product_id}/providers/{store_product_id}",
+    status_code=status.HTTP_200_OK,
+)
+def discard_store_product(
+    canonical_product_id: str,
+    store_product_id: str,
+    decided_by: str,
+    use_case: DiscardStoreProduct = Depends(get_discard_store_product),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> dict[str, object]:
+    """Borra DURO el producto de esa tienda (acción #1). IRREVERSIBLE.
+
+    A diferencia de archivar un canónico (soft-delete), acá el borrado es real y a propósito: libera
+    la identidad `(provider_id, external_id)` para que la próxima corrida lo re-ingiera desde cero
+    (`refresh_prices.py:118` decide con `exists(...)`). El costo aceptado es el histórico de precios
+    de esa tienda, que se va por CASCADE.
+
+    La auditoría guarda el locator + cuántos precios se destruyeron: es lo ÚNICO que después permite
+    saber qué había ahí. Sin eso, un borrado irreversible sería además irrastreable.
+    """
+    try:
+        result = use_case.execute(store_product_id=store_product_id, decided_by=decided_by)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    audit.record(
+        "canonical_product.discard_store_product",
+        "store_product",
+        store_product_id,
+        {
+            "canonical_product_id": canonical_product_id,
+            "provider_id": result.provider_id,
+            "external_id": result.external_id,
+            "deleted_price_count": result.deleted_price_count,
+            "reingestible": True,
+        },
+        market_id=MARKET,
+    )
+    return {
+        "store_product_id": store_product_id,
+        "deleted_price_count": result.deleted_price_count,
+        "provider_id": result.provider_id,
+        "external_id": result.external_id,
+    }
+
+
+@catalog_router.post(
+    "/canonical-products/{canonical_product_id}/providers/{store_product_id}/unlink",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def unlink_store_product(
+    canonical_product_id: str,
+    store_product_id: str,
+    body: UnlinkStoreProductRequest,
+    use_case: UnlinkStoreProduct = Depends(get_unlink_store_product),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> None:
+    """Devuelve el producto a la cola de revisión, sacándolo del canónico equivocado (acción #2).
+
+    NO destructivo: la fila y su histórico quedan intactos. El `product_match` vuelve a
+    `pending_review` sin canónico, que es el mismo estado con el que la cascada encola un match
+    dudoso — así reaparece en la Cola sin ningún caso especial.
+    """
+    try:
+        use_case.execute(
+            store_product_id=store_product_id,
+            decided_by=body.decided_by,
+            reason_code=body.reason_code,
+            reason_note=body.reason_note,
+        )
+    except ValueError as exc:
+        # "reason_code requerido" es del cliente (422); "no encontrado" es 404. El mensaje del use
+        # case distingue los dos casos y no conviene colapsarlos: son acciones distintas del operador.
+        if "reason_code" in str(exc):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    audit.record(
+        "canonical_product.unlink_store_product",
+        "store_product",
+        store_product_id,
+        {
+            "canonical_product_id": canonical_product_id,
+            "reason_code": body.reason_code,
+            "reason_note": body.reason_note,
+        },
+        market_id=MARKET,
+    )
+
+
+@catalog_router.post(
+    "/canonical-products/{canonical_product_id}/providers/{store_product_id}/relink",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def relink_store_product(
+    canonical_product_id: str,
+    store_product_id: str,
+    body: RelinkStoreProductRequest,
+    use_case: RelinkStoreProduct = Depends(get_relink_store_product),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> None:
+    """Mueve el producto a OTRO canónico existente (acción #3).
+
+    El canónico destino no se valida acá: si no existe, el FK lo rechaza y la transacción entera se
+    revierte (ver `RelinkStoreProduct`). Comprobarlo antes sería una carrera y una segunda fuente de
+    verdad sobre algo que la base ya garantiza.
+    """
+    try:
+        use_case.execute(
+            store_product_id=store_product_id,
+            canonical_product_id=body.canonical_product_id,
+            decided_by=body.decided_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    audit.record(
+        "canonical_product.relink_store_product",
+        "store_product",
+        store_product_id,
+        {"from_canonical_id": canonical_product_id, "to_canonical_id": body.canonical_product_id},
+        market_id=MARKET,
+    )
+
+
+@catalog_router.post(
+    "/canonical-products/{canonical_product_id}/providers/{store_product_id}/promote",
+    status_code=status.HTTP_201_CREATED,
+)
+def promote_store_product(
+    canonical_product_id: str,
+    store_product_id: str,
+    body: PromoteStoreProductRequest,
+    use_case: PromoteStoreProductToCanonical = Depends(get_promote_store_product),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> dict[str, str]:
+    """Crea un canónico NUEVO desde este producto y lo mueve ahí (acción #4).
+
+    Mismo flujo que "crear canónico" de la Cola de revisión, entrando por `store_product_id`. El
+    canónico VIEJO no se toca: puede seguir teniendo otras tiendas, y archivarlo es otra decisión.
+    """
+    try:
+        new_id = use_case.execute(
+            store_product_id=store_product_id,
+            taxonomy_node_id=body.taxonomy_node_id,
+            decided_by=body.decided_by,
+        )
+    except ValueError as exc:
+        # `parse_size` de una unidad desconocida y "sin nombre" también llegan como ValueError, pero
+        # son 422 (el dato de origen no sirve), no 404. El mensaje del use case los distingue.
+        if "no encontrado" in str(exc):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    audit.record(
+        "canonical_product.promote_store_product",
+        "canonical_product",
+        new_id,
+        {
+            "store_product_id": store_product_id,
+            "from_canonical_id": canonical_product_id,
+            "taxonomy_node_id": body.taxonomy_node_id,
+        },
+        market_id=MARKET,
+    )
+    return {"canonical_product_id": new_id}
 
 
 @catalog_router.get(
@@ -800,6 +1099,33 @@ def get_canonical_product_history(
             for provider_id, points in history.series.items()
         ],
         kpis=CanonicalPriceKpisDto(**asdict(history.kpis)),
+    )
+
+
+@catalog_router.get("/image-proxy")
+def proxy_image(
+    url: str = Query(..., description="URL HTTPS de la imagen a servir a través del proxy"),
+) -> Response:
+    """Proxy de imágenes para el admin de Save.
+
+    Navegadores bloquean cross-origin imágenes de tiendas (CORS) y el admin las necesita ver.
+    Este endpoint las trae por el backend con protección SSRF (https-only, host resoluble a IP
+    pública, cap de tamaño) y valida que el contenido sea `image/*`. No cachea en el servidor.
+    """
+    try:
+        body, content_type = guarded_image_get(url)
+    except SsrfBlockedError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except Exception as exc:  # httpx, DNS, contenido no-imagen…
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"No se pudo obtener la imagen: {exc}") from exc
+
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -1056,6 +1382,66 @@ class BulkSetCategoryResultDto(BaseModel):
     succeeded_count: int
     failed_count: int
     category_name: str | None = None
+
+
+class BulkResolveBrandsRequest(BaseModel):
+    canonical_product_ids: list[str]
+
+
+class BulkBrandRowDto(BaseModel):
+    ref_id: str
+    brand: str | None
+    source: str  # "provider" (observado en la tienda) | "name" (deducido del nombre)
+
+
+class BulkBrandFailureDto(BaseModel):
+    ref_id: str
+    error: str
+
+
+class BulkBrandResultDto(BaseModel):
+    """CUATRO contadores: fundir `skipped` con `unresolved` haría que un lote ya resuelto se
+    leyera como un lote fallido."""
+
+    resolved: int
+    unresolved: int
+    skipped: int
+    rows: list[BulkBrandRowDto]
+    failed: list[BulkBrandFailureDto]
+
+
+@catalog_router.post(
+    "/canonical-products/bulk-resolve-brands", response_model=BulkBrandResultDto
+)
+def bulk_resolve_canonical_brands(
+    body: BulkResolveBrandsRequest,
+    use_case: BulkResolveCanonicalBrands = Depends(get_bulk_resolve_canonical_brands),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> BulkBrandResultDto:
+    """Rellena la marca de N canónicos reconociéndola (proveedor → nombre).
+
+    Se audita POR FILA, igual que `bulk-set-category`: una sola entrada de "toqué 40 productos" no
+    permitiría reconstruir qué le pasó a uno en particular, ni de dónde salió su marca.
+    """
+    result = use_case.execute(body.canonical_product_ids)
+
+    for row in result.rows:
+        if row.brand is None:
+            continue
+        audit.record(
+            "canonical_product.set_brand",
+            "canonical_product",
+            row.ref_id,
+            {"new_brand": row.brand, "source": row.source, "origin": "bulk_admin"},
+        )
+
+    return BulkBrandResultDto(
+        resolved=result.resolved,
+        unresolved=result.unresolved,
+        skipped=len(result.skipped),
+        rows=[BulkBrandRowDto(**asdict(r)) for r in result.rows],
+        failed=[BulkBrandFailureDto(**asdict(f)) for f in result.failed],
+    )
 
 
 @catalog_router.post(

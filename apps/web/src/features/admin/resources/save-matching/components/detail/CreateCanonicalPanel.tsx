@@ -1,28 +1,46 @@
 import { useState } from "react";
-import { FolderPlus, Sparkles } from "lucide-react";
+import { FolderPlus, Images, Sparkles } from "lucide-react";
 
 import { parseSize } from "@/features/admin/lib/parse-size";
 
-// Medidas del `Quantity` del dominio (create-canonical: quantity_measure). El revisor confirma/corrige.
-export type Measure = "mass" | "volume" | "count";
-const MEASURES: { value: Measure; label: string }[] = [
-  { value: "mass", label: "Masa (g, kg, lb, oz)" },
-  { value: "volume", label: "Volumen (ml, L)" },
-  { value: "count", label: "Unidad (conteo)" },
+// UNIDADES reales, no medidas del dominio. El select pedía antes "Masa / Volumen / Unidad", y ese
+// era el bug: "Volumen" no dice si 355 son mililitros o litros, así que el número se guardaba sin
+// convertir (355 L en vez de 0.355 L). Acá se elige la unidad de verdad y el SERVIDOR hace la
+// conversión con `parse_size` del dominio — el navegador nunca conoce los factores.
+// Estos ocho tokens son los que emite `normalize_size_text` y acepta `parse_size`
+// (apps/api/src/contexts/save/domain/value_objects/size_parser.py).
+const UNIT_GROUPS: { label: string; units: string[] }[] = [
+  { label: "Masa", units: ["Gr", "Kg", "Lb", "Oz"] },
+  { label: "Volumen", units: ["Ml", "Lt", "Gl"] },
+  { label: "Conteo", units: ["Un"] },
 ];
-const VOLUME_UNITS = /^(ml|l|lt|lts|litro|litros|cc)$/i;
-const MASS_UNITS = /^(g|gr|gramo|gramos|kg|kgs|lb|lbs|libra|libras|oz|onza|onzas)$/i;
-function guessMeasure(unit: string | null): Measure {
-  if (unit && VOLUME_UNITS.test(unit)) return "volume";
-  if (unit && MASS_UNITS.test(unit)) return "mass";
-  return "count";
+
+// Ortografía cruda de la tienda → token canónico. Espeja `_DISPLAY_UNIT` del backend. Es
+// ORTOGRAFÍA, no conversión: no viola la doctrina, y si se desactualiza el servidor re-normaliza
+// igual. Sólo sirve para preseleccionar el desplegable.
+const UNIT_SPELLINGS: Record<string, string> = {
+  lb: "Lb", lbs: "Lb", libra: "Lb", libras: "Lb",
+  kg: "Kg", kgs: "Kg", kilo: "Kg", kilos: "Kg",
+  g: "Gr", gr: "Gr", grs: "Gr", gramo: "Gr", gramos: "Gr",
+  oz: "Oz", onz: "Oz", onza: "Oz", onzas: "Oz",
+  l: "Lt", lt: "Lt", lts: "Lt", litro: "Lt", litros: "Lt",
+  ml: "Ml",
+  gl: "Gl", gal: "Gl", galon: "Gl", "galón": "Gl",
+  und: "Un", un: "Un", u: "Un", uds: "Un", unidad: "Un", unidades: "Un",
+  pza: "Un", pzas: "Un", pack: "Un",
+};
+
+/** Token canónico, o `""` si la tienda usó una unidad que el dominio no sabe convertir. */
+function canonicalUnit(raw: string | null): string {
+  if (!raw) return "";
+  return UNIT_SPELLINGS[raw.trim().toLowerCase().replace(/\.$/, "")] ?? "";
 }
 
 export interface CreateCanonicalPayload {
   name: string;
   brand: string;
-  quantityAmount: number;
-  quantityMeasure: Measure;
+  /** Tamaño como TEXTO ("355 Ml"). El servidor lo convierte a unidad base con `parse_size`. */
+  sizeText: string;
   taxonomyNodeId: string;
 }
 
@@ -53,12 +71,15 @@ export function CreateCanonicalPanel({
   const [name, setName] = useState(defaultName ?? "");
   const [brand, setBrand] = useState(defaultBrand ?? "");
   const [amount, setAmount] = useState(parsed.amount ?? "");
-  const [measure, setMeasure] = useState<Measure>(guessMeasure(parsed.unit));
+  // Si la tienda usó una unidad que el dominio no sabe convertir, el select llega VACÍO y el
+  // operador tiene que elegir. Adivinar (lo que hacía `guessMeasure`, que caía en "conteo") es
+  // cómo un producto termina con la medida equivocada sin que nadie se entere.
+  const [unit, setUnit] = useState(canonicalUnit(parsed.unit));
   const [showError, setShowError] = useState(false);
 
   const amountNum = Number.parseFloat(amount.replace(",", "."));
   const amountValid = Number.isFinite(amountNum) && amountNum > 0;
-  const valid = name.trim() !== "" && amountValid && !!suggestedCategoryId;
+  const valid = name.trim() !== "" && amountValid && unit !== "" && !!suggestedCategoryId;
 
   const handleSubmit = () => {
     if (!valid) {
@@ -69,8 +90,8 @@ export function CreateCanonicalPanel({
     onCreate({
       name: name.trim(),
       brand: brand.trim(),
-      quantityAmount: amountNum,
-      quantityMeasure: measure,
+      // Texto, no cantidad: la conversión a unidad base es del servidor.
+      sizeText: `${amount.trim().replace(",", ".")} ${unit}`,
       taxonomyNodeId: suggestedCategoryId as string,
     });
   };
@@ -136,19 +157,25 @@ export function CreateCanonicalPanel({
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="cc-measure" className="text-xs font-medium text-foreground">
-            Unidad de medida
+            Unidad de medida <span className="text-emerald-600">*</span>
           </label>
           <select
             id="cc-measure"
             data-testid="cc-measure"
-            value={measure}
-            onChange={(e) => setMeasure(e.target.value as Measure)}
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            aria-invalid={showError && unit === ""}
             className={field}
           >
-            {MEASURES.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
+            <option value="">Selecciona una unidad…</option>
+            {UNIT_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.units.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
@@ -169,10 +196,19 @@ export function CreateCanonicalPanel({
         )}
       </div>
 
+      {/* La herencia de la galería ocurre en el servidor (`CreateCanonicalAndLink`). Se anuncia acá
+          porque un efecto invisible obliga al operador a ir al detalle a comprobar si pasó. */}
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-background/60 px-3 py-2.5 text-sm dark:border-emerald-500/20">
+        <Images className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+        <span className="text-muted-foreground" data-testid="cc-inherits-images">
+          Las fotos que publicó el proveedor se heredarán automáticamente (hasta 10).
+        </span>
+      </div>
+
       <div className="flex flex-col-reverse items-stretch gap-3 border-t border-emerald-100 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-emerald-500/20">
         {showError ? (
           <p role="alert" data-testid="cc-error" className="text-xs font-medium text-rose-600 dark:text-rose-400">
-            Completa nombre, tamaño y asegúrate de tener una categoría sugerida.
+            Completa nombre, tamaño y unidad, y asegúrate de tener una categoría sugerida.
           </p>
         ) : (
           <span />

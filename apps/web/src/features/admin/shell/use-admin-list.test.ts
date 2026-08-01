@@ -39,4 +39,51 @@ describe("useAdminList", () => {
     rerender({ rows: stable }); // misma referencia → no re-sincroniza
     expect(result.current.items).toEqual(["refreshed"]);
   });
+
+  it("un fetcher que FALLA no vacía la tabla — el error no puede disfrazarse de lista vacía", async () => {
+    // El bug: cuatro consolas hacían `res.data ?? []`, así que un fallo de red tras mutar dejaba
+    // la tabla en "0 resultados", indistinguible de que de verdad no hubiera nada. El operador
+    // concluía "no hay proveedores" cuando lo que hubo fue una petición caída.
+    const fetcher = vi.fn().mockResolvedValue(null);
+    // referencia ESTABLE: el hook re-sincroniza cuando `initial` cambia de referencia, así que
+    // un literal inline se recrearía en cada render y entraría en bucle (en la app viene de `useData()`).
+    const initial = ["a", "b"];
+    const { result } = renderHook(() => useAdminList(initial, fetcher));
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.refresh();
+    });
+
+    expect(ok).toBe(false);              // el llamador se entera y puede avisar
+    expect(result.current.items).toEqual(["a", "b"]);  // y NO se pierde lo que había
+  });
+
+  it("un refresh correcto avisa que fue correcto", async () => {
+    const fetcher = vi.fn().mockResolvedValue(["nuevo"]);
+    const initial = ["viejo"];
+    const { result } = renderHook(() => useAdminList(initial, fetcher));
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.refresh();
+    });
+
+    expect(ok).toBe(true);
+    expect(result.current.items).toEqual(["nuevo"]);
+  });
+
+  it("una lista VACÍA de verdad sí vacía la tabla (no se confunde con un fallo)", async () => {
+    const fetcher = vi.fn().mockResolvedValue([]);
+    const initial = ["a"];
+    const { result } = renderHook(() => useAdminList(initial, fetcher));
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.refresh();
+    });
+
+    expect(ok).toBe(true);
+    expect(result.current.items).toEqual([]);
+  });
 });

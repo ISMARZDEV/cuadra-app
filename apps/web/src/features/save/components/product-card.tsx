@@ -3,6 +3,7 @@ import type { ProductCardDto } from "@cuadra/api-client";
 import type { Locale } from "@/i18n/config";
 import { translate } from "@/i18n/messages";
 import { formatMoney, formatUnitPriceDisplay } from "@/features/save/lib/format";
+import { publicImageProxyUrl } from "@/features/save/lib/image-proxy";
 import { useShoppingList } from "@/features/save/hooks/use-shopping-list";
 import { Card } from "@/components/ui/card";
 
@@ -39,7 +40,7 @@ export function ProductCard({
         <div className="relative">
           {product.image_url ? (
             <img
-              src={product.image_url}
+              src={publicImageProxyUrl(product.image_url) ?? product.image_url}
               alt={product.name}
               loading="lazy"
               className="aspect-square w-full rounded-md object-contain"

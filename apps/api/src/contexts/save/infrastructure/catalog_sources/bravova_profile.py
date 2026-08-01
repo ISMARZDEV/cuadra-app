@@ -108,7 +108,11 @@ def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalog
         market_id=market_id,
         external_id=str(item.get("idexternoArticulo", "")),
         name=name,
-        brand="",
+        # Bravo NO expone marca. Tiene un `marcaArticulo` en el detalle, pero medido en vivo
+        # (2026-07-30, 25 artículos) son 4 códigos internos —"01"/"03"/"04"— que agrupan por TIPO
+        # de producto, no por marca: "01" lo comparten BRAVO y LA ANTORCHA, "04" son los frescos.
+        # Tomarlo como marca sería inventar catálogo. `None` (no `""`) para no pisar lo ya conocido.
+        brand=None,
         size_text=extract_size(name),
         price=price,
         price_type=PriceType.ONLINE,
