@@ -55,7 +55,8 @@ export interface ReviewActions {
   disabled?: boolean;
 }
 
-export interface ShortcutsBannerProps extends ReviewActions {}
+// Alias, no extensión: el banner no añade nada a `ReviewActions`, sólo le pone nombre propio.
+export type ShortcutsBannerProps = ReviewActions;
 
 /** Posición del match dentro de la cola (para el pager "N / total"). */
 export interface QueueContext {
@@ -117,6 +118,6 @@ export interface FieldDiffRowProps {
   /** Muestra el subtexto "store ≠ candidato" cuando difiere. Off para valores largos (ej. Nombre). */
   showValues?: boolean;
   /** "size" compara por cantidad+unidad canónica (2 letras) y muestra la forma normalizada; "text"
-   * (default) compara/​muestra el texto crudo (casefold+trim). */
+   * (default) compara/muestra el texto crudo (casefold+trim). */
   kind?: "text" | "size";
 }

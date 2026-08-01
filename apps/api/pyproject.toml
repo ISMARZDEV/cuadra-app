@@ -38,6 +38,7 @@ dev = [
     "httpx>=0.27",
     "ruff>=0.5",
     "import-linter>=2.0",
+    "mypy>=1.11",
 ]
 ingestion = [
     "dagster>=1.9",
@@ -49,6 +50,54 @@ ingestion = [
     # cadena con un intermedio que certifi no trae pero el sistema sí. Sigue verificando (seguro).
     "truststore>=0.9",
 ]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src"]
+# Trinquete de ENTRADA, deliberadamente permisivo: el objetivo es que a partir de hoy no se pueda
+# empeorar, no saldar de golpe los 109 `# type: ignore` heredados. Las opciones estrictas se van
+# activando una a una cuando su deuda esté pagada.
+ignore_missing_imports = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_unused_ignores = false
+warn_return_any = false
+
+# ── Backlog de tipado ────────────────────────────────────────────────────────────────────────────
+# Estos 18 módulos NO pasan mypy todavía (33 errores al introducirlo). Se silencian UNO A UNO, con
+# nombre y a la vista, en vez de bajar el listón global: así el resto del código (251 de 269
+# ficheros) queda protegido desde hoy y cualquier módulo NUEVO nace tipado.
+#
+# La regla para vaciar esta lista: se quita una entrada, se arreglan sus errores, se commitea. Nunca
+# al revés — añadir un módulo aquí para "desbloquear" es exactamente lo que esta lista existe para
+# hacer visible.
+#
+# Ya se arreglaron al entrar (no volvieron a la lista): las 12 rutas de `insights.py` (anotación de
+# `responses`) y la firma DESFASADA de `StoreProductRepository.record_observation`, que declaraba
+# `image_url` mientras la implementación recibía `image_urls` desde la galería (F5) — un desfase de
+# puerto que `Protocol` no detecta por ser estructural y que nadie vio por no haber type-checker.
+[[tool.mypy.overrides]]
+module = [
+    "src.api.composition_root",
+    "src.api.v1.controllers.admin_orchestration",
+    "src.contexts.aispace.flows.expense.categories",
+    "src.contexts.aispace.orchestration.graph",
+    "src.contexts.aispace.orchestration.registry",
+    "src.contexts.aispace.orchestration.router",
+    "src.contexts.save.application.cover_canonicals",
+    "src.contexts.save.application.orchestration_policies",
+    "src.contexts.save.application.promote_store_product",
+    "src.contexts.save.application.refresh_covered_prices",
+    "src.contexts.save.application.refresh_prices",
+    "src.contexts.save.infrastructure.catalog_sources.factory",
+    "src.contexts.save.infrastructure.catalog_sources.rest_catalog_adapter",
+    "src.contexts.save.infrastructure.classification.llm_category_terms",
+    "src.contexts.save.infrastructure.matching.embeddings",
+    "src.contexts.save.infrastructure.repositories",
+    "src.shared.lang",
+    "src.shared.llm",
+]
+ignore_errors = true
 
 [tool.ruff]
 line-length = 100

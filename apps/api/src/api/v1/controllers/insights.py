@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -196,7 +196,9 @@ def get_daily_target(
 
 
 # ── Read models (carrusel Home + listas del navbar) ──────────────────────────
-_AUTH_ONLY = {401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"}}
+_AUTH_ONLY: dict[int | str, dict[str, Any]] = {
+    401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"}
+}
 
 
 @router.get(
@@ -318,7 +320,7 @@ def report_income_vs_expense(
 
 
 # ── Planning creators (presupuestos, spaces, metas, recurrentes) ─────────────
-_OWNERSHIP_RESPONSES = {
+_OWNERSHIP_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"},
     403: {"model": ProblemDetailDto, "description": "Una cuenta referida es de otro usuario"},
     404: {"model": ProblemDetailDto, "description": "Cuenta referida inexistente"},

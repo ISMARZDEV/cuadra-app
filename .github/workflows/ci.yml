@@ -69,6 +69,9 @@ jobs:
       - run: uv sync --group ingestion
       - run: uv run ruff check .
       - run: uv run lint-imports                 # límites hexagonales (ADR 31/33)
+      # Trinquete de tipado. Config permisiva con un backlog EXPLÍCITO de 18 módulos en
+      # `pyproject.toml`: el resto del código no puede empeorar y lo nuevo nace tipado.
+      - run: uv run mypy
       - run: uv run pytest -m "not integration"  # unit (rápido, fail-fast)
       - run: uv run alembic upgrade head         # schema para integration
       - run: uv run pytest -m integration        # integration (con DB)
@@ -114,4 +117,7 @@ jobs:
       - run: cd apps/api && uv sync && uv run python -m src.openapi_dump > openapi.json
       - run: pnpm --filter @cuadra/api-client generate
       - run: pnpm --filter @cuadra/web typecheck
+      # Primer lint del repo: no existía NINGUNA config de ESLint, así que esto no corría en
+      # ninguna parte. Entra en 0 errores; los 26 avisos restantes son deuda visible.
+      - run: pnpm --filter @cuadra/web lint
       - run: pnpm --filter @cuadra/web test        # vitest: 33 + arquitectura/paridad + regresión SEO
