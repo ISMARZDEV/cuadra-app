@@ -35,6 +35,7 @@ from ..domain.ports import (
 from ..domain.ports.repositories import EmbeddingProvider, ProductMatchRepository
 from ..infrastructure.classification.lexicon import LexiconIndex, lexicon_match_path
 from ..infrastructure.matching.cascade.banding import JUDGE_MATCH_MIN_CONFIDENCE, determine_band
+from ..infrastructure.matching.cascade.brand_gate import brand_unsupported
 from ..infrastructure.matching.cascade.category_gate import categories_conflict, category_boost
 from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
@@ -195,8 +196,22 @@ class MatchStoreProduct:
         # no expone barcode. Lee la variante del nombre; ver `variant_gate`.
         variant_conflict = variants_conflict(product.name, canonical.name if canonical else "")
 
+        # Brand gate: el canónico declara marca y el store no la corrobora ni en su campo marca ni
+        # en su nombre → sin evidencia de marca, no se auto-mergea dentro de un SKU de marca. A
+        # diferencia de los gates de arriba bloquea por AUSENCIA de evidencia, no por contradicción;
+        # ver `brand_gate` para por qué la asimetría es deliberada.
+        brand_missing = brand_unsupported(
+            product.brand, product.name, canonical.brand if canonical else None
+        )
+
         if band == "auto_link":
-            if size_conflict or category_conflict or ean_conflict or variant_conflict:
+            if (
+                size_conflict
+                or category_conflict
+                or ean_conflict
+                or variant_conflict
+                or brand_missing
+            ):
                 return self._to_review(
                     product, method=stage_method, confidence=final_score,
                     candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
@@ -241,6 +256,7 @@ class MatchStoreProduct:
                 and not category_conflict
                 and not ean_conflict
                 and not variant_conflict
+                and not brand_missing
             ):
                 return self._auto_link(
                     product, winner_id, confidence=verdict.confidence, method="llm",

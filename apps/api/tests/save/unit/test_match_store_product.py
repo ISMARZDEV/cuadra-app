@@ -181,6 +181,13 @@ class FakeCanonicalProductRepository:
 def _canonical(
     cid: str, name: str = "Arroz La Garza 5lb", brand: str = "La Garza", size: str = "5 LB"
 ) -> CanonicalProduct:
+    """Canónico de prueba. Por defecto CONCUERDA con `_incoming()` en nombre/marca/tamaño.
+
+    Para anular los boosts y dejar el score crudo predecible, pasá `brand="", size="Otro"` — un
+    canónico SIN marca no gana boost (`_exact_match` corta ante candidato vacío) y tampoco exige
+    corroboración al brand gate. NO uses una marca ajena (`brand="Otra"`): eso ya no describe
+    "sin boost" sino un merge ENTRE MARCAS DISTINTAS, que el brand gate bloquea — y con razón.
+    """
     return CanonicalProduct(
         id=cid,
         name=name,
@@ -410,7 +417,7 @@ def test_fusion_picks_consensus_candidate_and_auto_links_hybrid() -> None:
         vector_candidates=[MatchCandidate(canonical_product_id="canon-y", score=0.93)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-y": _canonical("canon-y", brand="Otra Marca", size="1 KG")}
+        {"canon-y": _canonical("canon-y", brand="", size="1 KG")}
     )
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
 
@@ -571,7 +578,7 @@ def test_ean_conflict_persists_review_candidate_snapshot() -> None:
         vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", name="Habichuela Verde", brand="La Famosa")}
+        {"canon-1": _canonical("canon-1")}
     )
     store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022949"})
     use_case, c = _make_use_case(
@@ -592,7 +599,7 @@ def test_ean_conflict_blocks_grey_band_judge_auto_link() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022949"})
     judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
@@ -652,12 +659,144 @@ def test_same_variant_still_auto_links() -> None:
     assert c["store_repo"].links == [("sp-1", "canon-1")]
 
 
+def test_legume_species_conflict_blocks_auto_link_when_color_matches() -> None:
+    """El falso positivo medido 2026-07-21 (aispace-men #822): `LA FAMOSA GANDULES VERDES 15 OZ`
+    auto-linkeó a `Habichuela Verde La Famosa 15 Oz` en 0.854. Marca, tamaño y COLOR coinciden —
+    el grupo color del variant gate no podía verlo. Solo difiere la ESPECIE, y trgm (difieren en
+    UN token) y el vector (ambos legumbre enlatada) coincidieron en equivocarse, así que el
+    consenso RRF reforzó el error. El gandul correcto existía en el catálogo pero en otro tamaño:
+    NO había canónico correcto, así que el destino legítimo era la cola.
+
+    Tamaño "5 LB" == la quantity del canónico → aísla el gate del size_gate, como el test de color.
+    """
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuela Verde La Famosa", brand="La Famosa")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="LA FAMOSA GANDULES VERDES", brand="La Famosa", size="5 LB")
+    )
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []  # gandul ≠ habichuela: distinto SKU
+
+
+def test_regional_synonym_of_the_same_legume_still_auto_links() -> None:
+    # Contraparte OBLIGATORIA: frijol ES habichuela (regionalismo, no especie distinta). Si el gate
+    # los separara, rompería matches BUENOS — el error inverso al que existe para evitar.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuelas Negras Goya", brand="Goya")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="Frijoles Negros Goya", brand="Goya", size="5 LB"))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+# ---------------------------------------------------------------- brand gate (sin evidencia de marca) --
+# `ARROZ SELECTO 10 LB` de Bravo auto-linkeó a `Arroz Selecto Wala 10 Lb` en 0.850 (medido
+# 2026-07-21, aispace-men #822): Bravo no declara marca y su nombre no nombra a Wala, o sea CERO
+# evidencia — pero las cadenas difieren en UN token (el de la marca) y el parecido bastó. Mismo
+# mecanismo que gandules→habichuela, otro eje. A diferencia de los demás gates, éste bloquea por
+# AUSENCIA de evidencia y no por contradicción; ver el docstring de `brand_gate`.
+
+
+def test_no_brand_evidence_blocks_auto_link_into_a_branded_canonical() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Selecto Wala", brand="Wala")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="ARROZ SELECTO 10 LB", brand="", size="5 LB"))
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []  # nada prueba que ese arroz sea Wala
+
+
+def test_brand_named_only_in_the_store_name_still_auto_links() -> None:
+    # Contraparte OBLIGATORIA: Bravo/Nacional no declaran marca pero la ESCRIBEN en el nombre. Éstos
+    # son los matches BUENOS de la corrida medida (`LA FAMOSA HABICHUELAS…` 1.000) — no romperlos es
+    # justo lo que hace viable bloquear por ausencia de evidencia.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuelas Negras La Famosa", brand="La Famosa")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="LA FAMOSA HABICHUELAS NEGRAS", brand="", size="5 LB")
+    )
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_generic_canonical_without_brand_is_never_gated() -> None:
+    # Produce suelto / pan de la casa: no hay marca que exigir → el gate no debe entrometerse.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Platano Barahonero", brand="")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="PLATANO BARAHONERO UNIDAD", brand="", size="5 LB")
+    )
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_no_brand_evidence_blocks_grey_band_judge_auto_link() -> None:
+    # Defensa para cuando el LLM se re-encienda, igual que el EAN gate: el juez puede decir "match"
+    # con alta confianza, pero sin evidencia de marca no se auto-mergea en un SKU de marca.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Selecto Wala", brand="Wala")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(name="ARROZ SELECTO 10 LB", brand="", size="5 LB"))
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []
+
+
 def test_grey_band_invokes_judge_and_auto_links_on_match_verdict() -> None:
     match_repo = FakeCascadeMatchRepository(
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -680,7 +819,7 @@ def test_grey_band_match_verdict_at_confidence_floor_auto_links() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("match", 0.70, ["brand agrees"]))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -791,7 +930,7 @@ def test_same_transaction_invariant_writes_link_and_match_together() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
 
@@ -925,7 +1064,7 @@ def test_high_band_auto_link_never_persists_review_candidates() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
 
@@ -939,7 +1078,7 @@ def test_grey_band_strong_match_auto_link_never_persists_review_candidates() -> 
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -957,7 +1096,7 @@ def test_grey_band_strong_match_wires_judge_cost_onto_auto_linked_record() -> No
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(
         FakeVerdict(
