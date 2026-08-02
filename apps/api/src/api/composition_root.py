@@ -396,7 +396,14 @@ def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):
 
 # ── Save (catálogo de precios) ──
 def get_search_products(session: Session = Depends(get_session)) -> SearchProducts:
-    return SearchProducts(SqlCanonicalProductRepository(session))
+    # Búsqueda HÍBRIDA (§6): léxica + semántica fusionadas por RRF. Sin embedder resuelto,
+    # `SearchProducts` omite la etapa semántica y degrada a léxica — nunca inventa un vector.
+    return SearchProducts(
+        SqlCanonicalProductRepository(session),
+        embedding_provider=build_api_embedder(
+            endpoint_url=settings.save_bge_m3_endpoint_url
+        ),
+    )
 
 
 def get_compare_product(session: Session = Depends(get_session)) -> CompareProduct:

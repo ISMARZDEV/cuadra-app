@@ -788,6 +788,33 @@ Set etiquetado de **~30 consultas dominicanas reales** (typos, sinónimos, marca
 
 Se mide **antes** de escribir el agente. Si no llega, se ajusta acá — **nunca en el prompt**.
 
+#### ✅ Resultado medido (2026-08-02, N=30)
+
+Set en `apps/api/tests/save/fixtures/retrieval_queries.py`; se reproduce con **`make eval-retrieval`**.
+
+| Configuración | top-1 | top-5 |
+|---|---:|---:|
+| Léxica sola (trgm) — la degradación de §6.5 | 86.7% | **93.3%** ❌ |
+| Semántica sola (pgvector/BGE-M3) | 93.3% | 96.7% |
+| **Híbrida (trgm + pgvector + RRF)** | **96.7%** ✅ | **96.7%** ✅ |
+
+**Las dos metas se cumplen, y la ablación es lo que justifica el costo:** la híbrida le gana a las
+dos etapas por separado, así que RRF y el embedder **se pagan**. Y al revés: **la léxica sola NO
+llega al objetivo de top-5** — con `frijoles rojos` devuelve **lista vacía**. Ese es el precio
+exacto de quedarse sin embedder, medido en vez de supuesto.
+
+**Por eso NO se construyó el rerank condicional de §6.2.** El número llega sin él; construirlo
+sería maquinaria sin evidencia. Queda anotado para cuando el catálogo crezca y el número baje.
+
+> ⚠️ **Advertencia obligatoria al leer estos porcentajes.** El catálogo de dev es **monotemático**
+> (93 de 133 canónicos son «Arroz, Granos & Legumbres»; **café = 0, carnes = 0, aceites = 1**), así
+> que el Apéndice C.1 —que pedía sesgar el set hacia café, carnes, bebé y aceites— **no se pudo
+> cumplir**. El número está **inflado** por un catálogo fácil y estrecho. Cuando la ingesta traiga
+> las categorías que faltan, **este set hay que rehacerlo y el número de hoy no será comparable**.
+>
+> El único fallo real es `porotos negros` (término del Cono Sur, no dominicano) — ni trgm ni BGE-M3
+> lo puentean a «habichuelas negras».
+
 ---
 
 ## 7. La canasta por presupuesto
@@ -1222,6 +1249,23 @@ Todo el §6. Incluye el refactor de `rank_fusion` al dominio.
 
 **✅ Éxito:** top-1 ≥ 80%, top-5 ≥ 95% sobre las ~30 consultas etiquetadas. Test explícito de
 degradación sin embedder.
+
+**Hecho (2026-08-02) — con dos bloqueos que hubo que resolver primero:**
+
+1. 🔴 **El índice semántico estaba VACÍO.** §2.2 afirmaba que el `Vector(1024)` estaba «ya
+   poblado»: eran **0 de 133**. Se corrió el backfill (`EmbedCanonicalProducts` + BGE-M3
+   in-process) → **133/133 en 16.6 s**. Sin ese paso, la Fase 3 **no cumplía** su propio objetivo:
+   la léxica sola se queda en 93.3% de top-5.
+2. 🔴 **El set del Apéndice C.1 era inconstruible** (café = 0, carnes = 0 en el catálogo). Se
+   rehízo contra el catálogo real, con la advertencia escrita en el propio fixture.
+
+Resultado: **top-1 96.7% · top-5 96.7%** (tabla y ablación en [§6.6](#66-criterio-de-éxito)).
+
+**Bug preexistente encontrado y arreglado en el camino:** un canónico **sin tamaño** se guardaba
+bien y **reventaba al leerlo** (`UnitMeasure(None)`). La base ya tenía las columnas nullable
+(PR #45), pero `models.py` decía `nullable=False` —desfase que habría hecho que el próximo
+`autogenerate` propusiera volver a NOT NULL sobre NULLs legítimos— y el mapper no toleraba NULL.
+Cero filas así en dev, por eso nadie lo vio; pero **§8.1 cuenta con que existan**.
 
 ---
 

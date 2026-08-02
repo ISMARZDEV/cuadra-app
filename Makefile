@@ -1,4 +1,4 @@
-.PHONY: help install api mobile db-up db-down migrate seed save-refresh save-backfill-brands save-repair-sizes openapi api-client test test-unit test-ctx eval
+.PHONY: help install api mobile db-up db-down migrate seed save-refresh save-backfill-brands save-repair-sizes openapi api-client test test-unit test-ctx eval eval-retrieval
 
 help:
 	@echo "Cuadra — comandos del monorepo"
@@ -17,6 +17,7 @@ help:
 	@echo "  make test-unit   Solo unit, sin DB (loop TDD rápido)"
 	@echo "  make test-ctx CTX=identity   Tests de un contexto"
 	@echo "  make eval        Mini-eval del FinanceAgent (LLM real, no es gate)"
+	@echo "  make eval-retrieval  Mini-eval de la búsqueda híbrida: top-1/top-5 (no es gate)"
 
 install:
 	pnpm install
@@ -67,3 +68,6 @@ test-ctx:
 
 eval:
 	cd apps/api && uv run python -m evals.finance_eval
+
+eval-retrieval:
+	cd apps/api && uv run python -m evals.retrieval_eval

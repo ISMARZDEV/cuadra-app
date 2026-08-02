@@ -7,6 +7,7 @@ siempre refresca `last_seen_at`. El brand se resuelve get-or-create por (market,
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -42,6 +43,7 @@ from ..domain.entities import (
     BasketQuery,
     CanonicalProduct,
     Collection,
+    MatchCandidate,
     PriceType,
     Provider,
     ProviderType,
@@ -104,6 +106,10 @@ def _parse_uuid(value: str) -> uuid.UUID | None:
 # `translate()` sí lo es.
 _BRAND_ACCENTS = "ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ"
 _BRAND_PLAIN = "AAAAAEEEEIIIIOOOOOUUUUNC"
+
+# Piso de similitud léxica de la búsqueda del USUARIO. Deliberadamente GENEROSO (§6.4): acá un
+# resultado de más no hace daño, a diferencia del matching. Número a TUNEAR con el set etiquetado.
+_LEXICAL_MIN_SIMILARITY = 0.35
 
 
 def brand_key_sql(column):  # type: ignore[no-untyped-def]
@@ -611,6 +617,64 @@ class SqlCanonicalProductRepository:
             select(CanonicalProductModel).where(
                 CanonicalProductModel.market_id == market_id,
                 CanonicalProductModel.name.ilike(f"%{query}%"),
+                CanonicalProductModel.archived_at.is_(None),
+            )
+        ).all()
+        return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
+
+    def search_lexical(
+        self, query: str, market_id: str, limit: int = 20
+    ) -> list[MatchCandidate]:
+        # `word_similarity(q, target)`, NO `similarity`: la consulta del usuario es CORTA y el
+        # nombre del catálogo es largo ("Arroz Campos Premium 20 Lb"). `similarity` divide por la
+        # unión de trigramas, así que "arroz" contra ese nombre puntúa bajísimo; `word_similarity`
+        # compara la consulta contra el mejor TRAMO del nombre, que es la pregunta real.
+        name_score = func.word_similarity(query, CanonicalProductModel.name)
+        brand_score = func.coalesce(func.word_similarity(query, BrandModel.name), 0.0)
+        score = func.greatest(name_score, brand_score).label("score")
+        rows = self._s.execute(
+            select(CanonicalProductModel.id, score)
+            .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.archived_at.is_(None),
+                score > _LEXICAL_MIN_SIMILARITY,
+            )
+            .order_by(score.desc())
+            .limit(limit)
+        ).all()
+        return [MatchCandidate(canonical_product_id=str(r.id), score=float(r.score)) for r in rows]
+
+    def search_semantic(
+        self, embedding: list[float], market_id: str, limit: int = 20
+    ) -> list[MatchCandidate]:
+        distance = CanonicalProductModel.embedding.cosine_distance(embedding).label("distance")
+        rows = self._s.execute(
+            select(CanonicalProductModel.id, distance)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.archived_at.is_(None),
+                CanonicalProductModel.embedding.is_not(None),  # sin vector no hay vecindad
+            )
+            .order_by(distance)
+            .limit(limit)
+        ).all()
+        # El puerto habla en SIMILITUD [0,1] (como trgm); pgvector devuelve DISTANCIA coseno.
+        return [
+            MatchCandidate(canonical_product_id=str(r.id), score=1.0 - float(r.distance))
+            for r in rows
+        ]
+
+    def get_many(
+        self, product_ids: Sequence[str], market_id: str
+    ) -> list[CanonicalProduct]:
+        uuids = [u for u in (_parse_uuid(pid) for pid in product_ids) if u is not None]
+        if not uuids:
+            return []
+        models = self._s.scalars(
+            select(CanonicalProductModel).where(
+                CanonicalProductModel.id.in_(uuids),
+                CanonicalProductModel.market_id == market_id,
                 CanonicalProductModel.archived_at.is_(None),
             )
         ).all()
