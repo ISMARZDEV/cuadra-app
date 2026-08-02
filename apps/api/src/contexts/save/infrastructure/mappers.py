@@ -61,7 +61,13 @@ def canonical_to_entity(m: CanonicalProductModel, brand_name: str) -> CanonicalP
         str(m.id),
         m.name,
         brand_name,
-        Quantity(m.size_amount, UnitMeasure(m.size_measure)),
+        # Sin tamaño es LEGÍTIMO (PR #45) y la columna es nullable: sin esta guarda, un canónico
+        # que se guardaba bien reventaba al leerlo.
+        (
+            Quantity(m.size_amount, UnitMeasure(m.size_measure))
+            if m.size_measure is not None and m.size_amount is not None
+            else None
+        ),
         taxonomy_node_id=str(m.taxonomy_node_id) if m.taxonomy_node_id else "",
         market_id=m.market_id,
         quality=m.quality,
