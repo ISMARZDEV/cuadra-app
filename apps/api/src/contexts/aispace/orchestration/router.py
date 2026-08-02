@@ -17,7 +17,10 @@ from src.shared.llm import get_chat_model
 
 Classifier = Callable[[str, list[str]], str]  # (texto, capabilities) -> intent
 
-_EXPENSE_RE = re.compile(r"\b(gast|gaste|gasté|pagu|pagué|compr)", re.IGNORECASE)
+# `compr` queda FUERA a propósito: nombra dos intenciones opuestas — «compré» (gasto pasado) y
+# «la compra / comprar» (ir al súper). Un token que matchea dos clases no discrimina ninguna, así
+# que esas frases las decide el clasificador, que sí lee tiempo verbal y contexto.
+_EXPENSE_RE = re.compile(r"\b(gast|gaste|gasté|pagu|pagué)", re.IGNORECASE)
 
 
 def make_classify_intent(classifier: Classifier):  # type: ignore[no-untyped-def]
