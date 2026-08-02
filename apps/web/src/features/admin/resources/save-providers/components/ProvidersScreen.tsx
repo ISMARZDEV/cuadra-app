@@ -32,6 +32,7 @@ import type { ProvidersData } from "../interfaces";
 import { PROVIDER_TYPE_OPTIONS, SOURCE_PLATFORM_OPTIONS } from "../types";
 import { ProviderModal, type ProviderModalState } from "./ProviderModal";
 import { ProviderRow } from "./ProviderRow";
+import { usePagination } from "@/features/admin/shell/use-pagination";
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const ANY = "__any__";
@@ -84,8 +85,6 @@ export function ProvidersScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<string | null>("name");
   const [sortDir, setSortDir] = useState<SortState>("asc");
-  const [limit, setLimit] = useState(10);
-  const [offset, setOffset] = useState(0);
 
   // `applied.status` cambia lo que devuelve el SERVIDOR, así que hay que re-pedir, no re-filtrar.
   // El ref salta el montaje A PROPÓSITO: `useAdminList` ya viene sembrado por el SSR de `+data.ts`,
@@ -119,15 +118,11 @@ export function ProvidersScreen() {
     [filtered, sortCol, sortDir],
   );
 
-  const total = sorted.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = useMemo(() => sorted.slice(offset, offset + limit), [sorted, offset, limit]);
-  const from = total > 0 ? offset + 1 : 0;
-  const to = Math.min(offset + limit, total);
-  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
-    ? PAGE_SIZE_OPTIONS
-    : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
+  // Paginación client-side: la aritmética vivía copiada en 10 pantallas (`use-pagination`).
+  const {
+    limit, setLimit, offset, setOffset,
+    total, totalPages, currentPage, pageRows, from, to, pageSizeOptions,
+  } = usePagination(sorted);
 
   useEffect(() => {
     setOffset(0);

@@ -46,6 +46,7 @@ import { OrchestrationRow } from "./OrchestrationRow";
 import { OrchestrationTabs, type OrchestrationTab } from "./OrchestrationTabs";
 import { OrchestrationToolbar } from "./OrchestrationToolbar";
 import { PolicyModal } from "./PolicyModal";
+import { usePagination } from "@/features/admin/shell/use-pagination";
 
 type T = (key: MessageKey) => string;
 
@@ -102,20 +103,14 @@ export function OrchestrationScreen() {
   const [unhealthy, setUnhealthy] = useState<string | null>(null);
   const [filters, setFilters] = useState<FlowFilters>({ search: "" });
 
-  const [limit, setLimit] = useState(10);
-  const [offset, setOffset] = useState(0);
 
   const visible = useMemo(() => filterFlows(flows, filters), [flows, filters]);
 
-  const total = visible.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = useMemo(() => visible.slice(offset, offset + limit), [visible, offset, limit]);
-  const from = total > 0 ? offset + 1 : 0;
-  const to = Math.min(offset + limit, total);
-  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
-    ? PAGE_SIZE_OPTIONS
-    : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
+  // Paginación client-side: la aritmética vivía copiada en 10 pantallas (`use-pagination`).
+  const {
+    limit, setLimit, offset, setOffset,
+    total, totalPages, currentPage, pageRows, from, to, pageSizeOptions,
+  } = usePagination(visible);
 
   useEffect(() => {
     void fetchOrchestratorHealth().then((r) => {

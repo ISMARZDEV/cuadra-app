@@ -45,6 +45,7 @@ import type { BasketQueriesData } from "../interfaces";
 import { DEFAULT_BASKET_MARKET } from "../types";
 import { BasketRow } from "./BasketRow";
 import { BasketQueryModal } from "./BasketQueryModal";
+import { usePagination } from "@/features/admin/shell/use-pagination";
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 type SortState = "asc" | "desc" | "none";
@@ -76,8 +77,6 @@ export function BasketEditorScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortState>("none");
-  const [limit, setLimit] = useState(10);
-  const [offset, setOffset] = useState(0);
   const [confirmingBulk, setConfirmingBulk] = useState(false);
   const [busyBulk, setBusyBulk] = useState(false);
 
@@ -99,15 +98,11 @@ export function BasketEditorScreen() {
     [filtered, sortCol, sortDir],
   );
 
-  const total = sorted.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = useMemo(() => sorted.slice(offset, offset + limit), [sorted, offset, limit]);
-  const from = total > 0 ? offset + 1 : 0;
-  const to = Math.min(offset + limit, total);
-  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
-    ? PAGE_SIZE_OPTIONS
-    : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
+  // Paginación client-side: la aritmética vivía copiada en 10 pantallas (`use-pagination`).
+  const {
+    limit, setLimit, offset, setOffset,
+    total, totalPages, currentPage, pageRows, from, to, pageSizeOptions,
+  } = usePagination(sorted);
 
   // Cualquier cambio de filtro/orden/tamaño vuelve a la página 1 (evita quedar en una página vacía).
   useEffect(() => {

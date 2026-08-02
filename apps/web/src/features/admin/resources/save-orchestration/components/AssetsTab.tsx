@@ -23,6 +23,7 @@ import { format, type MessageKey } from "@/i18n/messages";
 
 import { createAssetPolicy, listPipelineAssets } from "../api";
 import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
+import { usePagination } from "@/features/admin/shell/use-pagination";
 
 type T = (key: MessageKey) => string;
 
@@ -70,8 +71,6 @@ const SCHEDULABLE = new Set(["freshness", "coverage"]);
 
 export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
   const [state, setState] = useState<State>({ kind: "loading" });
-  const [limit, setLimit] = useState(10);
-  const [offset, setOffset] = useState(0);
   const [scheduled, setScheduled] = useState<ReadonlySet<string>>(new Set());
 
   async function schedule(key: string) {
@@ -88,6 +87,15 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
       alive = false;
     };
   }, []);
+
+  // El hook va ANTES de los early returns: llamarlo después lo volvería condicional y rompería
+  // las Reglas de Hooks. `assets` cae a [] mientras el estado no es `ready`.
+  const assets = state.kind === "ready" ? state.assets : [];
+  // Paginación client-side: la aritmética vivía copiada en 10 pantallas (`use-pagination`).
+  const {
+    limit, setLimit, offset, setOffset,
+    total, totalPages, currentPage, pageRows, from, to, pageSizeOptions,
+  } = usePagination(assets, { pageSizes: [10, 20, 50] });
 
   if (state.kind === "loading") {
     return (
@@ -115,17 +123,6 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
       </div>
     );
   }
-
-  const assets = state.kind === "ready" ? state.assets : [];
-  const total = assets.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = assets.slice(offset, offset + limit);
-  const from = total > 0 ? offset + 1 : 0;
-  const to = Math.min(offset + limit, total);
-  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
-    ? PAGE_SIZE_OPTIONS
-    : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
 
   if (state.assets.length === 0) {
     return (
