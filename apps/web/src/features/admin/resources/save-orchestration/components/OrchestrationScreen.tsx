@@ -36,6 +36,7 @@ import { format, type MessageKey } from "@/i18n/messages";
 
 import {
   cancelRun,
+  fetchOrchestratorHealth,
   deletePolicy,
   listProviderFlowEntries,
   pausePolicy,
@@ -115,6 +116,9 @@ export function OrchestrationScreen() {
   const [editing, setEditing] = useState<ProviderFlowDto["policy"] | null>(null);
   const [tab, setTab] = useState<OrchestrationTab>("flows");
   const [creating, setCreating] = useState(false);
+  // Salud del RUNNER, distinta de `runnerDisconnected`: las corridas viven en la DB de Dagster y se
+  // leen aunque su código esté caído, así que ese flag queda en true y la consola pinta verde.
+  const [unhealthy, setUnhealthy] = useState<string | null>(null);
   const [filters, setFilters] = useState<FlowFilters>({ search: "" });
 
   const [limit, setLimit] = useState(10);
@@ -131,6 +135,12 @@ export function OrchestrationScreen() {
   const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
     ? PAGE_SIZE_OPTIONS
     : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
+
+  useEffect(() => {
+    void fetchOrchestratorHealth().then((r) => {
+      setUnhealthy(r.data && !r.data.ok ? r.data.reason : null);
+    });
+  }, []);
 
   // Filtrar o cambiar el tamaño de página vuelve a la primera: quedarse en la página 4 de un
   // resultado que ahora tiene una sola muestra una tabla vacía que parece un error.
@@ -253,6 +263,16 @@ export function OrchestrationScreen() {
           <AssetsTab t={t} locale={locale} />
         ) : (
           <>
+        {unhealthy && (
+          // Nada corre aunque los flujos figuren activos: el estado del flujo es CONFIGURACIÓN, no
+          // capacidad. Rojo y no ámbar — no es degradado, es que no se ejecuta nada.
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+            <p className="font-semibold">{t("admin.orchestration.health.title")}</p>
+            <p className="mt-0.5">{t("admin.orchestration.health.body")}</p>
+            <p className="mt-1 font-mono text-xs opacity-80">{unhealthy}</p>
+          </div>
+        )}
+
         {runnerDisconnected && (
           // Estado DEGRADADO explícito, no un error. La política sigue visible y editable porque
           // vive en NUESTRA DB — es justo cuando el operador más necesita mirarla. Y lo declara el
@@ -519,11 +539,14 @@ export function OrchestrationScreen() {
       {creating ? (
         <CreateFlowModal
           providers={providers}
-          // Un proveedor que ya tiene flujo no se ofrece: la policy es única por
-          // (provider, market, flow) y una PAUSADA sigue ocupando el lugar.
-          existingProviderIds={flows
-            .map((f) => f.policy.provider_id)
-            .filter((id): id is string => id != null)}
+          // Se excluye el PAR (proveedor, flujo), no el proveedor: uno con descubrimiento puede
+          // tener además refresco de precios. Una policy PAUSADA sigue ocupando el lugar.
+          existingFlows={flows
+            .map((f) => ({
+              provider_id: f.policy.provider_id ?? "",
+              flow_key: f.policy.flow_key ?? "",
+            }))
+            .filter((f) => f.provider_id && f.flow_key)}
           onClose={() => setCreating(false)}
           refresh={refreshOrWarn}
           t={t}

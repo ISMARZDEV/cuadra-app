@@ -42,6 +42,57 @@ def _price_major(item: dict) -> float | int | str:
     raise ValueError(f"Artículo Bravo Va sin precio: {item.get('idexternoArticulo')!r}")
 
 
+# Secciones TRANSVERSALES de Bravo: un producto vive en la SUYA y también en éstas, así que no
+# nombran ninguna categoría. Viven acá (y no en el seed que construye el mapa) porque las consumen
+# los DOS: el generador las excluye del voto, y `_section_from_payload` las descarta cuando el
+# detalle las devuelve como sección primaria. `seeds/` puede importar de `src/`, no al revés.
+GENERIC_SECTIONS = frozenset({
+    "Alimentación general",
+    "Productos Nuevos",
+    "OFERTAS",
+    "Aniversario Arca",
+    "Arca",
+    "PROMOCIÓN 3X2 (DEBES PEDIR 3)",
+    "PROMOCION 2X1 (DEBES PEDIR 2)",
+    "Bodega (Vinos 3X2)",
+    "Cafetería Bravo",
+    "Vida sana",
+    # Pasillos de MARCA, no categorías: Bravo le da sección propia a cada marca de comida de perro
+    # y eso partía el voto de un concepto único (`AR-002` repartido entre Pro Plan / Royal Canin /
+    # Taste of the Wild / Comida mascotas, sin que ninguna llegara al umbral).
+    "Pro Plan caninos",
+    "Royal Canin caninos",
+    "Taste of the Wild caninos",
+})
+
+
+def _section_from_payload(item: dict) -> str:
+    """Nombre de sección que trae el PROPIO artículo, o `""`.
+
+    Sólo el detalle (`/public/articulo/get`) lo puebla: `associatedSeccion[].associatedSeccion.
+    nombreSeccion`. En `/list` y `/search` ese campo llega como lista VACÍA. Medido en vivo
+    2026-08-02 sobre 90 artículos: el detalle lo trae en el **100%** (y EAN global usable en el
+    66%, contra el 30% que documentaba este módulo).
+
+    Es la fuente más confiable de las tres y por eso va primero: el mapa `subfamilia → sección` es
+    derivado por voto, y `section_label` es la sección que se está NAVEGANDO —un artículo puede
+    vivir en varias—. Acá lo dice el artículo de sí mismo.
+    """
+    for enlace in item.get("associatedSeccion") or []:
+        if not isinstance(enlace, dict):
+            continue
+        seccion = enlace.get("associatedSeccion")
+        if isinstance(seccion, dict):
+            nombre = str(seccion.get("nombreSeccion") or "").strip()
+            # Una TRANSVERSAL no se acepta aunque sea la sección primaria del artículo: lo exacto
+            # no puede ganarle a lo útil. Medido sobre los 15 primeros enriquecidos, el detalle
+            # devolvía una transversal en el 40% (`FRESCAN POLLO Y ARROZ` pasaba de «Comida
+            # mascotas» —que el mapa resuelve bien— a «Arca», que no pega ningún token).
+            if nombre and nombre not in GENERIC_SECTIONS:
+                return nombre
+    return ""
+
+
 def _category_path(item: dict, section_label: str) -> tuple[str, ...]:
     """Categoría de ORIGEN. Prefiere el NOMBRE de la sección; los códigos son el último recurso.
 
@@ -90,7 +141,11 @@ def _category_path(item: dict, section_label: str) -> tuple[str, ...]:
     metatag = str(item.get("metatagArticulo") or "").strip()
     tail = (metatag,) if metatag else ()
 
-    section = section_label.strip() or (section_for_subfamily(subfamily) or "")
+    section = (
+        _section_from_payload(item)
+        or section_label.strip()
+        or (section_for_subfamily(subfamily) or "")
+    )
     if section:
         return (section, *codes, *tail)
     return (*codes, *tail)

@@ -74,11 +74,16 @@ def test_rest_catalog_has_partitioned_job_and_sync_sensor() -> None:
     assert defs.get_sensor_def("sync_rest_catalog_sections") is not None
 
 
-def test_price_refresh_asset_job_and_schedule_exist() -> None:
-    # Prices Batch (SRD): re-precio por id de TODO lo conocido; ritmo propio, no en el daily.
+def test_price_refresh_is_a_provider_partitioned_flow() -> None:
+    """Pasó de asset GLOBAL a provider-flow: el cupo de `list_stale_known` es de 500 y, compartido,
+    se lo llevaba entero la tienda más atrasada (medido: 500/500 de Bravo). Su cadencia ya no vive
+    acá sino en la policy del admin — dejar las dos vías sería la duplicación que §5.1 prohíbe."""
     assert AssetKey("price_refresh") in defs.resolve_asset_graph().get_all_asset_keys()
-    assert defs.get_job_def("save_price_refresh") is not None
-    assert defs.get_schedule_def("save_price_refresh_frequent").cron_schedule == "0 */4 * * *"
+    job = defs.get_job_def("save_price_refresh")
+    assert job is not None
+    assert job.partitions_def is not None, "sin partición, la corrida muere al leer partition_key"
+    nombres = {sd.name for sd in defs.schedules or []}
+    assert "save_price_refresh_frequent" not in nombres, "su cadencia la manda la policy del admin"
 
 
 def test_price_drops_depends_on_both_discovery_paths() -> None:

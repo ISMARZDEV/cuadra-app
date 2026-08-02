@@ -1,5 +1,5 @@
 import type { CreateProviderFlowRequest, ProviderDto } from "@cuadra/api-client";
-import { Plus, Store, Workflow } from "lucide-react";
+import { ChevronDown, Plus, Store, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { FilterField } from "@/features/admin/components/filters/FilterField";
@@ -16,9 +16,10 @@ import { createProviderFlow } from "../api";
 
 type T = (key: MessageKey) => string;
 
-/** v1 solo mapea al handler conocido. El enum es cerrado a propósito: la consola configura POLÍTICA,
- * no crea assets Python. */
-const FLOW_KEY = "provider_prices_refresh";
+/** Cerrado a propósito: la consola configura POLÍTICA, no crea assets Python. Debe coincidir con
+ * `FlowKey`/`JOB_BY_FLOW` del backend — sumar uno acá sin allá crea un flow que no corre. */
+const FLOWS = ["provider_prices_refresh", "provider_price_refresh", "provider_browse"] as const;
+type FlowKeyValue = (typeof FLOWS)[number];
 
 /** Saca el motivo real que mandó el backend. El 422 de `ProviderFlowNotSupported` trae el porqué
  * (sin fuente / apagada / la plataforma no sabe hacerlo) — tragarlo y mostrar "algo salió mal"
@@ -33,29 +34,33 @@ function reasonOf(error: unknown): string | null {
 // tienda exigía un `curl`, y por eso los 3 flujos actuales se sembraron a mano.
 export function CreateFlowModal({
   providers,
-  existingProviderIds,
+  existingFlows,
   onClose,
   refresh,
   t,
   locale: _locale,
 }: {
   providers: ProviderDto[];
-  /** Proveedores que YA tienen flujo: se excluyen del select. La policy es única por
-   * (provider, market, flow) y una PAUSADA sigue ocupando el lugar, así que ofrecerlos garantiza
-   * un 422 evitable. */
-  existingProviderIds: string[];
+  /** Flujos ya existentes. La unicidad es por (provider, market, FLOW): un proveedor con
+   * descubrimiento puede tener además refresco. Se excluye el par, no el proveedor. Una policy
+   * PAUSADA sigue ocupando el lugar. */
+  existingFlows: { provider_id: string; flow_key: string }[];
   onClose: () => void;
   refresh: () => Promise<void>;
   t: T;
   locale: Locale;
 }) {
   const [providerId, setProviderId] = useState("");
+  const [flowKey, setFlowKey] = useState<FlowKeyValue>("provider_prices_refresh");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const available = useMemo(
-    () => providers.filter((p) => !existingProviderIds.includes(p.id)),
-    [providers, existingProviderIds],
+    () =>
+      providers.filter(
+        (p) => !existingFlows.some((f) => f.provider_id === p.id && f.flow_key === flowKey),
+      ),
+    [providers, existingFlows, flowKey],
   );
 
   const options: FilterSearchSelectOption[] = useMemo(
@@ -78,7 +83,7 @@ export function CreateFlowModal({
     setError(null);
     const res = await createProviderFlow({
       provider_id: providerId,
-      flow_key: FLOW_KEY,
+      flow_key: flowKey,
     } as CreateProviderFlowRequest);
     setBusy(false);
 
@@ -105,12 +110,56 @@ export function CreateFlowModal({
       clearLabel={t("admin.orchestration.create.clear")}
       applyLabel={busy ? t("admin.orchestration.create.saving") : t("admin.orchestration.create.save")}
       applyIcon={<Plus className="size-4" />}
+      // El listbox del combobox es `absolute` y el body del modal es `overflow-y-auto`, que lo
+      // RECORTA. Sin un alto reservado el modal se ajusta a dos campos (~300px) y la lista no tiene
+      // dónde desplegarse.
+      className="min-h-[min(34rem,90vh)]"
     >
       {error ? (
         <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
       ) : null}
+
+      {/* El FLUJO va primero: la lista de proveedores se calcula a partir de él. */}
+      <FilterField
+        icon={<Workflow />}
+        label={t("admin.orchestration.create.fieldFlow")}
+        htmlFor="create-flow"
+      >
+        {/* `appearance-none` + chevron propio: la flecha nativa del sistema no coincide con la del
+            combobox de proveedor (más oscura y con otra métrica). */}
+        <div className="relative">
+          <select
+            id="create-flow"
+            data-testid="create-flow"
+            value={flowKey}
+            onChange={(e) => {
+              setFlowKey(e.target.value as FlowKeyValue);
+              // El proveedor elegido puede no estar disponible para el flujo nuevo: arrastrarlo
+              // mandaría un par (proveedor, flujo) ya existente y el backend responde 422.
+              setProviderId("");
+              setError(null);
+            }}
+            className="h-11 w-full appearance-none rounded-xl border border-input bg-card pr-9 pl-3 text-sm shadow-xs transition-[color,box-shadow] focus:border-ring focus:ring-[3px] focus:ring-ring/50 focus:outline-none"
+          >
+            {FLOWS.map((f) => (
+              <option key={f} value={f}>
+                {t(`admin.orchestration.flow.${f}` as MessageKey)}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground opacity-50"
+          />
+        </div>
+        {/* Qué HACE el flujo: `provider_prices_refresh` y `provider_price_refresh` se diferencian
+            en una `s` y hacen cosas opuestas. */}
+        <p data-testid="create-flow-help" className="mt-1.5 text-xs text-muted-foreground">
+          {t(`admin.orchestration.create.flowHelp.${flowKey}` as MessageKey)}
+        </p>
+      </FilterField>
 
       {available.length === 0 ? (
         // Vacío HONESTO: dice POR QUÉ no hay nada que elegir, en vez de un select mudo.
@@ -137,12 +186,7 @@ export function CreateFlowModal({
         </FilterField>
       )}
 
-      <FilterField icon={<Workflow />} label={t("admin.orchestration.create.fieldFlow")}>
-        <p className="rounded-xl border border-border px-3 py-2.5 font-mono text-sm text-muted-foreground">
-          {FLOW_KEY}
-        </p>
-        <p className="mt-1.5 text-xs text-muted-foreground">{t("admin.orchestration.create.hintFlow")}</p>
-      </FilterField>
+      <p className="text-xs text-muted-foreground">{t("admin.orchestration.create.hintFlow")}</p>
     </FilterModal>
   );
 }

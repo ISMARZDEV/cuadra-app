@@ -144,3 +144,25 @@ def test_record_observation_never_erases_a_known_ean_with_none(db_session) -> No
     repo.record_observation(captured_at=datetime.now(timezone.utc), ean=None, **common)  # browse
 
     assert db_session.get(StoreProductModel, uuid.UUID(sp_id)).ean == "7460083780146"
+
+
+def test_list_stale_known_can_be_scoped_to_one_provider(db_session) -> None:  # type: ignore[no-untyped-def]
+    """El cupo era GLOBAL y ordenado por antigüedad, así que el proveedor más viejo se lo llevaba
+    entero: medido 2026-08-02, 500/500 fueron de Bravo y Sirena no recibía refresco. Acotar por
+    proveedor le da su propio presupuesto a cada tienda."""
+    market = f"T{uuid.uuid4().hex[:6]}"
+    pid_a, cid = _seed_provider_and_canonical(db_session, market_id=market)
+    pid_b, _ = _seed_provider_and_canonical(db_session, market_id=market)
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
+
+    de_a = _seed_store_product(db_session, pid_a, cid)
+    de_b = _seed_store_product(db_session, pid_b, cid)
+    _set_seen(db_session, de_a, available=True, last_seen=now - timedelta(hours=20))
+    _set_seen(db_session, de_b, available=True, last_seen=now - timedelta(hours=20))
+
+    repo = SqlStoreProductRepository(db_session)
+    solo_a = [s.store_product_id for s in repo.list_stale_known(market, now, provider_id=pid_a)]
+    ambos = [s.store_product_id for s in repo.list_stale_known(market, now)]
+
+    assert de_a in solo_a and de_b not in solo_a
+    assert de_a in ambos and de_b in ambos, "sin `provider_id` sigue trayendo todo"

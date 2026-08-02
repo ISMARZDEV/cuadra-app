@@ -386,6 +386,7 @@ def freshness(context) -> dg.MaterializeResult:
 
 @dg.asset(
     name="price_refresh",
+    partitions_def=query_catalog_providers,  # UNA tienda por partición: el cupo es por tienda
     group_name="save_catalog",
     description="Vuelve a consultar el precio de TODO lo conocido, incluido lo que espera en la cola "
     "de revisión. Es más amplio que «Frescura» y por eso corre menos seguido (cada 4h).",
@@ -394,11 +395,12 @@ def price_refresh(context) -> dg.MaterializeResult:
     """Prices Batch (paridad SRD §3.1) — re-precia por id/get lo CONOCIDO y viejo (matcheado O en
     revisión), `record_observation` change-only, SIN matcher ni descubrimiento. Superset de
     `freshness` (covered-only): mantiene fresco el precio de la cola sin re-browsear."""
+    provider_id = context.partition_key
     with SessionLocal() as session:
-        result = build_refresh_known_prices(session).execute(SAVE_MARKET)
+        result = build_refresh_known_prices(session, provider_id=provider_id).execute(SAVE_MARKET)
         session.commit()
     context.log.info(
-        f"price_refresh: checked={result.checked} refreshed={result.refreshed} "
+        f"price_refresh[{provider_id}]: checked={result.checked} refreshed={result.refreshed} "
         f"unavailable={result.unavailable} stores_aborted={result.stores_aborted}"
     )
     return dg.MaterializeResult(

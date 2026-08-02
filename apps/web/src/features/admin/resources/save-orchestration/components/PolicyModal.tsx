@@ -8,6 +8,7 @@ import { FilterField } from "@/features/admin/components/filters/FilterField";
 import { FilterModal } from "@/features/admin/components/filters/FilterModal";
 import type { Locale } from "@/i18n/config";
 import type { MessageKey } from "@/i18n/messages";
+import { cn } from "@/lib/utils";
 
 import { updatePolicy } from "../api";
 
@@ -64,19 +65,28 @@ export function PolicyModal({
   // que el pipeline ignora — la invariante vive en la ENTIDAD del backend y acá se respeta.
   const isCron = mode === "cron";
 
+  // El tope de queries lo consume SOLO el descubrimiento (`query_catalog_prices` →
+  // `resolve_query_limit`). El refresco pide por id lo ya conocido y el browse recorre secciones:
+  // ninguno tiene queries que topar, así que ahí el control guardaría un número que nadie lee.
+  const readsQueryLimit = policy.flow_key === "provider_prices_refresh";
+
   const apply = async () => {
     if (isCron && !cron.trim()) return setError(t("admin.orchestration.modal.errCronRequired"));
 
     setBusy(true);
     setError(null);
+    // Los campos ocultos NO viajan: el PATCH usa `exclude_unset=True`, así que la clave ausente es
+    // "no lo toques". Mandarlas en `null` borraría valores que el operador no puede ni ver.
     const body: UpdatePolicyRequest = {
       execution_mode: mode as UpdatePolicyRequest["execution_mode"],
       // Fuera del modo cron el campo viaja en `null`: no peleamos con la validación de la entidad,
       // la acompañamos.
       cron_expression: isCron ? cron.trim() : null,
-      timezone: timezone.trim() || null,
+      // La timezone solo se consume junto al cron (`policy_schedule` corta antes si el modo no es
+      // cron, y `next_run_at` devuelve None igual).
+      ...(isCron ? { timezone: timezone.trim() || null } : {}),
       sla_minutes: toNullableInt(sla),
-      query_limit_override: toNullableInt(queryLimit),
+      ...(readsQueryLimit ? { query_limit_override: toNullableInt(queryLimit) } : {}),
       // `priority` NO viaja, a propósito. `PolicyDto` (lectura) no lo expone, así que el form no
       // puede conocer su valor actual: mandarlo siempre lo pisaría con `null`. El PATCH usa
       // `model_dump(exclude_unset=True)` — ausente es "no lo toques", que es justo lo que queremos.
@@ -157,22 +167,26 @@ export function PolicyModal({
         </FilterField>
       ) : null}
 
-      <FilterField
-        icon={<Timer />}
-        label={t("admin.orchestration.modal.fieldTimezone")}
-        htmlFor="policy-timezone"
-      >
-        <Input
-          id="policy-timezone"
-          data-testid="policy-timezone"
-          value={timezone}
-          onChange={(e) => setTimezone(e.target.value)}
-          placeholder="America/Santo_Domingo"
-          className="h-11! w-full rounded-xl"
-        />
-      </FilterField>
+      {/* La timezone acompaña al cron: fuera de ese modo nadie la lee. */}
+      {isCron ? (
+        <FilterField
+          icon={<Timer />}
+          label={t("admin.orchestration.modal.fieldTimezone")}
+          htmlFor="policy-timezone"
+        >
+          <Input
+            id="policy-timezone"
+            data-testid="policy-timezone"
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            placeholder="America/Santo_Domingo"
+            className="h-11! w-full rounded-xl"
+          />
+        </FilterField>
+      ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* Dos columnas solo cuando hay DOS campos: si no, el SLA queda huérfano contra un hueco. */}
+      <div className={cn("grid grid-cols-1 gap-3", readsQueryLimit && "sm:grid-cols-2")}>
         <FilterField icon={<Gauge />} label={t("admin.orchestration.modal.fieldSla")} htmlFor="policy-sla">
           <Input
             id="policy-sla"
@@ -186,24 +200,26 @@ export function PolicyModal({
           <p className="mt-1.5 text-xs text-muted-foreground">{t("admin.orchestration.modal.hintSla")}</p>
         </FilterField>
 
-        <FilterField
-          icon={<ListOrdered />}
-          label={t("admin.orchestration.modal.fieldQueryLimit")}
-          htmlFor="policy-query-limit"
-        >
-          <Input
-            id="policy-query-limit"
-            data-testid="policy-query-limit"
-            type="number"
-            min={0}
-            value={queryLimit}
-            onChange={(e) => setQueryLimit(e.target.value)}
-            className="h-11! w-full rounded-xl"
-          />
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {t("admin.orchestration.modal.hintQueryLimit")}
-          </p>
-        </FilterField>
+        {readsQueryLimit ? (
+          <FilterField
+            icon={<ListOrdered />}
+            label={t("admin.orchestration.modal.fieldQueryLimit")}
+            htmlFor="policy-query-limit"
+          >
+            <Input
+              id="policy-query-limit"
+              data-testid="policy-query-limit"
+              type="number"
+              min={0}
+              value={queryLimit}
+              onChange={(e) => setQueryLimit(e.target.value)}
+              className="h-11! w-full rounded-xl"
+            />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {t("admin.orchestration.modal.hintQueryLimit")}
+            </p>
+          </FilterField>
+        ) : null}
       </div>
 
       {/* US-OR-L5: la UI declara qué política NO vive acá.

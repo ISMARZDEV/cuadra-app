@@ -24,9 +24,15 @@ from datetime import UTC, datetime
 import dagster as dg
 
 from src.contexts.save.application.policy_schedule import due_policy_runs
-from src.contexts.save.domain.entities.orchestration import JOB_BY_FLOW, partition_key_for
+from src.contexts.save.domain.entities.orchestration import (
+    BACKFILL_FLOWS,
+    browse_partition_keys,
+    job_for,
+    partition_key_for,
+)
 from src.contexts.save.domain.ports.orchestrator import TAG_POLICY_ID, TAG_TRIGGER
 from src.contexts.save.infrastructure.orchestrator.policy_repository import (
+    SqlSectionsReader,
     SqlOrchestrationPolicyRepository,
 )
 from src.shared.db.base import SessionLocal
@@ -46,13 +52,28 @@ def save_orchestration_policies(context) -> dg.SensorResult:  # type: ignore[no-
     due = due_policy_runs(policies, now=datetime.now(UTC))
     requests: list[dg.RunRequest] = []
     for item in due:
-        job_name = JOB_BY_FLOW.get(item.flow_key)
+        job_name = job_for(flow_key=item.flow_key, asset_key=item.asset_key)
         if job_name is None:
             # Una policy cuyo flow todavía no tiene job soportado NO se dispara ni rompe el sensor:
             # se declara en el log para que no desaparezca en silencio.
             context.log.warning(
-                f"policy {item.policy_id}: flow '{item.flow_key}' sin job soportado — no se dispara"
+                f"policy {item.policy_id}: sin job soportado — no se dispara"
             )
+            continue
+        # El browse tiene UNA partición por sección: se pide una corrida por cada una. Con un solo
+        # RunRequest correría una sola y las demás quedarían sin ejecutar.
+        if item.flow_key in BACKFILL_FLOWS:
+            with SessionLocal() as session:
+                secciones = SqlSectionsReader(session).sections_for(item.provider_id or "")
+            for key in browse_partition_keys(item.provider_id or "", secciones):
+                requests.append(
+                    dg.RunRequest(
+                        run_key=f"{item.run_key}:{key}",  # exactly-once POR partición
+                        job_name=job_name,
+                        partition_key=key,
+                        tags={TAG_POLICY_ID: item.policy_id, TAG_TRIGGER: "automatic"},
+                    )
+                )
             continue
         requests.append(
             dg.RunRequest(

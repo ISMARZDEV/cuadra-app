@@ -40,6 +40,7 @@ from ...domain.ports.orchestrator import (
     AssetPartitionKind,
     AssetPartitionStats,
     OrchestrationRun,
+    OrchestratorHealth,
     OrchestratorUnavailable,
     PipelineAsset,
     RunEvent,
@@ -191,6 +192,37 @@ _ASSET_FIELDS = """
   assetMaterializations(limit: 1) { runId timestamp }
 """
 
+# Backfill: N particiones de una. `partitionsByAssets` targetea el ASSET, no un partition set —
+# los partition sets son del modelo viejo de jobs y no existen para assets particionados.
+_LAUNCH_BACKFILL = """
+mutation CuadraLaunchBackfill($params: LaunchBackfillParams!) {
+  launchPartitionBackfill(backfillParams: $params) {
+    __typename
+    ... on LaunchBackfillSuccess { backfillId launchedRunIds }
+    ... on PythonError { message }
+    ... on PartitionKeysNotFoundError { message }
+    ... on UnauthorizedError { message }
+  }
+}
+"""
+
+# `loadStatus` dice si TERMINÓ de cargar; `locationOrLoadError` si cargó BIEN. Un location puede
+# estar LOADED y ser un PythonError: eso es el webserver vivo con el código muerto.
+_WORKSPACE_HEALTH = """
+query CuadraWorkspaceHealth {
+  workspaceOrError {
+    __typename
+    ... on Workspace {
+      locationEntries {
+        name
+        loadStatus
+        locationOrLoadError { __typename ... on PythonError { message } }
+      }
+    }
+  }
+}
+"""
+
 # OJO: `assetNodes` devuelve una LISTA PELADA, no una unión — así que acá el único camino de error
 # es el array `errors` (que `_execute` ya cubre). No se puede `_unwrap` lo que no es unión.
 _ASSET_NODES = f"""
@@ -217,6 +249,12 @@ def _default_post(url: str, payload: dict, headers: dict[str, str]) -> dict:
         response = client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
+
+
+def _load_error(entry: dict) -> str:
+    """Primera línea del traceback de una code location caída (el resto es ruido para el operador)."""
+    msg = str((entry.get("locationOrLoadError") or {}).get("message") or "").strip()
+    return msg.splitlines()[0] if msg else "error de carga sin detalle"
 
 
 def _epoch_to_dt(value: float | None) -> datetime | None:
@@ -484,6 +522,37 @@ class DagsterGraphQLOrchestrator:
         node = self._unwrap(data["launchRun"], "LaunchRunSuccess", "lanzamiento")
         return str(node["run"]["runId"])
 
+    def launch_backfill(
+        self,
+        *,
+        job_name: str,
+        partition_keys: Sequence[str],
+        policy_id: str,
+        trigger: RunTrigger = RunTrigger.MANUAL,
+        actor_user_id: str | None = None,
+    ) -> str:
+        """Lanza N particiones de una y devuelve el id del backfill.
+
+        Sus corridas heredan estos tags, así que `list_runs(policy_id=…)` las encuentra igual que
+        las de `launch` — retry y cancel siguen operando por corrida individual.
+        """
+        if not partition_keys:
+            raise ValueError("Un backfill sin particiones no tiene nada que correr.")
+        tags = [
+            {"key": TAG_POLICY_ID, "value": policy_id},
+            {"key": TAG_TRIGGER, "value": trigger.value},
+        ]
+        if actor_user_id:
+            tags.append({"key": TAG_ACTOR, "value": actor_user_id})
+        params = {
+            "selector": {**self._repository_selector(), "jobName": job_name},
+            "partitionNames": list(partition_keys),
+            "tags": tags,
+        }
+        data = self._execute(_LAUNCH_BACKFILL, {"params": params})
+        node = self._unwrap(data["launchPartitionBackfill"], "LaunchBackfillSuccess", "backfill")
+        return str(node["backfillId"])
+
     def retry(self, run_id: str) -> str:
         # FROM_FAILURE = la semántica oficial de retry (las otras son ALL_STEPS y
         # FROM_ASSET_FAILURE). Re-correr todo no sería un reintento: sería otra corrida, y para eso
@@ -554,6 +623,26 @@ class DagsterGraphQLOrchestrator:
             # invitaría a un viaje extra que vuelve vacío.
             next_cursor=node.get("cursor") if node.get("hasMore") else None,
         )
+
+    def health(self) -> OrchestratorHealth:
+        """Code locations del workspace. Un webserver sano con el código caído no puede lanzar nada."""
+        data = self._execute(_WORKSPACE_HEALTH, {})
+        entries = (data.get("workspaceOrError") or {}).get("locationEntries") or []
+        if not entries:
+            return OrchestratorHealth(ok=False, reason="El runner no declara ninguna code location.")
+
+        rotas = [
+            f"{e.get('name')}: {_load_error(e)}"
+            for e in entries
+            if (e.get("locationOrLoadError") or {}).get("__typename") == "PythonError"
+        ]
+        if rotas:
+            return OrchestratorHealth(
+                ok=False,
+                locations=tuple(str(e.get("name")) for e in entries),
+                reason=" · ".join(rotas),
+            )
+        return OrchestratorHealth(ok=True, locations=tuple(str(e.get("name")) for e in entries))
 
     def list_assets(self) -> Sequence[PipelineAsset]:
         """Todos los assets del pipeline, con su lineage. UNA llamada = el grafo completo.

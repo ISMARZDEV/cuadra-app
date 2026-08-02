@@ -84,6 +84,56 @@ describe("PolicyModal — los TRES modos de ejecución", () => {
   });
 });
 
+describe("PolicyModal — campos que el flujo elegido NO lee", () => {
+  // El tope de queries lo consume SOLO el descubrimiento (`query_catalog_prices` →
+  // `resolve_query_limit`). El refresco pide por id lo ya conocido y el browse recorre secciones:
+  // ninguno tiene queries que topar. Ofrecer el control ahí guarda un número que nadie lee.
+  it("shows the query limit only for the discovery flow", () => {
+    setup({ flow_key: "provider_prices_refresh" });
+    expect(screen.getByTestId("policy-query-limit")).toBeInTheDocument();
+  });
+
+  it.each(["provider_price_refresh", "provider_browse"])(
+    "hides the query limit for %s — nothing reads it there",
+    (flow_key) => {
+      setup({ flow_key });
+      expect(screen.queryByTestId("policy-query-limit")).not.toBeInTheDocument();
+    },
+  );
+
+  it("does NOT send the query limit when the field is hidden", async () => {
+    // Ausente ≠ null: el PATCH usa `exclude_unset=True`, así que la clave ausente es "no lo toques".
+    // Mandarla en `null` BORRARÍA un override que el operador no puede ni ver para reponerlo.
+    setup({ flow_key: "provider_price_refresh", query_limit_override: 10 });
+
+    fireEvent.click(save());
+
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    expect(api.updatePolicy.mock.calls[0][1]).not.toHaveProperty("query_limit_override");
+  });
+
+  // La zona horaria SOLO se consume junto al cron: `policy_schedule` corta antes si el modo no es
+  // cron, y `next_run_at` devuelve None igual. Se ocultaba el cron pero se dejaba su timezone.
+  it("hides the timezone when the clock does not fire the flow", () => {
+    setup({ execution_mode: "manual" });
+    expect(screen.queryByTestId("policy-timezone")).not.toBeInTheDocument();
+  });
+
+  it("shows the timezone alongside the cron", () => {
+    setup({ execution_mode: "cron", cron_expression: "0 6 * * *" });
+    expect(screen.getByTestId("policy-timezone")).toBeInTheDocument();
+  });
+
+  it("does NOT send the timezone when the field is hidden", async () => {
+    setup({ execution_mode: "manual" });
+
+    fireEvent.click(save());
+
+    await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
+    expect(api.updatePolicy.mock.calls[0][1]).not.toHaveProperty("timezone");
+  });
+});
+
 describe("PolicyModal — alcance de la política (US-OR-L5)", () => {
   it("declara qué NO se configura desde acá", () => {
     // Sin esto el operador no puede distinguir "esta palanca no existe" de "existe pero vive en el

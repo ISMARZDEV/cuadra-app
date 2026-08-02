@@ -200,14 +200,20 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
     )
 
 
-def build_refresh_known_prices(session: Session) -> RefreshCoveredPrices:
+def build_refresh_known_prices(
+    session: Session, *, provider_id: str | None = None
+) -> RefreshCoveredPrices:
     """Compone `price_refresh` (paridad Prices Batch de SRD): re-precia por id TODO lo CONOCIDO y viejo
     (matcheado O en revisión), no solo lo cubierto. Mismo camino A + fallback C + F3.3 que la frescura —
-    solo cambia el conjunto (`list_stale_known`)."""
-    return build_refresh_covered_prices(session, known=True)
+    solo cambia el conjunto (`list_stale_known`).
+
+    `provider_id` acota el cupo a UNA tienda: sin él la más atrasada se lo lleva entero."""
+    return build_refresh_covered_prices(session, known=True, provider_id=provider_id)
 
 
-def build_refresh_covered_prices(session: Session, *, known: bool = False) -> RefreshCoveredPrices:
+def build_refresh_covered_prices(
+    session: Session, *, known: bool = False, provider_id: str | None = None
+) -> RefreshCoveredPrices:
     """Compone F3.2a (frescura): camino A (re-fetch por id/url/source_ref → change-only, SIN matcher)
     + fallback C (browse por provider diferido, §15.4). Reusa F3.3 (abort-on-down vía
     classify_httpx_error). Cachea los registries del mercado (1 query). `known=True` (para `price_refresh`)
@@ -271,7 +277,11 @@ def build_refresh_covered_prices(session: Session, *, known: bool = False) -> Re
         build_detail_source=build_detail_source,
         build_browse_source=build_browse_source,
         classify_error=classify_httpx_error,
-        stale_source=store_repo.list_stale_known if known else None,
+        stale_source=(
+            (lambda market, now: store_repo.list_stale_known(market, now, provider_id=provider_id))
+            if known
+            else None
+        ),
         build_recovery_source=build_recovery_source,
         # `price_refresh` pide el /get de CADA producto conocido contra UNA tienda → el caso exacto
         # donde el intercalado no protege. Verificado en vivo: Bravo responde 429.

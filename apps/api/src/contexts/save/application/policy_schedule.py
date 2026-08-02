@@ -38,6 +38,8 @@ class DuePolicyRun:
     # Identidad del DISPARO, no del instante en que lo miramos: dos evaluaciones dentro del mismo
     # tick producen el mismo key y Dagster lanza una sola corrida.
     run_key: str
+    # Las policies de scope ASSET no tienen flow: su job se resuelve por `asset_key`.
+    asset_key: str | None = None
 
 
 def _due_tick(cron_expression: str, timezone: str, now: datetime) -> datetime:
@@ -78,6 +80,7 @@ def due_policy_runs(policies: Iterable[object], *, now: datetime) -> list[DuePol
             DuePolicyRun(
                 policy_id=policy.id,  # type: ignore[attr-defined]
                 flow_key=flow_key.value if flow_key is not None else "",
+                asset_key=getattr(policy, "asset_key", None),
                 provider_id=getattr(policy, "provider_id", None),
                 run_key=f"{policy.id}:{tick.isoformat()}",  # type: ignore[attr-defined]
             )

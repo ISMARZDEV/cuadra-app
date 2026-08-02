@@ -317,3 +317,72 @@ def test_an_empty_metatag_adds_no_segment() -> None:
         "p-bravo", "DO", "Granos",
     )
     assert entry.category_path == ("Granos", "GR")
+
+
+def test_the_detail_payload_carries_its_own_section_and_it_wins() -> None:
+    """`/public/articulo/get` trae la sección REAL del artículo dentro del item —
+    `associatedSeccion[].associatedSeccion.nombreSeccion`— mientras que `/list` y `/search` la
+    mandan vacía. Es la única fuente EXACTA que no depende de estar navegando por sección.
+
+    Verificado en vivo 2026-08-02 sobre 90 productos: el detalle trae nombre de sección en el
+    **100%** (y EAN global usable en el 66%, contra el 30% que documentaba el profile).
+
+    Gana sobre el mapa porque el mapa es derivado por voto; y gana sobre `section_label` porque
+    éste es la sección que se está NAVEGANDO, y un artículo puede vivir en varias.
+    """
+    item = {
+        "nombreArticulo": "COCA COLA 400 ML", "associatedPvp": 45,
+        "familiaArticulo": "PC", "subfamiliaArticulo": "PC-065",
+        "associatedSeccion": [
+            {"associatedSeccion": {"idSeccion": 1025, "nombreSeccion": "Agua y refrescos"}}
+        ],
+    }
+
+    entry = map_bravova_item(item, "p-bravo", "DO", "Alimentación general")
+
+    assert entry.category_path[0] == "Agua y refrescos"
+
+
+def test_a_detail_without_section_falls_back_to_the_usual_chain() -> None:
+    item = {
+        "nombreArticulo": "X", "associatedPvp": 1,
+        "familiaArticulo": "FV", "subfamiliaArticulo": "FV-005",
+        "associatedSeccion": [],
+    }
+
+    entry = map_bravova_item(item, "p-bravo", "DO", "")
+    assert entry.category_path[0] == "Frutas y vegetales"  # ← el mapa, como antes
+
+
+def test_a_transversal_section_from_the_detail_is_ignored() -> None:
+    """El detalle devuelve la sección PRIMARIA del artículo, que a veces es una transversal —
+    «Arca» (el departamento de mascotas entero), «Alimentación general», «Vida sana»—. Esas no
+    nombran ninguna categoría: son las mismas que se excluyen al construir el mapa porque un
+    producto vive en la suya Y en ellas.
+
+    Medido 2026-08-02 sobre los primeros 15 productos enriquecidos: **6 (40%)** recibieron una
+    transversal del detalle. `FRESCAN POLLO Y ARROZ` pasaba de «Comida mascotas» (que el mapa
+    resuelve bien por `AR-002`) a «Arca», que no pega ningún token. Lo EXACTO le estaba ganando a
+    lo ÚTIL.
+    """
+    item = {
+        "nombreArticulo": "FRESCAN POLLO Y ARROZ 1 LB", "associatedPvp": 120,
+        "familiaArticulo": "AR", "subfamiliaArticulo": "AR-002",
+        "associatedSeccion": [{"associatedSeccion": {"nombreSeccion": "Arca"}}],
+    }
+
+    entry = map_bravova_item(item, "p-bravo", "DO", "")
+
+    assert entry.category_path[0] == "Comida mascotas", (
+        "una sección transversal del detalle no puede tapar al mapa"
+    )
+
+
+def test_a_real_section_from_the_detail_still_wins() -> None:
+    item = {
+        "nombreArticulo": "COCA COLA 400 ML", "associatedPvp": 45,
+        "familiaArticulo": "PC", "subfamiliaArticulo": "PC-065",
+        "associatedSeccion": [{"associatedSeccion": {"nombreSeccion": "Agua y refrescos"}}],
+    }
+
+    assert map_bravova_item(item, "p-bravo", "DO", "").category_path[0] == "Agua y refrescos"

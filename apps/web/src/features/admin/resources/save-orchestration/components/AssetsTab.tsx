@@ -30,7 +30,7 @@ import { AdminDateTime } from "@/features/admin/components/AdminDateTime";
 import type { Locale } from "@/i18n/config";
 import { format, type MessageKey } from "@/i18n/messages";
 
-import { listPipelineAssets } from "../api";
+import { createAssetPolicy, listPipelineAssets } from "../api";
 
 type T = (key: MessageKey) => string;
 
@@ -84,10 +84,20 @@ type State =
   | { kind: "unavailable" }
   | { kind: "ready"; assets: AssetAdminRowDto[] };
 
+/** Assets GLOBALES que la consola sabe ejecutar. Espeja `JOB_BY_ASSET` del backend: cerrado a
+ *  propósito — v1 no materializa assets Python arbitrarios (SDD §4). */
+const SCHEDULABLE = new Set(["freshness", "coverage"]);
+
 export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [limit, setLimit] = useState(10);
   const [offset, setOffset] = useState(0);
+  const [scheduled, setScheduled] = useState<ReadonlySet<string>>(new Set());
+
+  async function schedule(key: string) {
+    await createAssetPolicy(key);
+    setScheduled((prev) => new Set(prev).add(key));
+  }
 
   useEffect(() => {
     let alive = true;
@@ -266,6 +276,21 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
                 <AdminDateTime iso={a.last_materialized_at} locale={locale} />
               </TableCell>
               <TableCell>
+                {SCHEDULABLE.has(a.key) && (
+                  <button
+                    type="button"
+                    data-testid={`asset-schedule-${a.key}`}
+                    disabled={scheduled.has(a.key)}
+                    onClick={() => void schedule(a.key)}
+                    className="mr-2 rounded-full border border-border px-2 py-0.5 text-xs disabled:opacity-50"
+                  >
+                    {t(
+                      scheduled.has(a.key)
+                        ? "admin.orchestration.assets.scheduled"
+                        : "admin.orchestration.assets.schedule",
+                    )}
+                  </button>
+                )}
                 <span
                   data-testid={`asset-health-${a.key}`}
                   className={`inline-flex h-6 items-center rounded-full px-2 text-xs font-semibold ${

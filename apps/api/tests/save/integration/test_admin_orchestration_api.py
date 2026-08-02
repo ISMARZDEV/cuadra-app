@@ -917,3 +917,76 @@ class TestFailureCauseReachesTheDetailCard(TestProviderDetailEndpoint):
 
         assert res.status_code == 200
         assert res.json()["current_run"]["failure"] is None
+
+
+def _clear_asset_policies(session, asset_key: str) -> None:  # type: ignore[no-untyped-def]
+    """Deja el asset sin policy activa dentro de ESTA transacción."""
+    from src.contexts.save.infrastructure.models import OrchestrationPolicyModel
+
+    session.query(OrchestrationPolicyModel).filter(
+        OrchestrationPolicyModel.asset_key == asset_key
+    ).delete()
+    session.flush()
+
+
+class TestAssetPolicies:
+    """Los jobs GLOBALES (`freshness`, `coverage`) tenían su cron en código, invisible para el
+    operador. `PolicyScope.ASSET` existía en el modelo y nunca se había usado."""
+
+    def test_schedules_a_global_asset_and_audits_it(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        # La unicidad es real: si el entorno ya tiene ese asset programado, el alta choca. El test
+        # afirma el ALTA, no el estado previo de la base.
+        _clear_asset_policies(db_session, "freshness")
+        user_id = _seed_role_user(db_session, "super_admin")
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            response = TestClient(app).post(
+                "/v1/admin/save/orchestration/asset-policies", json={"asset_key": "freshness"}
+            )
+            assert response.status_code == 201, response.text
+            assert response.json()["provider_id"] is None  # no cuelga de ninguna tienda
+
+            audited = (
+                db_session.query(AdminAuditLogModel)
+                .filter(AdminAuditLogModel.action == "orchestration.asset_policy.create")
+                .count()
+            )
+            assert audited == 1, "toda mutación se audita en el borde (T2)"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_refuses_an_asset_the_console_cannot_run(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Cerrado a propósito: v1 no materializa assets Python arbitrarios (SDD §4). El 422 trae
+        el MOTIVO y la lista de ofrecibles, no un error genérico."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        try:
+            response = TestClient(app).post(
+                "/v1/admin/save/orchestration/asset-policies",
+                json={"asset_key": "lo_que_sea"},
+            )
+            assert response.status_code == 422, response.text
+            assert "freshness" in response.json()["detail"]
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_asset_policies_do_not_leak_into_the_provider_flows_table(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Se veían como filas vacías (proveedor `—`, flujo `—`): la tabla de provider-flows es de
+        TIENDAS, y un asset global no tiene ninguna. Detectado mirando el render real."""
+        user_id = _seed_role_user(db_session, "super_admin")
+        app.dependency_overrides[get_session] = lambda: db_session
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        app.dependency_overrides[get_pipeline_orchestrator] = DeadOrchestrator
+        try:
+            _clear_asset_policies(db_session, "freshness")
+            client = TestClient(app)
+            client.post(
+                "/v1/admin/save/orchestration/asset-policies", json={"asset_key": "freshness"}
+            )
+            flows = client.get("/v1/admin/save/orchestration/provider-flows").json()["flows"]
+
+            assert all(f["policy"]["flow_key"] for f in flows), "una fila sin flujo es un asset colado"
+        finally:
+            app.dependency_overrides.clear()

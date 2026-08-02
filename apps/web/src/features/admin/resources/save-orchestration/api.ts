@@ -1,5 +1,6 @@
 import {
   cancelRun as cancelRunRequest,
+  createAssetPolicy as createAssetPolicyRequest,
   createProviderFlow as createProviderFlowRequest,
   deletePolicy as deletePolicyRequest,
   getProviderDetail as getProviderDetailRequest,
@@ -7,6 +8,7 @@ import {
   listAssets as listAssetsRequest,
   listProviderRuns as listProviderRunsRequest,
   listProviderFlows as listProviderFlowsRequest,
+  orchestratorHealth as orchestratorHealthRequest,
   pausePolicy as pausePolicyRequest,
   resumePolicy as resumePolicyRequest,
   retryRun as retryRunRequest,
@@ -57,6 +59,20 @@ export async function resumePolicy(policyId: string) {
     headers: await authHeaders(),
     path: { policy_id: policyId },
   });
+}
+
+/** Programa un asset GLOBAL (freshness/coverage). Su cadencia vivía en código, invisible. */
+export async function createAssetPolicy(assetKey: string) {
+  return createAssetPolicyRequest({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: { asset_key: assetKey },
+  });
+}
+
+/** Salud del runner. NO lanza si está caído: esa caída es justo lo que la UI tiene que mostrar. */
+export async function fetchOrchestratorHealth() {
+  return orchestratorHealthRequest({ client: apiClient, headers: await authHeaders() });
 }
 
 export async function retryRun(runId: string) {

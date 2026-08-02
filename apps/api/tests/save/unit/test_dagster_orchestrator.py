@@ -9,6 +9,7 @@ import pytest
 
 from src.contexts.save.domain.entities.orchestration_run import RunState
 from src.contexts.save.domain.ports.orchestrator import (
+    TAG_POLICY_ID,
     AssetHealth,
     AssetPartitionKind,
     OrchestratorUnavailable,
@@ -670,3 +671,115 @@ class TestGetRunEvents:
 
         with pytest.raises(OrchestratorUnavailable):
             _orchestrator(transport).get_run_events("r-1")
+
+
+# --- Salud del orquestador -------------------------------------------------------------------
+# El webserver puede responder OK con su code location CAÍDA: los jobs no existen y nada se lanza,
+# pero la consola pintaba 3/3 en verde. Payload real observado 2026-08-02.
+
+
+def _workspace(entries: list[dict]) -> dict:
+    return {"data": {"workspaceOrError": {"__typename": "Workspace", "locationEntries": entries}}}
+
+
+def test_health_is_ok_when_every_location_loads() -> None:
+    transport = FakeTransport([
+        _workspace([{
+            "name": "ingestion.definitions", "loadStatus": "LOADED",
+            "locationOrLoadError": {"__typename": "RepositoryLocation"},
+        }])
+    ])
+
+    health = _orchestrator(transport).health()
+
+    assert health.ok is True
+    assert health.locations == ("ingestion.definitions",)
+
+
+def test_health_reports_the_broken_location_and_why() -> None:
+    transport = FakeTransport([
+        _workspace([{
+            "name": "ingestion.definitions", "loadStatus": "LOADED",
+            "locationOrLoadError": {
+                "__typename": "PythonError",
+                "message": "DagsterUserCodeUnreachableError: Could not reach user code server.",
+            },
+        }])
+    ])
+
+    health = _orchestrator(transport).health()
+
+    assert health.ok is False
+    assert "ingestion.definitions" in health.reason
+    assert "user code server" in health.reason
+
+
+def test_health_without_any_location_is_not_ok() -> None:
+    # Un workspace vacío no es "sano sin nada que hacer": es que no se cargó el código.
+    health = _orchestrator(FakeTransport([_workspace([])])).health()
+
+    assert health.ok is False
+
+
+def test_health_surfaces_an_unreachable_webserver_as_unavailable() -> None:
+    # Si ni el webserver responde, es el error que el resto del adapter ya usa.
+    transport = FakeTransport(raises=RuntimeError("connection refused"))
+
+    with pytest.raises(OrchestratorUnavailable):
+        _orchestrator(transport).health()
+
+
+# --- Backfill: una policy, N particiones ------------------------------------------------------
+# `save_rest_catalog` particiona por `{provider}:{sección}` (41 en Bravo). `launchRun` lanzaría UNA
+# y dejaría 40 sin correr. Introspectado del schema instalado: `LaunchBackfillParams` acepta `tags`,
+# así que las corridas del backfill heredan el de la policy y `list_runs(policy_id=…)` las encuentra.
+
+
+def test_launch_backfill_sends_every_partition_and_tags_the_policy() -> None:
+    transport = FakeTransport([
+            {"data": {"repositoriesOrError": {"__typename": "RepositoryConnection", "nodes": [
+                {"name": "__repository__", "location": {"name": "ingestion.definitions"}}]}}},
+        {"data": {"launchPartitionBackfill": {
+            "__typename": "LaunchBackfillSuccess", "backfillId": "bf-1",
+            "launchedRunIds": ["r-1", "r-2"],
+        }}},
+    ])
+
+    backfill_id = _orchestrator(transport).launch_backfill(
+        job_name="save_rest_catalog",
+        partition_keys=["p-1:3", "p-1:14"],
+        policy_id="pol-9",
+    )
+
+    assert backfill_id == "bf-1"
+    params = transport.last_variables["params"]
+    assert params["partitionNames"] == ["p-1:3", "p-1:14"]
+    tags = {t["key"]: t["value"] for t in params["tags"]}
+    assert tags[TAG_POLICY_ID] == "pol-9"
+
+
+def test_launch_backfill_without_partitions_does_not_call_the_runner() -> None:
+    # Un proveedor sin secciones configuradas produciría un backfill vacío que Dagster rechaza.
+    transport = FakeTransport()
+
+    with pytest.raises(ValueError):
+        _orchestrator(transport).launch_backfill(
+            job_name="save_rest_catalog", partition_keys=[], policy_id="pol-9"
+        )
+
+    assert transport.calls == []
+
+
+def test_launch_backfill_surfaces_a_runner_error() -> None:
+    transport = FakeTransport([
+            {"data": {"repositoriesOrError": {"__typename": "RepositoryConnection", "nodes": [
+                {"name": "__repository__", "location": {"name": "ingestion.definitions"}}]}}},
+        {"data": {"launchPartitionBackfill": {
+            "__typename": "PartitionKeysNotFoundError", "message": "no existen",
+        }}},
+    ])
+
+    with pytest.raises(OrchestratorUnavailable):
+        _orchestrator(transport).launch_backfill(
+            job_name="save_rest_catalog", partition_keys=["p-1:3"], policy_id="pol-9"
+        )

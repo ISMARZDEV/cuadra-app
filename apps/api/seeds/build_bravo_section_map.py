@@ -39,26 +39,13 @@ from src.contexts.save.infrastructure.catalog_sources.pacing import build_pace
 # voto. Medido: casi toda la ambigüedad observada era contra «Alimentación general», el cajón de
 # sastre de Bravo (`GR-003 → {Alimentación general, Granos}`). Excluirlas subió las subfamilias
 # inequívocas de 62% a 69%.
-GENERIC_SECTIONS = frozenset({
-    "Alimentación general",
-    "Productos Nuevos",
-    "OFERTAS",
-    "Aniversario Arca",
-    "Arca",
-    "PROMOCIÓN 3X2 (DEBES PEDIR 3)",
-    "PROMOCION 2X1 (DEBES PEDIR 2)",
-    "Bodega (Vinos 3X2)",
-    "Cafetería Bravo",
-    "Vida sana",
-    # Pasillos de MARCA, no categorías (2026-08-02). Bravo le da sección propia a cada marca de
-    # comida de perro, y eso partía el voto de un concepto único:
-    #   AR-002 → {Pro Plan 30, Royal Canin 79, Taste of the Wild 40, Comida mascotas 19}
-    # Ninguna llegaba al 70% y la subfamilia quedaba sin mapear, cuando en realidad TODAS dicen lo
-    # mismo. Excluyéndolas, el voto se concentra en la sección que sí nombra la categoría.
-    "Pro Plan caninos",
-    "Royal Canin caninos",
-    "Taste of the Wild caninos",
-})
+#
+# La lista vive en el PROFILE, no acá: la consumen los dos lados —este generador para excluirlas
+# del voto, y `_section_from_payload` para descartarlas cuando el detalle las devuelve como sección
+# primaria—. Duplicarla garantizaba que se desincronizaran.
+from src.contexts.save.infrastructure.catalog_sources.bravova_profile import (  # noqa: E402
+    GENERIC_SECTIONS,
+)
 
 # Política de ambigüedad — espeja la regla sagrada del módulo: ante duda, NO inventar.
 MAJORITY = 0.70   # la sección dominante debe llevarse al menos este porcentaje
