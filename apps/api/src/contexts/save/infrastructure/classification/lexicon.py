@@ -154,6 +154,37 @@ def _tokens(text: str) -> list[str]:
     return [stem for _, stem in _tokens_with_surface(text)]
 
 
+# «X de Y» nombra la clase X hecha CON Y: en `Fideo De Arroz` el arroz es el INGREDIENTE. El
+# complemento se descarta al CONSULTAR — nunca al construir el índice, porque 12 hojas se llaman así
+# (`Sustituto De Carne`, `Pulpa De Frutas`) y `carne` es justo lo que las identifica.
+_COMPLEMENT_MARKERS = ("de", "del")
+
+
+def _query_tokens_with_surface(text: str) -> list[tuple[str, str]]:
+    """Tokens de un NOMBRE DE PRODUCTO, sin el complemento de «de».
+
+    Medido 2026-08-02 sobre el corpus: 13 nombres pasan de abstenerse a resolver bien y 12 falsos
+    positivos dejan de auto-enlazarse, sin un solo cambio de hoja. No se usa para la señal de ORIGEN
+    (`lexicon_match_path`): en un path «de» marca el ÁMBITO —«Accesorios y Utensilios de Limpieza»—
+    y descartarlo deja que `accesorio` decida solo, que es peor que abstenerse.
+    """
+    crudos = slugify(text).split("-")
+    pares = []
+    for i, surface in enumerate(crudos):
+        if i > 0 and crudos[i - 1] in _COMPLEMENT_MARKERS:
+            continue
+        stem = _singular(surface)
+        if len(stem) >= _MIN_TOKEN_LEN and stem not in _STOPWORDS:
+            pares.append((surface, stem))
+    return pares
+
+
+def _decide(tokens: list[str], index: LexiconIndex) -> tuple[str, float] | None:
+    """Hoja única entre los tokens, o `None` si hay ambigüedad o no pega ninguno."""
+    hits = {index[token] for token in tokens if token in index}
+    return (next(iter(hits)), LEXICON_CONFIDENCE) if len(hits) == 1 else None
+
+
 def build_lexicon_index(
     leaves: list[tuple[str, str]], demoted: frozenset[str] | None = None
 ) -> LexiconIndex:
@@ -198,11 +229,12 @@ def build_lexicon_index(
 
 
 def lexicon_match(name: str, index: LexiconIndex) -> tuple[str, float] | None:
-    """Nombre del producto → (leaf_node_id, confianza) si pega tokens de UNA sola hoja; si no None."""
-    hits = {index[token] for token in _tokens(name) if token in index}
-    if len(hits) == 1:
-        return next(iter(hits)), LEXICON_CONFIDENCE
-    return None
+    """Nombre del producto → (leaf_node_id, confianza) si pega tokens de UNA sola hoja; si no None.
+
+    El complemento de «de» no decide: nombra el material, no la clase (ver
+    `_query_tokens_with_surface`).
+    """
+    return _decide([stem for _, stem in _query_tokens_with_surface(name)], index)
 
 
 def matched_tokens(name: str, index: LexiconIndex) -> tuple[str, ...]:
@@ -212,18 +244,23 @@ def matched_tokens(name: str, index: LexiconIndex) -> tuple[str, ...]:
     sólo observa. Sirve para responder "¿qué token causó esta decisión?" sin reproducir la cascada —
     la pregunta que hoy obliga a re-correr el clasificador producto por producto.
     """
-    return tuple(surface for surface, stem in _tokens_with_surface(name) if stem in index)
+    return tuple(surface for surface, stem in _query_tokens_with_surface(name) if stem in index)
 
 
 def lexicon_match_path(source_category: str, index: LexiconIndex) -> tuple[str, float] | None:
     """Categoría de ORIGEN (path jerárquico "A > B > C") → hoja. Matchear el string entero mezcla
     tokens de varios niveles y crea ambigüedad falsa; se matchea segmento a segmento, del más
     específico (hondo) al general, tomando el primer hit inequívoco. Compartido por el clasificador
-    (`ClassifyStoreProduct`) y el matcher (category gate/boost, Etapa C)."""
+    (`ClassifyStoreProduct`) y el matcher (category gate/boost, Etapa C).
+
+    Deliberadamente NO descarta el complemento de «de» como hace `lexicon_match`: en un path «de»
+    marca el ÁMBITO, no el material. Medido sobre 94 `source_category` reales, aplicarlo cambia una
+    sola y la empeora — «Accesorios y Utensilios de Limpieza» dejaría decidir a `accesorio` solo y
+    caería en «Accesorios De Baño», cuando abstenerse era lo correcto."""
     if not source_category:
         return None
     for segment in reversed(source_category.split(" > ")):
-        hit = lexicon_match(segment, index)
+        hit = _decide(_tokens(segment), index)
         if hit is not None:
             return hit
     return None
