@@ -16,21 +16,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui-base/tooltip";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TruncatedText } from "@/features/admin/components/TruncatedText";
 import { AdminDateTime } from "@/features/admin/components/AdminDateTime";
 import type { Locale } from "@/i18n/config";
 import { format, type MessageKey } from "@/i18n/messages";
 
 import { createAssetPolicy, listPipelineAssets } from "../api";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 
 type T = (key: MessageKey) => string;
 
@@ -61,18 +53,6 @@ const PARTS_NOUN_KEY: Record<string, MessageKey> = {
 };
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
-
-/** Ventana de páginas alrededor de la actual (evita pintar 40 botones). Misma que la consola. */
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}
 
 /** Tres estados REALMENTE distintos, y ninguno se puede confundir con otro:
  *  - `loading`      — se está preguntando
@@ -308,61 +288,22 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
 
       {/* Pie de paginación — mismo patrón que la tab Proveedores y que Fuentes, para que el admin no
           termine con dos gramáticas de tabla distintas. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span>{t("admin.orchestration.pagination.show")}</span>
-          <Select value={String(limit)} onValueChange={(v) => { setLimit(Number(v)); setOffset(0); }}>
-            <SelectTrigger size="sm" className="w-16">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {pageSizeOptions.map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span>{t("admin.orchestration.pagination.perPage")}</span>
-        </div>
-
-        <span data-testid="assets-pagination-range">
-          {format(locale, "admin.orchestration.pagination.of", {
+      <AdminTableFooter
+        limit={limit}
+        onLimitChange={setLimit}
+        pageSizeOptions={pageSizeOptions}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={(pg) => setOffset((pg - 1) * limit)}
+        rangeLabel={format(locale, "admin.orchestration.pagination.of", {
             from: String(from),
             to: String(to),
             total: String(total),
           })}
-        </span>
-
-        <Pagination className="mx-0 w-auto justify-end">
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-                aria-disabled={currentPage <= 1}
-                className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-              />
-            </PaginationItem>
-            {pageWindow(currentPage, totalPages).map((pg) => (
-              <PaginationItem key={pg}>
-                <PaginationLink
-                  isActive={pg === currentPage}
-                  onClick={() => setOffset((pg - 1) * limit)}
-                >
-                  {pg}
-                </PaginationLink>
-              </PaginationItem>
-            ))}
-            <PaginationItem>
-              <PaginationNext
-                onClick={() => setOffset(offset + limit)}
-                aria-disabled={currentPage >= totalPages}
-                className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      </div>
+        showLabel={t("admin.orchestration.pagination.show")}
+        perPageLabel={t("admin.orchestration.pagination.perPage")}
+        rangeTestId="assets-pagination-range"
+      />
     </div>
   );
 }

@@ -18,14 +18,6 @@ import {
 } from "@/components/ui-base/table";
 import { Input } from "@/components/ui/input";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -49,6 +41,7 @@ import {
   unlinkStoreProduct,
 } from "../api";
 import { ADMIN_DECIDED_BY } from "@/features/admin/resources/save-matching/lib/decided-by";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 
 type T = (key: MessageKey) => string;
 
@@ -217,81 +210,25 @@ export function ProvidersPanel({
           </p>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span>{t("admin.canonicalProducts.pagination.show")}</span>
-            <Select
-              value={String(limit)}
-              onValueChange={(v) => {
-                setLimit(Number(v));
-                setPage(1);
-              }}
-            >
-              <SelectTrigger size="sm" className="w-16">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span>{t("admin.canonicalProducts.pagination.perPage")}</span>
-          </div>
-
-          <span data-testid="providers-range">
-            {format(locale, "admin.canonicalProducts.pagination.of", {
-              from: String(from),
-              to: String(to),
-              total: String(total),
-            })}
-          </span>
-
-          <Pagination className="mx-0 w-auto justify-end">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setPage(Math.max(1, currentPage - 1))}
-                  aria-disabled={currentPage <= 1}
-                  className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-                />
-              </PaginationItem>
-              {pageWindow(currentPage, totalPages).map((n) => (
-                <PaginationItem key={n}>
-                  <PaginationLink isActive={n === currentPage} onClick={() => setPage(n)}>
-                    {n}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
-                  aria-disabled={currentPage >= totalPages}
-                  className={
-                    currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined
-                  }
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
+        <AdminTableFooter
+          limit={limit}
+          onLimitChange={setLimit}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          rangeLabel={format(locale, "admin.canonicalProducts.pagination.of", {
+            from: String(from),
+            to: String(to),
+            total: String(total),
+          })}
+          showLabel={t("admin.canonicalProducts.pagination.show")}
+          perPageLabel={t("admin.canonicalProducts.pagination.perPage")}
+          rangeTestId="providers-range"
+        />
       </div>
     </div>
   );
-}
-
-/** Ventana deslizante de páginas — mismo helper que la lista canónica y Sources. */
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
 function Tile({

@@ -6,18 +6,11 @@ import { useData } from "vike-react/useData";
 import { toast } from "sonner";
 import { navigate } from "vike/client/router";
 
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE } from "@/i18n/config";
 import { format, type MessageKey } from "@/i18n/messages";
@@ -702,60 +695,17 @@ export function ReviewQueueListScreen() {
         <p className="px-4 py-6 text-sm text-muted-foreground">{t("admin.reviewQueue.empty")}</p>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span>{t("admin.reviewQueue.pagination.showing")}</span>
-          <Select
-            value={String(params.limit)}
-            onValueChange={(v) => navigateWith({ limit: Number(v), offset: 0 })}
-          >
-            <SelectTrigger size="sm" className="w-16">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {pageSizeOptions.map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span>{t("admin.reviewQueue.pagination.perPage")}</span>
-        </div>
-
-        <span>
-          {from}–{to} {t("admin.reviewQueue.pagination.of")} {total}
-        </span>
-
-        <Pagination className="mx-0 w-auto justify-end">
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={() => navigateWith({ offset: Math.max(0, params.offset - params.limit) })}
-                aria-disabled={currentPage <= 1}
-                className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-              />
-            </PaginationItem>
-            {pageNumbers.map((p) => (
-              <PaginationItem key={p}>
-                <PaginationLink
-                  isActive={p === currentPage}
-                  onClick={() => navigateWith({ offset: (p - 1) * params.limit })}
-                >
-                  {p}
-                </PaginationLink>
-              </PaginationItem>
-            ))}
-            <PaginationItem>
-              <PaginationNext
-                onClick={() => navigateWith({ offset: params.offset + params.limit })}
-                aria-disabled={currentPage >= totalPages}
-                className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      </div>
+      <AdminTableFooter
+        limit={params.limit}
+        onLimitChange={(n) => navigateWith({ limit: n, offset: 0 })}
+        pageSizeOptions={pageSizeOptions}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={(pg) => navigateWith({ offset: (pg - 1) * params.limit })}
+        rangeLabel={`${from}–${to} ${t("admin.reviewQueue.pagination.of")} ${total}`}
+        showLabel={t("admin.reviewQueue.pagination.showing")}
+        perPageLabel={t("admin.reviewQueue.pagination.perPage")}
+      />
       </div>
       </div>
 

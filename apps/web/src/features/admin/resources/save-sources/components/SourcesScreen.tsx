@@ -13,18 +13,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-base/dropdown-menu";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
 import { format, type MessageKey } from "@/i18n/messages";
@@ -149,58 +142,21 @@ export function SourcesScreen() {
     ) : null;
 
   const footerEl = (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-      <div className="flex items-center gap-2">
-        <span>{t("admin.sources.pagination.show")}</span>
-        <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-          <SelectTrigger size="sm" className="w-16">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {pageSizeOptions.map((n) => (
-              <SelectItem key={n} value={String(n)}>
-                {n}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span>{t("admin.sources.pagination.perPage")}</span>
-      </div>
-
-      <span>
-        {format(locale, "admin.sources.pagination.of", {
-          from: String(from),
-          to: String(to),
-          total: String(total),
-        })}
-      </span>
-
-      <Pagination className="mx-0 w-auto justify-end">
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              onClick={() => setOffset(Math.max(0, offset - limit))}
-              aria-disabled={currentPage <= 1}
-              className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-            />
-          </PaginationItem>
-          {pageWindow(currentPage, totalPages).map((p) => (
-            <PaginationItem key={p}>
-              <PaginationLink isActive={p === currentPage} onClick={() => setOffset((p - 1) * limit)}>
-                {p}
-              </PaginationLink>
-            </PaginationItem>
-          ))}
-          <PaginationItem>
-            <PaginationNext
-              onClick={() => setOffset(offset + limit)}
-              aria-disabled={currentPage >= totalPages}
-              className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-            />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
-    </div>
+    <AdminTableFooter
+      limit={limit}
+      onLimitChange={setLimit}
+      pageSizeOptions={pageSizeOptions}
+      currentPage={currentPage}
+      totalPages={totalPages}
+      onPageChange={(pg) => setOffset((pg - 1) * limit)}
+      rangeLabel={format(locale, "admin.sources.pagination.of", {
+            from: String(from),
+            to: String(to),
+            total: String(total),
+          })}
+      showLabel={t("admin.sources.pagination.show")}
+      perPageLabel={t("admin.sources.pagination.perPage")}
+    />
   );
 
   return (
@@ -415,13 +371,3 @@ function SortableHeader({ label, state, onToggle }: { label: ReactNode; state: S
   );
 }
 
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}

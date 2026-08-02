@@ -18,17 +18,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui-base/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
@@ -64,17 +56,6 @@ const LIVE_POLL_MS = 5_000;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 /** Ventana de páginas alrededor de la actual (evita pintar 40 botones). */
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}
-
 /** Qué confirmación está abierta. `null` = ninguna. */
 type Pending =
   | { kind: "cancel"; policyId: string; runId: string }
@@ -428,61 +409,22 @@ export function OrchestrationScreen() {
 
             {/* Footer de paginación — mismo patrón que Fuentes: tamaño de página, rango y páginas.
                 Pagina lo FILTRADO, no la lista cruda: el rango tiene que cuadrar con lo que se ve. */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <span>{t("admin.orchestration.pagination.show")}</span>
-                <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-                  <SelectTrigger size="sm" className="w-16">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pageSizeOptions.map((n) => (
-                      <SelectItem key={n} value={String(n)}>
-                        {n}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span>{t("admin.orchestration.pagination.perPage")}</span>
-              </div>
-
-              <span data-testid="pagination-range">
-                {format(locale, "admin.orchestration.pagination.of", {
-                  from: String(from),
-                  to: String(to),
-                  total: String(total),
-                })}
-              </span>
-
-              <Pagination className="mx-0 w-auto justify-end">
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      onClick={() => setOffset(Math.max(0, offset - limit))}
-                      aria-disabled={currentPage <= 1}
-                      className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-                    />
-                  </PaginationItem>
-                  {pageWindow(currentPage, totalPages).map((pg) => (
-                    <PaginationItem key={pg}>
-                      <PaginationLink
-                        isActive={pg === currentPage}
-                        onClick={() => setOffset((pg - 1) * limit)}
-                      >
-                        {pg}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext
-                      onClick={() => setOffset(offset + limit)}
-                      aria-disabled={currentPage >= totalPages}
-                      className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            </div>
+            <AdminTableFooter
+              limit={limit}
+              onLimitChange={setLimit}
+              pageSizeOptions={pageSizeOptions}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={(pg) => setOffset((pg - 1) * limit)}
+              rangeLabel={format(locale, "admin.orchestration.pagination.of", {
+                from: String(from),
+                to: String(to),
+                total: String(total),
+              })}
+              showLabel={t("admin.orchestration.pagination.show")}
+              perPageLabel={t("admin.orchestration.pagination.perPage")}
+              rangeTestId="pagination-range"
+            />
           </div>
         )}
           </>
