@@ -20,7 +20,7 @@ import { providerLogoByName } from "@/features/save/lib/provider-logos";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE } from "@/i18n/config";
-import { format } from "@/i18n/messages";
+import { format, type MessageKey } from "@/i18n/messages";
 
 import {
   bulkResolveReviewMatches,
@@ -153,21 +153,121 @@ export function ReviewQueueListScreen() {
     }
   }
 
+  // Orden de la cascada, para que el desglose se lea como el proceso que ocurrió y no como un
+  // diccionario alfabético: primero lo barato y determinista, al final lo caro.
+  const CLASSIFY_STAGES = ["lexicon", "source", "source_name", "vector", "llm"] as const;
+
   async function handleBulkClassify() {
     const ids = [...selected];
     if (ids.length === 0 || bulkBusy) return;
     setBulkBusy(true);
+    // Toast persistente mientras corre: la cascada puede llamar al juez LLM, y sin esto una espera
+    // de varios segundos se lee como que el botón no hizo nada.
+    const toastId = toast.loading(
+      format(locale, "admin.reviewQueue.classify.running", { n: String(ids.length) }),
+    );
     try {
       const result = await classifySelected(ids);
       if (result) {
-        const parts = [format(locale, "admin.reviewQueue.classify.done", { n: String(result.classified) })];
+        // Plural: "1 clasificada" y no "1 clasificadas". Es lo primero que se lee del toast y
+        // leerlo mal conjugado hace dudar de todo lo demás.
+        const plural = (n: number, many: MessageKey, one: MessageKey) =>
+          format(locale, n === 1 ? one : many, { n: String(n) });
+
+        const head = [
+          plural(
+            result.classified,
+            "admin.reviewQueue.classify.done",
+            "admin.reviewQueue.classify.doneOne",
+          ),
+        ];
         if (result.undecided > 0) {
-          parts.push(format(locale, "admin.reviewQueue.classify.undecided", { n: String(result.undecided) }));
+          head.push(
+            plural(
+              result.undecided,
+              "admin.reviewQueue.classify.undecided",
+              "admin.reviewQueue.classify.undecidedOne",
+            ),
+          );
         }
         if (result.failed.length > 0) {
-          parts.push(format(locale, "admin.reviewQueue.classify.failed", { n: String(result.failed.length) }));
+          head.push(
+            format(locale, "admin.reviewQueue.classify.failed", {
+              n: String(result.failed.length),
+            }),
+          );
         }
-        toast(parts.join(" · "));
+
+        // QUÉ etapa resolvió cada una, y POR QUÉ no se decidieron las demás. No es adorno: es la
+        // única forma de ver desde la consola si el juez LLM llegó a participar.
+        const porEtapa = new Map<string, number>();
+        const porMotivo = new Map<string, number>();
+        for (const row of result.rows ?? []) {
+          const destino = row.taxonomy_node_id ? porEtapa : porMotivo;
+          const clave = row.taxonomy_node_id
+            ? row.method
+            : row.method === "conflict"
+              ? "conflict"
+              : "none";
+          destino.set(clave, (destino.get(clave) ?? 0) + 1);
+        }
+
+        // El NÚMERO va delante de la etiqueta, no detrás: "1 juez LLM" se lee; "juez LLM 1" no.
+        const chips: { key: string; n: number; label: string; tone: "ok" | "muted" }[] = [];
+        for (const etapa of CLASSIFY_STAGES) {
+          const n = porEtapa.get(etapa);
+          if (!n) continue;
+          chips.push({
+            key: etapa,
+            n,
+            label: format(locale, `admin.reviewQueue.classify.stage.${etapa}` as MessageKey, {}),
+            tone: "ok",
+          });
+        }
+        for (const motivo of ["conflict", "none"] as const) {
+          const n = porMotivo.get(motivo);
+          if (!n) continue;
+          chips.push({
+            key: motivo,
+            n,
+            label: format(locale, `admin.reviewQueue.classify.why.${motivo}` as MessageKey, {}),
+            tone: "muted",
+          });
+        }
+
+        toast.success(head.join(" · "), {
+          id: toastId,
+          description:
+            chips.length > 0 ? (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {chips.map((c) => (
+                  <span
+                    key={c.key}
+                    data-chip
+                    className={
+                      // `inline-block`, NO `inline-flex`: el chip separa número y etiqueta con un
+                      // espacio REAL (ver abajo), y en un contenedor flex ese espacio DESAPARECE —
+                      // la spec dice que un ítem anónimo que contiene sólo espacios en blanco no se
+                      // renderiza. Con `inline-flex` se veía «1sin señal suficiente» pegado, y
+                      // ningún test lo atrapaba porque en el DOM el espacio está: sólo se pierde al
+                      // maquetar. Bug visual reportado desde la consola 2026-08-01.
+                      "inline-block rounded-full px-2 py-0.5 text-xs font-medium align-middle " +
+                      (c.tone === "ok"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                        : "bg-muted text-muted-foreground")
+                    }
+                  >
+                    {/* Espacio REAL, no `gap`: el chip se copia y lo leen los lectores de
+                        pantalla, y "2léxico" no se entiende en ninguno de los dos casos. */}
+                    <span className="tabular-nums font-semibold">{c.n}</span>{" "}
+                    {c.label}
+                  </span>
+                ))}
+              </div>
+            ) : undefined,
+        });
+      } else {
+        toast.dismiss(toastId);
       }
       await refreshOrWarn();
     } finally {

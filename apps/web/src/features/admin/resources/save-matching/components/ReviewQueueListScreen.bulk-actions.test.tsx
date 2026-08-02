@@ -22,8 +22,22 @@ vi.mock("vike-react/usePageContext", () => ({
 vi.mock("vike/client/router", () => ({ navigate: vi.fn() }));
 // `toast` de sonner se pinta en un PORTAL que estos tests no montan; se espía la
 // llamada, que es donde vive el contrato (qué resumen ve el operador).
-const toast = vi.fn();
-vi.mock("sonner", () => ({ toast: (...args: unknown[]) => toast(...args) }));
+const toast = vi.fn() as ReturnType<typeof vi.fn> & {
+  loading: ReturnType<typeof vi.fn>;
+  success: ReturnType<typeof vi.fn>;
+  dismiss: ReturnType<typeof vi.fn>;
+};
+// `loading`/`success`/`dismiss` no son adorno del mock: el handler de clasificar abre un toast
+// PERSISTENTE y después lo reemplaza por el id, para que una espera con llamada al juez LLM no se
+// lea como que el botón no hizo nada.
+toast.loading = vi.fn(() => "toast-1");
+toast.success = vi.fn();
+toast.dismiss = vi.fn();
+vi.mock("sonner", () => ({ toast: Object.assign((...args: unknown[]) => toast(...args), {
+  loading: (...args: unknown[]) => toast.loading(...args),
+  success: (...args: unknown[]) => toast.success(...args),
+  dismiss: (...args: unknown[]) => toast.dismiss(...args),
+}) }));
 
 const bulkResolveReviewMatches = vi.fn();
 const fetchTopCandidateId = vi.fn();
@@ -70,6 +84,9 @@ describe("ReviewQueueListScreen bulk actions", () => {
     fetchReviewQueue.mockReset();
     resolveBrandsSelected.mockReset();
     toast.mockReset();
+    toast.loading.mockReset().mockReturnValue("toast-1");
+    toast.success.mockReset();
+    toast.dismiss.mockReset();
     fetchReviewQueue.mockResolvedValue({ rows: [], total: 0 });
     mockData = {
       rows: [row({ match_id: "m1" }), row({ match_id: "m2", store_product_name: "Aceite Mazorca" })],
@@ -177,5 +194,83 @@ describe("ReviewQueueListScreen bulk actions", () => {
     fireEvent.click(screen.getByText("Clasificar marcas"));
 
     await waitFor(() => expect(toast).toHaveBeenCalledWith("2 con marca"));
+  });
+
+  it("muestra QUÉ etapa de la cascada resolvió cada producto", async () => {
+    // El desglose no es adorno: es la única forma de ver desde la consola si el juez LLM llegó a
+    // participar o si todo lo resolvieron las etapas deterministas y baratas.
+    classifySelected.mockResolvedValue({
+      classified: 4,
+      undecided: 1,
+      failed: [],
+      rows: [
+        { match_id: "m1", taxonomy_node_id: "n1", method: "lexicon" },
+        { match_id: "m2", taxonomy_node_id: "n2", method: "lexicon" },
+        { match_id: "m3", taxonomy_node_id: "n3", method: "llm" },
+        { match_id: "m4", taxonomy_node_id: "n4", method: "source" },
+        { match_id: "m5", taxonomy_node_id: null, method: "none" },
+      ],
+    });
+
+    render(<ReviewQueueListScreen />);
+    fireEvent.click(screen.getByTestId("row-select-m1"));
+    fireEvent.click(screen.getByRole("button", { name: "Acciones" }));
+    fireEvent.click(screen.getByText("Clasificar seleccionados"));
+
+    // Mientras corre: toast persistente, no silencio.
+    await waitFor(() => expect(toast.loading).toHaveBeenCalled());
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "4 clasificadas · 1 sin decidir",
+        expect.objectContaining({ id: "toast-1" }),
+      ),
+    );
+
+    // El desglose es un nodo con chips, no texto: se renderiza para verificarlo. El NÚMERO va
+    // delante de la etiqueta ("1 juez LLM"), que es lo que hacía ilegible la versión anterior.
+    const { description } = toast.success.mock.calls[0][1] as { description: React.ReactNode };
+    const { container } = render(<>{description}</>);
+    // Se selecciona por `data-chip`, no por la clase de display: la clase es una decisión de
+    // MAQUETADO (tuvo que dejar de ser `inline-flex` porque el flex se comía el espacio entre el
+    // número y la etiqueta) y un test no debería romperse al cambiarla.
+    const chips = [...container.querySelectorAll("[data-chip]")].map((n) =>
+      n.textContent?.replace(/\s+/g, " ").trim(),
+    );
+    // Orden de CASCADA, no alfabético: se lee como el proceso que ocurrió.
+    expect(chips).toEqual(["2 léxico", "1 categoría de la tienda", "1 juez LLM", "1 sin señal suficiente"]);
+  });
+
+  it("las filas sin decidir no inflan el desglose por etapa", async () => {
+    // Una fila sin hoja trae `method` igual (p.ej. "conflict"), y contarla diría que una etapa
+    // "resolvió" algo que no resolvió.
+    classifySelected.mockResolvedValue({
+      classified: 1, undecided: 2, failed: [],
+      rows: [
+        { match_id: "m1", taxonomy_node_id: "n1", method: "lexicon" },
+        { match_id: "m2", taxonomy_node_id: null, method: "conflict" },
+        { match_id: "m3", taxonomy_node_id: null, method: "none" },
+      ],
+    });
+
+    render(<ReviewQueueListScreen />);
+    fireEvent.click(screen.getByTestId("row-select-m1"));
+    fireEvent.click(screen.getByRole("button", { name: "Acciones" }));
+    fireEvent.click(screen.getByText("Clasificar seleccionados"));
+
+    // Plural correcto: "1 clasificada", no "1 clasificadas".
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("1 clasificada · 2 sin decidir", expect.anything()),
+    );
+
+    const { description } = toast.success.mock.calls[0][1] as { description: React.ReactNode };
+    const { container } = render(<>{description}</>);
+    // Se selecciona por `data-chip`, no por la clase de display: la clase es una decisión de
+    // MAQUETADO (tuvo que dejar de ser `inline-flex` porque el flex se comía el espacio entre el
+    // número y la etiqueta) y un test no debería romperse al cambiarla.
+    const chips = [...container.querySelectorAll("[data-chip]")].map((n) =>
+      n.textContent?.replace(/\s+/g, " ").trim(),
+    );
+    expect(chips).toEqual(["1 léxico", "1 señales en conflicto", "1 sin señal suficiente"]);
   });
 });

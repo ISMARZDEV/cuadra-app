@@ -400,12 +400,22 @@ type MessageKey =
   | "admin.reviewQueue.canonize.next"
   | "admin.toolbar.actions.approve.noCandidates"
   | "admin.reviewQueue.classify.done"
+  | "admin.reviewQueue.classify.doneOne"
+  | "admin.reviewQueue.classify.undecidedOne"
   | "admin.reviewQueue.brands.done"
   | "admin.reviewQueue.brands.skipped"
   | "admin.reviewQueue.brands.unresolved"
   | "admin.reviewQueue.brands.failed"
   | "admin.reviewQueue.classify.undecided"
   | "admin.reviewQueue.classify.failed"
+  | "admin.reviewQueue.classify.running"
+  | "admin.reviewQueue.classify.stage.lexicon"
+  | "admin.reviewQueue.classify.stage.source"
+  | "admin.reviewQueue.classify.stage.source_name"
+  | "admin.reviewQueue.classify.stage.vector"
+  | "admin.reviewQueue.classify.stage.llm"
+  | "admin.reviewQueue.classify.why.conflict"
+  | "admin.reviewQueue.classify.why.none"
   | "admin.method.ean"
   | "admin.method.trgm"
   | "admin.method.vector"
@@ -1456,12 +1466,22 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.canonize.next": "Página siguiente",
     "admin.toolbar.actions.approve.noCandidates": "Ninguna de las filas seleccionadas tiene candidatos. Usá \"Aprobar y crear canónico\".",
     "admin.reviewQueue.classify.done": "{n} clasificadas",
+    "admin.reviewQueue.classify.doneOne": "{n} clasificada",
+    "admin.reviewQueue.classify.undecidedOne": "{n} sin decidir",
     "admin.reviewQueue.brands.done": "{n} con marca",
     "admin.reviewQueue.brands.skipped": "{n} ya tenían",
     "admin.reviewQueue.brands.unresolved": "{n} sin reconocer",
     "admin.reviewQueue.brands.failed": "{n} con error",
     "admin.reviewQueue.classify.undecided": "{n} sin decidir",
     "admin.reviewQueue.classify.failed": "{n} con error",
+    "admin.reviewQueue.classify.running": "Clasificando {n} productos…",
+    "admin.reviewQueue.classify.stage.lexicon": "léxico",
+    "admin.reviewQueue.classify.stage.source": "categoría de la tienda",
+    "admin.reviewQueue.classify.stage.source_name": "tienda + nombre",
+    "admin.reviewQueue.classify.stage.vector": "semántico",
+    "admin.reviewQueue.classify.stage.llm": "juez LLM",
+    "admin.reviewQueue.classify.why.conflict": "señales en conflicto",
+    "admin.reviewQueue.classify.why.none": "sin señal suficiente",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Similitud de texto",
     "admin.method.vector": "Vector",
@@ -2512,12 +2532,22 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.canonize.next": "Next page",
     "admin.toolbar.actions.approve.noCandidates": "None of the selected rows has candidates. Use \"Approve and create canonical\".",
     "admin.reviewQueue.classify.done": "{n} classified",
+    "admin.reviewQueue.classify.doneOne": "{n} classified",
+    "admin.reviewQueue.classify.undecidedOne": "{n} undecided",
     "admin.reviewQueue.brands.done": "{n} branded",
     "admin.reviewQueue.brands.skipped": "{n} already had one",
     "admin.reviewQueue.brands.unresolved": "{n} not recognised",
     "admin.reviewQueue.brands.failed": "{n} failed",
     "admin.reviewQueue.classify.undecided": "{n} undecided",
     "admin.reviewQueue.classify.failed": "{n} failed",
+    "admin.reviewQueue.classify.running": "Classifying {n} products…",
+    "admin.reviewQueue.classify.stage.lexicon": "lexicon",
+    "admin.reviewQueue.classify.stage.source": "store category",
+    "admin.reviewQueue.classify.stage.source_name": "store + name",
+    "admin.reviewQueue.classify.stage.vector": "semantic",
+    "admin.reviewQueue.classify.stage.llm": "LLM judge",
+    "admin.reviewQueue.classify.why.conflict": "conflicting signals",
+    "admin.reviewQueue.classify.why.none": "no clear signal",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Text similarity",
     "admin.method.vector": "Vector",
@@ -3568,12 +3598,22 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.reviewQueue.canonize.next": "Próxima página",
     "admin.toolbar.actions.approve.noCandidates": "Nenhuma das linhas selecionadas tem candidatos. Use \"Aprovar e criar canônico\".",
     "admin.reviewQueue.classify.done": "{n} classificadas",
+    "admin.reviewQueue.classify.doneOne": "{n} classificada",
+    "admin.reviewQueue.classify.undecidedOne": "{n} sem decidir",
     "admin.reviewQueue.brands.done": "{n} com marca",
     "admin.reviewQueue.brands.skipped": "{n} já tinham",
     "admin.reviewQueue.brands.unresolved": "{n} não reconhecidas",
     "admin.reviewQueue.brands.failed": "{n} com erro",
     "admin.reviewQueue.classify.undecided": "{n} sem decidir",
     "admin.reviewQueue.classify.failed": "{n} com erro",
+    "admin.reviewQueue.classify.running": "Classificando {n} produtos…",
+    "admin.reviewQueue.classify.stage.lexicon": "léxico",
+    "admin.reviewQueue.classify.stage.source": "categoria da loja",
+    "admin.reviewQueue.classify.stage.source_name": "loja + nome",
+    "admin.reviewQueue.classify.stage.vector": "semântico",
+    "admin.reviewQueue.classify.stage.llm": "juiz LLM",
+    "admin.reviewQueue.classify.why.conflict": "sinais em conflito",
+    "admin.reviewQueue.classify.why.none": "sem sinal suficiente",
     "admin.method.ean": "EAN",
     "admin.method.trgm": "Similaridade de texto",
     "admin.method.vector": "Vetor",
