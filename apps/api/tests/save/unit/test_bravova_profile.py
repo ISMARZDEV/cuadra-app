@@ -60,7 +60,10 @@ def test_map_bravova_item_full_fields() -> None:
         price=Money(12400, DOP),  # 124.00 → minor units, sin float
         price_type=PriceType.ONLINE,
         source="bravova",
-        category_path=("GR", "GR-003"),  # taxonomía cruda de la tienda (familia/subfamilia)
+        # El nombre de sección lo resuelve el MAPA `subfamilia → sección` (`GR-003` → «Granos»),
+        # porque el camino de canasta no manda `section_label`. Los códigos crudos se conservan
+        # detrás como fallback.
+        category_path=("Granos", "GR", "GR-003"),
         ean=None,  # associatedEan vacío
         url=None,
         #  → Bravo declara DOS imágenes y la URL lleva índice; antes se
@@ -203,3 +206,114 @@ def test_list_payload_without_eans_maps_to_no_ean() -> None:
     item = {"idexternoArticulo": "9", "nombreArticulo": "X", "associatedPvp": 100}
 
     assert map_bravova_item(item, "p1", "DO").ean is None
+
+
+# --- Nombre de sección como categoría de ORIGEN (2026-08-01) ----------------------------------
+#
+# `_category_path` devolvía sólo `(familiaArticulo, subfamiliaArticulo)` = `('FV','FV-005')`: códigos
+# internos que no significan nada fuera de Bravo. Medido sobre la cola real, eso dejaba **235
+# productos (33% de lo no clasificado) sin ninguna señal de origen**, porque el clasificador cruza
+# ORIGEN contra NOMBRE y de Bravo el origen no aportaba nada. `RABANO ROJO LB` llegaba con
+# `FV > FV-005` y moría en «sin señal suficiente».
+#
+# Bravo publica los nombres en `/public/seccion/list` («Frutas y vegetales», «Víveres») y el adapter
+# YA navega por sección, así que los conoce sin pagar una request extra.
+
+
+def test_the_section_name_leads_the_category_path() -> None:
+    entry = map_bravova_item(
+        {"nombreArticulo": "RABANO ROJO LB", "associatedPvp": 65,
+         "familiaArticulo": "FV", "subfamiliaArticulo": "FV-005"},
+        "p-bravo", "DO", "Frutas y vegetales",
+    )
+    # El nombre PRIMERO: `lexicon_match_path` recorre los segmentos del más hondo al más general,
+    # así que los códigos se prueban antes y —al no pegar nunca— caen al nombre sin taparlo.
+    assert entry.category_path == ("Frutas y vegetales", "FV", "FV-005")
+
+
+def test_without_a_section_label_the_map_resolves_it() -> None:
+    """El camino de CANASTA (el único que corre hoy) no navega secciones, así que nunca manda
+    `section_label` — y ahí entra el mapa. Es el caso reportado por el usuario: `RABANO ROJO LB`
+    llegaba como `FV > FV-005` y no aportaba señal de origen."""
+    entry = map_bravova_item(
+        {"nombreArticulo": "RABANO ROJO LB", "associatedPvp": 65,
+         "familiaArticulo": "FV", "subfamiliaArticulo": "FV-005"},
+        "p-bravo", "DO", "",
+    )
+    assert entry.category_path == ("Frutas y vegetales", "FV", "FV-005")
+
+
+def test_an_unmapped_subfamily_keeps_only_the_raw_codes() -> None:
+    """Subfamilia ambigua o nueva → NO está en el mapa → no se inventa sección. Los códigos se
+    conservan (algo de señal es mejor que ninguna) y el producto cae al nombre/vector/juez."""
+    entry = map_bravova_item(
+        {"nombreArticulo": "PRODUCTO RARO", "associatedPvp": 10,
+         "familiaArticulo": "ZZ", "subfamiliaArticulo": "ZZ-999"},
+        "p-bravo", "DO", "",
+    )
+    assert entry.category_path == ("ZZ", "ZZ-999")
+
+
+def test_the_browse_section_label_wins_over_the_map() -> None:
+    """Precedencia: lo que dice el browse es EXACTO (navegó esa sección); el mapa es derivado por
+    voto. Si ambos hablan, gana el exacto."""
+    entry = map_bravova_item(
+        {"nombreArticulo": "X", "associatedPvp": 1,
+         "familiaArticulo": "FV", "subfamiliaArticulo": "FV-005"},
+        "p-bravo", "DO", "Alimentación general",
+    )
+    assert entry.category_path[0] == "Alimentación general"
+
+
+def test_a_blank_section_label_is_treated_as_absent() -> None:
+    entry = map_bravova_item(
+        {"nombreArticulo": "X", "associatedPvp": 1, "familiaArticulo": "GR"},
+        "p-bravo", "DO", "   ",
+    )
+    assert entry.category_path == ("GR",)
+
+
+def test_the_profile_declares_where_the_section_names_live() -> None:
+    """Verificado contra el API real: exige `showOrder` con OTRO valor que el browse, y
+    `paginationMaxItems=200` da `typeMismatch` (100 sí)."""
+    assert BRAVOVA_PROFILE.section_catalog_path == "/public/seccion/list"
+    assert BRAVOVA_PROFILE.section_id_key == "idSeccion"
+    assert BRAVOVA_PROFILE.section_name_key == "nombreSeccion"
+    params = dict(BRAVOVA_PROFILE.section_catalog_params)
+    assert params["showOrder"] == "ordenSeccion asc"
+    assert int(params["paginationMaxItems"]) <= 100
+
+
+def test_the_metatag_becomes_the_most_specific_segment() -> None:
+    """`metatagArticulo` es la palabra clave que Bravo ya normalizó para su buscador.
+
+    Medido 2026-08-01 sobre 1025 artículos de TODAS las secciones: presente en el 35%, y sumarlo al
+    path da **+63 productos que empiezan a resolver, 0 que dejan de resolver** y sólo 3 que cambian
+    de hoja. Ganancias típicas: `DOÑA GALLINA CALDO`→Caldos & Sopas, `MUBRAVO QUESO DE FREIR`→Queso,
+    `BRAVO LECHE EVAPORADA`→Leches Condensadas & Evaporadas, `EMILIOS HOT DOG`→Salchichas.
+
+    Va ÚLTIMO en la tupla, o sea que `lexicon_match_path` lo prueba PRIMERO (recorre hondo→general).
+    Es lo más específico que manda la tienda: la sección dice «Lácteos» y el metatag dice `queso`.
+
+    COSTO CONOCIDO: en los 3 casos que cambian, el metatag y la sección discrepan y gana el metatag.
+    Acierta en uno (`ARO VAINILLA Y PASAS`: Galletas → Bizcochos) y falla en otro
+    (`BRAVO CLAVO DULCE`: Especias → Dulces Típicos por el metatag `dulce`; el clavo dulce es una
+    especia). 3 de 1025 = 0.3%, con el saldo global +63/−0.
+    """
+    entry = map_bravova_item(
+        {"nombreArticulo": "MUBRAVO QUESO DE FREIR LB", "associatedPvp": 250,
+         "familiaArticulo": "LA", "subfamiliaArticulo": "LA-004",
+         "metatagArticulo": "queso"},
+        "p-bravo", "DO", "Lácteos",
+    )
+    assert entry.category_path == ("Lácteos", "LA", "LA-004", "queso")
+
+
+def test_an_empty_metatag_adds_no_segment() -> None:
+    # 65% de los artículos NO lo traen: no puede aparecer un segmento vacío que ensucie el path.
+    entry = map_bravova_item(
+        {"nombreArticulo": "X", "associatedPvp": 1, "familiaArticulo": "GR",
+         "metatagArticulo": "   "},
+        "p-bravo", "DO", "Granos",
+    )
+    assert entry.category_path == ("Granos", "GR")

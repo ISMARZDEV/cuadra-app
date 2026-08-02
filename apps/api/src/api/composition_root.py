@@ -38,7 +38,9 @@ from src.contexts.save.application.resolve_brand import ResolveBrand
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
 from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.set_product_category import SetProductCategory
+from src.contexts.save.infrastructure.classification.category_judge import CategoryJudge
 from src.contexts.save.infrastructure.classification.lexicon import build_lexicon_index
+from src.contexts.save.infrastructure.matching.embeddings import build_api_embedder
 from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
@@ -137,6 +139,7 @@ from src.contexts.save.infrastructure.repositories import (
     SqlStoreProductRepository,
     SqlStoreRegistryRepository,
     SqlCategoryCandidateRepository,
+    SqlCategoryDecisionRecorder,
     SqlCategoryClassificationRepository,
     SqlTaxonomyRepository,
 )
@@ -728,9 +731,23 @@ def get_bulk_classify_review(session: Session = Depends(get_session)) -> BulkCla
         classifier=ClassifyStoreProduct(
             classifications,
             SqlCategoryCandidateRepository(session),
-            None,
-            None,
+            # Etapa VECTORIAL: endpoint HTTP en prod, modelo in-process en dev, `None` si no hay
+            # ninguno (ver `build_api_embedder`). Sin ella la cascada retornaba antes de llegar al
+            # juez, así que desde el admin «Clasificar seleccionados» nunca lo invocaba —el flag no
+            # tenía nada que ver— y la banda gris quedaba sin resolver.
+            build_api_embedder(endpoint_url=settings.save_bge_m3_endpoint_url),
+            # Mismo switch preventivo que la ingesta. Sólo se alcanza si hay embedder.
+            CategoryJudge() if settings.save_llm_judge_enabled else None,
             build_lexicon_index(leaves),
+            # La bitácora también acá: una clasificación disparada a mano desde la consola es tan
+            # digna de auditar como una de la ingesta, y sin esto el 100% de las decisiones del
+            # admin serían invisibles para la medición.
+            decisions=SqlCategoryDecisionRecorder(session),
+            # Nombres de hoja: el juez necesita PREGUNTAR por una categoría con su nombre, y el
+            # léxico sólo devuelve ids. Sin esto no puede arbitrar el conflicto origen-vs-nombre.
+            leaf_names={leaf_id: name for leaf_id, name in leaves},
+            # Gate de DEPARTAMENTO: NO se cablea. La capacidad existe y está testeada, pero el A/B
+            # con el juez encendido la desaconseja — ver `_department_of` en el use case.
         ),
     )
 

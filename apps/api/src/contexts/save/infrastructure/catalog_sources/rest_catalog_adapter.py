@@ -19,7 +19,11 @@ from ...domain.fetch_outcome import DetailUnavailable
 from ...domain.ports import RawCatalogEntry
 from .http_retry import request_with_retry
 
-MapItem = Callable[[dict, str, str], RawCatalogEntry]  # (item, provider_id, market_id)
+# (item, provider_id, market_id, section_label). `section_label` es el NOMBRE legible de la sección
+# que se está navegando ("Frutas y vegetales"), o "" si el profile no declara catálogo de secciones
+# o la sección no está en él. El browse ya conoce la sección de cada item —es el eje por el que
+# pagina—, así que dársela al mapeo no cuesta ninguna request extra.
+MapItem = Callable[[dict, str, str, str], RawCatalogEntry]
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +69,17 @@ class CatalogProfile:
     # el search: Bravo exige `score`, no `importerankingArticulo asc`).
     search_extra_params: tuple[tuple[str, str], ...] = field(default_factory=tuple)
     text_max_results: int = 20                     # cap top-N por score (una request, como Magento)
+    # CATÁLOGO DE SECCIONES (2026-08-01): endpoint que traduce el id de sección a su NOMBRE legible.
+    # `None` = la fuente no lo expone → `section_label` llega vacío y el profile decide qué hacer
+    # (retrocompat exacta). Bravo: `/public/seccion/list` → 50 secciones con `nombreSeccion`
+    # ("Frutas y vegetales", "Víveres"). Se pide UNA vez por corrida, no por página.
+    section_catalog_path: str | None = None
+    section_catalog_list_path: tuple[str, ...] = ()   # ruta a la lista, p.ej. ("data", "list")
+    section_id_key: str = ""                          # llave del id, p.ej. "idSeccion"
+    section_name_key: str = ""                        # llave del nombre, p.ej. "nombreSeccion"
+    # params del catálogo de secciones. Bravo EXIGE `showOrder` acá también, pero con otro valor que
+    # el browse (`ordenSeccion asc`), así que no reusa `extra_params`.
+    section_catalog_params: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
 
 def _dig(payload: object, path: tuple[str, ...]) -> object:
@@ -115,12 +130,43 @@ class RestCatalogAdapter:
         # Espera ENTRE requests. El browse pagina secciones enteras contra UNA tienda — el caso donde
         # `round_robin_by_store` ni participa. Bravo: 41 secciones × N páginas → sin pausa, 429.
         self._pace = pace or (lambda: None)
+        # `{id: nombre}` de secciones, perezoso: `None` = todavía no se pidió (ver `_section_names`).
+        self._sections_cache: dict[str, str] | None = None
 
     @staticmethod
     def _default_get(url: str) -> dict:
         resp = request_with_retry("GET", url, timeout=30.0, headers={"User-Agent": "Cuadra/Save"})
         resp.raise_for_status()
         return resp.json()
+
+    def _section_names(self) -> dict[str, str]:
+        """`{id de sección: nombre legible}`, pedido UNA sola vez por corrida y cacheado.
+
+        Son 50 filas fijas: pedirlas por página multiplicaría las requests contra el proveedor, que
+        es exactamente lo que su rate limit castiga (41 secciones × N páginas). Si el profile no
+        declara el catálogo, o la request falla, se devuelve `{}` y todo el mundo degrada a etiqueta
+        vacía — nombrar la sección es una MEJORA de la señal de origen, nunca un requisito para
+        ingerir.
+        """
+        if self._sections_cache is not None:
+            return self._sections_cache
+        p = self._profile
+        names: dict[str, str] = {}
+        if p.section_catalog_path:
+            query = urlencode(list(p.section_catalog_params), quote_via=quote)
+            url = f"{self._base_url}{p.section_catalog_path}" + (f"?{query}" if query else "")
+            try:
+                payload = self._http_get(url) or {}
+            except Exception:  # noqa: BLE001 — una corrida no cae por no poder nombrar secciones
+                payload = {}
+            for row in _dig(payload, p.section_catalog_list_path) or []:
+                if not isinstance(row, dict):
+                    continue
+                sid, name = row.get(p.section_id_key), row.get(p.section_name_key)
+                if sid is not None and name:
+                    names[str(sid)] = str(name)
+        self._sections_cache = names
+        return names
 
     def _page_url(self, section: str, offset: int) -> str:
         p = self._profile
@@ -169,7 +215,8 @@ class RestCatalogAdapter:
         payload = self._http_get(self._ean_url(ean)) or {}
         for item in _dig(payload, p.list_path) or []:
             try:
-                yield p.map_item(item, self._provider_id, self._market_id)
+                # Sin sección: el lookup por EAN es GLOBAL sobre el catálogo, no navega secciones.
+                yield p.map_item(item, self._provider_id, self._market_id, "")
             except ValueError:
                 continue  # item sin precio → se salta, igual que en el browse
 
@@ -181,7 +228,8 @@ class RestCatalogAdapter:
         payload = self._http_get(self._search_url(text)) or {}
         for item in _dig(payload, p.list_path) or []:
             try:
-                yield p.map_item(item, self._provider_id, self._market_id)
+                # Sin sección: la búsqueda por texto también es global (endpoint `/search`).
+                yield p.map_item(item, self._provider_id, self._market_id, "")
             except ValueError:
                 continue  # item sin precio → se salta, igual que en el browse
 
@@ -193,8 +241,11 @@ class RestCatalogAdapter:
         if self._text is not None:
             yield from self._fetch_by_text(self._text)
             return
+        # El nombre de la sección se resuelve UNA vez, antes de paginar (ver `_section_names`).
+        section_names = self._section_names()
         first = True
         for section in self._sections:
+            label = section_names.get(section, "")
             offset = 0
             while True:
                 if not first:
@@ -205,7 +256,7 @@ class RestCatalogAdapter:
                 total = _dig(payload, p.total_path) or 0
                 for item in items:
                     try:
-                        yield p.map_item(item, self._provider_id, self._market_id)
+                        yield p.map_item(item, self._provider_id, self._market_id, label)
                     except ValueError:
                         continue  # item sin precio → se salta, no rompe la corrida
                 offset += self._page_size
@@ -253,6 +304,7 @@ class RestCatalogDetailAdapter:
         if not isinstance(item, dict) or not item:
             return None  # el artículo ya no está → is_available=false
         try:
-            return p.map_item(item, self._provider_id, self._market_id)
+            # Sin sección: el detalle se pide por id de artículo, fuera de todo browse.
+            return p.map_item(item, self._provider_id, self._market_id, "")
         except ValueError:
             return None

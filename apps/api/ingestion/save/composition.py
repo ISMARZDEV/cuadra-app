@@ -47,6 +47,7 @@ from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlCategoryCandidateRepository,
     SqlCategoryClassificationRepository,
+    SqlCategoryDecisionRecorder,
     SqlCategoryIndexRepository,
     SqlProviderRepository,
     SqlStoreProductRepository,
@@ -438,6 +439,8 @@ def _build_lexicon(session: Session, market_id: str):  # type: ignore[no-untyped
     return build_lexicon_index(leaves)
 
 
+
+
 def build_brand_resolver(session: Session) -> ResolveBrand:
     """Reconocedor de marca dentro del nombre (Nacional y Bravo no la publican; Sirena sí).
 
@@ -449,6 +452,23 @@ def build_brand_resolver(session: Session) -> ResolveBrand:
     return ResolveBrand(SqlCanonicalProductRepository(session))
 
 
+def _classifier_deps(session: Session):  # type: ignore[no-untyped-def]
+    """Colaboradores del clasificador derivados de la taxonomía, con UN solo `list_tree`.
+
+    El `parent_lexicon` se arma con el MISMO `build_lexicon_index` que las hojas, sólo que
+    alimentado con las RAÍCES: un token que aparece en dos departamentos se descarta por ambiguo
+    igual que a nivel hoja, así que el gate hereda gratis esa garantía.
+    """
+    from ingestion.save.sources import SAVE_MARKET  # local: evita import circular (patrón del módulo)
+
+    tree = SqlTaxonomyRepository(session).list_tree(SAVE_MARKET)
+    return (
+        {c.id: c.name for r in tree for c in r.children},                    # leaf_names
+        build_lexicon_index([(r.id, r.name) for r in tree]),                 # parent_lexicon
+        {c.id: r.id for r in tree for c in r.children},                      # leaf_to_parent
+    )
+
+
 def build_classifier(session: Session) -> ClassifyStoreProduct | None:
     """Clasificador de categoría REAL solo cuando `SAVE_CLASSIFICATION_ENABLED` está activo (ship-dark).
     Comparte la `session` del refresh. Reusa `build_embedding_provider` (mismo BGE-M3) y el juez LLM.
@@ -457,6 +477,7 @@ def build_classifier(session: Session) -> ClassifyStoreProduct | None:
         return None
     from ingestion.save.sources import SAVE_MARKET
 
+    leaf_names, parent_lexicon, leaf_to_parent = _classifier_deps(session)
     return ClassifyStoreProduct(
         SqlCategoryClassificationRepository(session),
         SqlCategoryCandidateRepository(session),
@@ -465,6 +486,14 @@ def build_classifier(session: Session) -> ClassifyStoreProduct | None:
         # llamar a una API que sabemos que no queremos usar. El léxico sigue clasificando gratis.
         CategoryJudge() if settings.save_llm_judge_enabled else None,
         _build_lexicon(session, SAVE_MARKET),
+        # Bitácora de decisiones: registra QUÉ decidió la cascada y con qué evidencia, incluidas las
+        # abstenciones (que hasta ahora no dejaban rastro y obligaban a reproducir la cascada —y a
+        # re-pagar el LLM— para saber por qué se abstuvo). No participa de ninguna decisión.
+        decisions=SqlCategoryDecisionRecorder(session),
+        # Igual que en la API: sin los nombres el juez no puede arbitrar el conflicto de señales.
+        leaf_names=leaf_names,
+        # Gate de DEPARTAMENTO: NO se cablea. La capacidad existe y está testeada, pero el A/B con
+        # el juez encendido la desaconseja — ver `_department_of` en el use case.
     )
 
 
