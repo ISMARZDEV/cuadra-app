@@ -16,10 +16,21 @@ from src.contexts.save.infrastructure.repositories import SqlCategoryDecisionRec
 
 
 def _store_product(db_session) -> str:  # type: ignore[no-untyped-def]
-    """Un store_product mínimo — la bitácora tiene FK con CASCADE hacia él."""
-    provider_id = db_session.execute(
-        text("SELECT id FROM save.provider LIMIT 1")
-    ).scalar()
+    """Un store_product mínimo — la bitácora tiene FK con CASCADE hacia él.
+
+    SIEMBRA su propio proveedor. Antes tomaba `SELECT id FROM save.provider LIMIT 1`, o sea el
+    primero que YA existiera: pasaba en una base de desarrollo con tiendas cargadas y reventaba en
+    CI con `NotNullViolation` sobre `provider_id`, porque ahí la base está limpia y el SELECT
+    devolvía `None`. Un test no puede depender de datos que no sembró.
+    """
+    provider_id = uuid.uuid4()
+    db_session.execute(
+        text(
+            """INSERT INTO save.provider (id, name, type, platform, market_id)
+               VALUES (:i, :n, 'supermarket', 'vtex', 'DO')"""
+        ),
+        {"i": provider_id, "n": f"Proveedor de prueba {provider_id}"},
+    )
     spid = uuid.uuid4()
     db_session.execute(
         text(
