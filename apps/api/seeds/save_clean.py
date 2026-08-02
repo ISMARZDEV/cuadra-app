@@ -21,10 +21,13 @@ Modos (elegí UNO):
                     y NO están en ninguna colección curada (+ sus refs: matches, candidatos,
                     clasificaciones, alertas). Útil tras limpiar un proveedor.
   --reset           BASELINE LIMPIO: borra todo lo generado/demo (store_product, price, canonical,
-                    matches, candidatos, clasificaciones, colecciones, brands, alertas) pero CONSERVA
-                    lo obligatorio para que Save funcione: provider, store_registry, basket_query,
-                    taxonomy_node. Empezás de cero SIN traer de vuelta fixtures demo (a diferencia de
-                    --all + re-seed). Este es el "empezar de cero de verdad" para validar ingesta.
+                    matches, candidatos, clasificaciones, bitácora de decisiones, imágenes,
+                    colecciones, brands, alertas, auditoría, snapshots de corridas) pero CONSERVA lo
+                    obligatorio para que Save funcione y la config que escribe un admin a mano:
+                    provider, store_registry, basket_query, taxonomy_node(+_market) y la
+                    orquestación (policy, global_config). Empezás de cero SIN traer de vuelta
+                    fixtures demo (a diferencia de --all + re-seed). Este es el "empezar de cero de
+                    verdad" para validar ingesta.
   --all             NUKE total: TRUNCATE de las tablas de `save` SALVO la canasta curada
                     (`basket_query`, dato gestionado, se preserva). Después re-sembrá con
                     `uv run python -m seeds`.
@@ -42,23 +45,38 @@ import sys
 
 from sqlalchemy import text
 
-# Las 17 tablas en orden FK-seguro (dependientes → padres) para el TRUNCATE del nuke.
+# TODAS las tablas del schema `save`, en orden FK-seguro (dependientes → padres) para el TRUNCATE.
+#
+# Esta lista DEBE cubrir el schema entero, y no por prolijidad: el wipe corre `TRUNCATE ... CASCADE`,
+# así que una tabla ausente falla de una de dos formas, ambas silenciosas —
+#   · si tiene FK a una tabla wipeada, la cascada la borra IGUAL pero el preview no la lista (el
+#     humano aprueba un destrozo mayor que el que leyó);
+#   · si no la tiene, SOBREVIVE a un reset que se anuncia como total.
+# El guardián `tests/save/unit/test_save_clean_tables.py` la compara contra `Base.metadata` y falla
+# en la próxima migración que agregue una tabla y no toque esta lista.
 _ALL_TABLES = [
     "review_candidate",
     "product_match",
     "category_classification",
+    "category_decision",       # bitácora de clasificación (FK → store_product/canonical/taxonomy)
     "alert_notification",
     "price_alert",
     "price",
     "collection_product",
+    "store_product_image",     # FK → store_product
+    "canonical_product_image", # FK → canonical_product + store_product
     "store_product",
     "canonical_product",
     "collection",
     "brand",
     "basket_query",
     "store_registry",
+    "orchestration_run_snapshot",  # FK → orchestration_policy + provider
+    "orchestration_policy",        # FK → provider
+    "orchestration_global_config",
     "provider",
     "push_token",
+    "admin_audit_log",
     "taxonomy_node_market",
     "taxonomy_node",
 ]
@@ -70,12 +88,20 @@ _ALL_TABLES = [
 # `classification_terms` y el `embedding` de las 133 hojas — data CURADA que costó una corrida de
 # LLM y un re-embed. Wipearla dejaría el árbol en pie pero al clasificador ciego, que es un estado
 # peor que no tener árbol: parece que está todo bien y no clasifica nada.
+#
+# La ORQUESTACIÓN (`orchestration_policy` + `orchestration_global_config`) entra acá por el MISMO
+# argumento que la canasta: es config que un admin escribe desde la consola — ninguna migración ni
+# seed la siembra. Wipearla en un `--reset` apagaría las corridas programadas en silencio, y el
+# operador se enteraría recién cuando la ingesta nocturna no corriera. (El NUKE `--all` sí las
+# borra: ahí el contrato es explícitamente "vaciar y re-sembrar".)
 _KEEP_TABLES = {
     "provider",
     "store_registry",
     "basket_query",
     "taxonomy_node",
     "taxonomy_node_market",
+    "orchestration_policy",
+    "orchestration_global_config",
 }
 
 # La CANASTA CURADA (`basket_query`) es DATO GESTIONADO (F1): la mantiene un admin desde la consola y
@@ -247,12 +273,12 @@ def _reset_baseline(s, *, execute: bool) -> None:
     print("  BORRA (generado/demo):")
     for t in wipe:
         n = s.execute(text(f"SELECT count(*) FROM save.{t}")).scalar_one()
-        print(f"    {t:<24} {n}")
+        print(f"    {t:<28} {n}")
     if not execute:
         print("\n(dry-run — nada borrado. Agregá --yes para ejecutar.)")
         return
     s.execute(text(f"TRUNCATE {', '.join(f'save.{t}' for t in wipe)} RESTART IDENTITY CASCADE"))
-    print("\n✓ Baseline listo: solo provider/store_registry/basket_query/taxonomy_node. Ya podés re-ingerir.")
+    print(f"\n✓ Baseline listo: solo {', '.join(sorted(_KEEP_TABLES))}. Ya podés re-ingerir.")
 
 
 def _confirm() -> bool:
@@ -279,7 +305,7 @@ def _interactive(s) -> None:
         print(f"    {i}) {r.name:<18} {r.n} productos")
     print("\n  Otras opciones:")
     print("    todo      → BASELINE limpio: borra TODO lo generado/demo, conserva lo obligatorio")
-    print("                (provider, store_registry, basket_query, taxonomy_node)")
+    print(f"                ({', '.join(sorted(_KEEP_TABLES))})")
     print("    cancelar  → salir sin borrar nada")
 
     choice = input("\n> ").strip().lower()
@@ -317,7 +343,7 @@ def _nuke_all(s, *, execute: bool) -> None:
     print(f"  CONSERVA (canasta curada): {', '.join(sorted(_CURATED_TABLES))}")
     for t in wipe:
         n = s.execute(text(f"SELECT count(*) FROM save.{t}")).scalar_one()
-        print(f"  {t:<24} {n}")
+        print(f"  {t:<28} {n}")
     if not execute:
         print("\n(dry-run — nada borrado. Agregá --yes para ejecutar.)")
         return
