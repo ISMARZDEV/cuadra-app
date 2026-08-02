@@ -37,6 +37,7 @@ metadata:
 | Piece | Path |
 |---|---|
 | Use-case (orchestrates the cascade) | `contexts/save/application/match_store_product.py` |
+| Re-evaluate rows ALREADY queued (gotcha #10) | `contexts/save/application/rematch_pending.py` · `domain/rematch.py` |
 | Pure scoring (RRF / boosts / banding) | `contexts/save/infrastructure/matching/cascade/{fusion,scoring,banding}.py` |
 | Repo (pgvector/trgm queries + review queue) | `contexts/save/infrastructure/matching/repository/product_match_repository.py` |
 | Embedding adapter (BGE-M3, injectable client) | `contexts/save/infrastructure/matching/embeddings.py` |
@@ -48,25 +49,26 @@ metadata:
 
 ## The cascade contract (cheapest → most expensive)
 
-El EAN que entra debe venir **NORMALIZADO a GTIN-14** (`pick_global_ean`, skill `cuadra-save-ingestion`):
-un UPC-A `760593023182` y su forma EAN-13 `0760593023182` son el MISMO barcode, y si dos tiendas no
-convergen a la misma cadena esta etapa NUNCA los enlaza — un falso negativo INVISIBLE (se ve como "no
-matchea"). **No es teórico: medido 2026-07-16, era el 52% de las filas con EAN** (Sirena escribía crudo)
-y explicaba 2 de los productos que la cola daba por "nuevos legítimos". Todo adapter escribe vía
-`pick_global_ean` — el filtro corre sobre la forma CRUDA, nunca sobre una ya almacenada.
+The incoming EAN must arrive **NORMALIZED to GTIN-14** (`pick_global_ean`, skill
+`cuadra-save-ingestion`): a UPC-A `760593023182` and its EAN-13 form `0760593023182` are the SAME
+barcode, and if two stores do not converge on the same string this stage NEVER links them — an
+INVISIBLE false negative (it just looks like "no match"). **Not theoretical: measured 2026-07-16, it
+was 52% of the rows carrying an EAN** (Sirena wrote them raw) and explained 2 of the products the
+queue reported as "legitimately new". Every adapter writes through `pick_global_ean` — the filter runs
+on the RAW form, never on an already-stored one.
 
 ```
-EAN exacto (score 1.0) ─┬─ 1 match  → auto_link (method=ean)
-                        ├─ 0 match  → sigue a léxico
-                        └─ >1 canónico distinto → COLISIÓN → cola humana (NO auto-link)
-pg_trgm (léxico) + pgvector/BGE-M3 (semántico) → RRF (consenso) → boosts marca/tamaño → banding:
+exact EAN (score 1.0) ──┬─ 1 match  → auto_link (method=ean)
+                        ├─ 0 match  → falls through to lexical
+                        └─ >1 distinct canonical → COLLISION → review queue (NO auto-link)
+pg_trgm (lexical) + pgvector/BGE-M3 (semantic) → RRF (consensus) → brand/size boosts → banding:
     score ≥ HIGH (0.85)                          → auto_link (method=hybrid|trgm|vector)
-    MID [0.55, 0.85)                             → Claude-juez (banda gris)
-    < MID  o  sin candidatos                     → cola humana (method=human)
-Claude-juez {decision, confidence, cited_fields}:
-    match Y confidence ≥ JUDGE_MATCH_MIN_CONFIDENCE (0.70) → auto_link (method=llm)
-    match pero confidence < 0.70 (match DÉBIL)             → cola humana (method=llm)
-    no_match / uncertain / schema-fail / timeout          → cola humana
+    MID [0.55, 0.85)                             → Claude judge (grey band)
+    < MID  or  no candidates                     → review queue (method=human)
+Claude judge {decision, confidence, cited_fields}:
+    match AND confidence ≥ JUDGE_MATCH_MIN_CONFIDENCE (0.70) → auto_link (method=llm)
+    match but confidence < 0.70 (WEAK match)                 → review queue (method=llm)
+    no_match / uncertain / schema-fail / timeout             → review queue
 ```
 
 ## Critical Patterns (the gotchas — do NOT relearn these the hard way)
@@ -92,21 +94,60 @@ Claude-juez {decision, confidence, cited_fields}:
 6. **The Anthropic client lives ONLY in `infrastructure/matching/`** (`claude_judge.py`, via
    `shared.llm.get_chat_model` — not the raw SDK). import-linter `domain-puro` FAILS if it leaks into
    domain. The judge is consumed by the use-case via a LOCAL `Protocol` (`GreyBandJudge`), not a domain port.
-7bis. **`method="llm"` ⟺ el juez emitió un veredicto VÁLIDO** (ARREGLADO 2026-07-16). El breaker abierto
-   hacía que `LlmJudge` devolviera `_UNCERTAIN` **sin llamar la API**, y el use-case lo registraba como
-   `method="llm"`. Medido 2026-07-15: de 11 `pending_review/llm`, **el LLM nunca vio 8** → leerías la cola
-   y "afinarías el juez" sobre una señal que jamás emitió.
-   **El fix:** `JudgeVerdict.degraded` distingue *"el juez dudó"* (señal legítima suya → `llm`) de *"el
-   juez no estuvo"* (breaker abierto / API caída / salida ilegible → `human`). El flag vive en el
-   VEREDICTO y no en el use-case porque **solo el adapter sabe si la API llegó a hablar**. Los tres
-   caminos degradados devuelven `uncertain`, así que `decision` NO alcanza para distinguirlos — por eso
-   hace falta el flag, y por eso un `uncertain` REAL del juez sigue siendo `llm`.
-   Nota: un veredicto degradado puede traer tokens (la llamada se pagó y volvió ilegible). No es
-   contradictorio: es la lectura honesta de "pagamos y no obtuvimos nada confiable".
+7bis. **`method="llm"` ⟺ the judge emitted a VALID verdict** (FIXED 2026-07-16). With the breaker open,
+   `LlmJudge` returned `_UNCERTAIN` **without calling the API**, and the use-case recorded it as
+   `method="llm"`. Measured 2026-07-15: of 11 `pending_review/llm` rows, **the LLM never saw 8** — so you
+   would read the queue and "tune the judge" against a signal it never emitted.
+   **The fix:** `JudgeVerdict.degraded` separates *"the judge was unsure"* (a legitimate signal of its
+   own → `llm`) from *"the judge was not there"* (open breaker / API down / unreadable output →
+   `human`). The flag rides on the VERDICT and not on the use-case because **only the adapter knows
+   whether the API ever spoke**. All three degraded paths return `uncertain`, so `decision` alone
+   cannot tell them apart — hence the flag, and hence a REAL `uncertain` from the judge stays `llm`.
+   Note: a degraded verdict may still carry tokens (the call was paid for and came back unreadable).
+   Not a contradiction — it is the honest reading of "we paid and got nothing trustworthy".
 
 7. **Judge fail-safe.** Any invalid/unparseable/out-of-range/timeout judge output is forced to
    `uncertain` → review queue. It re-validates the payload (`_Verdict.model_validate`) — never trusts
    the LLM parse alone. Never risk a false merge on a judge error. Token usage is logged per call.
+
+8. **The EAN stage needs a COUNTERPART — it does NOT compare against the canonical** (measured
+   2026-08-02). `canonical_product` **has no `ean` column at all**. `find_candidates_by_ean` looks for
+   **another `store_product` carrying the same EAN that is ALREADY linked**
+   (`product_match_repository.py:160-177`), filtered by `provider.market_id` — store-agnostic, so any
+   provider in the market can act as the bridge. With no counterpart the stage CANNOT fire, no matter
+   how good the incoming barcode is.
+   **The corollary changes how you value EAN harvesting:** creating canonicals from one store's own
+   products does **NOT** create bridges for that **same** store's other products (each has a unique
+   EAN). The bridge appears when **another** store ingests the same product. Harvesting EAN is an
+   **INVESTMENT**, not a retroactive fix. Measured on Bravo: 32 EANs harvested, only 4 with a
+   counterpart (already linked) → re-matching 46 rows linked **1**. That was not a matcher bug.
+   Per-platform coverage + the open investigation: `docs/pending/save-ean-por-plataforma.md`.
+
+9. **With no embedder the vector stage is SKIPPED — never fed a fabricated vector.**
+   `MatchStoreProduct(embedding_provider=...)` accepts `None` (the API does not always carry a model:
+   `build_api_embedder` resolves HTTP endpoint → in-process model → `None`). A zero/fake vector is
+   **not "no signal"**: `find_candidates_vector` would return arbitrary neighbours that RRF then fuses
+   as legitimate candidates. With `None`, `vector_candidates = []` and the reported `method` says
+   `trgm` — it does not lie about which stage ran. Pinned by test.
+
+10. **Review-queue candidates are STATIC unless something re-evaluates them.**
+    `RefreshCatalogPrices` only routes **UNKNOWN** `store_product`s to the matcher
+    (`exists(provider_id, external_id)`), so a `pending_review` row is **NEVER re-evaluated**: it drags
+    the candidates of the day it arrived, even if the right canonical has existed for weeks. The way
+    out is `RematchPending` (`application/rematch_pending.py`) →
+    `POST /v1/admin/save/review-queue/bulk-rematch` → the "Re-evaluate selected" bulk action in the
+    queue. Idempotent (`record_match` upserts, `record_candidates` REPLACES the set).
+    - The repo returns `RematchableProduct` (**domain**, `domain/rematch.py`) and the use-case converts
+      to `IncomingStoreProduct`: **`infrastructure` NEVER imports from `application`** in this context.
+    - A re-evaluation does **not** stamp `run_id`: it is not an ingestion-run finding, and attributing
+      it would falsify that run's funnel.
+    - **EAN-stage testbed:** return to the queue products whose EAN DOES have a counterpart, then
+      re-evaluate. Result 2026-08-02: **4/4 by `ean` at 100%**, and 3 of them had been linked by
+      `trgm`/`llm` — the deterministic signal beats the probabilistic ones, exactly as the cascade
+      promises.
+      ⚠️ Use **`UnlinkStoreProduct`**, NEVER bare `reopen_review`: the latter clears the canonical on
+      the *match* but leaves `store_product.canonical_product_id` set — and the EAN stage reads **that**
+      field, so the product becomes its OWN bridge and the test yields a **false green**.
 
 ## Code Examples
 

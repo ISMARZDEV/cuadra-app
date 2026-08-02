@@ -190,6 +190,48 @@ EAN, high band and lexicon still resolve for free. **Measured: 85% auto-linked w
   stays `llm`. The flag rides on the verdict because only the adapter knows whether the API ever spoke.
   See `cuadra-save-matching` §7bis.
 
+### EAN coverage is a PLATFORM property, not a store one (measured 2026-08-02)
+
+| Platform | Harvests EAN? | Where | Stores | Real coverage |
+|---|---|---|---|---|
+| `vtex` | ✅ `pick_global_ean` | `vtex_adapter.py:90` | Sirena | 101/120 = **84%** |
+| `rest_catalog` | ✅ `pick_global_ean` | `bravova_profile.py:194` | Bravo | 32/52 = **62%** |
+| `magento` | ❌ `ean=None` | `magento_adapter.py:128` | Nacional · Jumbo · Merca Jumbo | **0%** |
+
+Magento's mapper states it plainly: `ean=None,  # no expuesto por la API`. Consequence for planning:
+the EAN network effect today grows ONLY between Sirena and Bravo. Adding Magento stores buys catalog
+and price comparison but **ZERO** auto-link gain. To raise the auto-link rate, onboard **VTEX or
+REST_CATALOG** stores.
+
+**Do not close that door from the LISTING mapper alone.** Bravo was assumed to have no EAN (0%) until
+it turned out `price_refresh` already harvested it from the **DETAIL** endpoint and had simply never
+run — 0 → 32 (62%) with no new code. `ean=None` in a listing mapper proves that endpoint lacks it,
+not that the platform does. Probe the detail endpoint before concluding. Open investigation:
+`docs/pending/save-ean-por-plataforma.md`.
+
+### `ResolveBrand` recognises, it does not invent — so seed `save.brand` first
+
+Nacional and Bravo do NOT publish brand; Sirena DOES (in its payload, bypassing the resolver
+entirely). **Never compare brand-coverage percentages across stores without knowing this** — it leads
+straight to a false conclusion.
+
+For the stores that do not publish it, `ResolveBrand` matches a known brand INSIDE the product name,
+and it only knows brands already present in `save.brand` (`repositories.py:379-386`, market-scoped).
+Measured on Bravo: it ran over all 38 brandless rows and resolved **0**, because the table had 33 rows
+for DO and the chain's own private label was not one of them — while 13 product names started with the
+word `BRAVO`. Seeding 4 brands took coverage 14 → 33 of 52 with no code change. Highest-leverage move:
+seed each chain's **private label**. Order: `seeds/seed_brands.py` then `seeds/backfill_brands.py`
+(both idempotent).
+
+> [!warning] Vet a brand against the WHOLE corpus before seeding it
+> `match_brand`/`brand_appears_in` compare by full TOKEN SEQUENCE, never substring, so cross-store
+> contamination is rare — but a brand that is a **truncation of an existing one** is poison. Real
+> case: `KAYAMA FIDEO DE ARROZ` (Bravo) and `Fideo De Arroz Okayama` (Sirena) **share an EAN** — same
+> product, truncated name. Seeding `KAYAMA` would have created a phantom brand, and the brand gate
+> would read KAYAMA vs OKAYAMA as a CONFLICT, blocking a legitimate link: a false NEGATIVE of our own
+> making. Also skip brands whose only hit sits inside a name another seeded brand already wins by
+> position.
+
 ## Code Examples
 
 ```python

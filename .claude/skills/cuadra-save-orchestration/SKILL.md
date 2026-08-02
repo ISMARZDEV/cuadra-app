@@ -176,6 +176,34 @@ append-only and sacred).
     tests/ingestion` as its own step. **If the backend verification is TWO numbers, the combined
     suite was never run.**
 
+26. **`provider_prices_refresh` vs `provider_price_refresh` — ONE `s`, OPPOSITE meanings.** The
+    PLURAL is *search-based discovery* (job `save_query_catalog`); the SINGULAR is *price refresh*
+    (job `save_price_refresh`). Both in `domain/entities/orchestration.py:67-72`. This has already
+    cost real debugging time: the create-flow modal defaults to the plural, and an operator reading
+    "Refresco de precios" in the UI reaches for the wrong key in code. **Read the enum, never the
+    label.** Renaming them is open debt.
+27. **In the create-flow modal the FLOW is asked BEFORE the provider.** Uniqueness is per
+    (provider, market, **flow**), so the available-provider list is DERIVED from the chosen flow.
+    Asking for the provider first made the modal open with the plural default and silently hide every
+    store that already had discovery — it read as "the provider list is broken" when the filter was
+    correct and the FIELD ORDER was the defect. Changing the flow also **resets** the selected
+    provider: dragging it over would submit an already-existing pair and earn a 422.
+28. **Hide policy fields the chosen flow does not read — and keep them OUT of the PATCH.**
+    `query_limit_override` is consumed ONLY by discovery (`assets.py:156` `resolve_query_limit`); the
+    price refresh calls `build_refresh_known_prices` (`assets.py:400`) and never looks at it. `timezone`
+    is consumed only alongside cron (`policy_schedule.py` returns early when the mode is not cron, and
+    `next_run_at` returns `None` anyway) — yet the cron field hid while its timezone stayed visible.
+    A control that stores a number nobody reads promises the operator an effect that does not exist
+    (same class of lie as gotcha #24). **A hidden field must travel ABSENT, never `null`**:
+    `model_dump(exclude_unset=True)` treats absent as "don't touch", while an explicit `null` WIPES a
+    value the operator cannot even see to restore. Implement with a conditional spread.
+29. **The console says "flow", never "policy".** The table, the create modal and the delete action all
+    said *flow* while the actions menu said "Edit policy" — one entity, two words, and the second is
+    backend vocabulary (`orchestration_policy`) leaking into the UI. Unified to **"Configure flow"** /
+    "Save configuration" in es/en/pt. Rejected "Edit schedule": it would be a lie, since the same modal
+    also configures SLA, query limit and priority. Copy only — the entity and the i18n KEYS are
+    unchanged.
+
 ## Operating the runner (dev) — hard-won
 
 - **Run EXACTLY ONE `dagster dev` at a time.** It spawns a tree (wrapper `uv run` → `dagster dev` →
