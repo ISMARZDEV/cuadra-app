@@ -122,31 +122,37 @@ export function SourceModal({
     setBusy(true);
     setError(null);
     const authValue = buildAuth();
-    if (isEdit) {
-      const res = await updateSourceConfig({
-        sourceId: src!.id,
-        platform,
-        baseUrl,
-        headers: headers.value ?? null,
-        endpoints: endpoints.value ?? null,
-        auth: authValue,
-      });
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` en el camino feliz no corre y el botón
+    // queda deshabilitado para siempre — hay que cerrar y reabrir el modal.
+    try {
+      if (isEdit) {
+        const res = await updateSourceConfig({
+          sourceId: src!.id,
+          platform,
+          baseUrl,
+          headers: headers.value ?? null,
+          endpoints: endpoints.value ?? null,
+          auth: authValue,
+        });
+        if (res.error) return setError(t("admin.sources.modal.errSaveEdit"));
+      } else {
+        const res = await createSourceConfig({
+          providerId,
+          platform,
+          baseUrl,
+          headers: headers.value ?? null,
+          endpoints: endpoints.value ?? null,
+          auth: authValue,
+        });
+        if (res.error) return setError(t("admin.sources.modal.errSaveAdd"));
+      }
+      await refresh();
+      onClose();
+    } catch {
+      setError(t(isEdit ? "admin.sources.modal.errSaveEdit" : "admin.sources.modal.errSaveAdd"));
+    } finally {
       setBusy(false);
-      if (res.error) return setError(t("admin.sources.modal.errSaveEdit"));
-    } else {
-      const res = await createSourceConfig({
-        providerId,
-        platform,
-        baseUrl,
-        headers: headers.value ?? null,
-        endpoints: endpoints.value ?? null,
-        auth: authValue,
-      });
-      setBusy(false);
-      if (res.error) return setError(t("admin.sources.modal.errSaveAdd"));
     }
-    await refresh();
-    onClose();
   };
 
   return (
@@ -303,8 +309,12 @@ function ProbePanel({ sourceId, t, locale }: { sourceId: string; t: T; locale: L
     e.preventDefault();
     setBusy(true);
     setResult(null);
-    setResult(await probeSource(sourceId, query));
-    setBusy(false);
+    // `finally`: si el dry-run RECHAZA, el botón "Probar" queda deshabilitado para siempre.
+    try {
+      setResult(await probeSource(sourceId, query));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

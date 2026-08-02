@@ -62,30 +62,36 @@ export function BasketQueryModal({
     setBusy(true);
     setError(null);
 
-    if (state.mode === "add") {
-      const res = await createBasketQueryEntry({
-        marketId: DEFAULT_BASKET_MARKET,
-        queryText,
-        categoryLabel: categoryLabel.trim() || null,
-      });
-      setBusy(false);
-      if (!res.ok) {
-        setError(res.message);
-        return;
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` en el camino feliz no corre y el botón
+    // queda deshabilitado para siempre — hay que cerrar y reabrir el modal.
+    try {
+      if (state.mode === "add") {
+        const res = await createBasketQueryEntry({
+          marketId: DEFAULT_BASKET_MARKET,
+          queryText,
+          categoryLabel: categoryLabel.trim() || null,
+        });
+        if (!res.ok) {
+          setError(res.message);
+          return;
+        }
+      } else {
+        const res = await updateBasketQueryEntry(state.entry.id, {
+          queryText,
+          categoryLabel: categoryLabel.trim() || null,
+        });
+        if (res.error) {
+          setError(t("admin.basket.modal.errSave"));
+          return;
+        }
       }
-    } else {
-      const res = await updateBasketQueryEntry(state.entry.id, {
-        queryText,
-        categoryLabel: categoryLabel.trim() || null,
-      });
+      await refresh();
+      onClose();
+    } catch {
+      setError(t("admin.basket.modal.errSave"));
+    } finally {
       setBusy(false);
-      if (res.error) {
-        setError(t("admin.basket.modal.errSave"));
-        return;
-      }
     }
-    await refresh();
-    onClose();
   };
 
   return (

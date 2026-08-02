@@ -22,8 +22,14 @@ export function DevLoginScreen() {
     e.preventDefault();
     setBusy(true);
     setError(false);
-    const ok = await login(email.trim());
-    setBusy(false);
+    // `finally`: si el login RECHAZA, un `setBusy(false)` suelto no corre y el botón queda
+    // deshabilitado para siempre — sin forma de reintentar salvo recargar.
+    let ok = false;
+    try {
+      ok = await login(email.trim());
+    } finally {
+      setBusy(false);
+    }
     if (ok) void navigate(localeHref(locale, country, "/save/supermarkets/alerts"));
     else setError(true);
   };

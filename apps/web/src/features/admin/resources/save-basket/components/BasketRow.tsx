@@ -60,10 +60,16 @@ export function BasketRow({
   const run = async (fn: () => Promise<{ error?: unknown } | undefined | void>, msg: string) => {
     setBusy(true);
     setError(null);
-    const res = await fn();
-    setBusy(false);
-    if (res && "error" in res && res.error) setError(msg);
-    else await refresh();
+    // `finally`: si `fn()` RECHAZA, un `setBusy(false)` suelto no corre y la fila queda bloqueada.
+    try {
+      const res = await fn();
+      if (res && "error" in res && res.error) setError(msg);
+      else await refresh();
+    } catch {
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onToggleActive = () =>

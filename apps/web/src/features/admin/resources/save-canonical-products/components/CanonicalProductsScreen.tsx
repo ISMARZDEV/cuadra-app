@@ -100,25 +100,30 @@ export function CanonicalProductsScreen() {
       overwriteLastHistoryEntry: true,
     });
 
-    const result = await listCanonicalProducts({
-      search: next.search,
-      brand_id: next.brand_id,
-      taxonomy_node_id: next.taxonomy_node_id,
-      quality_status: next.quality_status,
-      ean_reachable: next.ean_reachable,
-      min_provider_count: next.min_provider_count,
-      updated_since: next.updated_since,
-      include_archived: next.include_archived,
-      sort: next.sort,
-      limit: next.limit,
-      offset: next.offset,
-    });
-    // `null` = falló la petición. Antes se salía en silencio y la tabla se quedaba CONGELADA
-    // mostrando el resultado anterior: el operador creía que su filtro no encontró nada,
-    // cuando en realidad nunca llegó a aplicarse.
-    if (result) setList(result);
-    else toast(t("admin.list.refreshFailed"));
-    setLoading(false);
+    // `finally`: si la petición RECHAZA, un `setLoading(false)` suelto no corre y la tabla queda
+    // con el spinner girando para siempre.
+    try {
+      const result = await listCanonicalProducts({
+        search: next.search,
+        brand_id: next.brand_id,
+        taxonomy_node_id: next.taxonomy_node_id,
+        quality_status: next.quality_status,
+        ean_reachable: next.ean_reachable,
+        min_provider_count: next.min_provider_count,
+        updated_since: next.updated_since,
+        include_archived: next.include_archived,
+        sort: next.sort,
+        limit: next.limit,
+        offset: next.offset,
+      });
+      // `null` = falló la petición. Antes se salía en silencio y la tabla se quedaba CONGELADA
+      // mostrando el resultado anterior: el operador creía que su filtro no encontró nada,
+      // cuando en realidad nunca llegó a aplicarse.
+      if (result) setList(result);
+      else toast(t("admin.list.refreshFailed"));
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Debounce del buscador: sin esto cada tecla dispara una navegación Y un request — escribir

@@ -65,8 +65,16 @@ export function BulkCategoryModal({
   const apply = async (taxonomyNodeId: string) => {
     setBusy(true);
     setError(null);
-    const res = await bulkSetCanonicalCategory(selected, taxonomyNodeId);
-    setBusy(false);
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` en el camino feliz no corre y el botón
+    // queda deshabilitado para siempre.
+    let res: Awaited<ReturnType<typeof bulkSetCanonicalCategory>> | null = null;
+    try {
+      res = await bulkSetCanonicalCategory(selected, taxonomyNodeId);
+    } catch {
+      res = null;
+    } finally {
+      setBusy(false);
+    }
     if (!res) {
       setError(t("admin.canonicalProducts.bulk.error"));
       return;

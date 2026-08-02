@@ -162,11 +162,16 @@ export function BasketEditorScreen() {
 
   const onBulkDelete = async () => {
     setBusyBulk(true);
-    await Promise.all(Array.from(selected).map((id) => removeBasketQueryEntry(id)));
-    setBusyBulk(false);
-    setConfirmingBulk(false);
-    setSelected(new Set());
-    await refresh();
+    // `finally`: si alguno de los borrados RECHAZA, un `setBusyBulk(false)` suelto no corre y las
+    // acciones de lote quedan deshabilitadas hasta recargar la página.
+    try {
+      await Promise.all(Array.from(selected).map((id) => removeBasketQueryEntry(id)));
+      setConfirmingBulk(false);
+      setSelected(new Set());
+      await refresh();
+    } finally {
+      setBusyBulk(false);
+    }
   };
 
   // Drag-and-drop (@dnd-kit) — deshabilitado si hay orden por columna o búsqueda activa (las filas

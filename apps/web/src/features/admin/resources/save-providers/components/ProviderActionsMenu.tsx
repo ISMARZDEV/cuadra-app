@@ -42,11 +42,20 @@ export function ProviderActionsMenu({
   const applyArchive = async (archived: boolean) => {
     setBusy(true);
     setError(null);
-    const res = archived ? await archiveProvider(provider.id) : await unarchiveProvider(provider.id);
-    setBusy(false);
-    setConfirming(false);
-    if (res.error) setError(t("admin.providers.actions.errArchive"));
-    else await refresh();
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` suelto no corre y el menú de la fila
+    // queda bloqueado hasta recargar la página.
+    try {
+      const res = archived
+        ? await archiveProvider(provider.id)
+        : await unarchiveProvider(provider.id);
+      setConfirming(false);
+      if (res.error) setError(t("admin.providers.actions.errArchive"));
+      else await refresh();
+    } catch {
+      setError(t("admin.providers.actions.errArchive"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

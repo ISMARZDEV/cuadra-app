@@ -59,8 +59,14 @@ export function CategoryCell({
     setOptimistic({ slug: leaf.top_slug, name: leaf.top_name });
     setOptimisticLeaf(leaf.name !== leaf.top_name ? leaf.name : null);
     setBusy(true);
-    const ok = await onSet(storeProductId, leaf.id);
-    setBusy(false);
+    // `finally`: si `onSet` RECHAZA, un `setBusy(false)` suelto no corre y la celda queda
+    // bloqueada mostrando el valor optimista, que además nunca se revierte.
+    let ok = false;
+    try {
+      ok = await onSet(storeProductId, leaf.id);
+    } finally {
+      setBusy(false);
+    }
     if (!ok) {
       // Un optimismo que no se deshace es una mentira: la celda diría una cosa y la DB otra.
       setOptimistic(previous);

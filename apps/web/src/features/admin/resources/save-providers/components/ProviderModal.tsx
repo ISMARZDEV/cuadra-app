@@ -69,46 +69,51 @@ export function ProviderModal({
     setError(null);
     const nextLogo = logoUrl.trim() || null;
 
-    if (editing) {
-      const res = await updateProvider({
-        providerId: editing.id,
-        name: trimmed,
-        type,
-        platform,
-        marketId: marketId.trim() || DEFAULT_MARKET,
-      });
-      if (res.error) {
-        setBusy(false);
-        setError(t("admin.providers.update.nameError"));
-        return;
-      }
-      // Segunda llamada SOLO si el logo cambió: su endpoint es propio y se audita por separado.
-      if (nextLogo !== (editing.logo_url ?? null)) {
-        const logoRes = await setProviderLogo({ providerId: editing.id, logoUrl: nextLogo });
-        if (logoRes.error) {
-          setBusy(false);
-          setError(t("admin.providers.update.logoError"));
+    // Un SOLO `finally` en vez de repetir `setBusy(false)` en cada salida temprana: así también
+    // cubre el caso que las repeticiones NO cubrían — que la promesa RECHACE (red caída, 500),
+    // donde el botón quedaba deshabilitado para siempre.
+    try {
+      if (editing) {
+        const res = await updateProvider({
+          providerId: editing.id,
+          name: trimmed,
+          type,
+          platform,
+          marketId: marketId.trim() || DEFAULT_MARKET,
+        });
+        if (res.error) {
+          setError(t("admin.providers.update.nameError"));
+          return;
+        }
+        // Segunda llamada SOLO si el logo cambió: su endpoint es propio y se audita por separado.
+        if (nextLogo !== (editing.logo_url ?? null)) {
+          const logoRes = await setProviderLogo({ providerId: editing.id, logoUrl: nextLogo });
+          if (logoRes.error) {
+            setError(t("admin.providers.update.logoError"));
+            return;
+          }
+        }
+      } else {
+        const res = await createProvider({
+          name: trimmed,
+          type,
+          platform,
+          marketId: marketId.trim() || DEFAULT_MARKET,
+          logoUrl: nextLogo,
+        });
+        if (res.error) {
+          setError(t("admin.providers.create.error"));
           return;
         }
       }
-    } else {
-      const res = await createProvider({
-        name: trimmed,
-        type,
-        platform,
-        marketId: marketId.trim() || DEFAULT_MARKET,
-        logoUrl: nextLogo,
-      });
-      if (res.error) {
-        setBusy(false);
-        setError(t("admin.providers.create.error"));
-        return;
-      }
-    }
 
-    setBusy(false);
-    await refresh();
-    onClose();
+      await refresh();
+      onClose();
+    } catch {
+      setError(t(editing ? "admin.providers.update.nameError" : "admin.providers.create.error"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

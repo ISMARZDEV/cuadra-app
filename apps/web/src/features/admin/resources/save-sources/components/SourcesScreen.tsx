@@ -126,12 +126,19 @@ export function SourcesScreen() {
 
   const onBulk = async (action: "pause" | "resume") => {
     setBusyBulk(true);
-    await Promise.all(
-      Array.from(selected).map((id) => (action === "pause" ? pauseSourceConfig(id) : resumeSourceConfig(id))),
-    );
-    setBusyBulk(false);
-    setSelected(new Set());
-    await refresh();
+    // `finally`: si alguna de las peticiones RECHAZA, un `setBusyBulk(false)` suelto no corre y
+    // las acciones de lote quedan deshabilitadas hasta recargar la página.
+    try {
+      await Promise.all(
+        Array.from(selected).map((id) =>
+          action === "pause" ? pauseSourceConfig(id) : resumeSourceConfig(id),
+        ),
+      );
+      setSelected(new Set());
+      await refresh();
+    } finally {
+      setBusyBulk(false);
+    }
   };
 
   const emptyStateEl =

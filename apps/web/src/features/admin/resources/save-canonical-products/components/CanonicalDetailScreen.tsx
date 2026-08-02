@@ -176,12 +176,17 @@ export function CanonicalDetailScreen() {
 
   const toggleArchive = async () => {
     setBusy(true);
-    const updated = archived
-      ? await unarchiveCanonicalProduct(id)
-      : await archiveCanonicalProduct(id);
-    if (updated) setProduct(updated);
-    setBusy(false);
-    setArchiveOpen(false);
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` suelto no corre y la ficha queda
+    // bloqueada hasta recargar la página.
+    try {
+      const updated = archived
+        ? await unarchiveCanonicalProduct(id)
+        : await archiveCanonicalProduct(id);
+      if (updated) setProduct(updated);
+      setArchiveOpen(false);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openSlugDialog = async () => {
@@ -191,17 +196,23 @@ export function CanonicalDetailScreen() {
 
   const confirmRegenerateSlug = async () => {
     setBusy(true);
-    const updated = await regenerateCanonicalSlug(id);
-    if (updated) setProduct(updated);
-    setBusy(false);
-    setSlugPreview(null);
+    try {
+      const updated = await regenerateCanonicalSlug(id);
+      if (updated) setProduct(updated);
+      setSlugPreview(null);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const pickCategory = async (taxonomyNodeId: string) => {
     setBusy(true);
-    const updated = await setCanonicalCategory(id, taxonomyNodeId);
-    if (updated) setProduct(updated);
-    setBusy(false);
+    try {
+      const updated = await setCanonicalCategory(id, taxonomyNodeId);
+      if (updated) setProduct(updated);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const publicHref = product.slug ? `/${locale}/do/save/producto/${product.slug}` : null;
@@ -917,12 +928,16 @@ function InternalNote({
   const save = async () => {
     setSaving(true);
     setSaved(false);
-    const updated = await updateInternalNote(productId, note.trim() || null);
-    if (updated) {
-      onSaved(updated);
-      setSaved(true);
+    // `finally`: si la promesa RECHAZA, el botón queda deshabilitado para siempre.
+    try {
+      const updated = await updateInternalNote(productId, note.trim() || null);
+      if (updated) {
+        onSaved(updated);
+        setSaved(true);
+      }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   return (
