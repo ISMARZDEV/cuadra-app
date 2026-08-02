@@ -43,6 +43,31 @@ def _store_product(db_session) -> str:  # type: ignore[no-untyped-def]
     return str(spid)
 
 
+def _two_leaves(db_session) -> list[str]:  # type: ignore[no-untyped-def]
+    """DOS hojas de taxonomía, sembradas acá.
+
+    Antes hacía `SELECT id FROM save.taxonomy_node ... LIMIT 2`, o sea las tomaba prestadas: en CI
+    la taxonomía arranca vacía, el SELECT devolvía `[]` y el test moría con `IndexError` — un
+    mensaje que no dice nada sobre categorías. Mismo defecto que tenía el proveedor.
+    """
+    root = uuid.uuid4()
+    db_session.execute(
+        text(
+            "INSERT INTO save.taxonomy_node (id, parent_id, name, level) VALUES (:i, NULL, :n, 0)"
+        ),
+        {"i": root, "n": f"Raíz de prueba {root}"},
+    )
+    hojas = [uuid.uuid4(), uuid.uuid4()]
+    for n, hoja in enumerate(hojas):
+        db_session.execute(
+            text(
+                "INSERT INTO save.taxonomy_node (id, parent_id, name, level) VALUES (:i, :p, :n, 1)"
+            ),
+            {"i": hoja, "p": root, "n": f"Hoja de prueba {n} {hoja}"},
+        )
+    return [str(h) for h in hojas]
+
+
 def test_an_abstention_is_recorded_with_what_each_signal_proposed(db_session) -> None:  # type: ignore[no-untyped-def]
     """El caso que motivó la tabla: dos señales fuertes en desacuerdo.
 
@@ -50,9 +75,7 @@ def test_an_abstention_is_recorded_with_what_each_signal_proposed(db_session) ->
     volveríamos exactamente al estado del que venimos: saber que se abstuvo, no por qué.
     """
     spid = _store_product(db_session)
-    leaves = db_session.execute(
-        text("SELECT id FROM save.taxonomy_node WHERE parent_id IS NOT NULL LIMIT 2")
-    ).scalars().all()
+    leaves = _two_leaves(db_session)
 
     SqlCategoryDecisionRecorder(db_session).record(
         CategoryDecision(
@@ -125,9 +148,7 @@ def test_a_classified_decision_keeps_its_leaf(db_session) -> None:  # type: igno
     # Los aciertos también se registran: sin ellos no hay denominador, y cualquier tasa de precisión
     # que se calcule después estaría midiendo sólo la mitad del corpus.
     spid = _store_product(db_session)
-    leaf = db_session.execute(
-        text("SELECT id FROM save.taxonomy_node WHERE parent_id IS NOT NULL LIMIT 1")
-    ).scalar()
+    leaf = _two_leaves(db_session)[0]
 
     SqlCategoryDecisionRecorder(db_session).record(
         CategoryDecision(
