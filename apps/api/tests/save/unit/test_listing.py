@@ -378,3 +378,20 @@ def test_provider_products_excludes_products_not_carried_by_that_store() -> None
 def test_provider_products_empty_for_unknown_provider() -> None:
     uc = ListProviderProducts(FakeStoreRepo({}, MARKET_ROWS))
     assert uc.execute("DO", "no-existe") == []
+
+
+def test_ordenar_por_precio_unitario_manda_al_FINAL_lo_que_no_tiene_cantidad() -> None:
+    """Un producto sin tamaño no tiene precio por unidad base. Tratarlo como 0 lo pondría PRIMERO
+    en «más barato por kilo» —un plato para perro arriba de la comida—, así que va al final: no es
+    barato, es incomparable en ese eje."""
+    from src.contexts.save.application.listing import _sort_key
+
+    class P:
+        def __init__(self, name, upm):
+            self.name, self.unit_price_minor = name, upm
+
+    ordenados = sorted(
+        [P("sin cantidad", None), P("caro", 900), P("barato", 100)], key=_sort_key("unit_price")
+    )
+
+    assert [p.name for p in ordenados] == ["barato", "caro", "sin cantidad"]

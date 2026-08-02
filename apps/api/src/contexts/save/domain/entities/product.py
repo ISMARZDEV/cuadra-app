@@ -22,7 +22,11 @@ class CanonicalProduct:
     id: str
     name: str
     brand: str
-    quantity: Quantity
+    # `None` = el producto NO declara tamaño, y es legítimo: un plato para perro, un sándwich del
+    # mostrador o un pan por pieza se venden por unidad sin peso. Exigirlo obligaba a INVENTAR un
+    # número. Sin cantidad no hay precio por unidad base (ver `unit_price_or_none`) y el size gate
+    # se abstiene — `sizes_conflict` ya devuelve False con `None`.
+    quantity: Quantity | None
     taxonomy_node_id: str
     market_id: str  # por ID (ADR 33) — un país nuevo = un nuevo valor, sin tocar código
     # Presentación (Imagen #2/#5) — opcionales, no afectan la money-math:
@@ -46,7 +50,10 @@ class CanonicalProduct:
             raise ValueError("CanonicalProduct.market_id es obligatorio (multi-país)")
 
     def compare(self, quotes: Iterable[StoreQuote]) -> PriceComparison:
-        """Tabla comparativa de este producto entre tiendas, usando SU unidad base."""
+        """Tabla comparativa de este producto entre tiendas, usando SU unidad base.
+
+        Sin cantidad la tabla igual se arma —los precios ABSOLUTOS se comparan siempre—, sólo que
+        cada fila queda sin precio por unidad."""
         return compare_prices(self.quantity, quotes)
 
 

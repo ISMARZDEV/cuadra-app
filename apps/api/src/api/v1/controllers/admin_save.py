@@ -247,7 +247,11 @@ class CreateCanonicalRequest(BaseModel):
     # regla —una en TS, otra en Python— se separan en cuanto aparece una unidad rara. Fue
     # exactamente lo que pasó: "355 Ml" llegaba como `Quantity(355, VOLUME)`, o sea 355 LITROS.
     # Mismo criterio que `BulkCreateCanonicals` y `PromoteStoreProductToCanonical`.
-    size_text: str
+    #
+    # OPCIONAL desde 2026-08-02: no todo producto declara tamaño (plato del mostrador, pan por
+    # pieza, fruta a granel). Vacío = sin cantidad, y eso se persiste como ausencia — nunca se
+    # inventa un número.
+    size_text: str = ""
     taxonomy_node_id: str
     market_id: str
     quality: str | None = None
@@ -260,14 +264,17 @@ def create_canonical_and_link(
     use_case: CreateCanonicalAndLink = Depends(get_create_canonical_and_link),
     audit: AdminAuditRecorder = Depends(get_admin_audit),
 ) -> dict[str, str]:
-    try:
-        quantity = parse_size(body.size_text)
-    except ValueError as exc:
-        # Unidad desconocida: se REPORTA con el mensaje del dominio. Inventar una cantidad sería
-        # peor que decirle al operador que ese tamaño no se pudo convertir.
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
+    # Vacío = el producto no declara tamaño → `quantity=None`. Un tamaño ESCRITO pero ilegible sí
+    # se reporta: el operador tipeó algo y merece saber que no se entendió, en vez de que se
+    # descarte en silencio.
+    quantity = None
+    if body.size_text.strip():
+        try:
+            quantity = parse_size(body.size_text)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            ) from exc
 
     canonical_id = use_case.execute(
         match_id=body.match_id,

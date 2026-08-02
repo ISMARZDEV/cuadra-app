@@ -1,6 +1,6 @@
 from .ean import is_global_ean, is_valid_ean13, normalize_barcode, pick_global_ean
 from .size_parser import normalize_size_text, parse_size
-from .units import Quantity, UnitMeasure, UnitPrice, unit_price
+from .units import Quantity, UnitMeasure, UnitPrice, unit_price, unit_price_or_none
 
 __all__ = [
     "Quantity",
@@ -13,4 +13,5 @@ __all__ = [
     "normalize_size_text",
     "parse_size",
     "unit_price",
+    "unit_price_or_none",
 ]

@@ -414,8 +414,8 @@ class SqlCanonicalProductRepository:
                 image_url=product.image_url,
                 origin_run_id=product.origin_run_id,
                 description=product.description,
-                size_amount=product.quantity.amount,
-                size_measure=product.quantity.measure.value,
+                size_amount=product.quantity.amount if product.quantity else None,
+                size_measure=product.quantity.measure.value if product.quantity else None,
                 taxonomy_node_id=(
                     uuid.UUID(product.taxonomy_node_id) if product.taxonomy_node_id else None
                 ),
@@ -1245,7 +1245,11 @@ class SqlStoreProductRepository:
                 quality=r.quality,
                 display_size=r.display_size,
                 image_url=r.image_url,
-                quantity=Quantity(r.size_amount, UnitMeasure(r.size_measure)),
+                quantity=(
+                    Quantity(r.size_amount, UnitMeasure(r.size_measure))
+                    if r.size_amount is not None and r.size_measure
+                    else None
+                ),
                 provider_id=str(r.provider_id),
                 provider_name=r.provider_name,
                 price=Money(r.current_price_minor, Currency(r.currency)),

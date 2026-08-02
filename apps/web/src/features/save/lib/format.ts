@@ -38,12 +38,15 @@ export function formatUnitPriceDisplay(
   priceMinor: number,
   currency: string,
   displaySize: string | null | undefined,
-  baseUnitPriceMinor: number,
-  baseMeasure: string,
+  baseUnitPriceMinor: number | null | undefined,
+  baseMeasure: string | null | undefined,
 ): string {
   const parsed = parseDisplaySize(displaySize);
   if (parsed) {
     return `${formatMoney(Math.round(priceMinor / parsed.amount), currency)}/${parsed.unit}`;
   }
+  // Sin cantidad NO hay precio por unidad base: el producto se vende por unidad y no declara peso.
+  // Se devuelve vacío en vez de imprimir "RD$0.00/und", que mentiría sobre un dato inexistente.
+  if (baseUnitPriceMinor == null || !baseMeasure) return "";
   return formatUnitPrice(baseUnitPriceMinor, currency, baseMeasure);
 }

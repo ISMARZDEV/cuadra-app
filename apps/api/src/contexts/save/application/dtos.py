@@ -45,8 +45,10 @@ class ComparedPriceDto(BaseModel):
     provider_name: str
     price_minor: int
     currency: str
-    unit_price_minor: int          # precio por unidad base
-    unit_measure: str              # mass|volume|count
+    # `None` = el producto no declara cantidad (plato por unidad, pan por pieza): no hay precio por
+    # unidad base que calcular. Ver `unit_price_or_none`.
+    unit_price_minor: int | None   # precio por unidad base
+    unit_measure: str | None       # mass|volume|count; None si no declara cantidad
     is_cheapest: bool              # "Mejor precio"
     extra_minor: int               # sobreprecio vs la más barata ("+RD$14")
     url: str | None = None
@@ -79,8 +81,8 @@ class PriceComparisonDto(BaseModel):
                 provider_name=e.provider_name,
                 price_minor=e.price.amount_minor,
                 currency=e.price.currency.code,
-                unit_price_minor=e.unit_price.amount_minor,
-                unit_measure=e.unit_price.measure.value,
+                unit_price_minor=e.unit_price.amount_minor if e.unit_price else None,
+                unit_measure=e.unit_price.measure.value if e.unit_price else None,
                 is_cheapest=e.is_cheapest,
                 extra_minor=e.extra_vs_cheapest.amount_minor,
                 url=e.url,
@@ -269,8 +271,8 @@ class ProductCardDto(BaseModel):
     image_url: str | None = None
     price_minor: int          # el MÁS BARATO entre tiendas
     currency: str
-    unit_price_minor: int     # precio por unidad base (§B2)
-    unit_measure: str         # mass|volume|count
+    unit_price_minor: int | None  # precio por unidad base (§B2); None si no declara cantidad
+    unit_measure: str | None  # mass|volume|count; None si no declara cantidad
     store_count: int          # "N tiendas" (B4)
     discount_bps: int | None = None  # % de bajada reciente (badge −X%), None si no está en oferta
 

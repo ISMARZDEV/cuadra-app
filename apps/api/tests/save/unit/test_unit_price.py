@@ -61,3 +61,30 @@ def test_cheaper_per_base_unit_is_lower() -> None:
     a = unit_price(_dop(16900), Quantity(Decimal("2"), UnitMeasure.MASS))  # 8450/kg
     b = unit_price(_dop(20000), Quantity(Decimal("2.5"), UnitMeasure.MASS))  # 8000/kg
     assert b.amount_minor < a.amount_minor
+
+
+# --------------------------------------- canónicos SIN tamaño (2026-08-02) ----------
+
+
+def test_un_canonico_puede_no_tener_cantidad() -> None:
+    """No todo producto tiene peso: un plato para perro, un sándwich del mostrador o un pan por
+    pieza se venden por unidad sin declarar tamaño. Exigirlo obligaba a INVENTAR un número, que es
+    justo lo que este módulo no se permite — y dejaba 19 productos reales fuera del catálogo."""
+    from src.contexts.save.domain.entities import CanonicalProduct
+
+    producto = CanonicalProduct(
+        "c-1", "Plato Para Perro Inoxidable", "Paws Premium",
+        None, taxonomy_node_id="t-1", market_id="DO",
+    )
+
+    assert producto.quantity is None
+
+
+def test_sin_cantidad_no_hay_precio_por_unidad_y_eso_se_DICE() -> None:
+    """`None` y no 0: un precio unitario de cero se ordenaría PRIMERO en «más barato por kilo» y
+    pondría un plato para perro arriba de la comida. Sin cantidad no hay precio unitario que
+    calcular, y el dato honesto es la ausencia."""
+    from src.contexts.save.domain.value_objects import unit_price_or_none
+    from src.shared.money import Money
+
+    assert unit_price_or_none(Money(12500, "DOP"), None) is None

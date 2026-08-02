@@ -78,8 +78,13 @@ export function CreateCanonicalPanel({
   const [showError, setShowError] = useState(false);
 
   const amountNum = Number.parseFloat(amount.replace(",", "."));
+  const hasSize = amount.trim() !== "";
   const amountValid = Number.isFinite(amountNum) && amountNum > 0;
-  const valid = name.trim() !== "" && amountValid && unit !== "" && !!suggestedCategoryId;
+  // El tamaño es OPCIONAL: no todo producto lo declara (plato del mostrador, pan por pieza, fruta a
+  // granel). Pero si el operador ESCRIBIÓ algo, tiene que ser un número válido con su unidad —
+  // guardar "abc" en silencio sería peor que no pedirlo.
+  const sizeOk = !hasSize || (amountValid && unit !== "");
+  const valid = name.trim() !== "" && sizeOk && !!suggestedCategoryId;
 
   const handleSubmit = () => {
     if (!valid) {
@@ -90,8 +95,9 @@ export function CreateCanonicalPanel({
     onCreate({
       name: name.trim(),
       brand: brand.trim(),
-      // Texto, no cantidad: la conversión a unidad base es del servidor.
-      sizeText: `${amount.trim().replace(",", ".")} ${unit}`,
+      // Texto, no cantidad: la conversión a unidad base es del servidor. Vacío = sin tamaño; el
+      // backend lo persiste como ausencia en vez de inventar un número.
+      sizeText: hasSize ? `${amount.trim().replace(",", ".")} ${unit}` : "",
       taxonomyNodeId: suggestedCategoryId as string,
     });
   };
@@ -143,7 +149,7 @@ export function CreateCanonicalPanel({
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="cc-amount" className="text-xs font-medium text-foreground">
-            Tamaño <span className="text-emerald-600">*</span>
+            Tamaño
           </label>
           <input
             id="cc-amount"
@@ -151,13 +157,13 @@ export function CreateCanonicalPanel({
             inputMode="decimal"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            aria-invalid={showError && !amountValid}
+            aria-invalid={showError && hasSize && !amountValid}
             className={`${field} tabular-nums`}
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="cc-measure" className="text-xs font-medium text-foreground">
-            Unidad de medida <span className="text-emerald-600">*</span>
+            Unidad de medida
           </label>
           <select
             id="cc-measure"

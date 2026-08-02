@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from src.shared.money import Money
 
-from .value_objects import Quantity, UnitPrice, unit_price
+from .value_objects import Quantity, UnitPrice, unit_price_or_none
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +31,9 @@ class ComparedPrice:
     provider_id: str
     provider_name: str
     price: Money
-    unit_price: UnitPrice
+    # `None` cuando el producto no declara cantidad: no hay por qué dividir. Ver
+    # `unit_price_or_none` — un 0 aquí mentiría diciendo "gratis por kilo".
+    unit_price: UnitPrice | None
     is_cheapest: bool
     extra_vs_cheapest: Money  # 0 en la más barata; "+RD$14 más caro" en las demás
     url: str | None = None
@@ -41,7 +43,7 @@ class ComparedPrice:
 class PriceComparison:
     """Resultado de comparar un producto entre tiendas: filas ordenadas asc. por precio."""
 
-    quantity: Quantity
+    quantity: Quantity | None
     entries: tuple[ComparedPrice, ...]
 
     @property
@@ -57,7 +59,7 @@ class PriceComparison:
         return self.most_expensive.price - self.cheapest.price
 
 
-def compare(quantity: Quantity, quotes: Iterable[StoreQuote]) -> PriceComparison:
+def compare(quantity: Quantity | None, quotes: Iterable[StoreQuote]) -> PriceComparison:
     """Ordena las cotizaciones y arma la tabla comparativa. Requiere ≥1 y una sola moneda."""
     items = list(quotes)
     if not items:
@@ -72,7 +74,7 @@ def compare(quantity: Quantity, quotes: Iterable[StoreQuote]) -> PriceComparison
             provider_id=q.provider_id,
             provider_name=q.provider_name,
             price=q.price,
-            unit_price=unit_price(q.price, quantity),
+            unit_price=unit_price_or_none(q.price, quantity),
             is_cheapest=(i == 0),
             extra_vs_cheapest=q.price - cheapest_price,
             url=q.url,
