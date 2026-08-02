@@ -38,7 +38,10 @@ from src.contexts.save.application.resolve_brand import ResolveBrand
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
 from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.set_product_category import SetProductCategory
+from src.contexts.save.application.match_store_product import MatchStoreProduct
+from src.contexts.save.application.rematch_pending import RematchPending
 from src.contexts.save.infrastructure.classification.category_judge import CategoryJudge
+from src.contexts.save.infrastructure.matching.llm_judge import LlmJudge
 from src.contexts.save.infrastructure.classification.lexicon import build_lexicon_index
 from src.contexts.save.infrastructure.matching.embeddings import build_api_embedder
 from src.contexts.save.application.categories import GetCategory, ListCategories
@@ -112,7 +115,10 @@ from src.contexts.save.application.test_source import TestSource
 from src.contexts.save.domain.ports.orchestrator import PipelineOrchestrator
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
 from src.contexts.save.infrastructure.matching.embeddings import BgeM3EmbeddingProvider
-from src.contexts.save.application.orchestration_policies import CreateProviderFlow
+from src.contexts.save.application.orchestration_policies import (
+    CreateAssetPolicy,
+    CreateProviderFlow,
+)
 from src.contexts.save.infrastructure.catalog_sources.factory import directed_capability
 from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
     DagsterGraphQLOrchestrator,
@@ -120,6 +126,7 @@ from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
 from src.contexts.save.infrastructure.orchestrator.policy_repository import (
     SqlOrchestrationGlobalConfigRepository,
     SqlOrchestrationPolicyRepository,
+    SqlSectionsReader,
 )
 from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
     SqlRunSnapshotRepository,
@@ -471,6 +478,16 @@ def get_create_provider_flow(session: Session = Depends(get_session)) -> CreateP
     )
 
 
+def get_sections_reader(session: Session = Depends(get_session)) -> SqlSectionsReader:
+    """Secciones de la fuente: el browse las necesita para armar sus particiones."""
+    return SqlSectionsReader(session)
+
+
+def get_create_asset_policy(session: Session = Depends(get_session)) -> CreateAssetPolicy:
+    """Assets GLOBALES: sin registry ni capacidad — no cuelgan de una tienda."""
+    return CreateAssetPolicy(policy_repo=SqlOrchestrationPolicyRepository(session))
+
+
 def get_create_provider(session: Session = Depends(get_session)) -> CreateProvider:
     return CreateProvider(SqlProviderRepository(session))
 
@@ -748,6 +765,43 @@ def get_bulk_classify_review(session: Session = Depends(get_session)) -> BulkCla
             leaf_names={leaf_id: name for leaf_id, name in leaves},
             # Gate de DEPARTAMENTO: NO se cablea. La capacidad existe y está testeada, pero el A/B
             # con el juez encendido la desaconseja — ver `_department_of` en el use case.
+        ),
+    )
+
+
+def get_rematch_pending(session: Session = Depends(get_session)) -> RematchPending:
+    """Re-corre la cascada sobre filas YA encoladas, contra el catálogo ACTUAL.
+
+    Los candidatos de la cola son ESTÁTICOS: `RefreshCatalogPrices` sólo enruta al matcher los
+    `store_product` DESCONOCIDOS, así que una fila que entró cuando el catálogo era chico arrastra
+    para siempre los candidatos de ese día. Esto es la única forma de refrescarlos sin descartar la
+    fila (que además pierde el histórico de precios).
+
+    La etapa VECTORIAL depende de `build_api_embedder`: endpoint HTTP (prod) → modelo in-process
+    (dev, donde el grupo `ingestion` sí está) → `None`. Con `None` la cascada la OMITE y corre con
+    EAN + trgm; no se le inventa un vector, que devolvería vecinos arbitrarios.
+
+    Mismo índice léxico por request que `get_bulk_classify_review`, y por la misma razón: una query
+    y un dict no justifican un cache que se desincronice al sembrar categorías.
+    """
+    tree = SqlTaxonomyRepository(session).list_tree(SAVE_MARKET)
+    leaves = [(child.id, child.name) for root in tree for child in root.children]
+    return RematchPending(
+        scope=session,
+        products=SqlProductMatchRepository(session),
+        # Nombres de los canónicos enlazados: sin ellos el resumen del lote son ids contra ids y
+        # el operador no puede auditar si el enlace fue correcto.
+        canonicals=SqlCanonicalProductRepository(session),
+        matcher=MatchStoreProduct(
+            match_repo=SqlProductMatchRepository(session),
+            store_repo=SqlStoreProductRepository(session),
+            canonical_repo=SqlCanonicalProductRepository(session),
+            embedding_provider=build_api_embedder(
+                endpoint_url=settings.save_bge_m3_endpoint_url
+            ),
+            judge=LlmJudge() if settings.save_llm_judge_enabled else None,
+            category_lexicon=build_lexicon_index(leaves),
+            leaf_to_parent={child.id: root.id for root in tree for child in root.children},
         ),
     )
 

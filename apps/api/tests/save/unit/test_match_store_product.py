@@ -259,11 +259,12 @@ def _make_use_case(
     category_lexicon: dict[str, str] | None = None,
     leaf_to_parent: dict[str, str] | None = None,
     no_judge: bool = False,
+    no_embedder: bool = False,
 ) -> tuple[MatchStoreProduct, dict]:
     match_repo = match_repo or FakeCascadeMatchRepository()
     store_repo = store_repo or FakeStoreProductLinkRepository()
     canonical_repo = canonical_repo or FakeCanonicalProductRepository({})
-    embedder = embedder or FakeEmbeddingProvider()
+    embedder = None if no_embedder else (embedder or FakeEmbeddingProvider())
     judge = None if no_judge else (judge or FakeJudge(FakeVerdict("uncertain", 0.0, [])))
     use_case = MatchStoreProduct(
         match_repo=match_repo,
@@ -1627,3 +1628,38 @@ def test_a_form_conflict_resolves_without_paying_for_a_judge_call() -> None:
 
     assert judge.calls == []
     assert result.status == "pending_review"
+
+
+# ------------------------------------------------- sin embedder (API sin modelo) ----------
+
+
+def test_without_embedder_the_vector_stage_is_SKIPPED_not_fed_a_fake_vector() -> None:
+    """La API no siempre tiene modelo: `build_api_embedder` devuelve `None` cuando no hay endpoint
+    HTTP ni modelo in-process. Antes el embedder era obligatorio, así que la única forma de correr
+    la cascada desde la API era inventar un vector — y un vector falso NO es "sin señal": la
+    búsqueda vectorial devolvería vecinos arbitrarios y el RRF los fusionaría como si fueran
+    candidatos reales. Omitir la etapa deja la cascada con trgm, que es honesto.
+    """
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-trgm-1", score=0.9)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-vector-1", score=0.99)],
+    )
+    use_case, _ = _make_use_case(match_repo=match_repo, no_embedder=True)
+
+    result = use_case.execute(_incoming(ean=None))
+
+    assert match_repo.vector_calls == []  # jamás se consultó el índice vectorial
+    assert result.method == "trgm"  # y el método reportado NO miente sobre qué corrió
+
+
+def test_without_embedder_the_ean_stage_still_auto_links() -> None:
+    # El EAN es la señal más fuerte y no depende del modelo: sin embedder debe seguir enlazando.
+    match_repo = FakeCascadeMatchRepository(
+        ean_candidates=[MatchCandidate(canonical_product_id="canon-ean-1", score=1.0)]
+    )
+    use_case, _ = _make_use_case(match_repo=match_repo, no_embedder=True)
+
+    result = use_case.execute(_incoming(ean="7501234567890"))
+
+    assert result.status == "auto_linked"
+    assert result.method == "ean"

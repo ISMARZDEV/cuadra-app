@@ -1,4 +1,4 @@
-import { CheckCheck, ChevronDown, LayoutGrid, List, PackagePlus, Search, Tag, Tags, X } from "lucide-react";
+import { CheckCheck, ChevronDown, LayoutGrid, List, PackagePlus, RefreshCw, Search, Tag, Tags, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui-base/button";
@@ -47,6 +47,8 @@ export interface ReviewQueueToolbarProps {
   onBulkReject: () => void;
   /** Clasifica en lote lo seleccionado (llena la categoría, precondición para canonizar). */
   onBulkClassify: () => void;
+  /** Re-corre la cascada sobre lo seleccionado: los candidatos de la cola son ESTÁTICOS. */
+  onBulkRematch: () => void;
   /** Rellena la MARCA de lo seleccionado reconociéndola en el nombre contra el catálogo de
    *  marcas conocidas. Va en el grupo "preparar" junto a clasificar: no decide nada sobre el
    *  match, sólo completa el dato para que la decisión posterior sea con la ficha llena. */
@@ -84,6 +86,7 @@ export function ReviewQueueToolbar({
   hasCandidatesSelected = true,
   onBulkReject,
   onBulkClassify,
+  onBulkRematch,
   onBulkResolveBrands,
   onBulkCanonize,
   bulkBusy,
@@ -215,6 +218,18 @@ export function ReviewQueueToolbar({
             >
               <Tag className="text-violet-600 dark:text-violet-400" />
               {t("admin.toolbar.actions.resolveBrands")}
+            </DropdownMenuItem>
+
+            {/* PREPARAR también: re-evaluar no decide nada, refresca los CANDIDATOS contra el
+                catálogo actual. Va en este grupo y no junto a "Aprobar" justamente por eso.
+                `RefreshCw` porque es literalmente volver a correr lo que ya corrió. */}
+            <DropdownMenuItem
+              onClick={onBulkRematch}
+              title={t("admin.toolbar.actions.rematch.hint")}
+              className="focus:bg-violet-500/10 focus:text-violet-600 not-data-[variant=destructive]:focus:**:text-violet-600 dark:focus:text-violet-400 dark:not-data-[variant=destructive]:focus:**:text-violet-400"
+            >
+              <RefreshCw className="text-violet-600 dark:text-violet-400" />
+              {t("admin.toolbar.actions.rematch")}
             </DropdownMenuItem>
 
             {/* El separador agrupa por TIPO DE ACTO: preparar · decidir · destruir. Sin él las

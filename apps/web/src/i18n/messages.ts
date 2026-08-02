@@ -153,6 +153,12 @@ type MessageKey =
   | "admin.nav.save.sources"
   | "admin.nav.save.basket"
   | "admin.nav.save.orchestration"
+  | "admin.orchestration.flow.provider_price_refresh"
+  | "admin.orchestration.flow.provider_browse"
+  | "admin.orchestration.assets.schedule"
+  | "admin.orchestration.assets.scheduled"
+  | "admin.orchestration.health.title"
+  | "admin.orchestration.health.body"
   | "admin.orchestration.title"
   | "admin.orchestration.subtitle"
   | "admin.orchestration.pending"
@@ -341,6 +347,9 @@ type MessageKey =
   | "admin.orchestration.create.providerAll"
   | "admin.orchestration.create.fieldFlow"
   | "admin.orchestration.create.hintFlow"
+  | "admin.orchestration.create.flowHelp.provider_prices_refresh"
+  | "admin.orchestration.create.flowHelp.provider_price_refresh"
+  | "admin.orchestration.create.flowHelp.provider_browse"
   | "admin.orchestration.create.errProviderRequired"
   | "admin.orchestration.create.errSave"
   | "admin.orchestration.create.noProviders"
@@ -385,6 +394,23 @@ type MessageKey =
   | "admin.list.refreshFailed"
   | "admin.toolbar.actions.classify"
   | "admin.toolbar.actions.resolveBrands"
+  | "admin.toolbar.actions.rematch"
+  | "admin.toolbar.actions.rematch.hint"
+  | "admin.reviewQueue.rematch.running"
+  | "admin.reviewQueue.rematch.linked"
+  | "admin.reviewQueue.rematch.linkedOne"
+  | "admin.reviewQueue.rematch.stillPending"
+  | "admin.reviewQueue.rematch.stillPendingOne"
+  | "admin.reviewQueue.rematch.failed"
+  | "admin.reviewQueue.rematch.error"
+  | "admin.reviewQueue.rematch.modal.title"
+  | "admin.reviewQueue.rematch.modal.close"
+  | "admin.reviewQueue.rematch.modal.empty"
+  | "admin.reviewQueue.rematch.modal.summary"
+  | "admin.reviewQueue.rematch.modal.colQueue"
+  | "admin.reviewQueue.rematch.modal.colCanonical"
+  | "admin.reviewQueue.rematch.modal.colMethod"
+  | "admin.reviewQueue.rematch.modal.colConfidence"
   | "admin.toolbar.actions.canonize"
   | "admin.reviewQueue.canonize.title"
   | "admin.reviewQueue.canonize.description"
@@ -1214,6 +1240,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.save.sources": "Fuentes",
     "admin.nav.save.basket": "Canasta curada",
     "admin.nav.save.orchestration": "Orquestación",
+    "admin.orchestration.flow.provider_price_refresh": "Refresco de precios",
+    "admin.orchestration.flow.provider_browse": "Browse por sección",
+    "admin.orchestration.assets.schedule": "Programar",
+    "admin.orchestration.assets.scheduled": "Programado",
+    "admin.orchestration.health.title": "El orquestador no puede ejecutar",
+    "admin.orchestration.health.body": "Los flujos figuran activos, pero Dagster no tiene el código cargado: nada se está corriendo. El detalle técnico está abajo.",
     "admin.orchestration.title": "Orquestación (Save)",
     "admin.orchestration.subtitle": "Opera el descubrimiento y el matcheo por código de barras sin salir del admin.",
     "admin.orchestration.pending":
@@ -1344,7 +1376,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.products.breakdown": "{refreshed} actualizados · {matched} matcheados · {discarded} descartados",
     "admin.orchestration.schedule.none": "Sin programar",
     "admin.orchestration.action.retry": "Reintentar",
-    "admin.orchestration.action.edit": "Editar política",
+    "admin.orchestration.action.edit": "Configurar flujo",
     "admin.orchestration.action.delete": "Eliminar flujo",
     "admin.orchestration.actions.menuLabel": "Acciones del flujo",
     "admin.orchestration.confirm.back": "Volver",
@@ -1361,7 +1393,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.assets.loading": "Consultando el orquestador…",
     "admin.orchestration.assets.empty": "El orquestador respondió, pero no declara ningún asset.",
     "admin.orchestration.assets.unavailableTitle": "No pudimos consultar el orquestador",
-    "admin.orchestration.assets.unavailableHint": "Los assets viven solo en Dagster, así que no hay nada que mostrar hasta que responda. Las políticas de la pestaña Proveedores siguen disponibles.",
+    "admin.orchestration.assets.unavailableHint": "Los assets viven solo en Dagster, así que no hay nada que mostrar hasta que responda. Los flujos de la pestaña Proveedores siguen disponibles.",
     "admin.orchestration.assets.partsProvider": "supermercados",
     "admin.orchestration.assets.partsSection": "secciones del catálogo",
     "admin.orchestration.assets.partsOther": "partes",
@@ -1379,8 +1411,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.assets.health.healthy": "Sano",
     "admin.orchestration.assets.health.degraded": "Degradado",
     "admin.orchestration.assets.health.failed": "Con fallo",
-    "admin.orchestration.modal.title": "Editar política",
-    "admin.orchestration.modal.save": "Guardar política",
+    "admin.orchestration.modal.title": "Configurar flujo",
+    "admin.orchestration.modal.save": "Guardar configuración",
     "admin.orchestration.modal.saving": "Guardando…",
     "admin.orchestration.modal.reset": "Restablecer",
     "admin.orchestration.modal.fieldMode": "Modo de ejecución",
@@ -1393,7 +1425,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.modal.hintQueryLimit": "Vacío = usa el límite global del mercado. Un 0 sería un límite de cero queries.",
     "admin.orchestration.modal.hintSla": "Minutos tolerados desde la última corrida EXITOSA. Solo aplica a flujos programados.",
     "admin.orchestration.modal.errCronRequired": "Un flujo programado necesita su expresión cron.",
-    "admin.orchestration.modal.errSave": "No se pudo guardar la política. Revisá los valores e intentá de nuevo.",
+    "admin.orchestration.modal.errSave": "No se pudo guardar la configuración. Revisá los valores e intentá de nuevo.",
     "admin.orchestration.modal.envTitle": "Qué NO se configura desde acá",
     "admin.orchestration.modal.envBody": "Estas piezas siguen viviendo en variables de entorno del servidor y no se pueden cambiar desde el admin: el límite global de queries (SAVE_REFRESH_QUERY_LIMIT), y los switches de la cascada de matcheo, del clasificador y del juez LLM. Si necesitás tocar alguna, hace falta un cambio de configuración en el despliegue.",
     "admin.orchestration.create.cta": "Nuevo flujo",
@@ -1406,11 +1438,17 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.create.providerAll": "Todos",
     "admin.orchestration.create.fieldFlow": "Flujo",
     "admin.orchestration.create.hintFlow":
-      "El flujo nace en modo manual: no dispara nada hasta que le definas un horario desde «Editar política».",
+      "El flujo nace en modo manual: no dispara nada hasta que le definas un horario desde «Configurar flujo».",
+    "admin.orchestration.create.flowHelp.provider_prices_refresh":
+      "Busca los términos de la canasta en el buscador de la tienda y da de alta lo que encuentra. Es el que descubre productos nuevos.",
+    "admin.orchestration.create.flowHelp.provider_price_refresh":
+      "Vuelve a pedir por id los productos que ya conocemos para actualizar su precio, y de paso cosecha EAN, marca y sección del detalle sin pedidos extra. No descubre nada nuevo.",
+    "admin.orchestration.create.flowHelp.provider_browse":
+      "Recorre el catálogo sección por sección, una corrida por sección, para encontrar los exclusivos que la canasta nunca pediría.",
     "admin.orchestration.create.errProviderRequired": "Elegí un proveedor para el flujo.",
     "admin.orchestration.create.errSave": "No se pudo crear el flujo.",
     "admin.orchestration.create.noProviders":
-      "Todos los proveedores del mercado ya tienen su flujo configurado. Para reutilizar uno, editá el existente.",
+      "Todos los proveedores ya tienen este flujo configurado. Elegí otro flujo, o editá el existente desde su fila.",
     "admin.orchestration.search.placeholder": "Buscar proveedor o flujo…",
     "admin.orchestration.search.aria": "Buscar flujos de orquestación",
     "admin.orchestration.filters": "Filtros",
@@ -1451,6 +1489,26 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions.classify": "Clasificar seleccionados",
     "admin.list.refreshFailed": "No se pudo actualizar la lista. Se muestra la última versión conocida.",
     "admin.toolbar.actions.resolveBrands": "Clasificar marcas",
+    "admin.toolbar.actions.rematch": "Re-evaluar seleccionados",
+    "admin.toolbar.actions.rematch.hint":
+      "Vuelve a pasar las filas por la cascada contra el catálogo ACTUAL. Úsalo cuando se hayan creado canónicos nuevos: los candidatos de una fila quedan congelados en el catálogo del día que entró.",
+    "admin.reviewQueue.rematch.running": "Re-evaluando {n} filas…",
+    "admin.reviewQueue.rematch.linked": "{n} enlazadas",
+    "admin.reviewQueue.rematch.linkedOne": "{n} enlazada",
+    "admin.reviewQueue.rematch.stillPending": "{n} siguen en cola",
+    "admin.reviewQueue.rematch.stillPendingOne": "{n} sigue en cola",
+    "admin.reviewQueue.rematch.failed": "{n} con error",
+    "admin.reviewQueue.rematch.error": "No se pudo re-evaluar la selección.",
+    "admin.reviewQueue.rematch.modal.title": "Productos enlazados",
+    "admin.reviewQueue.rematch.modal.close": "Cerrar",
+    "admin.reviewQueue.rematch.modal.empty":
+      "La re-evaluación corrió, pero ninguna fila se enlazó: el catálogo canónico todavía no tiene un producto equivalente. Para estas filas la acción es «Crear canónicos», no volver a re-evaluar.",
+    "admin.reviewQueue.rematch.modal.summary":
+      "{linked} enlazadas · {pending} siguen en cola · {failed} con error",
+    "admin.reviewQueue.rematch.modal.colQueue": "Producto de la cola",
+    "admin.reviewQueue.rematch.modal.colCanonical": "Canónico enlazado",
+    "admin.reviewQueue.rematch.modal.colMethod": "Método",
+    "admin.reviewQueue.rematch.modal.colConfidence": "Confianza",
     "admin.toolbar.actions.canonize": "Aprobar y crear canónico",
     "admin.reviewQueue.canonize.title": "Crear canónicos",
     "admin.reviewQueue.canonize.description": "Se crearán {n} productos canónicos nuevos y se enlazarán a estas filas. No se puede deshacer.",
@@ -2280,6 +2338,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.save.sources": "Sources",
     "admin.nav.save.basket": "Curated basket",
     "admin.nav.save.orchestration": "Orchestration",
+    "admin.orchestration.flow.provider_price_refresh": "Price refresh",
+    "admin.orchestration.flow.provider_browse": "Section browse",
+    "admin.orchestration.assets.schedule": "Schedule",
+    "admin.orchestration.assets.scheduled": "Scheduled",
+    "admin.orchestration.health.title": "The orchestrator cannot run",
+    "admin.orchestration.health.body": "Flows show as active, but Dagster has no code loaded: nothing is running. Technical detail below.",
     "admin.orchestration.title": "Orchestration (Save)",
     "admin.orchestration.subtitle": "Operate discovery and barcode matching without leaving the admin.",
     "admin.orchestration.pending":
@@ -2410,7 +2474,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.products.breakdown": "{refreshed} refreshed · {matched} matched · {discarded} discarded",
     "admin.orchestration.schedule.none": "Not scheduled",
     "admin.orchestration.action.retry": "Retry",
-    "admin.orchestration.action.edit": "Edit policy",
+    "admin.orchestration.action.edit": "Configure flow",
     "admin.orchestration.action.delete": "Delete flow",
     "admin.orchestration.actions.menuLabel": "Flow actions",
     "admin.orchestration.confirm.back": "Go back",
@@ -2427,7 +2491,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.assets.loading": "Asking the orchestrator…",
     "admin.orchestration.assets.empty": "The orchestrator answered, but declares no assets.",
     "admin.orchestration.assets.unavailableTitle": "We could not reach the orchestrator",
-    "admin.orchestration.assets.unavailableHint": "Assets live only in Dagster, so there is nothing to show until it answers. The policies in the Providers tab are still available.",
+    "admin.orchestration.assets.unavailableHint": "Assets live only in Dagster, so there is nothing to show until it answers. The flows in the Providers tab are still available.",
     "admin.orchestration.assets.partsProvider": "supermarkets",
     "admin.orchestration.assets.partsSection": "catalog sections",
     "admin.orchestration.assets.partsOther": "parts",
@@ -2445,8 +2509,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.assets.health.healthy": "Healthy",
     "admin.orchestration.assets.health.degraded": "Degraded",
     "admin.orchestration.assets.health.failed": "Failed",
-    "admin.orchestration.modal.title": "Edit policy",
-    "admin.orchestration.modal.save": "Save policy",
+    "admin.orchestration.modal.title": "Configure flow",
+    "admin.orchestration.modal.save": "Save configuration",
     "admin.orchestration.modal.saving": "Saving…",
     "admin.orchestration.modal.reset": "Reset",
     "admin.orchestration.modal.fieldMode": "Execution mode",
@@ -2459,7 +2523,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.modal.hintQueryLimit": "Empty = use the market-wide limit. A 0 would mean a limit of zero queries.",
     "admin.orchestration.modal.hintSla": "Minutes tolerated since the last SUCCESSFUL run. Only applies to scheduled flows.",
     "admin.orchestration.modal.errCronRequired": "A scheduled flow needs its cron expression.",
-    "admin.orchestration.modal.errSave": "Could not save the policy. Check the values and try again.",
+    "admin.orchestration.modal.errSave": "Could not save the configuration. Check the values and try again.",
     "admin.orchestration.modal.envTitle": "What is NOT configured here",
     "admin.orchestration.modal.envBody": "These still live in server environment variables and cannot be changed from the admin: the market-wide query limit (SAVE_REFRESH_QUERY_LIMIT), and the switches for the matching cascade, the classifier and the LLM judge. Changing any of them requires a deployment config change.",
     "admin.orchestration.create.cta": "New flow",
@@ -2472,11 +2536,17 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.create.providerAll": "All",
     "admin.orchestration.create.fieldFlow": "Flow",
     "admin.orchestration.create.hintFlow":
-      "The flow starts in manual mode: it fires nothing until you give it a schedule from “Edit policy”.",
+      "The flow starts in manual mode: it fires nothing until you give it a schedule from “Configure flow”.",
+    "admin.orchestration.create.flowHelp.provider_prices_refresh":
+      "Searches the basket terms in the store's own search and registers what it finds. This is the one that discovers new products.",
+    "admin.orchestration.create.flowHelp.provider_price_refresh":
+      "Re-fetches by id the products we already know to update their price, harvesting EAN, brand and section from the detail along the way at no extra request. It discovers nothing new.",
+    "admin.orchestration.create.flowHelp.provider_browse":
+      "Walks the catalog section by section, one run per section, to find the exclusives the basket would never ask for.",
     "admin.orchestration.create.errProviderRequired": "Pick a provider for the flow.",
     "admin.orchestration.create.errSave": "Could not create the flow.",
     "admin.orchestration.create.noProviders":
-      "Every provider in this market already has its flow configured. To reuse one, edit the existing flow.",
+      "Every provider already has this flow configured. Pick another flow, or edit the existing one from its row.",
     "admin.orchestration.search.placeholder": "Search provider or flow…",
     "admin.orchestration.search.aria": "Search orchestration flows",
     "admin.orchestration.filters": "Filters",
@@ -2517,6 +2587,26 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions.classify": "Classify selected",
     "admin.list.refreshFailed": "Could not refresh the list. Showing the last known version.",
     "admin.toolbar.actions.resolveBrands": "Resolve brands",
+    "admin.toolbar.actions.rematch": "Re-evaluate selected",
+    "admin.toolbar.actions.rematch.hint":
+      "Runs the rows through the cascade again against the CURRENT catalog. Use it after new canonicals were created: a row's candidates stay frozen at the catalog of the day it arrived.",
+    "admin.reviewQueue.rematch.running": "Re-evaluating {n} rows…",
+    "admin.reviewQueue.rematch.linked": "{n} linked",
+    "admin.reviewQueue.rematch.linkedOne": "{n} linked",
+    "admin.reviewQueue.rematch.stillPending": "{n} still queued",
+    "admin.reviewQueue.rematch.stillPendingOne": "{n} still queued",
+    "admin.reviewQueue.rematch.failed": "{n} failed",
+    "admin.reviewQueue.rematch.error": "Could not re-evaluate the selection.",
+    "admin.reviewQueue.rematch.modal.title": "Linked products",
+    "admin.reviewQueue.rematch.modal.close": "Close",
+    "admin.reviewQueue.rematch.modal.empty":
+      "The re-evaluation ran, but no row was linked: the canonical catalog has no equivalent product yet. For these rows the action is \u201cCreate canonicals\u201d, not re-evaluating again.",
+    "admin.reviewQueue.rematch.modal.summary":
+      "{linked} linked \u00b7 {pending} still queued \u00b7 {failed} failed",
+    "admin.reviewQueue.rematch.modal.colQueue": "Queue product",
+    "admin.reviewQueue.rematch.modal.colCanonical": "Linked canonical",
+    "admin.reviewQueue.rematch.modal.colMethod": "Method",
+    "admin.reviewQueue.rematch.modal.colConfidence": "Confidence",
     "admin.toolbar.actions.canonize": "Approve and create canonical",
     "admin.reviewQueue.canonize.title": "Create canonicals",
     "admin.reviewQueue.canonize.description": "{n} new canonical products will be created and linked to these rows. This cannot be undone.",
@@ -3346,6 +3436,12 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.nav.save.sources": "Fontes",
     "admin.nav.save.basket": "Cesta curada",
     "admin.nav.save.orchestration": "Orquestração",
+    "admin.orchestration.flow.provider_price_refresh": "Atualização de preços",
+    "admin.orchestration.flow.provider_browse": "Navegação por seção",
+    "admin.orchestration.assets.schedule": "Programar",
+    "admin.orchestration.assets.scheduled": "Programado",
+    "admin.orchestration.health.title": "O orquestrador não pode executar",
+    "admin.orchestration.health.body": "Os fluxos aparecem ativos, mas o Dagster não tem o código carregado: nada está rodando. Detalhe técnico abaixo.",
     "admin.orchestration.title": "Orquestração (Save)",
     "admin.orchestration.subtitle": "Opere a descoberta e a correspondência por código de barras sem sair do admin.",
     "admin.orchestration.pending":
@@ -3476,7 +3572,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.products.breakdown": "{refreshed} atualizados · {matched} correspondidos · {discarded} descartados",
     "admin.orchestration.schedule.none": "Sem agendamento",
     "admin.orchestration.action.retry": "Tentar de novo",
-    "admin.orchestration.action.edit": "Editar política",
+    "admin.orchestration.action.edit": "Configurar fluxo",
     "admin.orchestration.action.delete": "Excluir fluxo",
     "admin.orchestration.actions.menuLabel": "Ações do fluxo",
     "admin.orchestration.confirm.back": "Voltar",
@@ -3493,7 +3589,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.assets.loading": "Consultando o orquestrador…",
     "admin.orchestration.assets.empty": "O orquestrador respondeu, mas não declara nenhum asset.",
     "admin.orchestration.assets.unavailableTitle": "Não foi possível consultar o orquestrador",
-    "admin.orchestration.assets.unavailableHint": "Os assets vivem apenas no Dagster, portanto não há o que mostrar até que ele responda. As políticas da aba Fornecedores continuam disponíveis.",
+    "admin.orchestration.assets.unavailableHint": "Os assets vivem apenas no Dagster, portanto não há o que mostrar até que ele responda. Os fluxos da aba Fornecedores continuam disponíveis.",
     "admin.orchestration.assets.partsProvider": "supermercados",
     "admin.orchestration.assets.partsSection": "seções do catálogo",
     "admin.orchestration.assets.partsOther": "partes",
@@ -3511,8 +3607,8 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.assets.health.healthy": "Saudável",
     "admin.orchestration.assets.health.degraded": "Degradado",
     "admin.orchestration.assets.health.failed": "Com falha",
-    "admin.orchestration.modal.title": "Editar política",
-    "admin.orchestration.modal.save": "Salvar política",
+    "admin.orchestration.modal.title": "Configurar fluxo",
+    "admin.orchestration.modal.save": "Salvar configuração",
     "admin.orchestration.modal.saving": "Salvando…",
     "admin.orchestration.modal.reset": "Restaurar",
     "admin.orchestration.modal.fieldMode": "Modo de execução",
@@ -3525,7 +3621,7 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.modal.hintQueryLimit": "Vazio = usa o limite global do mercado. Um 0 seria um limite de zero consultas.",
     "admin.orchestration.modal.hintSla": "Minutos tolerados desde a última execução BEM-SUCEDIDA. Só se aplica a fluxos agendados.",
     "admin.orchestration.modal.errCronRequired": "Um fluxo agendado precisa da sua expressão cron.",
-    "admin.orchestration.modal.errSave": "Não foi possível salvar a política. Verifique os valores e tente de novo.",
+    "admin.orchestration.modal.errSave": "Não foi possível salvar a configuração. Verifique os valores e tente de novo.",
     "admin.orchestration.modal.envTitle": "O que NÃO se configura aqui",
     "admin.orchestration.modal.envBody": "Estas peças ainda vivem em variáveis de ambiente do servidor e não podem ser alteradas pelo admin: o limite global de consultas (SAVE_REFRESH_QUERY_LIMIT) e os switches da cascata de correspondência, do classificador e do juiz LLM. Alterá-las exige uma mudança de configuração no deploy.",
     "admin.orchestration.create.cta": "Novo fluxo",
@@ -3538,11 +3634,17 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.orchestration.create.providerAll": "Todos",
     "admin.orchestration.create.fieldFlow": "Fluxo",
     "admin.orchestration.create.hintFlow":
-      "O fluxo nasce em modo manual: não dispara nada até você definir um horário em “Editar política”.",
+      "O fluxo nasce em modo manual: não dispara nada até você definir um horário em “Configurar fluxo”.",
+    "admin.orchestration.create.flowHelp.provider_prices_refresh":
+      "Busca os termos da cesta no buscador da loja e cadastra o que encontra. É o que descobre produtos novos.",
+    "admin.orchestration.create.flowHelp.provider_price_refresh":
+      "Pede de novo por id os produtos que já conhecemos para atualizar o preço, colhendo EAN, marca e seção do detalhe sem requisições extras. Não descobre nada novo.",
+    "admin.orchestration.create.flowHelp.provider_browse":
+      "Percorre o catálogo seção por seção, uma execução por seção, para achar os exclusivos que a cesta nunca pediria.",
     "admin.orchestration.create.errProviderRequired": "Escolha um fornecedor para o fluxo.",
     "admin.orchestration.create.errSave": "Não foi possível criar o fluxo.",
     "admin.orchestration.create.noProviders":
-      "Todos os fornecedores do mercado já têm o seu fluxo configurado. Para reutilizar um, edite o existente.",
+      "Todos os fornecedores já têm este fluxo configurado. Escolha outro fluxo, ou edite o existente na sua linha.",
     "admin.orchestration.search.placeholder": "Buscar fornecedor ou fluxo…",
     "admin.orchestration.search.aria": "Buscar fluxos de orquestração",
     "admin.orchestration.filters": "Filtros",
@@ -3583,6 +3685,26 @@ const MESSAGES: Record<Locale, Record<MessageKey, string>> = {
     "admin.toolbar.actions.classify": "Classificar selecionados",
     "admin.list.refreshFailed": "Não foi possível atualizar a lista. A mostrar a última versão conhecida.",
     "admin.toolbar.actions.resolveBrands": "Classificar marcas",
+    "admin.toolbar.actions.rematch": "Reavaliar selecionados",
+    "admin.toolbar.actions.rematch.hint":
+      "Passa as linhas de novo pela cascata contra o catálogo ATUAL. Use depois de criar canônicos novos: os candidatos de uma linha ficam congelados no catálogo do dia em que ela entrou.",
+    "admin.reviewQueue.rematch.running": "Reavaliando {n} linhas…",
+    "admin.reviewQueue.rematch.linked": "{n} vinculadas",
+    "admin.reviewQueue.rematch.linkedOne": "{n} vinculada",
+    "admin.reviewQueue.rematch.stillPending": "{n} continuam na fila",
+    "admin.reviewQueue.rematch.stillPendingOne": "{n} continua na fila",
+    "admin.reviewQueue.rematch.failed": "{n} com erro",
+    "admin.reviewQueue.rematch.error": "Não foi possível reavaliar a seleção.",
+    "admin.reviewQueue.rematch.modal.title": "Produtos vinculados",
+    "admin.reviewQueue.rematch.modal.close": "Fechar",
+    "admin.reviewQueue.rematch.modal.empty":
+      "A reavaliação rodou, mas nenhuma linha foi vinculada: o catálogo canônico ainda não tem um produto equivalente. Para estas linhas a ação é \u201cCriar canônicos\u201d, não reavaliar de novo.",
+    "admin.reviewQueue.rematch.modal.summary":
+      "{linked} vinculadas \u00b7 {pending} continuam na fila \u00b7 {failed} com erro",
+    "admin.reviewQueue.rematch.modal.colQueue": "Produto da fila",
+    "admin.reviewQueue.rematch.modal.colCanonical": "Canônico vinculado",
+    "admin.reviewQueue.rematch.modal.colMethod": "Método",
+    "admin.reviewQueue.rematch.modal.colConfidence": "Confiança",
     "admin.toolbar.actions.canonize": "Aprovar e criar canônico",
     "admin.reviewQueue.canonize.title": "Criar canônicos",
     "admin.reviewQueue.canonize.description": "Serão criados {n} produtos canônicos novos e vinculados a estas linhas. Não pode ser desfeito.",

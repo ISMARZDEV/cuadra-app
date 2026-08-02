@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from src.api.composition_root import (
     get_admin_audit_repo,
     get_bulk_classify_review,
+    get_rematch_pending,
     get_bulk_create_canonicals,
     get_bulk_resolve_match_brands,
     get_bulk_resolve_review,
@@ -57,6 +58,7 @@ from src.contexts.save.application.basket_query import (
     UpdateBasketQuery,
 )
 from src.contexts.save.application.bulk_classify_review import BulkClassifyReview
+from src.contexts.save.application.rematch_pending import RematchPending
 from src.contexts.save.application.bulk_create_canonicals import BulkCreateCanonicals
 from src.contexts.save.application.bulk_resolve_brands import BulkResolveMatchBrands
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview, BulkResolveRow
@@ -524,6 +526,82 @@ def bulk_classify_review(
         rows=[
             BulkClassifyRowDto(
                 match_id=r.match_id, taxonomy_node_id=r.taxonomy_node_id, method=r.method
+            )
+            for r in result.rows
+        ],
+        failed=[BulkClassifyFailureDto(match_id=f.match_id, error=f.error) for f in result.failed],
+    )
+
+
+class BulkRematchRequest(BaseModel):
+    match_ids: list[str]
+
+
+class BulkRematchRowDto(BaseModel):
+    match_id: str
+    status: str
+    method: str
+    confidence: float
+    # Ambos nombres viajan para que el lote se pueda AUDITAR: un id contra otro id no se revisa.
+    store_product_name: str
+    # `None` cuando la fila siguió en la cola — no hay canónico al que se haya enlazado.
+    canonical_product_id: str | None
+    canonical_name: str | None
+
+
+class BulkRematchResultDto(BaseModel):
+    """Resumen del lote, con TRES estados y no dos.
+
+    `auto_linked` / `still_pending` (se re-evaluó y sigue en cola → el catálogo aún no tiene el
+    canónico correcto) / `failed` (no se pudo ni intentar). Fundir los dos últimos haría que un
+    lote que enlazó 12 de 46 se leyera como terminado.
+    """
+
+    auto_linked: int
+    still_pending: int
+    rows: list[BulkRematchRowDto]
+    failed: list[BulkClassifyFailureDto]
+
+
+@router.post("/review-queue/bulk-rematch", response_model=BulkRematchResultDto)
+def bulk_rematch_review(
+    body: BulkRematchRequest,
+    use_case: RematchPending = Depends(get_rematch_pending),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> BulkRematchResultDto:
+    """Vuelve a pasar por la cascada las filas seleccionadas, contra el catálogo ACTUAL.
+
+    Cubre un hueco real: los candidatos de la cola son ESTÁTICOS. `RefreshCatalogPrices` sólo enruta
+    al matcher los `store_product` DESCONOCIDOS, así que una fila que entró cuando el catálogo era
+    chico arrastra para siempre los candidatos de ese día — por más canónicos que se creen después.
+
+    La etapa VECTORIAL corre si hay embedder (`build_api_embedder`: endpoint HTTP en prod, modelo
+    in-process en dev); si no hay ninguno, se OMITE y la cascada resuelve por EAN + trgm. Nunca se
+    le inventa un vector.
+
+    Idempotente: `record_match` upsertea y `record_candidates` REEMPLAZA el set de candidatos.
+    """
+    result = use_case.execute(body.match_ids, market_id=MARKET)
+    # Una entrada AGREGADA por lote (evita inundar el registro con N filas), igual que bulk-classify.
+    audit.record(
+        "review.bulk_rematch",
+        "product_match",
+        "bulk",
+        {"count": len(body.match_ids), "auto_linked": result.auto_linked},
+        market_id=MARKET,
+    )
+    return BulkRematchResultDto(
+        auto_linked=result.auto_linked,
+        still_pending=result.still_pending,
+        rows=[
+            BulkRematchRowDto(
+                match_id=r.match_id,
+                status=r.status,
+                method=r.method,
+                confidence=r.confidence,
+                store_product_name=r.store_product_name,
+                canonical_product_id=r.canonical_product_id,
+                canonical_name=r.canonical_name,
             )
             for r in result.rows
         ],

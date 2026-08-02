@@ -365,6 +365,18 @@ class SqlCanonicalProductRepository:
         self._s.flush()
         return brand.id
 
+    def names_for(self, canonical_ids: list[str]) -> dict[str, str]:
+        """`{id: nombre}` de N canónicos en UNA query. La usa el re-match para que el resumen del
+        lote se pueda auditar leyendo nombres y no ids. Omite los que ya no existen."""
+        if not canonical_ids:
+            return {}
+        rows = self._s.execute(
+            select(CanonicalProductModel.id, CanonicalProductModel.name).where(
+                CanonicalProductModel.id.in_(canonical_ids)
+            )
+        ).all()
+        return {str(r[0]): r[1] or "" for r in rows}
+
     def name_and_brand_of(self, canonical_product_id: str) -> tuple[str, str | None] | None:
         """`(nombre, marca actual)` — lo justo que necesita "Clasificar marcas" para decidir si
         rellenar o saltar. `None` si el canónico ya no existe."""
@@ -976,10 +988,12 @@ class SqlStoreProductRepository:
         visible_ttl_hours: int = 18,
         hidden_ttl_hours: int = 72,
         limit: int = 500,
+        provider_id: str | None = None,
     ) -> list[StaleCovered]:
         return self._list_stale(
             market_id, now, covered_only=True,
             visible_ttl_hours=visible_ttl_hours, hidden_ttl_hours=hidden_ttl_hours, limit=limit,
+            provider_id=provider_id,
         )
 
     def list_stale_known(
@@ -990,11 +1004,13 @@ class SqlStoreProductRepository:
         visible_ttl_hours: int = 18,
         hidden_ttl_hours: int = 72,
         limit: int = 500,
+        provider_id: str | None = None,
     ) -> list[StaleCovered]:
         # TODO lo conocido y viejo (matcheado O en revisión) → re-precio por id (Prices Batch de SRD).
         return self._list_stale(
             market_id, now, covered_only=False,
             visible_ttl_hours=visible_ttl_hours, hidden_ttl_hours=hidden_ttl_hours, limit=limit,
+            provider_id=provider_id,
         )
 
     def _list_stale(
@@ -1006,6 +1022,7 @@ class SqlStoreProductRepository:
         visible_ttl_hours: int,
         hidden_ttl_hours: int,
         limit: int,
+        provider_id: str | None = None,
     ) -> list[StaleCovered]:
         ref = now or datetime.now(timezone.utc)
         visible_cut = ref - timedelta(hours=visible_ttl_hours)
@@ -1021,6 +1038,9 @@ class SqlStoreProductRepository:
         ]
         if covered_only:
             conds.append(sp.canonical_product_id.is_not(None))  # F3.2a: solo lo YA cubierto
+        # El `limit` es un cupo: sin acotar por tienda, la más atrasada se lo lleva entero.
+        if provider_id:
+            conds.append(sp.provider_id == _parse_uuid(provider_id))
         rows = self._s.execute(
             # `canonical_product_id` = la llave de recuperación de F3.2b (§14.3): si el camino A dice
             # "ya no está", con ella se pide el EAN del canónico y se le repregunta a la tienda.

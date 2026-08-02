@@ -2,6 +2,7 @@ import type { AdminReviewQueueRowDto, BulkResolveResultDto } from "@cuadra/api-c
 import {
   listStoreProductImages as listStoreProductImagesRequest,
   bulkClassifyReview,
+  bulkRematchReview,
   bulkResolveReviewBrands,
   bulkCreateCanonicals,
   bulkResolveReview,
@@ -172,6 +173,21 @@ export async function setStoreProductCategory(
  * decidir / con error) — fundir los dos últimos haría que un lote a medias se lea como terminado. */
 export async function classifySelected(matchIds: string[]) {
   const res = await bulkClassifyReview({
+    client: apiClient,
+    headers: await authHeaders(),
+    body: { match_ids: matchIds },
+  });
+  return res.data ?? null;
+}
+
+
+/** Re-corre la cascada sobre lo seleccionado, contra el catálogo ACTUAL.
+ *
+ * Existe porque los candidatos de la cola son ESTÁTICOS: la ingesta sólo enruta al matcher los
+ * store_product DESCONOCIDOS, así que una fila arrastra para siempre los candidatos del día que
+ * entró — por más canónicos que se creen después. */
+export async function rematchSelected(matchIds: string[]) {
+  const res = await bulkRematchReview({
     client: apiClient,
     headers: await authHeaders(),
     body: { match_ids: matchIds },

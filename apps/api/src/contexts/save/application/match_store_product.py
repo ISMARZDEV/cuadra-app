@@ -108,7 +108,10 @@ class MatchStoreProduct:
         match_repo: ProductMatchRepository,
         store_repo: StoreProductRepository,
         canonical_repo: CanonicalProductRepository,
-        embedding_provider: EmbeddingProvider,
+        # `None` = sin etapa vectorial. La API no siempre lleva modelo (`build_api_embedder`
+        # devuelve None sin endpoint HTTP ni modelo in-process) y la cascada debe poder correr
+        # igual: el EAN y el trgm no dependen del modelo.
+        embedding_provider: EmbeddingProvider | None,
         judge: GreyBandJudge | None,
         category_lexicon: LexiconIndex | None = None,
         leaf_to_parent: dict[str, str] | None = None,
@@ -150,9 +153,16 @@ class MatchStoreProduct:
 
         # --- Etapa 2/3: léxico (trgm) + semántico (vector), fusionados por RRF ---
         trgm_candidates = self._match_repo.find_candidates_trgm(product.name, product.market_id)
-        embedding_text = build_embedding_text(product.name, product.brand, product.size)
-        embedding = self._embedder.embed([embedding_text])[0]
-        vector_candidates = self._match_repo.find_candidates_vector(embedding, product.market_id)
+        # Sin embedder la etapa vectorial se OMITE, no se alimenta con un vector inventado: un
+        # vector falso devolvería vecinos arbitrarios que el RRF fusionaría como candidatos reales.
+        if self._embedder is None:
+            vector_candidates: list[MatchCandidate] = []
+        else:
+            embedding_text = build_embedding_text(product.name, product.brand, product.size)
+            embedding = self._embedder.embed([embedding_text])[0]
+            vector_candidates = self._match_repo.find_candidates_vector(
+                embedding, product.market_id
+            )
 
         fused = reciprocal_rank_fusion(trgm_candidates, vector_candidates)
         if not fused:

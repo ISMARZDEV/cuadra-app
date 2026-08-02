@@ -25,6 +25,7 @@ import { format, type MessageKey } from "@/i18n/messages";
 import {
   bulkResolveReviewMatches,
   classifySelected,
+  rematchSelected,
   resolveBrandsSelected,
   createCanonicalsFromSelection,
   fetchReviewQueue,
@@ -38,6 +39,7 @@ import { ReviewQueueKpis } from "./kpi/ReviewQueueKpis";
 import { ReasonCodeSelect } from "./ReasonCodeSelect";
 import { SelectCheckbox } from "./SelectCheckbox";
 import { CreateCanonicalsDialog } from "./CreateCanonicalsDialog";
+import { RematchResultModal, type RematchResultRow } from "./RematchResultModal";
 import { ReviewQueueToolbar, type ReviewQueueView } from "./ReviewQueueToolbar";
 import { ReviewRow } from "./ReviewRow";
 
@@ -85,6 +87,10 @@ export function ReviewQueueListScreen() {
   };
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Resultado del último re-match: el toast da los NÚMEROS, el modal da los PARES (qué quedó
+  // enlazado contra qué), que es lo único que permite auditar el lote.
+  const [rematchResult, setRematchResult] = useState<RematchResultRow[] | null>(null);
+  const [rematchFailed, setRematchFailed] = useState(0);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [showBulkReject, setShowBulkReject] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkOutcome | null>(null);
@@ -156,6 +162,60 @@ export function ReviewQueueListScreen() {
   // Orden de la cascada, para que el desglose se lea como el proceso que ocurrió y no como un
   // diccionario alfabético: primero lo barato y determinista, al final lo caro.
   const CLASSIFY_STAGES = ["lexicon", "source", "source_name", "vector", "llm"] as const;
+
+  async function handleBulkRematch() {
+    const ids = [...selected];
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    // Toast persistente: la cascada puede llamar al juez LLM por fila, así que un lote grande
+    // tarda. Sin esto la espera se lee como que el botón no hizo nada.
+    const toastId = toast.loading(
+      format(locale, "admin.reviewQueue.rematch.running", { n: String(ids.length) }),
+    );
+    try {
+      const result = await rematchSelected(ids);
+      if (!result) {
+        toast.error(t("admin.reviewQueue.rematch.error"), { id: toastId });
+        return;
+      }
+      const plural = (n: number, many: MessageKey, one: MessageKey) =>
+        format(locale, n === 1 ? one : many, { n: String(n) });
+
+      // Los TRES estados por separado: enlazadas / siguen en cola / con error. "Sigue en cola" es
+      // el resultado NORMAL cuando el catálogo aún no tiene el canónico — fundirlo con el error
+      // haría creer que algo se rompió, y omitirlo, que ya no queda trabajo.
+      const partes = [
+        plural(
+          result.auto_linked,
+          "admin.reviewQueue.rematch.linked",
+          "admin.reviewQueue.rematch.linkedOne",
+        ),
+      ];
+      if (result.still_pending > 0) {
+        partes.push(
+          plural(
+            result.still_pending,
+            "admin.reviewQueue.rematch.stillPending",
+            "admin.reviewQueue.rematch.stillPendingOne",
+          ),
+        );
+      }
+      if (result.failed.length > 0) {
+        partes.push(
+          format(locale, "admin.reviewQueue.rematch.failed", {
+            n: String(result.failed.length),
+          }),
+        );
+      }
+      toast.success(partes.join(" · "), { id: toastId });
+      setRematchResult(result.rows ?? []);
+      setRematchFailed(result.failed.length);
+      setSelected(new Set());
+      await refreshOrWarn();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function handleBulkClassify() {
     const ids = [...selected];
@@ -509,6 +569,7 @@ export function ReviewQueueListScreen() {
         hasCandidatesSelected={hasCandidatesSelected}
         onBulkReject={() => setShowBulkReject(true)}
         onBulkClassify={() => void handleBulkClassify()}
+        onBulkRematch={() => void handleBulkRematch()}
           onBulkResolveBrands={() => void handleBulkResolveBrands()}
         onBulkCanonize={() => setShowCanonize(true)}
         bulkBusy={bulkBusy}
@@ -687,6 +748,18 @@ export function ReviewQueueListScreen() {
       </div>
       </div>
       </div>
+
+      {/* Qué quedó enlazado contra qué, tras re-evaluar. Se abre SIEMPRE que la corrida devuelve
+          filas —incluso con cero enlaces— porque "no se enlazó nada" también es un resultado que
+          el operador necesita ver explicado. */}
+      {rematchResult ? (
+        <RematchResultModal
+          rows={rematchResult}
+          failedCount={rematchFailed}
+          onClose={() => setRematchResult(null)}
+          locale={locale}
+        />
+      ) : null}
     </div>
   );
 }
