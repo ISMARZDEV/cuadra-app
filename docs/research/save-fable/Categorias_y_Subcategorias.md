@@ -39,10 +39,10 @@
 
 ## Bebés `bebes`
 
--   Alimentos Para Bebé `bebes.alimentos-para-bebe`
+-   Compotas & Papillas De Bebé `bebes.alimentos-para-bebe`
 -   Biberones & Chupetes `bebes.biberones-chupetes`
 -   Cuidado & Aseo Del Bebé `bebes.cuidado-aseo-del-bebe`
--   Detergente De Bebé `bebes.detergente-de-bebe`
+-   Detergente Infantil De Bebé `bebes.detergente-de-bebe`
 -   Juguetes & Muebles Del Bebé `bebes.juguetes-muebles-del-bebe`
 -   Maternidad & Lactancia `bebes.maternidad-lactancia`
 -   Pañales & Toallitas De Bebé `bebes.panales-toallitas-de-bebe`
@@ -142,7 +142,7 @@
 
 ## Escolares & Oficina `escolares-oficina`
 
--   Accesorios Escolares `escolares-oficina.accesorios-escolares`
+-   Mochilas & Útiles Escolares `escolares-oficina.accesorios-escolares`
 -   Arte & Manualidades `escolares-oficina.arte-manualidades`
 -   Cuadernos & Agendas `escolares-oficina.cuadernos-agendas`
 -   Escritura `escolares-oficina.escritura`
@@ -165,7 +165,7 @@
 
 -   Crema Agria `lacteos-huevos.crema-agria`
 -   Huevos `lacteos-huevos.huevos`
--   Leche `lacteos-huevos.leche`
+-   Leche Entera & Descremada `lacteos-huevos.leche`
 -   Mantequilla & Margarina `lacteos-huevos.mantequilla-margarina`
 -   Queso `lacteos-huevos.queso`
 -   Yogurt `lacteos-huevos.yogurt`
@@ -183,7 +183,7 @@
 
 -   Bizcochos & Bizcochitos `panaderia-tortilleria.bizcochos-bizcochitos`
 -   Discos De Masa `panaderia-tortilleria.discos-de-masa`
--   Masa De Pizza `panaderia-tortilleria.masa-de-pizza`
+-   Masa De Pizza & Hojaldre `panaderia-tortilleria.masa-de-pizza`
 -   Pan `panaderia-tortilleria.pan`
 -   Tortillas `panaderia-tortilleria.tortillas`
 

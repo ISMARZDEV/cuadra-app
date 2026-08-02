@@ -74,16 +74,24 @@ class TestLexiconSuggestions:
     def test_case_and_accents_do_not_matter(self) -> None:
         assert lexicon_suggestions("ARRÓZ blanco", INDEX)[0].taxonomy_node_id == "leaf-arroz"
 
-    def test_singular_does_NOT_match_a_plural_leaf(self) -> None:
-        """Límite CONOCIDO del léxico, no un bug: matchea tokens exactos, sin stemming. "Aceite"
-        no pega con la hoja "Aceites y Vinagres".
+    def test_singular_now_matches_a_plural_leaf(self) -> None:
+        """Esto ERA un límite conocido y dejó de serlo (2026-08-01).
 
-        No se corrige acá a propósito: `lexicon_match` comparte este índice y su precisión está
-        MEDIDA sobre la cola real. Ablandar el matcheo para mejorar las sugerencias cambiaría el
-        comportamiento del clasificador que ya corre en producción. Sin sugerencia, el operador
-        cae al árbol completo — que es exactamente el fallback previsto.
+        El test anterior fijaba que "Aceite" NO pegaba con la hoja "Aceites y Vinagres", y su
+        docstring argumentaba no tocarlo para no mover el clasificador de producción. El argumento
+        era razonable pero la premisa cambió: la normalización de número gramatical se agregó
+        porque el MISMO límite tenía un costo medido en el clasificador — la hoja «Alimento Para
+        Perro» (singular) nunca pegaba con el path de origen «Alimentos para perros» (plural), y
+        comida de perro terminaba clasificada como arroz.
+
+        La normalización corre en `_tokens`, o sea sobre el índice Y la consulta, así que las dos
+        puntas se encuentran. La sugerencia sigue reportando la forma de SUPERFICIE («aceite»), no
+        el stem, porque esta lista la lee una persona.
         """
-        assert lexicon_suggestions("Aceite de Oliva", INDEX) == []
+        sugerencias = lexicon_suggestions("Aceite de Oliva", INDEX)
+
+        assert [s.taxonomy_node_id for s in sugerencias] == ["leaf-aceite"]
+        assert sugerencias[0].matched_tokens == ["aceite"]
 
     def test_the_same_token_twice_does_not_inflate_the_rank(self) -> None:
         """"Arroz Arroz Arroz" no es más "arroz" que "Arroz": contar repeticiones haría ganar a un

@@ -34,7 +34,7 @@ CATEGORY_TERMS: dict[str, str] = {
     "Whisky": "whisky, whiskey, escocés, buchanans, johnnie walker",
     # Bebés
     "Accesorios De Bebé": "accesorios de bebé, biberones, chupetes, teteros, baberos",
-    "Alimentos Para Bebé": "compota, papilla, fórmula infantil, cereal de bebé, nestlé nan",
+    "Compotas & Papillas De Bebé": "compota, papilla, fórmula infantil, cereal de bebé, nestlé nan",
     "Cuidado & Aseo Del Bebé": "shampoo de bebé, jabón de bebé, colonia infantil, crema antipañalitis",
     "Juguetes & Muebles Del Bebé": "juguetes de bebé, corral, coche, silla de comer",
     "Lavado De Ropa De Bebé": "detergente para ropa de bebé, jabón suave infantil",
@@ -103,7 +103,7 @@ CATEGORY_TERMS: dict[str, str] = {
     "Salami": "salami, salchichón, salami dominicano, induveca",
     "Salchichas": "salchichas, hot dogs, vienna sausage, frankfurter",
     # Escolares & Oficina
-    "Accesorios Escolares": "mochila, cartuchera, lonchera escolar",
+    "Mochilas & Útiles Escolares": "mochila, cartuchera, lonchera escolar",
     "Arte & Manualidades": "crayones, pinturas, pinceles, plastilina, foamy",
     "Cuadernos & Agendas": "cuaderno, libreta, agenda, block de notas",
     "Escritura": "lápiz, bolígrafo, marcador, resaltador, borrador",
@@ -122,7 +122,7 @@ CATEGORY_TERMS: dict[str, str] = {
     # Lácteos & Huevos
     "Crema Agria": "crema agria, crema de leche, sour cream",
     "Huevos": "huevos, cartón de huevos, huevo blanco",
-    "Leche": "leche entera, leche descremada, leche uht, leche evaporada, leche en polvo, rica leche",
+    "Leche Entera & Descremada": "leche entera, leche descremada, leche uht, leche evaporada, leche en polvo, rica leche",
     "Mantequilla & Margarina": "mantequilla, margarina, mantequilla de maní",
     "Queso": "queso mozzarella, queso de freír, queso cheddar, queso crema, queso rallado",
     "Yogurt": "yogurt, yogur bebible, yoplait, griego",
@@ -136,7 +136,7 @@ CATEGORY_TERMS: dict[str, str] = {
     # Panadería & Tortillería
     "Bizcochos & Bizcochitos": "bizcocho, ponqué, panquecito, brownie, muffin",
     "Discos De Masa": "discos de masa para empanada, masa para pastelitos, hojaldre",
-    "Masa De Pizza": "masa de pizza, base de pizza prehorneada",
+    "Masa De Pizza & Hojaldre": "masa de pizza, base de pizza prehorneada",
     "Pan": "pan de agua, pan sobao, pan de sándwich, baguette, pan integral",
     "Tortillas": "tortillas de maíz, tortillas de harina, wraps, tostadas mexicanas",
     # Salud & Farmacia
