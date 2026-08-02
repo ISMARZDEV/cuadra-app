@@ -29,8 +29,11 @@ function keysFromMarkdown(): string[] {
 describe("bundle de categorías", () => {
   const expected = keysFromMarkdown();
 
-  it("el markdown aporta las 150 keys del árbol", () => {
-    expect(expected.length).toBe(150);
+  it("el markdown aporta las 151 keys del árbol", () => {
+    // 151 desde 2026-08-02: se sumó `congelados.platos-preparados`. El número es a propósito una
+    // constante y no `expected.length`: así agregar una hoja OBLIGA a pasar por acá y traducirla en
+    // los tres idiomas, en vez de colarse sin etiqueta.
+    expect(expected.length).toBe(151);
   });
 
   it.each(LOCALES)("%s cubre exactamente las keys del markdown", (locale) => {
