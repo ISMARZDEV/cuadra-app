@@ -52,7 +52,12 @@ _UNITS: dict[str, tuple[UnitMeasure, str]] = {
     "pza": (UnitMeasure.COUNT, "1"),
     "pzas": (UnitMeasure.COUNT, "1"),
     "pack": (UnitMeasure.COUNT, "1"),
+    "pq": (UnitMeasure.COUNT, "1"),
+    "paq": (UnitMeasure.COUNT, "1"),
+    "paquete": (UnitMeasure.COUNT, "1"),
+    "paquetes": (UnitMeasure.COUNT, "1"),
 }
+_COUNT_TOKENS = frozenset(t for t, (measure, _) in _UNITS.items() if measure is UnitMeasure.COUNT)
 
 _MULTIPACK = re.compile(r"^\s*(\d+)\s*[x×]\s*(.+)$", re.IGNORECASE)
 _SIZE = re.compile(r"^\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Zá]+)\.?\s*$")
@@ -60,12 +65,14 @@ _SIZE = re.compile(r"^\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Zá]+)\.?\s*$")
 # enganchaba con el denominador —"1/2 LB" se guardaba como 2 Lb, "1/4 LB" como 4 Lb— o sea 4× y 16×
 # de error, y en la dirección peor: media libra pasaba a dos.
 _FRACTION = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*([a-zA-Zá]+)\.?\s*$")
+# Marcador de unidad SIN número ("Und"). Solo vale para CONTEO — ver `_amount_and_token`.
+_BARE_UNIT = re.compile(r"^\s*([a-zA-Zá]+)\.?\s*$")
 
 
 def _amount_and_token(text: str) -> tuple[Decimal, str]:
-    """`(cantidad, token de unidad)` de un tamaño simple o fraccionario.
+    """`(cantidad, token de unidad)` de un tamaño simple, fraccionario o de marcador desnudo.
 
-    La UNIDAD es obligatoria en las dos formas: es la única guarda que impide que un "24/7" del
+    La UNIDAD es obligatoria en las tres formas: es la única guarda que impide que un "24/7" del
     nombre de un producto se convierta en un tamaño inventado.
     """
     fraction = _FRACTION.match(text)
@@ -76,9 +83,15 @@ def _amount_and_token(text: str) -> tuple[Decimal, str]:
         return Decimal(fraction.group(1)) / denominator, fraction.group(3)
 
     simple = _SIZE.match(text)
-    if not simple:
-        raise ValueError(f"No se pudo parsear el tamaño: {text!r}")
-    return Decimal(simple.group(1).replace(",", ".")), simple.group(2)
+    if simple:
+        return Decimal(simple.group(1).replace(",", ".")), simple.group(2)
+
+    # "Und" a secas: el producto se vende POR unidad, así que la cantidad implícita es 1. Vale solo
+    # para conteo: un "Lb" desnudo no dice cuánto pesa el empaque, y suponerle 1 sería inventarlo.
+    bare = _BARE_UNIT.match(text)
+    if bare and bare.group(1).lower().rstrip(".") in _COUNT_TOKENS:
+        return Decimal("1"), bare.group(1)
+    raise ValueError(f"No se pudo parsear el tamaño: {text!r}")
 
 
 def parse_size(text: str) -> Quantity:
@@ -116,6 +129,7 @@ _DISPLAY_UNIT: dict[str, str] = {
     "gl": "Gl", "gal": "Gl", "galon": "Gl", "galón": "Gl",
     "und": "Un", "un": "Un", "u": "Un", "uds": "Un", "unidad": "Un", "unidades": "Un",
     "pza": "Un", "pzas": "Un", "pack": "Un",
+    "pq": "Un", "paq": "Un", "paquete": "Un", "paquetes": "Un",
 }
 # Tallas por descriptor (sin número) → 1 letra.
 _DISPLAY_DESCRIPTOR: dict[str, str] = {

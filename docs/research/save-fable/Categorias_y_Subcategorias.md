@@ -86,6 +86,7 @@
 -   Paletas & Sorbetes `congelados.paletas-sorbetes`
 -   Papas & Frituras `congelados.papas-frituras`
 -   Pizzas & Empanadas `congelados.pizzas-empanadas`
+-   Platos Preparados `congelados.platos-preparados`
 -   Vegetales Congelados `congelados.vegetales-congelados`
 
 ## Cuidado Del Hogar `cuidado-del-hogar`

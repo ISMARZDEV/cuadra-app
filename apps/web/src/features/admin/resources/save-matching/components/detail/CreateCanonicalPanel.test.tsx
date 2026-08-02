@@ -89,3 +89,24 @@ describe("CreateCanonicalPanel", () => {
     expect(screen.getByTestId("cc-inherits-images")).toHaveTextContent(/hasta 10/i);
   });
 });
+
+describe("CreateCanonicalPanel — productos sin tamaño", () => {
+  // No todo producto declara tamaño: un plato del mostrador, un pan por pieza o una fruta a granel
+  // se venden por unidad. Exigirlo obligaba al operador a inventar un número para poder guardar.
+  it("permite crear sin tamaño y NO manda un tamaño inventado", () => {
+    const onCreate = vi.fn();
+    // Sin `defaultSizeText`: es el caso real de un producto que no declara tamaño.
+    render(<CreateCanonicalPanel {...base} defaultSizeText="" onCreate={onCreate} />);
+
+    fireEvent.change(screen.getByTestId("cc-name"), { target: { value: "Plato Para Perro" } });
+    fireEvent.click(screen.getByTestId("cc-submit"));
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ sizeText: "" }));
+  });
+
+  it("el tamaño y la unidad ya no se marcan como obligatorios", () => {
+    render(<CreateCanonicalPanel {...base} onCreate={vi.fn()} />);
+    expect(screen.getByText(/^Tamaño$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Unidad de medida$/)).toBeInTheDocument();
+  });
+});

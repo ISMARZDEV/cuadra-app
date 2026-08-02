@@ -23,8 +23,19 @@ from typing import Protocol
 
 from ..domain.classification import ClassifiableProduct
 from ..domain.ports.transaction import NestedTransactionScope
-from ..domain.value_objects import parse_size
+from ..domain.value_objects import Quantity, parse_size
 from .create_canonical_and_link import NewCanonicalProduct
+
+
+def _parse_or_none(size_text: str | None) -> Quantity | None:
+    """`None` cuando no hay tamaño o no se entiende. `parse_size` levanta `ValueError` ante una
+    unidad desconocida y eso sigue siendo correcto — acá se traduce a ausencia, no a un valor."""
+    if not (size_text or "").strip():
+        return None
+    try:
+        return parse_size(size_text or "")
+    except ValueError:
+        return None
 
 
 class ProductsWithCategory(Protocol):
@@ -127,10 +138,11 @@ class BulkCreateCanonicals:
             try:
                 # SAVEPOINT por fila: el rollback de UNA no deshace las ya confirmadas del lote.
                 with self._scope.begin_nested():
-                    # `parse_size` vive en el DOMINIO y levanta `ValueError` ante una unidad que no
-                    # conoce. Se deja propagar hacia el `except` de la fila: inventar una cantidad
-                    # sería peor que reportar que ese producto no se pudo convertir.
-                    quantity = parse_size(product.size_text)
+                    # Sin tamaño legible el producto entra IGUAL, con `quantity=None`. Antes esto
+                    # descartaba la fila, y dejaba fuera del catálogo a productos legítimos que se
+                    # venden por unidad (pan por pieza, plato del mostrador, fruta a granel).
+                    # Lo que NO se hace es inventar un número.
+                    quantity = _parse_or_none(product.size_text)
                     canonical_ids.append(
                         self._creator.execute(
                             match_id=match_id,

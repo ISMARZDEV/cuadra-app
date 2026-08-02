@@ -18,7 +18,7 @@ from ..domain.ports import (
     StoreProductRepository,
     TaxonomyRepository,
 )
-from ..domain.value_objects import Quantity, unit_price
+from ..domain.value_objects import Quantity, unit_price_or_none
 from src.shared.money import Money
 from .categories import _find_path
 from .dtos import (
@@ -54,14 +54,16 @@ class _Aggregated:
     quality: str | None
     display_size: str | None
     image_url: str | None
-    quantity: Quantity
+    quantity: Quantity | None
     min_price: Money
     providers: dict[str, str]  # provider_id → provider_name (tiendas que lo tienen)
     slug: str = ""             # llave pública para el href de la card
 
     @property
-    def unit_price_minor(self) -> int:
-        return unit_price(self.min_price, self.quantity).amount_minor
+    def unit_price_minor(self) -> int | None:
+        """`None` cuando el producto no declara cantidad — ver `unit_price_or_none`."""
+        precio = unit_price_or_none(self.min_price, self.quantity)
+        return precio.amount_minor if precio else None
 
 
 def _aggregate(rows: Iterable[OfferingRow]) -> dict[str, _Aggregated]:
@@ -172,7 +174,9 @@ def _passes(
 
 def _sort_key(sort: str):
     if sort == "unit_price":
-        return lambda p: (p.unit_price_minor, p.name)
+        # Los sin cantidad van al FINAL (`is None` primero en la tupla): tratarlos como 0 los
+        # pondría arriba de todo en «más barato por kilo». No son baratos — son incomparables.
+        return lambda p: (p.unit_price_minor is None, p.unit_price_minor or 0, p.name)
     if sort == "name":
         return lambda p: p.name
     if sort == "popular":  # proxy de popularidad: disponible en MÁS tiendas primero
@@ -192,7 +196,7 @@ def _to_card(p: _Aggregated, discount_bps: int | None = None) -> ProductCardDto:
         price_minor=p.min_price.amount_minor,
         currency=p.min_price.currency.code,
         unit_price_minor=p.unit_price_minor,
-        unit_measure=p.quantity.measure.value,
+        unit_measure=p.quantity.measure.value if p.quantity else None,
         store_count=len(p.providers),
         discount_bps=discount_bps,
     )

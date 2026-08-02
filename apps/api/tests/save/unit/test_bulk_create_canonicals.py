@@ -130,7 +130,15 @@ class TestTheCategoryRule:
 
 
 class TestIsolation:
-    def test_an_unparseable_size_fails_only_its_own_row(self) -> None:
+    def test_un_tamano_ilegible_ya_NO_descarta_la_fila_entra_SIN_cantidad(self) -> None:
+        """CAMBIO DELIBERADO (2026-08-02). Antes un tamaño que `parse_size` no entendía hacía
+        fallar esa fila, y eso dejaba fuera del catálogo a productos legítimos: un plato del
+        mostrador, un pan por pieza, una fruta a granel. Medido: 19 productos reales bloqueados.
+
+        Ahora el producto entra con `quantity=None`. Lo que sigue estando prohibido es INVENTAR un
+        número — la ausencia se persiste como ausencia, y de ahí en más el precio por unidad base no
+        existe (`unit_price_or_none`) y el size gate se abstiene.
+        """
         creator = _FakeCreator()
         use_case = _use_case(
             {"m1": _p("sp1", "Arroz", "5 Lb"), "m2": _p("sp2", "Raro", "un puñado")},
@@ -140,8 +148,12 @@ class TestIsolation:
 
         result = use_case.execute(["m1", "m2"], fallback_taxonomy_node_id=None, decided_by="admin")
 
-        assert result.created == 1
-        assert [f.match_id for f in result.failed] == ["m2"]
+        assert result.created == 2
+        assert result.failed == []
+        # El que sí tenía tamaño lo conserva; el otro queda explícitamente sin cantidad.
+        cantidades = [producto.quantity for _mid, producto, _by in creator.calls]
+        assert None in cantidades
+        assert any(q is not None for q in cantidades)
 
     def test_a_match_that_no_longer_exists_is_failed_not_dropped(self) -> None:
         use_case = _use_case({"m1": _p("sp1", "Arroz")}, {"sp1": "leaf-arroz"})

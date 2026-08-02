@@ -44,7 +44,7 @@ class NewCanonicalProduct:
 
     name: str
     brand: str
-    quantity: Quantity
+    quantity: Quantity | None  # `None` = el producto no declara tamaño (venta por unidad)
     taxonomy_node_id: str
     market_id: str
     quality: str | None = None

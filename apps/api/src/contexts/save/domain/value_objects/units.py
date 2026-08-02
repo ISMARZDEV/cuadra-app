@@ -43,6 +43,16 @@ class UnitPrice:
     measure: UnitMeasure
 
 
+def unit_price_or_none(price: Money, quantity: Quantity | None) -> UnitPrice | None:
+    """Precio por unidad base, o `None` si el producto NO declara cantidad.
+
+    `None` y jamás 0: un precio unitario de cero se ordenaría PRIMERO en «más barato por kilo» y
+    pondría un plato para perro por encima de la comida. Sin cantidad no hay nada que dividir, y el
+    dato honesto es la ausencia — no un número inventado que después nadie sabe de dónde salió.
+    """
+    return None if quantity is None else unit_price(price, quantity)
+
+
 def unit_price(price: Money, quantity: Quantity) -> UnitPrice:
     """price / cantidad_base → precio por unidad base, en minor units (half-up).
 
