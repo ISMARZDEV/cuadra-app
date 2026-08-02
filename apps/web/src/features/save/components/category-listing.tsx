@@ -66,22 +66,27 @@ export function CategoryListing() {
 
   const loadMore = async () => {
     setLoadingMore(true);
-    const res = await categoryProducts({
-      client: apiClient,
-      path: { slug },
-      query: {
-        market: marketOf(country),
-        stores: asList(search.stores),
-        brands: asList(search.brands),
-        price_min: search.pmin ? Number(search.pmin) : undefined,
-        price_max: search.pmax ? Number(search.pmax) : undefined,
-        sort: search.sort ?? DEFAULT_SORT,
-        limit: PAGE_SIZE,
-        offset: items.length,
-      },
-    });
-    if (res.data) setItems((prev) => [...prev, ...res.data.products]);
-    setLoadingMore(false);
+    // `finally`: si la petición rechaza, un `setLoadingMore(false)` en el camino feliz no corre y
+    // el botón "cargar más" queda girando para siempre.
+    try {
+      const res = await categoryProducts({
+        client: apiClient,
+        path: { slug },
+        query: {
+          market: marketOf(country),
+          stores: asList(search.stores),
+          brands: asList(search.brands),
+          price_min: search.pmin ? Number(search.pmin) : undefined,
+          price_max: search.pmax ? Number(search.pmax) : undefined,
+          sort: search.sort ?? DEFAULT_SORT,
+          limit: PAGE_SIZE,
+          offset: items.length,
+        },
+      });
+      if (res.data) setItems((prev) => [...prev, ...res.data.products]);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const totalPages = Math.max(1, Math.ceil(cat.total / PAGE_SIZE));

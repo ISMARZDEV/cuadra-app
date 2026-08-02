@@ -218,4 +218,14 @@ describe("PolicyModal — guardado", () => {
     await waitFor(() => expect(api.updatePolicy).toHaveBeenCalled());
     expect(api.updatePolicy.mock.calls[0][1].query_limit_override).toBeNull();
   });
+
+  it("no deja el botón colgado si la petición RECHAZA", async () => {
+    api.updatePolicy.mockRejectedValue(new Error("se cayó la red"));
+    setup({ execution_mode: "manual" });
+
+    fireEvent.click(save());
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(save()).toBeInTheDocument();
+  });
 });

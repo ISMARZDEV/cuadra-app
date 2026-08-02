@@ -428,32 +428,37 @@ export function ReviewQueueListScreen() {
 
     const localFailed: { match_id: string; error: string }[] = [];
     const approvable: { matchId: string; canonicalProductId: string }[] = [];
-    // Los `fetchTopCandidateId` son independientes entre filas → se resuelven en paralelo.
-    // `Promise.all` preserva el orden del input, así que la partición approvable/failed queda estable.
-    const resolved = await Promise.all(
-      ids.map(async (matchId) => ({ matchId, topCandidateId: await fetchTopCandidateId(matchId) })),
-    );
-    for (const { matchId, topCandidateId } of resolved) {
-      if (topCandidateId) {
-        approvable.push({ matchId, canonicalProductId: topCandidateId });
-      } else {
-        localFailed.push({ match_id: matchId, error: "Sin candidatos para auto-aprobar" });
+    // `finally`: si cualquiera de estos `await` rechaza, un `setBulkBusy(false)` suelto al final no
+    // corre y las acciones de lote quedan deshabilitadas hasta recargar la página.
+    try {
+      // Los `fetchTopCandidateId` son independientes entre filas → se resuelven en paralelo.
+      // `Promise.all` preserva el orden del input, así que la partición approvable/failed queda estable.
+      const resolved = await Promise.all(
+        ids.map(async (matchId) => ({ matchId, topCandidateId: await fetchTopCandidateId(matchId) })),
+      );
+      for (const { matchId, topCandidateId } of resolved) {
+        if (topCandidateId) {
+          approvable.push({ matchId, canonicalProductId: topCandidateId });
+        } else {
+          localFailed.push({ match_id: matchId, error: "Sin candidatos para auto-aprobar" });
+        }
       }
+
+      const server =
+        approvable.length > 0
+          ? await bulkResolveReviewMatches(
+              approvable.map((a) => ({
+                matchId: a.matchId,
+                canonicalProductId: a.canonicalProductId,
+                decidedBy: ADMIN_DECIDED_BY,
+              })),
+            )
+          : null;
+
+      await applyResult(server, localFailed);
+    } finally {
+      setBulkBusy(false);
     }
-
-    const server =
-      approvable.length > 0
-        ? await bulkResolveReviewMatches(
-            approvable.map((a) => ({
-              matchId: a.matchId,
-              canonicalProductId: a.canonicalProductId,
-              decidedBy: ADMIN_DECIDED_BY,
-            })),
-          )
-        : null;
-
-    setBulkBusy(false);
-    await applyResult(server, localFailed);
   };
 
   // Bulk-reject: UN request al endpoint atómico-por-fila (nunca N requests sueltos ni una
@@ -465,24 +470,29 @@ export function ReviewQueueListScreen() {
     setBulkBusy(true);
     setBulkResult(null);
 
-    const server = await bulkResolveReviewMatches(
-      ids.map((matchId) => ({
-        matchId,
-        canonicalProductId: null,
-        decidedBy: ADMIN_DECIDED_BY,
-        reasonCode,
-        reasonNote: reasonNote || undefined,
-      })),
-    );
+    // `finally`: si la promesa rechaza, un `setBulkBusy(false)` suelto no corre y las acciones de
+    // lote quedan deshabilitadas hasta recargar la página.
+    try {
+      const server = await bulkResolveReviewMatches(
+        ids.map((matchId) => ({
+          matchId,
+          canonicalProductId: null,
+          decidedBy: ADMIN_DECIDED_BY,
+          reasonCode,
+          reasonNote: reasonNote || undefined,
+        })),
+      );
 
-    setBulkBusy(false);
-    setShowBulkReject(false);
-    await applyResult(
-      server,
-      server
-        ? []
-        : ids.map((matchId) => ({ match_id: matchId, error: "No se pudo contactar al servidor" })),
-    );
+      setShowBulkReject(false);
+      await applyResult(
+        server,
+        server
+          ? []
+          : ids.map((matchId) => ({ match_id: matchId, error: "No se pudo contactar al servidor" })),
+      );
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   return (

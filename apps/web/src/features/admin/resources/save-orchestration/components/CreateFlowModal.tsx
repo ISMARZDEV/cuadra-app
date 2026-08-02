@@ -81,17 +81,24 @@ export function CreateFlowModal({
 
     setBusy(true);
     setError(null);
-    const res = await createProviderFlow({
-      provider_id: providerId,
-      flow_key: flowKey,
-    } as CreateProviderFlowRequest);
-    setBusy(false);
+    // `finally`: si la promesa RECHAZA (red caída, 500), un `setBusy(false)` en el camino feliz no
+    // corre y el botón queda deshabilitado para siempre — hay que cerrar y reabrir el modal.
+    try {
+      const res = await createProviderFlow({
+        provider_id: providerId,
+        flow_key: flowKey,
+      } as CreateProviderFlowRequest);
 
-    const err = (res as { error?: unknown }).error;
-    if (err) return setError(reasonOf(err) ?? t("admin.orchestration.create.errSave"));
+      const err = (res as { error?: unknown }).error;
+      if (err) return setError(reasonOf(err) ?? t("admin.orchestration.create.errSave"));
 
-    await refresh();
-    onClose();
+      await refresh();
+      onClose();
+    } catch {
+      setError(t("admin.orchestration.create.errSave"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

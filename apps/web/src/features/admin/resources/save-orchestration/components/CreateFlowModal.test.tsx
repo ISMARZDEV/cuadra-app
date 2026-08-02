@@ -195,4 +195,22 @@ describe("CreateFlowModal", () => {
       "admin.orchestration.create.flowHelp.provider_browse",
     );
   });
+
+  it("no deja el botón colgado si la petición RECHAZA", async () => {
+    // `setBusy(false)` sólo en el camino feliz deja el flag en `true` cuando la promesa rechaza:
+    // el botón queda deshabilitado para siempre y hay que cerrar y reabrir el modal.
+    api.createProviderFlow.mockRejectedValue(new Error("se cayó la red"));
+    setup();
+
+    fireEvent.change(screen.getByTestId("create-flow"), {
+      target: { value: "provider_price_refresh" },
+    });
+    openProviderList();
+    pickProvider(/Bravo/);
+    fireEvent.click(save());
+
+    // Vuelve a estar disponible (etiqueta normal, no la de "creando…") y avisa del fallo.
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(save()).toBeInTheDocument();
+  });
 });

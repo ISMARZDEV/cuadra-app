@@ -96,11 +96,20 @@ export function PolicyModal({
       // control que guarda un número que nadie lee le promete al operador un efecto inexistente.
     };
 
-    const res = await updatePolicy(policy.policy_id, body);
-    setBusy(false);
-    if ((res as { error?: unknown }).error) return setError(t("admin.orchestration.modal.errSave"));
-    await refresh();
-    onClose();
+    // `finally`: si la promesa RECHAZA (red caída, 500), un `setBusy(false)` en el camino feliz no
+    // corre y el botón queda deshabilitado para siempre — hay que cerrar y reabrir el modal.
+    try {
+      const res = await updatePolicy(policy.policy_id, body);
+      if ((res as { error?: unknown }).error) {
+        return setError(t("admin.orchestration.modal.errSave"));
+      }
+      await refresh();
+      onClose();
+    } catch {
+      setError(t("admin.orchestration.modal.errSave"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
