@@ -14,17 +14,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.api.composition_root import (
+    get_create_asset_policy,
     get_create_provider_flow,
     get_provider_repo,
     get_orchestration_config_repo,
     get_orchestration_policy_repo,
     get_pipeline_orchestrator,
     get_run_snapshot_repo,
+    get_sections_reader,
 )
 from src.api.extensions.security import get_current_user_id, require_capability
 from src.contexts.identity.domain.enums import CapabilityKey
 from src.contexts.save.application.admin_audit_recorder import AdminAuditRecorder
 from src.contexts.save.application.orchestration_policies import (
+    CreateAssetPolicy,
     CreateProviderFlow,
     ProviderFlowNotSupported,
     RunPolicyNow,
@@ -34,6 +37,7 @@ from src.contexts.save.domain.entities.orchestration import (
     ExecutionMode,
     FlowKey,
     OrchestrationPolicy,
+    PolicyScope,
     SlaStatus,
 )
 from src.contexts.save.domain.entities.orchestration_run import RunState
@@ -131,6 +135,13 @@ class ProviderFlowListDto(BaseModel):
 
     runner_available: bool
     flows: list[ProviderFlowDto]
+
+
+class CreateAssetPolicyRequest(BaseModel):
+    """Los jobs GLOBALES (`freshness`, `coverage`) no cuelgan de una tienda."""
+
+    asset_key: str
+    timezone: str = "America/Santo_Domingo"
 
 
 class CreateProviderFlowRequest(BaseModel):
@@ -285,6 +296,12 @@ class AssetAdminRowDto(BaseModel):
 
 class AssetListDto(BaseModel):
     assets: list[AssetAdminRowDto]
+
+
+class OrchestratorHealthDto(BaseModel):
+    ok: bool
+    locations: list[str]
+    reason: str
 
 
 class LineageNodeDto(BaseModel):
@@ -455,6 +472,10 @@ def list_provider_flows(
     flows: list[ProviderFlowDto] = []
     runner_available = True
     for policy in policy_repo.list_by_market(MARKET):
+        # Esta tabla es de TIENDAS. Un asset global no tiene proveedor ni flow, y se veía como una
+        # fila vacía con `—` en ambas columnas. Los asset-flows viven en la pestaña Assets.
+        if policy.scope is not PolicyScope.PROVIDER_FLOW:
+            continue
         metrics = None
         last_state: str | None = None
         last_run_id: str | None = None
@@ -501,6 +522,30 @@ def list_provider_flows(
             last_success_at=last_success.isoformat() if last_success else None,
         ))
     return ProviderFlowListDto(runner_available=runner_available, flows=flows)
+
+
+@orchestration_router.post(
+    "/asset-policies", response_model=PolicyDto, status_code=status.HTTP_201_CREATED
+)
+def create_asset_policy(
+    body: CreateAssetPolicyRequest,
+    use_case: CreateAssetPolicy = Depends(get_create_asset_policy),
+    audit: AdminAuditRecorder = Depends(get_admin_audit),
+) -> PolicyDto:
+    """Programa un asset GLOBAL desde el admin. Su cadencia vivía en código, invisible."""
+    try:
+        policy = use_case.execute(
+            asset_key=body.asset_key, market_id=MARKET, timezone=body.timezone
+        )
+    except ProviderFlowNotSupported as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    audit.record(
+        "orchestration.asset_policy.create",
+        "orchestration_policy",
+        policy.id,
+        {"asset_key": body.asset_key},
+    )
+    return _to_dto(policy)
 
 
 @orchestration_router.post(
@@ -600,10 +645,11 @@ def run_policy_now(
     orchestrator: PipelineOrchestrator = Depends(get_pipeline_orchestrator),
     actor_user_id: str = Depends(get_current_user_id),
     audit: AdminAuditRecorder = Depends(get_admin_audit),
+    sections=Depends(get_sections_reader),  # type: ignore[no-untyped-def]
 ) -> RunLaunchedDto:
     policy = _require_policy(policy_repo, policy_id)
     try:
-        run_id = RunPolicyNow(orchestrator=orchestrator).execute(
+        run_id = RunPolicyNow(orchestrator=orchestrator, sections_reader=sections).execute(
             policy=policy, actor_user_id=actor_user_id
         )
     except ProviderFlowNotSupported as exc:
@@ -810,6 +856,24 @@ def get_run_events(
         events=[_to_event_dto(e) for e in page.events],
         next_cursor=page.next_cursor,
         failure=_to_failure_dto(page.failure),
+    )
+
+
+@orchestration_router.get("/health", response_model=OrchestratorHealthDto)
+def orchestrator_health(
+    orchestrator: PipelineOrchestrator = Depends(get_pipeline_orchestrator),
+) -> OrchestratorHealthDto:
+    """¿El runner puede EJECUTAR? Su webserver puede estar sano con el código caído, y ahí las
+    políticas activas no corren aunque la consola las pinte en verde.
+
+    NO devuelve 503 cuando el runner no responde: eso ES la respuesta que la UI necesita mostrar.
+    """
+    try:
+        health = orchestrator.health()
+    except OrchestratorUnavailable as exc:
+        return OrchestratorHealthDto(ok=False, locations=[], reason=str(exc))
+    return OrchestratorHealthDto(
+        ok=health.ok, locations=list(health.locations), reason=health.reason
     )
 
 

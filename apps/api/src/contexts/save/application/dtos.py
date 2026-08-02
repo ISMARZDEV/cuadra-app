@@ -26,10 +26,16 @@ class ProductSearchDto(BaseModel):
 
 
 class CategoryRefDto(BaseModel):
-    """Referencia a una categoría (para breadcrumb, subcategorías y árbol)."""
+    """Referencia a una categoría (para breadcrumb, subcategorías y árbol).
+
+    `name` es la etiqueta en el idioma del catálogo (es-DO); `key` es la identidad estable con la
+    que el cliente resuelve la etiqueta LOCALIZADA, cayendo a `name` si su bundle no la tiene.
+    `None` en nodos sin key (nivel ≥2). Ver docs/research/save-fable/taxonomia-multi-idioma.md.
+    """
 
     name: str
     slug: str
+    key: str | None = None
 
 
 class ComparedPriceDto(BaseModel):
@@ -93,7 +99,9 @@ class PriceComparisonDto(BaseModel):
             entries=entries,
             cheapest_provider=comparison.cheapest.provider_name,
             spread_minor=comparison.spread.amount_minor,
-            breadcrumb=[CategoryRefDto(name=n.name, slug=n.slug) for n in breadcrumb],
+            breadcrumb=[
+                CategoryRefDto(name=n.name, slug=n.slug, key=n.key) for n in breadcrumb
+            ],
         )
 
 
@@ -196,6 +204,7 @@ class CategoryNodeDto(CategoryRefDto):
         return cls(
             name=node.name,
             slug=node.slug,
+            key=node.key,
             children=[cls.from_node(c) for c in node.children],
         )
 
@@ -242,6 +251,7 @@ class CategoryPageDto(BaseModel):
 
     name: str
     slug: str
+    key: str | None = None    # identidad estable → etiqueta localizada en el cliente
     breadcrumb: list[CategoryRefDto]
     subcategories: list[CategoryRefDto]
     products: list[ProductSearchDto]
@@ -321,6 +331,7 @@ class CategoryListingDto(BaseModel):
 
     name: str
     slug: str
+    key: str | None = None    # identidad estable → etiqueta localizada en el cliente (ver CategoryRefDto)
     breadcrumb: list[CategoryRefDto]
     subcategories: list[CategoryRefDto]
     total: int                # productos que pasan los filtros (antes de paginar)

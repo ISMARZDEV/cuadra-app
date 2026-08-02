@@ -214,10 +214,30 @@ for tone and ergonomics. Looking at only one is how the wrong answer gets shippe
     `composition_root.get_admin_audit_repo` gives the repo (no `security` import); the controller's
     `get_admin_audit` composes it with `Depends(get_current_user_id)`. Entity/port: `domain/admin_audit.py`
     + `AdminAuditRepository`; recorder: `application/admin_audit_recorder.py`.
+14. **A bulk action reports THREE outcomes, never two.** Every bulk in the queue splits *succeeded* /
+    *ran-but-did-not-decide* / *could-not-even-try*: `bulk-classify` → classified / undecided / failed;
+    `bulk-rematch` → auto_linked / still_pending / failed. Merging the last two makes a batch that
+    resolved 32 of 48 read as finished, and the operator leaves believing nothing is left. Structure:
+    one SAVEPOINT per row (`scope.begin_nested()`) so one blown row neither aborts the batch nor
+    undoes the rows already committed; iterate over what was **requested**, not what was loaded, so a
+    row that no longer exists is REPORTED instead of vanishing from the summary. Audit ONE aggregated
+    entry per batch, not N rows. Copy `bulk_classify_review.py` — it is the reference shape.
+15. **A results modal must show the PAIRS, not just counts** (`RematchResultModal.tsx`). A toast with
+    numbers cannot be audited; ids against ids cannot either. It renders `queue product → linked
+    canonical` with the method badge and the confidence, the canonical name being a link to
+    `/admin/canonical-products/{id}` with `target="_blank"` + `rel="noopener noreferrer"` — the modal
+    is the ONLY place the batch result lives (it is never re-fetched), so navigating in place would
+    lose it. For the same reason it sets Base UI's **`disablePointerDismissal`**: an accidental
+    outside click used to discard the result and force a full re-run. Escape still closes — removing
+    it would trap keyboard users in a focus-trapping dialog.
+    Use the real `Table` + `Pagination` + page-size `Select` (client-side: the batch is already fully
+    in memory), and **reset to page 1 when the page size changes** or a deep page renders empty.
+    Empty state must be HONEST: with zero links, say the run DID happen and name the right next action
+    ("Create canonicals"), never render an empty table — that reads as "it broke".
 
 ## Endpoint map (all under `/v1/admin/save/*`, gated)
 
-- Review (MATCHING_REVIEW): `GET /review-queue`, `GET /review-queue/{id}`, `POST /review-queue/{id}/resolve`, `POST /review-queue/create-canonical`, `POST /review-queue/bulk-resolve`
+- Review (MATCHING_REVIEW): `GET /review-queue`, `GET /review-queue/{id}`, `POST /review-queue/{id}/resolve`, `POST /review-queue/create-canonical`, `POST /review-queue/bulk-resolve`, `POST /review-queue/bulk-resolve-brands`, `POST /review-queue/bulk-classify`, `POST /review-queue/bulk-rematch`, `POST /review-queue/bulk-create-canonical`
 - Ingestion (INGESTION_OPS): `GET /providers` (admin DTO — full type/platform/market, replaced the public `listProviders`, #11), `POST /providers`, `PATCH /providers/{id}`, `PATCH /providers/{id}/logo`; `POST /sources`, `PATCH /sources/{id}`, `POST /sources/{id}/pause|resume`, `POST /sources/{id}/test`, `GET /sources/health`; `GET|POST /basket-queries`, `PATCH|DELETE /basket-queries/{id}`
 
 ## How to add a new admin resource (the recipe)

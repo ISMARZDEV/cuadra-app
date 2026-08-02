@@ -60,12 +60,18 @@ export function ReviewDetailScreen() {
   const handleApprove = async (canonicalProductId: string) => {
     setBusy(true);
     setError(null);
-    const res = await resolveReviewMatch({
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` suelto no corre y los botones de la
+    // ficha quedan deshabilitados hasta recargar la página.
+    let res: Awaited<ReturnType<typeof resolveReviewMatch>>;
+    try {
+      res = await resolveReviewMatch({
       matchId: detail.match_id,
       canonicalProductId,
       decidedBy: ADMIN_DECIDED_BY,
     });
-    setBusy(false);
+    } finally {
+      setBusy(false);
+    }
     if (res.error) {
       setError("No se pudo aprobar el match.");
       return;
@@ -84,14 +90,20 @@ export function ReviewDetailScreen() {
   }) => {
     setBusy(true);
     setError(null);
-    const res = await resolveReviewMatch({
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` suelto no corre y los botones de la
+    // ficha quedan deshabilitados hasta recargar la página.
+    let res: Awaited<ReturnType<typeof resolveReviewMatch>>;
+    try {
+      res = await resolveReviewMatch({
       matchId: detail.match_id,
       canonicalProductId: null,
       decidedBy: ADMIN_DECIDED_BY,
       reasonCode,
       reasonNote: reasonNote || undefined,
     });
-    setBusy(false);
+    } finally {
+      setBusy(false);
+    }
     if (res.error) {
       setError("No se pudo rechazar el match.");
       return;
@@ -102,7 +114,11 @@ export function ReviewDetailScreen() {
   const handleCreateCanonical = async (payload: CreateCanonicalPayload) => {
     setBusy(true);
     setError(null);
-    const res = await createCanonicalAndLinkMatch({
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` suelto no corre y los botones de la
+    // ficha quedan deshabilitados hasta recargar la página.
+    let res: Awaited<ReturnType<typeof createCanonicalAndLinkMatch>>;
+    try {
+      res = await createCanonicalAndLinkMatch({
       matchId: detail.match_id,
       decidedBy: ADMIN_DECIDED_BY,
       name: payload.name,
@@ -111,7 +127,9 @@ export function ReviewDetailScreen() {
       taxonomyNodeId: payload.taxonomyNodeId,
       marketId: detail.market_id ?? "DO",
     });
-    setBusy(false);
+    } finally {
+      setBusy(false);
+    }
     if (res.error) {
       setError("No se pudo crear el canónico.");
       return;

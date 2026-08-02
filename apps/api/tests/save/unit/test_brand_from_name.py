@@ -12,7 +12,11 @@ fabricar catálogo, justo lo que la regla sagrada del módulo prohíbe.
 """
 from __future__ import annotations
 
-from src.contexts.save.domain.brand_from_name import build_brand_index, match_brand
+from src.contexts.save.domain.brand_from_name import (
+    brand_appears_in,
+    build_brand_index,
+    match_brand,
+)
 
 _KNOWN = ["LA GARZA", "GOYA", "La Famosa", "BRAVO", "LIDER", "LA SANJUANERA", "Hansaplast"]
 
@@ -64,3 +68,36 @@ class TestEsDeterministaAnteElCatalogoSucio:
 
     def test_no_se_cae_con_una_lista_vacia_de_marcas(self) -> None:
         assert match_brand("LA GARZA ARROZ 10 LB", build_brand_index([])) is None
+
+
+class TestBrandAppearsIn:
+    """`brand_appears_in` responde la pregunta INVERSA a `match_brand`: no "¿qué marca hay en este
+    nombre?" sino "¿está ESTA marca concreta en este texto?". La usa el brand gate de la cascada
+    para saber si el store corrobora la marca del canónico. Misma regla de secuencia de tokens."""
+
+    def test_la_encuentra_al_principio_como_la_escribe_bravo(self) -> None:
+        assert brand_appears_in("La Famosa", "LA FAMOSA HABICHUELAS NEGRAS 15 OZ")
+
+    def test_la_encuentra_en_el_medio_como_la_escribe_nacional(self) -> None:
+        assert brand_appears_in("La Garza", "Arroz Enriquecido La Garza 5 Lb")
+
+    def test_ignora_acentos_y_mayusculas(self) -> None:
+        assert brand_appears_in("Líder", "LIDER ARROZ 5 LB")
+
+    def test_exige_la_SECUENCIA_completa_no_un_token_suelto(self) -> None:
+        # "La Famosa" NO está en un nombre que sólo dice "Famosa": son marcas distintas.
+        assert not brand_appears_in("La Famosa", "FAMOSA ARROZ 5 LB")
+
+    def test_exige_palabra_completa_no_subcadena(self) -> None:
+        assert not brand_appears_in("Goya", "GOYANA ARROZ 5 LB")
+
+    def test_marca_ausente_del_texto(self) -> None:
+        # EL caso del falso positivo: el nombre de Bravo no nombra a Wala por ningún lado.
+        assert not brand_appears_in("Wala", "ARROZ SELECTO 10 LB")
+
+    def test_texto_vacio_no_revienta(self) -> None:
+        assert not brand_appears_in("Wala", "")
+
+    def test_marca_vacia_no_matchea_cualquier_cosa(self) -> None:
+        # Una marca vacía no debe "aparecer" en todos los textos (secuencia vacía = trampa clásica).
+        assert not brand_appears_in("", "ARROZ SELECTO 10 LB")

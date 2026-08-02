@@ -103,6 +103,26 @@ _classify_by_name(product):           # NO trgm / NO RRF here (measured: it cont
    (92% measured) matters more than recall (73%) — an unclassified product is honest; a wrong one lies.
 7. **The judge, if ever ON, judges the VECTOR top-1** (`vector[0].name`), not an RRF winner (there is
    none). `JUDGE_MATCH_MIN_CONFIDENCE=0.70` floor still applies (borrowed from matching banding).
+8. **A category-word that is also a common INGREDIENT anchors the lexicon and misclassifies**
+   (measured 2026-08-02 on Bravo). Same failure family as `polvo`/`agua`, but worse because the token
+   dominates the name. Every one of these landed in *Arroz, Granos & Legumbres*:
+
+   | Product | Truth | Anchoring token |
+   |---|---|---|
+   | `NATRUE BEBIDA ARROZ 32 OZ` | a plant-based **drink** | `arroz` |
+   | `LA RIBERA MORCILLA DE ARROZ` | a **cured sausage** | `arroz` |
+   | `PB ARROZ BLANCO` · `ARROZ CON MAIZ (PB)` | prepared **meals** | `arroz` |
+
+   It also splits product LINES: `FRESCAN POLLO Y ARROZ` → *Pollo* while `FRESCAN RES Y ARROZ` →
+   *Granos* — same line, two categories.
+   **Why it is expensive, not cosmetic:** the canonical's category feeds the matcher's category
+   gate/boost (`cuadra-save-matching`), so a mis-categorised canonical silently biases FUTURE links.
+   And a canonical is hard to undo — archive only. **Vet categories BEFORE bulk-creating canonicals
+   from queue rows**; hold back the doubtful ones rather than seeding the catalog with them.
+9. **The taxonomy is 3 levels, not 2 — do not assume a classified node is a LEAF.**
+   `Arroz, Granos & Legumbres` has children (`Arroz`, `Granos`, `Legumbres`), and 7 of 21 measured
+   rows were classified onto that MID node. Anything walking `root → child` and calling the child a
+   leaf will mis-handle the third level.
 
 ## Code Examples
 

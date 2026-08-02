@@ -27,6 +27,7 @@ from sqlalchemy import Float, cast, delete, func, select
 from sqlalchemy.orm import Session, aliased
 
 from ....domain.entities import MatchCandidate, MatchCandidateSnapshot, ProductMatch
+from ....domain.rematch import RematchableProduct
 from ....domain.review_queue import ReviewCandidateView, ReviewQueueRow
 from ....domain.taxonomy import slugify
 from ...models import (
@@ -460,3 +461,42 @@ class SqlProductMatchRepository:
             delete(ProductMatchModel).where(ProductMatchModel.store_product_id == spid)
         )
         self._s.flush()
+
+    def rematchable_for_matches(
+        self, match_ids: list[str]
+    ) -> list[tuple[str, RematchableProduct]]:
+        """Productos detrás de N matches de la cola, para volver a pasarlos por la cascada.
+
+        UNA sola query para todo el lote (no N+1): el operador puede seleccionar decenas de filas.
+        """
+        if not match_ids:
+            return []
+        stmt = (
+            select(
+                ProductMatchModel.id,
+                StoreProductModel.id,
+                StoreProductModel.name,
+                StoreProductModel.brand,
+                StoreProductModel.size_text,
+                StoreProductModel.ean,
+                StoreProductModel.source_category,
+            )
+            .join(StoreProductModel, StoreProductModel.id == ProductMatchModel.store_product_id)
+            .where(ProductMatchModel.id.in_(match_ids))
+        )
+        return [
+            (
+                str(r[0]),
+                RematchableProduct(
+                    store_product_id=str(r[1]),
+                    name=r[2] or "",
+                    brand=r[3] or "",
+                    size=r[4] or "",
+                    # `None`, no `""`: la etapa EAN se salta con None, y un string vacío la haría
+                    # buscar candidatos por un EAN inexistente.
+                    ean=r[5] or None,
+                    source_category=r[6] or "",
+                ),
+            )
+            for r in self._s.execute(stmt).all()
+        ]

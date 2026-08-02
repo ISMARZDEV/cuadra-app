@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from collections.abc import Sequence
 from enum import StrEnum
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -64,6 +65,11 @@ class FlowKey(StrEnum):
     no se ofrece."""
 
     PROVIDER_PRICES_REFRESH = "provider_prices_refresh"
+    # Re-precio por id de lo ya conocido (Prices Batch). Cosecha además EAN/sección/marca del
+    # detalle, sin requests extra.
+    PROVIDER_PRICE_REFRESH = "provider_price_refresh"
+    # Browse COMPLETO por sección: descubre los exclusivos que la canasta nunca pediría.
+    PROVIDER_BROWSE = "provider_browse"
 
 
 # Job del runner que ejecuta cada flow. FUENTE ÚNICA: la consumen tanto "Ejecutar ahora"
@@ -75,6 +81,8 @@ class FlowKey(StrEnum):
 # Mapa explícito y cerrado: v1 no materializa assets Python arbitrarios desde la UI (SDD §4).
 JOB_BY_FLOW: dict[str, str] = {
     FlowKey.PROVIDER_PRICES_REFRESH.value: "save_query_catalog",
+    FlowKey.PROVIDER_PRICE_REFRESH.value: "save_price_refresh",
+    FlowKey.PROVIDER_BROWSE.value: "save_rest_catalog",
 }
 
 
@@ -85,7 +93,41 @@ JOB_BY_FLOW: dict[str, str] = {
 # igual que JOB_BY_FLOW: la consumen "Ejecutar ahora" (`RunPolicyNow`) y el sensor programado.
 PROVIDER_PARTITIONED_FLOWS: frozenset[str] = frozenset({
     FlowKey.PROVIDER_PRICES_REFRESH.value,
+    FlowKey.PROVIDER_PRICE_REFRESH.value,
 })
+
+
+# Assets GLOBALES (no atados a una tienda) que la consola puede programar. Cerrado como
+# `JOB_BY_FLOW`: v1 no materializa assets Python arbitrarios desde la UI (SDD §4).
+JOB_BY_ASSET: dict[str, str] = {
+    "freshness": "save_freshness",
+    "coverage": "save_coverage",
+}
+
+
+def job_for(*, flow_key: str | None, asset_key: str | None) -> str | None:
+    """Job del runner para una policy, sea provider-flow o asset. Resolvedor ÚNICO: el sensor y
+    "Ejecutar ahora" deben coincidir o la programación no dispara sin dar error."""
+    if flow_key:
+        return JOB_BY_FLOW.get(flow_key)
+    if asset_key:
+        return JOB_BY_ASSET.get(asset_key)
+    return None
+
+
+# Separador de la partición del browse: `{provider_id}:{sección}`. La sección sola NO es única
+# entre proveedores, así que el provider va en la clave.
+_PARTITION_SEP = ":"
+
+# Flows que se lanzan como BACKFILL (N particiones de una), no como corrida única. El browse tiene
+# una partición por sección —41 en Bravo—, así que `launchRun` lanzaría una sola y dejaría 40 sin
+# correr. Fuente ÚNICA, como `JOB_BY_FLOW`.
+BACKFILL_FLOWS: frozenset[str] = frozenset({FlowKey.PROVIDER_BROWSE.value})
+
+
+def browse_partition_keys(provider_id: str, sections: Sequence[str]) -> list[str]:
+    """Una partición por sección del proveedor."""
+    return [f"{provider_id}{_PARTITION_SEP}{s}" for s in sections]
 
 
 def partition_key_for(flow_key: str, provider_id: str | None) -> str | None:

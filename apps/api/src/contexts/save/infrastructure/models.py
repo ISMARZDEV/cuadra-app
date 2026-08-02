@@ -49,7 +49,8 @@ class TaxonomyNodeModel(Base):
 
     __tablename__ = "taxonomy_node"
     __table_args__ = (
-        UniqueConstraint("market_id", "parent_id", "name", name="uq_taxonomy_market_parent_name"),
+        UniqueConstraint("parent_id", "name", name="uq_taxonomy_parent_name"),
+        UniqueConstraint("key", name="uq_taxonomy_key"),
         {"schema": _SCHEMA},
     )
 
@@ -59,9 +60,38 @@ class TaxonomyNodeModel(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("save.taxonomy_node.id", ondelete="CASCADE")
     )
+    # IDENTIDAD del nodo, estable e independiente del idioma ("despensa-abarrotes.cafe"). `name` es
+    # sólo la ETIQUETA: renombrarla no toca la key, así que el seed ACTUALIZA el nodo en vez de
+    # crear uno nuevo. Antes el id se derivaba del nombre y cada rename orfanaba el nodo viejo.
+    # Nullable por los nodos hijos de la demo (nivel ≥2), que no vienen del markdown.
+    # Ver docs/research/save-fable/taxonomia-multi-idioma.md.
+    key: Mapped[str | None] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     level: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
-    market_id: Mapped[str] = mapped_column(Text, nullable=False)  # cross-context, sin FK
+
+
+class TaxonomyNodeMarketModel(Base):
+    """Lo que un MERCADO concreto sabe de un concepto de la taxonomía (Fase 2b).
+
+    El árbol (`taxonomy_node`) es GLOBAL: un concepto = una fila, así que dos países comparten el
+    mismo nodo y se pueden comparar precios por categoría entre ellos. El RECONOCIMIENTO, en cambio,
+    no se comparte: depende del idioma Y del país. Un producto brasileño dice "Arroz Branco Tipo 1"
+    y los términos en español no lo pegan; y `víveres` en RD son las raíces mientras en otros países
+    hispanohablantes significa "abarrotes" — mismo idioma, distinto significado.
+
+    Las ETIQUETAS localizadas no viven acá: se resuelven en el cliente contra la `key` del nodo
+    (`apps/web/src/i18n/categories.ts`). `taxonomy_node.name` es la etiqueta por defecto y fallback.
+    """
+
+    __tablename__ = "taxonomy_node_market"
+    __table_args__ = {"schema": _SCHEMA}
+
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("save.taxonomy_node.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    market_id: Mapped[str] = mapped_column(Text, primary_key=True)  # cross-context, sin FK
     # Descriptores del dominio de la hoja para la receta de embedding del clasificador
     # ("arroz, habichuelas, guandules") — data curable (generada offline + revisada), editable
     # desde el admin. Sembrar/editar esto DEBE poner `embedding=NULL` (re-embed). NULL = fallback
@@ -70,6 +100,9 @@ class TaxonomyNodeModel(Base):
     # BGE-M3 (mismo modelo que canonical_product.embedding) — índice semántico de categorías
     # (save-category-classification). NULL hasta que EmbedCategories lo puebla. Solo hojas (level=1).
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
+    # ¿Este mercado LLEVA esta categoría? El árbol es la unión de todos los mercados: mamajuana es
+    # dominicana y un súper en Texas tiene pasillos que RD no tiene.
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
 
 class CollectionModel(Base):
@@ -583,6 +616,72 @@ class CategoryClassificationModel(Base):
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
     method: Mapped[str] = mapped_column(Text, nullable=False)  # lexicon|trgm|vector|hybrid|llm|human
     status: Mapped[str] = mapped_column(Text, nullable=False)  # active|superseded|rejected
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class CategoryDecisionModel(Base):
+    """Bitácora APPEND-ONLY de lo que la cascada de clasificación decidió, y con qué evidencia.
+
+    NO reemplaza a `category_classification` y no se le parece: aquélla guarda la categoría
+    ASIGNADA (una activa por producto, hoja NOT NULL); ésta guarda el EVENTO de decisión, que muy a
+    menudo termina SIN hoja. Por eso `taxonomy_node_id` es NULLABLE acá y no allá.
+
+    Por qué existe (medido 2026-08-01): de 292 store_products, 89 (31%) quedaron sin clasificar, y
+    las dos ramas de abstención de la cascada (`conflict` y `none`) no persistían NADA — `execute`
+    sólo escribe si hay hoja. Averiguar por qué se abstuvo exigió reproducir la cascada producto por
+    producto, volviendo a llamar al LLM. El caso más informativo del sistema (dos señales fuertes en
+    desacuerdo) era el único sin rastro.
+
+    `source_leaf_id` y `name_leaf_id` son el corazón de la tabla: guardan lo que propuso CADA señal
+    por separado. Sin ellos un `conflict` es indistinguible de un `none` una vez guardado, que es
+    exactamente el estado del que venimos.
+
+    Guardar una abstención NO la convierte en clasificación: ninguna lectura del catálogo ni del
+    sitio público mira esta tabla. La regla sagrada —el sistema nunca inventa una categoría— queda
+    intacta; lo único que cambia es que ahora el sistema recuerda que dudó.
+    """
+
+    __tablename__ = "category_decision"
+    __table_args__ = (
+        CheckConstraint(
+            "(store_product_id IS NULL) <> (canonical_product_id IS NULL)",
+            name="ck_category_decision_xor_ref",
+        ),
+        Index("ix_category_decision_store_product", "store_product_id"),
+        # El índice que sirve al análisis: "dame todas las abstenciones por método". Es la consulta
+        # que hoy no se puede hacer sin re-correr la cascada.
+        Index("ix_category_decision_method_created", "method", "created_at"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    store_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.store_product.id", ondelete="CASCADE")
+    )
+    canonical_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.canonical_product.id", ondelete="CASCADE")
+    )
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)
+    method: Mapped[str] = mapped_column(Text, nullable=False)
+    # NULL = la cascada se abstuvo. Es la diferencia de fondo con `category_classification`.
+    taxonomy_node_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.taxonomy_node.id")
+    )
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
+    band: Mapped[str] = mapped_column(Text, nullable=False)
+    # Evidencia por señal. Sin FK a `taxonomy_node`: son la propuesta de una señal, no una
+    # asignación, y no deben impedir archivar una hoja ni arrastrar un borrado.
+    source_leaf_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    name_leaf_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    matched_tokens: Mapped[str | None] = mapped_column(Text)  # CSV, forma de superficie
+    # Top-k del vector con su score: hace legible un `grey` a posteriori (¿el margen fue 0.001 o
+    # 0.029?) sin volver a embeber el producto. JSONB y no tabla hija porque es evidencia de
+    # longitud variable que se lee entera o no se lee — nunca se joinea por candidato.
+    vector_top: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

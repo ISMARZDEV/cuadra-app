@@ -21,7 +21,7 @@ class _FakeIndexRepo:
         pending = [lf for lf in self._leaves if lf[0] not in self.terms]
         return pending[:limit]
 
-    def set_terms(self, node_id: str, terms: str) -> None:
+    def set_terms(self, node_id: str, terms: str, market_id: str) -> None:
         self.terms[node_id] = terms
         self.embedding_cleared.append(node_id)  # invalida el vector (re-embed)
 

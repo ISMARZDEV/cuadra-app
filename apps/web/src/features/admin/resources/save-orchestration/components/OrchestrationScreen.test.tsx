@@ -21,6 +21,11 @@ const api = vi.hoisted(() => ({
   retryRun: vi.fn(),
   deletePolicy: vi.fn(),
   listPipelineAssets: vi.fn(),
+  // Sano por defecto: el banner de salud es la EXCEPCIÓN, y su caso tiene su propio test.
+  fetchOrchestratorHealth: vi.fn(
+    (): Promise<{ data: { ok: boolean; locations: string[]; reason: string } }> =>
+      Promise.resolve({ data: { ok: true, locations: [], reason: "" } }),
+  ),
   AssetsUnavailable: class extends Error {},
 }));
 vi.mock("../api", () => api);
@@ -681,5 +686,26 @@ describe("OrchestrationScreen — acciones en lote", () => {
 
     expect(await screen.findByText(/Eliminar 2 flujo/)).toBeInTheDocument();
     expect(api.deletePolicy).not.toHaveBeenCalled();
+  });
+
+  // La consola pintaba 3/3 en verde con Dagster sin código cargado: las corridas viven en SU base y
+  // se leen igual, así que `runnerDisconnected` queda en false. Verificado contra el entorno real.
+  it("warns when the runner cannot execute, even if runs are readable", async () => {
+    api.fetchOrchestratorHealth.mockResolvedValueOnce({
+      data: { ok: false, locations: ["ingestion.definitions"], reason: "Could not reach user code server" },
+    });
+    mockData = { flows: twoFlows(), runnerDisconnected: false, providers: [], locale: "es" };
+    render(<OrchestrationScreen />);
+
+    expect(await screen.findByText("El orquestador no puede ejecutar")).toBeInTheDocument();
+    expect(screen.getByText(/Could not reach user code server/)).toBeInTheDocument();
+  });
+
+  it("stays quiet when the runner is healthy", async () => {
+    mockData = { flows: twoFlows(), runnerDisconnected: false, providers: [], locale: "es" };
+    render(<OrchestrationScreen />);
+
+    await screen.findByTestId("orchestration-select-all");
+    expect(screen.queryByText("El orquestador no puede ejecutar")).not.toBeInTheDocument();
   });
 });

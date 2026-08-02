@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from ...domain.entities.orchestration import (
@@ -47,16 +47,25 @@ class SqlOrchestrationPolicyRepository:
         return _to_entity(row) if row is not None else None
 
     def find_active(
-        self, *, provider_id: str, market_id: str, flow_key: str
+        self, *, provider_id: str | None, market_id: str, flow_key: str
     ) -> OrchestrationPolicy | None:
         """Activa = no soft-deleted. `enabled=False` (pausada) SIGUE siendo activa para la
         unicidad: pausar no libera el slot, si no crear un duplicado sería tan simple como pausar
-        el original y el operador terminaría con dos configuraciones para la misma tienda."""
+        el original y el operador terminaría con dos configuraciones para la misma tienda.
+
+        `provider_id=None` = scope ASSET: la unicidad es por `asset_key`, no por tienda."""
+        clave = (
+            OrchestrationPolicyModel.asset_key == flow_key
+            if provider_id is None
+            else and_(
+                OrchestrationPolicyModel.provider_id == uuid.UUID(provider_id),
+                OrchestrationPolicyModel.flow_key == flow_key,
+            )
+        )
         row = self._s.scalars(
             select(OrchestrationPolicyModel).where(
-                OrchestrationPolicyModel.provider_id == uuid.UUID(provider_id),
+                clave,
                 OrchestrationPolicyModel.market_id == market_id,
-                OrchestrationPolicyModel.flow_key == flow_key,
                 OrchestrationPolicyModel.deleted_at.is_(None),
             )
         ).first()
@@ -134,3 +143,22 @@ class SqlOrchestrationGlobalConfigRepository:
             default_sla_minutes=row.default_sla_minutes,
             auto_runs_enabled=row.auto_runs_enabled,
         )
+
+
+class SqlSectionsReader:
+    """Secciones de la fuente de un proveedor (`store_registry.endpoints.sections`)."""
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def sections_for(self, provider_id: str) -> list[str]:
+        from ..models import StoreRegistryModel
+
+        row = self._s.scalars(
+            select(StoreRegistryModel).where(
+                StoreRegistryModel.provider_id == uuid.UUID(provider_id)
+            )
+        ).first()
+        if row is None:
+            return []
+        return [str(s) for s in (row.endpoints or {}).get("sections") or []]

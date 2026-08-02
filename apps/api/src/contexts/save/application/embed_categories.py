@@ -35,7 +35,7 @@ class EmbedCategories:
             ]
             vectors = self._embedder.embed(texts)
             for (node_id, _name, _parent, _terms), vector in zip(batch, vectors, strict=True):
-                self._repo.set_embedding(node_id, vector)
+                self._repo.set_embedding(node_id, vector, market_id)
             total += len(batch)
             if len(batch) < batch_size:
                 break

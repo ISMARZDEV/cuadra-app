@@ -35,9 +35,12 @@ from ..domain.ports import (
 from ..domain.ports.repositories import EmbeddingProvider, ProductMatchRepository
 from ..infrastructure.classification.lexicon import LexiconIndex, lexicon_match_path
 from ..infrastructure.matching.cascade.banding import JUDGE_MATCH_MIN_CONFIDENCE, determine_band
+from ..infrastructure.matching.cascade.brand_gate import brand_unsupported
 from ..infrastructure.matching.cascade.category_gate import categories_conflict, category_boost
 from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
+from ..infrastructure.matching.cascade.form_gate import forms_conflict
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
+from ..infrastructure.matching.cascade.quality_gate import qualities_conflict
 from ..infrastructure.matching.cascade.scoring import apply_boosts
 from ..infrastructure.matching.cascade.size_gate import sizes_conflict
 from ..infrastructure.matching.cascade.variant_gate import variants_conflict
@@ -63,6 +66,10 @@ class IncomingStoreProduct:
     # del use-case porque es propiedad de este hallazgo, no del matcher. Se estampa en el
     # `ProductMatch` para poder filtrar la cola por corrida y atribuir los canónicos que salgan.
     run_id: str | None = None
+    # Tienda que lo publicó — para el invariante de proveedor único (ver `execute`). Viaja con la
+    # observación por la misma razón que `run_id`: es propiedad del hallazgo, no del matcher.
+    # "" = desconocido → el invariante no se aplica (conservador).
+    provider_id: str = ""
 
     def __post_init__(self) -> None:
         if not self.store_product_id.strip():
@@ -101,7 +108,10 @@ class MatchStoreProduct:
         match_repo: ProductMatchRepository,
         store_repo: StoreProductRepository,
         canonical_repo: CanonicalProductRepository,
-        embedding_provider: EmbeddingProvider,
+        # `None` = sin etapa vectorial. La API no siempre lleva modelo (`build_api_embedder`
+        # devuelve None sin endpoint HTTP ni modelo in-process) y la cascada debe poder correr
+        # igual: el EAN y el trgm no dependen del modelo.
+        embedding_provider: EmbeddingProvider | None,
         judge: GreyBandJudge | None,
         category_lexicon: LexiconIndex | None = None,
         leaf_to_parent: dict[str, str] | None = None,
@@ -143,9 +153,16 @@ class MatchStoreProduct:
 
         # --- Etapa 2/3: léxico (trgm) + semántico (vector), fusionados por RRF ---
         trgm_candidates = self._match_repo.find_candidates_trgm(product.name, product.market_id)
-        embedding_text = build_embedding_text(product.name, product.brand, product.size)
-        embedding = self._embedder.embed([embedding_text])[0]
-        vector_candidates = self._match_repo.find_candidates_vector(embedding, product.market_id)
+        # Sin embedder la etapa vectorial se OMITE, no se alimenta con un vector inventado: un
+        # vector falso devolvería vecinos arbitrarios que el RRF fusionaría como candidatos reales.
+        if self._embedder is None:
+            vector_candidates: list[MatchCandidate] = []
+        else:
+            embedding_text = build_embedding_text(product.name, product.brand, product.size)
+            embedding = self._embedder.embed([embedding_text])[0]
+            vector_candidates = self._match_repo.find_candidates_vector(
+                embedding, product.market_id
+            )
 
         fused = reciprocal_rank_fusion(trgm_candidates, vector_candidates)
         if not fused:
@@ -195,13 +212,83 @@ class MatchStoreProduct:
         # no expone barcode. Lee la variante del nombre; ver `variant_gate`.
         variant_conflict = variants_conflict(product.name, canonical.name if canonical else "")
 
+        # Brand gate: el canónico declara marca y el store no la corrobora ni en su campo marca ni
+        # en su nombre → sin evidencia de marca, no se auto-mergea dentro de un SKU de marca. A
+        # diferencia de los gates de arriba bloquea por AUSENCIA de evidencia, no por contradicción;
+        # ver `brand_gate` para por qué la asimetría es deliberada.
+        brand_missing = brand_unsupported(
+            product.brand, product.name, canonical.brand if canonical else None
+        )
+
+        # Quality gate: la LÍNEA de calidad (Premium / Selecto / Super Selecto…) distingue SKUs que
+        # comparten marca, tamaño y categoría. Medido 2026-08-01: 5 canónicos habían absorbido SKUs
+        # distintos de la MISMA tienda, y con confianza de hasta 1.000 — los boosts empujan al tope
+        # justo a esta clase de error, porque premian las dimensiones que no discriminan acá.
+        quality_conflict = qualities_conflict(
+            product.name,
+            canonical.name if canonical else "",
+            canonical.quality if canonical else None,
+        )
+
+        # Form gate: la FORMA de preparación distingue SKUs que comparten marca, tamaño, categoría,
+        # color y especie — harina de arroz no es arroz, y habichuelas guisadas no son secas. Medido
+        # 2026-08-01 en la primera corrida con el juez encendido: 3 falsos merges por este eje, dos
+        # firmados por el JUEZ (0.850) y uno por la cascada determinista (0.902). A diferencia del
+        # variant gate, un nombre SIN marca de forma no es "sin señal" sino la forma BASE; ver
+        # `form_gate` para por qué esa asimetría es deliberada.
+        form_conflict = forms_conflict(product.name, canonical.name if canonical else "")
+
+        # Invariante de PROVEEDOR ÚNICO: una tienda no publica el mismo producto dos veces, así que
+        # si el canónico ganador ya tiene un `store_product` de ESTA tienda, el entrante es otro SKU.
+        #
+        # A diferencia de los demás, este gate no es semántico sino ESTRUCTURAL, y por eso cubre los
+        # ejes que no anticipamos. Medido 2026-08-01: los 5 falsos merges de la primera corrida real
+        # tenían CUATRO ejes distintos (línea de calidad, seco/verde, con vegetales, estilo
+        # americano) — perseguirlos de a uno es una carrera sin final; este invariante los ataja a
+        # todos y bloquea 6 enlaces malos sin tocar ninguno bueno.
+        provider_dup = bool(product.provider_id) and self._store_repo.has_other_product_from_provider(
+            winner_id, product.provider_id, product.store_product_id
+        )
+
+        # Los 8 gates son vetos DETERMINISTAS del auto-enlace: si cualquiera se activa, el par va a
+        # revisión cualquiera sea la banda y cualquiera sea el veredicto del juez. Colapsarlos en una
+        # sola señal permite evaluarla ANTES del juez (ver banda gris abajo), que es donde la
+        # diferencia se paga en dinero.
+        gate_veto = (
+            size_conflict
+            or category_conflict
+            or ean_conflict
+            or variant_conflict
+            or brand_missing
+            or quality_conflict
+            or form_conflict
+            or provider_dup
+        )
+
         if band == "auto_link":
-            if size_conflict or category_conflict or ean_conflict or variant_conflict:
+            if gate_veto:
                 return self._to_review(
                     product, method=stage_method, confidence=final_score,
                     candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
                 )
             return self._auto_link(product, winner_id, confidence=final_score, method=stage_method)
+
+        # Banda gris con un gate activo: el desenlace YA está decidido, así que no se paga el juez.
+        # Un veredicto no puede levantar un veto determinista — la condición de auto-enlace de abajo
+        # exige `not gate_veto` — de modo que la llamada sólo agregaría tokens y latencia a un
+        # resultado idéntico. Medido sobre la cola real el 2026-08-01, justo antes de encender
+        # `SAVE_LLM_JUDGE_ENABLED`: de 158 pares en banda gris, 152 (96.2%) tenían un gate activo;
+        # encender el juez sin este corte habría gastado 152 llamadas de cada 158 en pares cuyo
+        # destino no dependía de la respuesta.
+        #
+        # Se registra con la MISMA semántica que el camino "juez apagado" de abajo (`method="human"`,
+        # confianza de la cascada, sin columnas de costo): el juez no dictaminó este par, y decir
+        # `llm` mentiría en la distinción que defienden tanto ese camino como el de `degraded`.
+        if band == "grey" and gate_veto:
+            return self._to_review(
+                product, method="human", confidence=final_score,
+                candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
+            )
 
         if band == "grey" and self._judge is None:
             # LLM apagado (`SAVE_LLM_JUDGE_ENABLED=false`): la banda gris va DIRECTO a revisión, sin
@@ -234,13 +321,14 @@ class MatchStoreProduct:
             # CRITICAL-1 (verify follow-up): un veredicto "match" del judge SOLO autolinkea si su
             # propia confianza alcanza el piso — por debajo, es un match débil y va a revisión
             # (method="llm", NO "human": el judge SÍ corrió, solo no fue lo bastante seguro).
+            # `not gate_veto` es hoy redundante (el corte de arriba ya retornó si algún gate se
+            # activó) y se conserva a propósito: es el invariante que hace SEGURO ese corte —
+            # ningún veredicto auto-enlaza por encima de un veto. Si alguien reordena la cascada,
+            # el veto sigue puesto acá y los tests de los gates en banda gris lo siguen cubriendo.
             if (
                 verdict.decision == "match"
                 and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE
-                and not size_conflict
-                and not category_conflict
-                and not ean_conflict
-                and not variant_conflict
+                and not gate_veto
             ):
                 return self._auto_link(
                     product, winner_id, confidence=verdict.confidence, method="llm",
@@ -285,8 +373,14 @@ class MatchStoreProduct:
         return max(scores) if scores else 0.0
 
     @staticmethod
-    def _exact_match(incoming: str, candidate: str | None) -> bool:
-        if not candidate:
+    def _exact_match(incoming: str | None, candidate: str | None) -> bool:
+        """Igualdad exacta para los boosts. Un lado ausente = NO hay coincidencia, nunca un boost.
+
+        Guarda los DOS lados: el entrante también puede venir vacío (Bravo y Nacional no publican
+        marca). Antes sólo se guardaba `candidate`, y un `incoming` nulo tumbaba la corrida entera
+        con `None.strip()` en vez de simplemente no dar boost.
+        """
+        if not candidate or not incoming:
             return False
         return incoming.strip().casefold() == candidate.strip().casefold()
 

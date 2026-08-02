@@ -6,25 +6,19 @@ import { useData } from "vike-react/useData";
 import { toast } from "sonner";
 import { navigate } from "vike/client/router";
 
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
 import { providerLogoByName } from "@/features/save/lib/provider-logos";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE } from "@/i18n/config";
-import { format } from "@/i18n/messages";
+import { format, type MessageKey } from "@/i18n/messages";
 
 import {
   bulkResolveReviewMatches,
   classifySelected,
+  rematchSelected,
   resolveBrandsSelected,
   createCanonicalsFromSelection,
   fetchReviewQueue,
@@ -38,6 +32,7 @@ import { ReviewQueueKpis } from "./kpi/ReviewQueueKpis";
 import { ReasonCodeSelect } from "./ReasonCodeSelect";
 import { SelectCheckbox } from "./SelectCheckbox";
 import { CreateCanonicalsDialog } from "./CreateCanonicalsDialog";
+import { RematchResultModal, type RematchResultRow } from "./RematchResultModal";
 import { ReviewQueueToolbar, type ReviewQueueView } from "./ReviewQueueToolbar";
 import { ReviewRow } from "./ReviewRow";
 
@@ -85,6 +80,10 @@ export function ReviewQueueListScreen() {
   };
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Resultado del último re-match: el toast da los NÚMEROS, el modal da los PARES (qué quedó
+  // enlazado contra qué), que es lo único que permite auditar el lote.
+  const [rematchResult, setRematchResult] = useState<RematchResultRow[] | null>(null);
+  const [rematchFailed, setRematchFailed] = useState(0);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [showBulkReject, setShowBulkReject] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkOutcome | null>(null);
@@ -153,21 +152,175 @@ export function ReviewQueueListScreen() {
     }
   }
 
+  // Orden de la cascada, para que el desglose se lea como el proceso que ocurrió y no como un
+  // diccionario alfabético: primero lo barato y determinista, al final lo caro.
+  const CLASSIFY_STAGES = ["lexicon", "source", "source_name", "vector", "llm"] as const;
+
+  async function handleBulkRematch() {
+    const ids = [...selected];
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    // Toast persistente: la cascada puede llamar al juez LLM por fila, así que un lote grande
+    // tarda. Sin esto la espera se lee como que el botón no hizo nada.
+    const toastId = toast.loading(
+      format(locale, "admin.reviewQueue.rematch.running", { n: String(ids.length) }),
+    );
+    try {
+      const result = await rematchSelected(ids);
+      if (!result) {
+        toast.error(t("admin.reviewQueue.rematch.error"), { id: toastId });
+        return;
+      }
+      const plural = (n: number, many: MessageKey, one: MessageKey) =>
+        format(locale, n === 1 ? one : many, { n: String(n) });
+
+      // Los TRES estados por separado: enlazadas / siguen en cola / con error. "Sigue en cola" es
+      // el resultado NORMAL cuando el catálogo aún no tiene el canónico — fundirlo con el error
+      // haría creer que algo se rompió, y omitirlo, que ya no queda trabajo.
+      const partes = [
+        plural(
+          result.auto_linked,
+          "admin.reviewQueue.rematch.linked",
+          "admin.reviewQueue.rematch.linkedOne",
+        ),
+      ];
+      if (result.still_pending > 0) {
+        partes.push(
+          plural(
+            result.still_pending,
+            "admin.reviewQueue.rematch.stillPending",
+            "admin.reviewQueue.rematch.stillPendingOne",
+          ),
+        );
+      }
+      if (result.failed.length > 0) {
+        partes.push(
+          format(locale, "admin.reviewQueue.rematch.failed", {
+            n: String(result.failed.length),
+          }),
+        );
+      }
+      toast.success(partes.join(" · "), { id: toastId });
+      setRematchResult(result.rows ?? []);
+      setRematchFailed(result.failed.length);
+      setSelected(new Set());
+      await refreshOrWarn();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function handleBulkClassify() {
     const ids = [...selected];
     if (ids.length === 0 || bulkBusy) return;
     setBulkBusy(true);
+    // Toast persistente mientras corre: la cascada puede llamar al juez LLM, y sin esto una espera
+    // de varios segundos se lee como que el botón no hizo nada.
+    const toastId = toast.loading(
+      format(locale, "admin.reviewQueue.classify.running", { n: String(ids.length) }),
+    );
     try {
       const result = await classifySelected(ids);
       if (result) {
-        const parts = [format(locale, "admin.reviewQueue.classify.done", { n: String(result.classified) })];
+        // Plural: "1 clasificada" y no "1 clasificadas". Es lo primero que se lee del toast y
+        // leerlo mal conjugado hace dudar de todo lo demás.
+        const plural = (n: number, many: MessageKey, one: MessageKey) =>
+          format(locale, n === 1 ? one : many, { n: String(n) });
+
+        const head = [
+          plural(
+            result.classified,
+            "admin.reviewQueue.classify.done",
+            "admin.reviewQueue.classify.doneOne",
+          ),
+        ];
         if (result.undecided > 0) {
-          parts.push(format(locale, "admin.reviewQueue.classify.undecided", { n: String(result.undecided) }));
+          head.push(
+            plural(
+              result.undecided,
+              "admin.reviewQueue.classify.undecided",
+              "admin.reviewQueue.classify.undecidedOne",
+            ),
+          );
         }
         if (result.failed.length > 0) {
-          parts.push(format(locale, "admin.reviewQueue.classify.failed", { n: String(result.failed.length) }));
+          head.push(
+            format(locale, "admin.reviewQueue.classify.failed", {
+              n: String(result.failed.length),
+            }),
+          );
         }
-        toast(parts.join(" · "));
+
+        // QUÉ etapa resolvió cada una, y POR QUÉ no se decidieron las demás. No es adorno: es la
+        // única forma de ver desde la consola si el juez LLM llegó a participar.
+        const porEtapa = new Map<string, number>();
+        const porMotivo = new Map<string, number>();
+        for (const row of result.rows ?? []) {
+          const destino = row.taxonomy_node_id ? porEtapa : porMotivo;
+          const clave = row.taxonomy_node_id
+            ? row.method
+            : row.method === "conflict"
+              ? "conflict"
+              : "none";
+          destino.set(clave, (destino.get(clave) ?? 0) + 1);
+        }
+
+        // El NÚMERO va delante de la etiqueta, no detrás: "1 juez LLM" se lee; "juez LLM 1" no.
+        const chips: { key: string; n: number; label: string; tone: "ok" | "muted" }[] = [];
+        for (const etapa of CLASSIFY_STAGES) {
+          const n = porEtapa.get(etapa);
+          if (!n) continue;
+          chips.push({
+            key: etapa,
+            n,
+            label: format(locale, `admin.reviewQueue.classify.stage.${etapa}` as MessageKey, {}),
+            tone: "ok",
+          });
+        }
+        for (const motivo of ["conflict", "none"] as const) {
+          const n = porMotivo.get(motivo);
+          if (!n) continue;
+          chips.push({
+            key: motivo,
+            n,
+            label: format(locale, `admin.reviewQueue.classify.why.${motivo}` as MessageKey, {}),
+            tone: "muted",
+          });
+        }
+
+        toast.success(head.join(" · "), {
+          id: toastId,
+          description:
+            chips.length > 0 ? (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {chips.map((c) => (
+                  <span
+                    key={c.key}
+                    data-chip
+                    className={
+                      // `inline-block`, NO `inline-flex`: el chip separa número y etiqueta con un
+                      // espacio REAL (ver abajo), y en un contenedor flex ese espacio DESAPARECE —
+                      // la spec dice que un ítem anónimo que contiene sólo espacios en blanco no se
+                      // renderiza. Con `inline-flex` se veía «1sin señal suficiente» pegado, y
+                      // ningún test lo atrapaba porque en el DOM el espacio está: sólo se pierde al
+                      // maquetar. Bug visual reportado desde la consola 2026-08-01.
+                      "inline-block rounded-full px-2 py-0.5 text-xs font-medium align-middle " +
+                      (c.tone === "ok"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                        : "bg-muted text-muted-foreground")
+                    }
+                  >
+                    {/* Espacio REAL, no `gap`: el chip se copia y lo leen los lectores de
+                        pantalla, y "2léxico" no se entiende en ninguno de los dos casos. */}
+                    <span className="tabular-nums font-semibold">{c.n}</span>{" "}
+                    {c.label}
+                  </span>
+                ))}
+              </div>
+            ) : undefined,
+        });
+      } else {
+        toast.dismiss(toastId);
       }
       await refreshOrWarn();
     } finally {
@@ -268,32 +421,37 @@ export function ReviewQueueListScreen() {
 
     const localFailed: { match_id: string; error: string }[] = [];
     const approvable: { matchId: string; canonicalProductId: string }[] = [];
-    // Los `fetchTopCandidateId` son independientes entre filas → se resuelven en paralelo.
-    // `Promise.all` preserva el orden del input, así que la partición approvable/failed queda estable.
-    const resolved = await Promise.all(
-      ids.map(async (matchId) => ({ matchId, topCandidateId: await fetchTopCandidateId(matchId) })),
-    );
-    for (const { matchId, topCandidateId } of resolved) {
-      if (topCandidateId) {
-        approvable.push({ matchId, canonicalProductId: topCandidateId });
-      } else {
-        localFailed.push({ match_id: matchId, error: "Sin candidatos para auto-aprobar" });
+    // `finally`: si cualquiera de estos `await` rechaza, un `setBulkBusy(false)` suelto al final no
+    // corre y las acciones de lote quedan deshabilitadas hasta recargar la página.
+    try {
+      // Los `fetchTopCandidateId` son independientes entre filas → se resuelven en paralelo.
+      // `Promise.all` preserva el orden del input, así que la partición approvable/failed queda estable.
+      const resolved = await Promise.all(
+        ids.map(async (matchId) => ({ matchId, topCandidateId: await fetchTopCandidateId(matchId) })),
+      );
+      for (const { matchId, topCandidateId } of resolved) {
+        if (topCandidateId) {
+          approvable.push({ matchId, canonicalProductId: topCandidateId });
+        } else {
+          localFailed.push({ match_id: matchId, error: "Sin candidatos para auto-aprobar" });
+        }
       }
+
+      const server =
+        approvable.length > 0
+          ? await bulkResolveReviewMatches(
+              approvable.map((a) => ({
+                matchId: a.matchId,
+                canonicalProductId: a.canonicalProductId,
+                decidedBy: ADMIN_DECIDED_BY,
+              })),
+            )
+          : null;
+
+      await applyResult(server, localFailed);
+    } finally {
+      setBulkBusy(false);
     }
-
-    const server =
-      approvable.length > 0
-        ? await bulkResolveReviewMatches(
-            approvable.map((a) => ({
-              matchId: a.matchId,
-              canonicalProductId: a.canonicalProductId,
-              decidedBy: ADMIN_DECIDED_BY,
-            })),
-          )
-        : null;
-
-    setBulkBusy(false);
-    await applyResult(server, localFailed);
   };
 
   // Bulk-reject: UN request al endpoint atómico-por-fila (nunca N requests sueltos ni una
@@ -305,24 +463,29 @@ export function ReviewQueueListScreen() {
     setBulkBusy(true);
     setBulkResult(null);
 
-    const server = await bulkResolveReviewMatches(
-      ids.map((matchId) => ({
-        matchId,
-        canonicalProductId: null,
-        decidedBy: ADMIN_DECIDED_BY,
-        reasonCode,
-        reasonNote: reasonNote || undefined,
-      })),
-    );
+    // `finally`: si la promesa rechaza, un `setBulkBusy(false)` suelto no corre y las acciones de
+    // lote quedan deshabilitadas hasta recargar la página.
+    try {
+      const server = await bulkResolveReviewMatches(
+        ids.map((matchId) => ({
+          matchId,
+          canonicalProductId: null,
+          decidedBy: ADMIN_DECIDED_BY,
+          reasonCode,
+          reasonNote: reasonNote || undefined,
+        })),
+      );
 
-    setBulkBusy(false);
-    setShowBulkReject(false);
-    await applyResult(
-      server,
-      server
-        ? []
-        : ids.map((matchId) => ({ match_id: matchId, error: "No se pudo contactar al servidor" })),
-    );
+      setShowBulkReject(false);
+      await applyResult(
+        server,
+        server
+          ? []
+          : ids.map((matchId) => ({ match_id: matchId, error: "No se pudo contactar al servidor" })),
+      );
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   return (
@@ -409,6 +572,7 @@ export function ReviewQueueListScreen() {
         hasCandidatesSelected={hasCandidatesSelected}
         onBulkReject={() => setShowBulkReject(true)}
         onBulkClassify={() => void handleBulkClassify()}
+        onBulkRematch={() => void handleBulkRematch()}
           onBulkResolveBrands={() => void handleBulkResolveBrands()}
         onBulkCanonize={() => setShowCanonize(true)}
         bulkBusy={bulkBusy}
@@ -531,62 +695,31 @@ export function ReviewQueueListScreen() {
         <p className="px-4 py-6 text-sm text-muted-foreground">{t("admin.reviewQueue.empty")}</p>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span>{t("admin.reviewQueue.pagination.showing")}</span>
-          <Select
-            value={String(params.limit)}
-            onValueChange={(v) => navigateWith({ limit: Number(v), offset: 0 })}
-          >
-            <SelectTrigger size="sm" className="w-16">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {pageSizeOptions.map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span>{t("admin.reviewQueue.pagination.perPage")}</span>
-        </div>
+      <AdminTableFooter
+        limit={params.limit}
+        onLimitChange={(n) => navigateWith({ limit: n, offset: 0 })}
+        pageSizeOptions={pageSizeOptions}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={(pg) => navigateWith({ offset: (pg - 1) * params.limit })}
+        rangeLabel={`${from}–${to} ${t("admin.reviewQueue.pagination.of")} ${total}`}
+        showLabel={t("admin.reviewQueue.pagination.showing")}
+        perPageLabel={t("admin.reviewQueue.pagination.perPage")}
+      />
+      </div>
+      </div>
 
-        <span>
-          {from}–{to} {t("admin.reviewQueue.pagination.of")} {total}
-        </span>
-
-        <Pagination className="mx-0 w-auto justify-end">
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={() => navigateWith({ offset: Math.max(0, params.offset - params.limit) })}
-                aria-disabled={currentPage <= 1}
-                className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-              />
-            </PaginationItem>
-            {pageNumbers.map((p) => (
-              <PaginationItem key={p}>
-                <PaginationLink
-                  isActive={p === currentPage}
-                  onClick={() => navigateWith({ offset: (p - 1) * params.limit })}
-                >
-                  {p}
-                </PaginationLink>
-              </PaginationItem>
-            ))}
-            <PaginationItem>
-              <PaginationNext
-                onClick={() => navigateWith({ offset: params.offset + params.limit })}
-                aria-disabled={currentPage >= totalPages}
-                className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      </div>
-      </div>
-      </div>
+      {/* Qué quedó enlazado contra qué, tras re-evaluar. Se abre SIEMPRE que la corrida devuelve
+          filas —incluso con cero enlaces— porque "no se enlazó nada" también es un resultado que
+          el operador necesita ver explicado. */}
+      {rematchResult ? (
+        <RematchResultModal
+          rows={rematchResult}
+          failedCount={rematchFailed}
+          onClose={() => setRematchResult(null)}
+          locale={locale}
+        />
+      ) : null}
     </div>
   );
 }

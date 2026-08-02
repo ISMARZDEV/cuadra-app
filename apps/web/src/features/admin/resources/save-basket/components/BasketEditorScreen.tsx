@@ -18,14 +18,6 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useData } from "vike-react/useData";
 
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
@@ -37,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
 import { format } from "@/i18n/messages";
@@ -52,6 +45,7 @@ import type { BasketQueriesData } from "../interfaces";
 import { DEFAULT_BASKET_MARKET } from "../types";
 import { BasketRow } from "./BasketRow";
 import { BasketQueryModal } from "./BasketQueryModal";
+import { usePagination } from "@/features/admin/shell/use-pagination";
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 type SortState = "asc" | "desc" | "none";
@@ -83,8 +77,6 @@ export function BasketEditorScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortState>("none");
-  const [limit, setLimit] = useState(10);
-  const [offset, setOffset] = useState(0);
   const [confirmingBulk, setConfirmingBulk] = useState(false);
   const [busyBulk, setBusyBulk] = useState(false);
 
@@ -106,15 +98,11 @@ export function BasketEditorScreen() {
     [filtered, sortCol, sortDir],
   );
 
-  const total = sorted.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = useMemo(() => sorted.slice(offset, offset + limit), [sorted, offset, limit]);
-  const from = total > 0 ? offset + 1 : 0;
-  const to = Math.min(offset + limit, total);
-  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
-    ? PAGE_SIZE_OPTIONS
-    : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
+  // Paginación client-side: la aritmética vivía copiada en 10 pantallas (`use-pagination`).
+  const {
+    limit, setLimit, offset, setOffset,
+    total, totalPages, currentPage, pageRows, from, to, pageSizeOptions,
+  } = usePagination(sorted);
 
   // Cualquier cambio de filtro/orden/tamaño vuelve a la página 1 (evita quedar en una página vacía).
   useEffect(() => {
@@ -162,11 +150,16 @@ export function BasketEditorScreen() {
 
   const onBulkDelete = async () => {
     setBusyBulk(true);
-    await Promise.all(Array.from(selected).map((id) => removeBasketQueryEntry(id)));
-    setBusyBulk(false);
-    setConfirmingBulk(false);
-    setSelected(new Set());
-    await refresh();
+    // `finally`: si alguno de los borrados RECHAZA, un `setBusyBulk(false)` suelto no corre y las
+    // acciones de lote quedan deshabilitadas hasta recargar la página.
+    try {
+      await Promise.all(Array.from(selected).map((id) => removeBasketQueryEntry(id)));
+      setConfirmingBulk(false);
+      setSelected(new Set());
+      await refresh();
+    } finally {
+      setBusyBulk(false);
+    }
   };
 
   // Drag-and-drop (@dnd-kit) — deshabilitado si hay orden por columna o búsqueda activa (las filas
@@ -316,54 +309,17 @@ export function BasketEditorScreen() {
           ) : null}
 
           {/* Footer: page-size + rango + paginación */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span>{t("admin.basket.pagination.show")}</span>
-              <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-                <SelectTrigger size="sm" className="w-16">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {pageSizeOptions.map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span>{t("admin.basket.pagination.perPage")}</span>
-            </div>
-
-            <span>
-              {from}–{to} {t("admin.basket.pagination.of")} {total}
-            </span>
-
-            <Pagination className="mx-0 w-auto justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setOffset(Math.max(0, offset - limit))}
-                    aria-disabled={currentPage <= 1}
-                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-                  />
-                </PaginationItem>
-                {pageWindow(currentPage, totalPages).map((p) => (
-                  <PaginationItem key={p}>
-                    <PaginationLink isActive={p === currentPage} onClick={() => setOffset((p - 1) * limit)}>
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => setOffset(offset + limit)}
-                    aria-disabled={currentPage >= totalPages}
-                    className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
+          <AdminTableFooter
+            limit={limit}
+            onLimitChange={setLimit}
+            pageSizeOptions={pageSizeOptions}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={(pg) => setOffset((pg - 1) * limit)}
+            rangeLabel={`${from}–${to} ${t("admin.basket.pagination.of")} ${total}`}
+            showLabel={t("admin.basket.pagination.show")}
+            perPageLabel={t("admin.basket.pagination.perPage")}
+          />
         </div>
       </div>
 
@@ -418,13 +374,3 @@ function SortableHeader({ label, state, onToggle }: { label: ReactNode; state: S
   );
 }
 
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}

@@ -20,14 +20,17 @@ DOP = Currency("DOP")
 
 
 def _entry(
-    external_id: str, minor: int = 47500, category: tuple[str, ...] = ()
+    external_id: str,
+    minor: int = 47500,
+    category: tuple[str, ...] = (),
+    brand: str | None = "LA GARZA",
 ) -> RawCatalogEntry:
     return RawCatalogEntry(
         provider_id="p-sirena",
         market_id="DO",
         external_id=external_id,
         name="Arroz La Garza 10 Lbs",
-        brand="LA GARZA",
+        brand=brand,
         size_text="10 Lbs",
         price=Money(minor, DOP),
         price_type=PriceType.ONLINE,
@@ -130,6 +133,24 @@ def test_matcher_routes_previously_dropped_row_to_cascade() -> None:
     assert incoming.brand == "LA GARZA"
     assert incoming.size == "10 Lbs"
     assert incoming.ean == "123"
+
+
+def test_a_source_without_brand_reaches_the_cascade_as_empty_string_not_none() -> None:
+    """Bravo y Nacional NO publican marca: `entry.brand` llega `None`. `IncomingStoreProduct`
+    declara `brand: str`, y aguas abajo `_exact_match` hace `incoming.strip()` — con `None`
+    revienta la corrida entera con un AttributeError.
+
+    Medido el 2026-08-01: la ingesta de Bravo abortó exactamente así en la primera corrida con
+    catálogo canónico poblado. El mismo archivo ya normalizaba con `or ""` al materializar el
+    `store_product`, pero NO al construir el entrante del matcher — la incoherencia era el bug.
+    """
+    repo = FakeStoreRepo(known=set())
+    matcher = FakeMatcher()
+    source = FakeSource([_entry("sin-marca", brand=None)])
+
+    RefreshCatalogPrices(repo, matcher=matcher).execute(source)
+
+    assert matcher.calls[0].brand == ""
 
 
 def test_matcher_does_not_touch_known_products() -> None:

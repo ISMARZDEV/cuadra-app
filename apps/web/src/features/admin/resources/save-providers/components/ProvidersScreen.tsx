@@ -6,14 +6,6 @@ import { useData } from "vike-react/useData";
 
 import { Button } from "@/components/ui-base/button";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -30,6 +22,7 @@ import { SelectCheckbox } from "@/features/admin/resources/save-matching/compone
 // es el patrón establecido de la consola (Fuentes hace lo mismo).
 import { FunnelIcon } from "@/features/admin/resources/save-matching/components/toolbar-icons";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
 import { format } from "@/i18n/messages";
@@ -39,6 +32,7 @@ import type { ProvidersData } from "../interfaces";
 import { PROVIDER_TYPE_OPTIONS, SOURCE_PLATFORM_OPTIONS } from "../types";
 import { ProviderModal, type ProviderModalState } from "./ProviderModal";
 import { ProviderRow } from "./ProviderRow";
+import { usePagination } from "@/features/admin/shell/use-pagination";
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const ANY = "__any__";
@@ -91,8 +85,6 @@ export function ProvidersScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<string | null>("name");
   const [sortDir, setSortDir] = useState<SortState>("asc");
-  const [limit, setLimit] = useState(10);
-  const [offset, setOffset] = useState(0);
 
   // `applied.status` cambia lo que devuelve el SERVIDOR, así que hay que re-pedir, no re-filtrar.
   // El ref salta el montaje A PROPÓSITO: `useAdminList` ya viene sembrado por el SSR de `+data.ts`,
@@ -126,15 +118,11 @@ export function ProvidersScreen() {
     [filtered, sortCol, sortDir],
   );
 
-  const total = sorted.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = useMemo(() => sorted.slice(offset, offset + limit), [sorted, offset, limit]);
-  const from = total > 0 ? offset + 1 : 0;
-  const to = Math.min(offset + limit, total);
-  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
-    ? PAGE_SIZE_OPTIONS
-    : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
+  // Paginación client-side: la aritmética vivía copiada en 10 pantallas (`use-pagination`).
+  const {
+    limit, setLimit, offset, setOffset,
+    total, totalPages, currentPage, pageRows, from, to, pageSizeOptions,
+  } = usePagination(sorted);
 
   useEffect(() => {
     setOffset(0);
@@ -314,63 +302,21 @@ export function ProvidersScreen() {
           </div>
           {emptyStateEl}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span>{t("admin.providers.pagination.show")}</span>
-              <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-                <SelectTrigger size="sm" className="w-16">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {pageSizeOptions.map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span>{t("admin.providers.pagination.perPage")}</span>
-            </div>
-
-            <span>
-              {format(locale, "admin.providers.pagination.of", {
-                from: String(from),
-                to: String(to),
-                total: String(total),
-              })}
-            </span>
-
-            <Pagination className="mx-0 w-auto justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setOffset(Math.max(0, offset - limit))}
-                    aria-disabled={currentPage <= 1}
-                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-                  />
-                </PaginationItem>
-                {pageWindow(currentPage, totalPages).map((p) => (
-                  <PaginationItem key={p}>
-                    <PaginationLink
-                      isActive={p === currentPage}
-                      onClick={() => setOffset((p - 1) * limit)}
-                    >
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => setOffset(offset + limit)}
-                    aria-disabled={currentPage >= totalPages}
-                    className={
-                      currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined
-                    }
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
+          <AdminTableFooter
+            limit={limit}
+            onLimitChange={setLimit}
+            pageSizeOptions={pageSizeOptions}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={(pg) => setOffset((pg - 1) * limit)}
+            rangeLabel={format(locale, "admin.providers.pagination.of", {
+            from: String(from),
+            to: String(to),
+            total: String(total),
+          })}
+            showLabel={t("admin.providers.pagination.show")}
+            perPageLabel={t("admin.providers.pagination.perPage")}
+          />
         </div>
       </div>
 
@@ -500,13 +446,3 @@ function SortableHeader({
   );
 }
 
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}

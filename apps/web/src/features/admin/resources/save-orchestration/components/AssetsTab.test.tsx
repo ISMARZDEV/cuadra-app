@@ -1,9 +1,10 @@
 import type { AssetAdminRowDto } from "@cuadra/api-client";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   listPipelineAssets: vi.fn(),
+  createAssetPolicy: vi.fn(() => Promise.resolve({})),
   AssetsUnavailable: class extends Error {},
 }));
 vi.mock("../api", () => api);
@@ -145,5 +146,25 @@ describe("AssetsTab — el browse REST de Bravo por fin es visible", () => {
   it("does not ask the runner until the tab is actually rendered", async () => {
     setup([asset()]);
     await waitFor(() => expect(api.listPipelineAssets).toHaveBeenCalledTimes(1));
+  });
+
+  // Los jobs GLOBALES tenían su cron en `ScheduleDefinition`, invisible para el operador. La
+  // pestaña era sólo lectura: se veía la salud del asset y no había forma de programarlo.
+  it("lets the operator schedule a global asset", async () => {
+    api.listPipelineAssets.mockResolvedValue([asset({ key: "freshness" })]);
+    render(<AssetsTab t={(k: string) => k} locale="es" />);
+
+    fireEvent.click(await screen.findByTestId("asset-schedule-freshness"));
+
+    await waitFor(() => expect(api.createAssetPolicy).toHaveBeenCalledWith("freshness"));
+  });
+
+  it("does not offer scheduling for assets the console cannot run", async () => {
+    // Cerrado a propósito: v1 no materializa assets Python arbitrarios (SDD §4).
+    api.listPipelineAssets.mockResolvedValue([asset({ key: "query_catalog_prices" })]);
+    render(<AssetsTab t={(k: string) => k} locale="es" />);
+
+    await screen.findByTestId("asset-health-query_catalog_prices");
+    expect(screen.queryByTestId("asset-schedule-query_catalog_prices")).not.toBeInTheDocument();
   });
 });

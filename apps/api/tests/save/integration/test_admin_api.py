@@ -29,6 +29,9 @@ from src.main import app
 
 from .test_product_match_repository import _seed_provider_and_canonical, _seed_store_product
 
+from ._taxonomy import taxonomy_node
+
+
 
 def _seed_role_user(db_session, role_key: str) -> str:  # type: ignore[no-untyped-def]
     seed_identity(db_session)
@@ -370,12 +373,11 @@ def test_bulk_resolve_is_per_row_atomic_and_reports_partial_failure(db_session) 
 def _seed_taxonomy_leaf(db_session, name: str = "Zarandaja") -> tuple[str, str]:  # type: ignore[no-untyped-def]
     """(top_id, leaf_id) — la taxonomía es de DOS niveles y la clasificación guarda la HOJA,
     mientras el badge de la cola muestra su TOPE."""
-    from src.contexts.save.infrastructure.models import TaxonomyNodeModel
 
-    top = TaxonomyNodeModel(name="Despensa", level=0, market_id="DO", parent_id=None)
+    top = taxonomy_node(db_session, name="Despensa", level=0, market_id="DO", parent_id=None)
     db_session.add(top)
     db_session.flush()
-    leaf = TaxonomyNodeModel(name=name, level=1, market_id="DO", parent_id=top.id)
+    leaf = taxonomy_node(db_session, name=name, level=1, market_id="DO", parent_id=top.id)
     db_session.add(leaf)
     db_session.flush()
     return str(top.id), str(leaf.id)
@@ -669,3 +671,81 @@ class TestBulkResolveBrandsEndpoint:
             assert res.status_code == 403
         finally:
             _clear()
+
+
+class TestBulkRematchEndpoint:
+    """`POST /review-queue/bulk-rematch` — re-corre la cascada sobre lo seleccionado.
+
+    Existe porque los candidatos de la cola son ESTÁTICOS: `RefreshCatalogPrices` sólo enruta al
+    matcher los `store_product` DESCONOCIDOS, así que una fila que entró cuando el catálogo era
+    chico arrastra para siempre los candidatos de ese día.
+    """
+
+    def test_requires_the_review_capability(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Re-matchear ESCRIBE el enlace (`product_match` + `store_product.canonical_product_id`):
+        es una mutación del catálogo y el gate va server-side (SACRED)."""
+        user_id = _seed_role_user(db_session, "normal_user")
+        match_id = _seed_pending_match(db_session)
+        client = _client(db_session, user_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-rematch", json={"match_ids": [match_id]}
+            )
+        finally:
+            _clear()
+
+        assert res.status_code == 403
+
+    def test_reports_still_pending_when_the_catalog_still_has_no_match(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Re-evaluar y seguir en cola es el resultado NORMAL, no un fallo: el catálogo todavía no
+        tiene el canónico. Contarlo como `failed` haría creer que algo se rompió."""
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)
+        from src.contexts.save.infrastructure.models import StoreProductModel
+
+        sp = db_session.get(StoreProductModel, uuid.UUID(_store_product_of(db_session, match_id)))
+        sp.name = "Zzz Producto Sin Canonico Equivalente"
+        db_session.flush()
+        client = _client(db_session, admin_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-rematch", json={"match_ids": [match_id]}
+            )
+        finally:
+            _clear()
+
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["failed"] == [], body
+        assert body["still_pending"] == 1
+        assert body["auto_linked"] == 0
+
+    def test_a_match_that_no_longer_exists_is_reported_not_silently_dropped(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        admin_id = _seed_role_user(db_session, "super_admin")
+        client = _client(db_session, admin_id)
+        ghost = str(uuid.uuid4())
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-rematch", json={"match_ids": [ghost]}
+            )
+        finally:
+            _clear()
+
+        assert res.status_code == 200, res.text
+        assert [f["match_id"] for f in res.json()["failed"]] == [ghost]
+
+    def test_a_nameless_product_is_reported_as_failed_not_matched_blindly(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """La cascada exige nombre. Sin él la fila se reporta como fallida — jamás se la enruta a
+        un matcher que decidiría sobre la nada."""
+        admin_id = _seed_role_user(db_session, "super_admin")
+        match_id = _seed_pending_match(db_session)  # el fixture siembra sin nombre
+        client = _client(db_session, admin_id)
+        try:
+            res = client.post(
+                "/v1/admin/save/review-queue/bulk-rematch", json={"match_ids": [match_id]}
+            )
+        finally:
+            _clear()
+
+        assert res.status_code == 200, res.text
+        assert res.json()["failed"][0]["match_id"] == match_id

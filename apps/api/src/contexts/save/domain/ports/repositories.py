@@ -220,7 +220,12 @@ class CategoryCandidateRepository(Protocol):
 
 
 class CategoryIndexRepository(Protocol):
-    """Index-side de embeddings de categoría (para EmbedCategories)."""
+    """Index-side de embeddings de categoría (para EmbedCategories).
+
+    Todo acá va por MERCADO (Fase 2b): el árbol de conceptos es global pero los términos y el
+    vector son del idioma Y del país, así que se guardan en `taxonomy_node_market`. Por eso las
+    escrituras también reciben `market_id` — sin él estarían pisando el reconocimiento de otro país.
+    """
 
     def leaves_without_embedding(
         self, market_id: str, limit: int
@@ -228,8 +233,8 @@ class CategoryIndexRepository(Protocol):
         """(node_id, name, parent_name, classification_terms) de las hojas nivel-1 sin embedding."""
         ...
 
-    def set_embedding(self, node_id: str, embedding: list[float]) -> None:
-        """Persiste el embedding BGE-M3 de una hoja."""
+    def set_embedding(self, node_id: str, embedding: list[float], market_id: str) -> None:
+        """Persiste el embedding BGE-M3 de una hoja EN ESE MERCADO."""
         ...
 
     def leaves_without_terms(
@@ -238,9 +243,9 @@ class CategoryIndexRepository(Protocol):
         """(node_id, name, parent_name) de las hojas nivel-1 aún sin `classification_terms`."""
         ...
 
-    def set_terms(self, node_id: str, terms: str) -> None:
-        """Persiste `classification_terms` de una hoja E INVALIDA su embedding (=NULL): el input del
-        vector cambió, así que EmbedCategories debe re-embeberla con la receta nueva."""
+    def set_terms(self, node_id: str, terms: str, market_id: str) -> None:
+        """Persiste `classification_terms` de una hoja EN ESE MERCADO e INVALIDA su embedding
+        (=NULL): el input del vector cambió, así que EmbedCategories debe re-embeberla."""
         ...
 
 
@@ -386,6 +391,16 @@ class StoreProductRepository(Protocol):
     def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
         """F3.1 (Loop B): un EAN conocido del canónico (de cualquier `store_product` que lo tenga) —
         para la consulta dirigida EAN-first cuando la tienda destino soporta búsqueda por barcode."""
+        ...
+
+    def has_other_product_from_provider(
+        self, canonical_product_id: str, provider_id: str, excluding_store_product_id: str
+    ) -> bool:
+        """¿Ese canónico ya tiene OTRO `store_product` de ese proveedor?
+
+        Invariante de la cascada: una tienda no publica el mismo producto dos veces, así que un
+        segundo SKU sobre el mismo canónico es —por construcción— otro producto. Se excluye el
+        entrante para que no se cuente a sí mismo (ya está materializado, aún sin enlazar)."""
         ...
 
     def repair_locator(self, store_product_id: str, external_id: str, url: str | None) -> None:

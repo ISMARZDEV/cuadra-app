@@ -55,10 +55,16 @@ export function DescriptionPanel({
   const save = async () => {
     setSaving(true);
     setSaved(false);
-    const updated = await updateCanonicalProduct(canonicalProductId, {
-      description: draft.trim() || null,
-    } as never);
-    setSaving(false);
+    // `finally`: si la promesa RECHAZA, un `setSaving(false)` suelto no corre y el botón queda
+    // deshabilitado para siempre.
+    let updated: Awaited<ReturnType<typeof updateCanonicalProduct>> | null = null;
+    try {
+      updated = await updateCanonicalProduct(canonicalProductId, {
+        description: draft.trim() || null,
+      } as never);
+    } finally {
+      setSaving(false);
+    }
     if (updated) {
       onSaved(updated);
       setSaved(true);

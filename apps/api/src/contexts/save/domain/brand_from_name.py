@@ -77,3 +77,25 @@ def match_brand(product_name: str, index: BrandIndex) -> str | None:
             if hit is not None:
                 return hit
     return None
+
+
+def brand_appears_in(brand: str, text: str) -> bool:
+    """`True` si `brand` aparece dentro de `text` como SECUENCIA COMPLETA de tokens.
+
+    Es la pregunta INVERSA a `match_brand` — no "¿qué marca hay en este nombre?" sino "¿está ESTA
+    marca en este texto?" — y por eso no necesita índice. La usa el brand gate de la cascada para
+    saber si un `store_product` corrobora la marca del canónico candidato.
+
+    Comparte la regla de `match_brand`: por secuencia de tokens y nunca por subcadena, así que
+    "Goya" no aparece en "GOYANA" ni "La Famosa" en "FAMOSA ARROZ" (son marcas distintas, y darlas
+    por equivalentes cambiaría el producto de marca). Una marca vacía no aparece en NINGÚN texto:
+    la secuencia vacía es subsecuencia de todas, y devolver `True` haría que el gate nunca dispare.
+    """
+    needle = _tokens(brand)
+    if not needle:
+        return False
+    haystack = _tokens(text)
+    span = len(needle)
+    return any(
+        haystack[start : start + span] == needle for start in range(len(haystack) - span + 1)
+    )

@@ -5,14 +5,6 @@ import { toast } from "sonner";
 import { useData } from "vike-react/useData";
 import { navigate } from "vike/client/router";
 
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -30,6 +22,7 @@ import {
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui-base/table";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
 import { FunnelIcon } from "@/features/admin/resources/save-matching/components/toolbar-icons";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE } from "@/i18n/config";
 import { format } from "@/i18n/messages";
@@ -100,25 +93,30 @@ export function CanonicalProductsScreen() {
       overwriteLastHistoryEntry: true,
     });
 
-    const result = await listCanonicalProducts({
-      search: next.search,
-      brand_id: next.brand_id,
-      taxonomy_node_id: next.taxonomy_node_id,
-      quality_status: next.quality_status,
-      ean_reachable: next.ean_reachable,
-      min_provider_count: next.min_provider_count,
-      updated_since: next.updated_since,
-      include_archived: next.include_archived,
-      sort: next.sort,
-      limit: next.limit,
-      offset: next.offset,
-    });
-    // `null` = falló la petición. Antes se salía en silencio y la tabla se quedaba CONGELADA
-    // mostrando el resultado anterior: el operador creía que su filtro no encontró nada,
-    // cuando en realidad nunca llegó a aplicarse.
-    if (result) setList(result);
-    else toast(t("admin.list.refreshFailed"));
-    setLoading(false);
+    // `finally`: si la petición RECHAZA, un `setLoading(false)` suelto no corre y la tabla queda
+    // con el spinner girando para siempre.
+    try {
+      const result = await listCanonicalProducts({
+        search: next.search,
+        brand_id: next.brand_id,
+        taxonomy_node_id: next.taxonomy_node_id,
+        quality_status: next.quality_status,
+        ean_reachable: next.ean_reachable,
+        min_provider_count: next.min_provider_count,
+        updated_since: next.updated_since,
+        include_archived: next.include_archived,
+        sort: next.sort,
+        limit: next.limit,
+        offset: next.offset,
+      });
+      // `null` = falló la petición. Antes se salía en silencio y la tabla se quedaba CONGELADA
+      // mostrando el resultado anterior: el operador creía que su filtro no encontró nada,
+      // cuando en realidad nunca llegó a aplicarse.
+      if (result) setList(result);
+      else toast(t("admin.list.refreshFailed"));
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Debounce del buscador: sin esto cada tecla dispara una navegación Y un request — escribir
@@ -418,68 +416,21 @@ export function CanonicalProductsScreen() {
             </p>
           ) : null}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span>{t("admin.canonicalProducts.pagination.show")}</span>
-              <Select
-                value={String(params.limit)}
-                onValueChange={(v) => void applyParams({ limit: Number(v) })}
-              >
-                <SelectTrigger size="sm" className="w-16">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAGE_SIZE_OPTIONS.map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span>{t("admin.canonicalProducts.pagination.perPage")}</span>
-            </div>
-
-            <span className={cn(loading && "opacity-50")}>
-              {format(locale, "admin.canonicalProducts.pagination.of", {
-                from: String(from),
-                to: String(to),
-                total: String(total),
-              })}
-            </span>
-
-            <Pagination className="mx-0 w-auto justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() =>
-                      void applyParams({ offset: Math.max(0, params.offset - params.limit) })
-                    }
-                    aria-disabled={currentPage <= 1}
-                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-                  />
-                </PaginationItem>
-                {pageWindow(currentPage, totalPages).map((p) => (
-                  <PaginationItem key={p}>
-                    <PaginationLink
-                      isActive={p === currentPage}
-                      onClick={() => void applyParams({ offset: (p - 1) * params.limit })}
-                    >
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => void applyParams({ offset: params.offset + params.limit })}
-                    aria-disabled={currentPage >= totalPages}
-                    className={
-                      currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined
-                    }
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
+          <AdminTableFooter
+            limit={params.limit}
+            onLimitChange={(n) => void applyParams({ limit: n, offset: 0 })}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={(pg) => void applyParams({ offset: (pg - 1) * params.limit })}
+            rangeLabel={format(locale, "admin.canonicalProducts.pagination.of", {
+            from: String(from),
+            to: String(to),
+            total: String(total),
+          })}
+            showLabel={t("admin.canonicalProducts.pagination.show")}
+            perPageLabel={t("admin.canonicalProducts.pagination.perPage")}
+          />
         </div>
       </div>
 
@@ -582,13 +533,3 @@ function SortableHead({
   );
 }
 
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}

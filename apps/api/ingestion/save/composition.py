@@ -47,6 +47,7 @@ from src.contexts.save.infrastructure.repositories import (
     SqlCanonicalProductRepository,
     SqlCategoryCandidateRepository,
     SqlCategoryClassificationRepository,
+    SqlCategoryDecisionRecorder,
     SqlCategoryIndexRepository,
     SqlProviderRepository,
     SqlStoreProductRepository,
@@ -199,14 +200,20 @@ def build_cover_canonicals(session: Session) -> CoverCanonicals:
     )
 
 
-def build_refresh_known_prices(session: Session) -> RefreshCoveredPrices:
+def build_refresh_known_prices(
+    session: Session, *, provider_id: str | None = None
+) -> RefreshCoveredPrices:
     """Compone `price_refresh` (paridad Prices Batch de SRD): re-precia por id TODO lo CONOCIDO y viejo
     (matcheado O en revisión), no solo lo cubierto. Mismo camino A + fallback C + F3.3 que la frescura —
-    solo cambia el conjunto (`list_stale_known`)."""
-    return build_refresh_covered_prices(session, known=True)
+    solo cambia el conjunto (`list_stale_known`).
+
+    `provider_id` acota el cupo a UNA tienda: sin él la más atrasada se lo lleva entero."""
+    return build_refresh_covered_prices(session, known=True, provider_id=provider_id)
 
 
-def build_refresh_covered_prices(session: Session, *, known: bool = False) -> RefreshCoveredPrices:
+def build_refresh_covered_prices(
+    session: Session, *, known: bool = False, provider_id: str | None = None
+) -> RefreshCoveredPrices:
     """Compone F3.2a (frescura): camino A (re-fetch por id/url/source_ref → change-only, SIN matcher)
     + fallback C (browse por provider diferido, §15.4). Reusa F3.3 (abort-on-down vía
     classify_httpx_error). Cachea los registries del mercado (1 query). `known=True` (para `price_refresh`)
@@ -270,7 +277,11 @@ def build_refresh_covered_prices(session: Session, *, known: bool = False) -> Re
         build_detail_source=build_detail_source,
         build_browse_source=build_browse_source,
         classify_error=classify_httpx_error,
-        stale_source=store_repo.list_stale_known if known else None,
+        stale_source=(
+            (lambda market, now: store_repo.list_stale_known(market, now, provider_id=provider_id))
+            if known
+            else None
+        ),
         build_recovery_source=build_recovery_source,
         # `price_refresh` pide el /get de CADA producto conocido contra UNA tienda → el caso exacto
         # donde el intercalado no protege. Verificado en vivo: Bravo responde 429.
@@ -438,6 +449,8 @@ def _build_lexicon(session: Session, market_id: str):  # type: ignore[no-untyped
     return build_lexicon_index(leaves)
 
 
+
+
 def build_brand_resolver(session: Session) -> ResolveBrand:
     """Reconocedor de marca dentro del nombre (Nacional y Bravo no la publican; Sirena sí).
 
@@ -449,6 +462,23 @@ def build_brand_resolver(session: Session) -> ResolveBrand:
     return ResolveBrand(SqlCanonicalProductRepository(session))
 
 
+def _classifier_deps(session: Session):  # type: ignore[no-untyped-def]
+    """Colaboradores del clasificador derivados de la taxonomía, con UN solo `list_tree`.
+
+    El `parent_lexicon` se arma con el MISMO `build_lexicon_index` que las hojas, sólo que
+    alimentado con las RAÍCES: un token que aparece en dos departamentos se descarta por ambiguo
+    igual que a nivel hoja, así que el gate hereda gratis esa garantía.
+    """
+    from ingestion.save.sources import SAVE_MARKET  # local: evita import circular (patrón del módulo)
+
+    tree = SqlTaxonomyRepository(session).list_tree(SAVE_MARKET)
+    return (
+        {c.id: c.name for r in tree for c in r.children},                    # leaf_names
+        build_lexicon_index([(r.id, r.name) for r in tree]),                 # parent_lexicon
+        {c.id: r.id for r in tree for c in r.children},                      # leaf_to_parent
+    )
+
+
 def build_classifier(session: Session) -> ClassifyStoreProduct | None:
     """Clasificador de categoría REAL solo cuando `SAVE_CLASSIFICATION_ENABLED` está activo (ship-dark).
     Comparte la `session` del refresh. Reusa `build_embedding_provider` (mismo BGE-M3) y el juez LLM.
@@ -457,6 +487,7 @@ def build_classifier(session: Session) -> ClassifyStoreProduct | None:
         return None
     from ingestion.save.sources import SAVE_MARKET
 
+    leaf_names, parent_lexicon, leaf_to_parent = _classifier_deps(session)
     return ClassifyStoreProduct(
         SqlCategoryClassificationRepository(session),
         SqlCategoryCandidateRepository(session),
@@ -465,6 +496,14 @@ def build_classifier(session: Session) -> ClassifyStoreProduct | None:
         # llamar a una API que sabemos que no queremos usar. El léxico sigue clasificando gratis.
         CategoryJudge() if settings.save_llm_judge_enabled else None,
         _build_lexicon(session, SAVE_MARKET),
+        # Bitácora de decisiones: registra QUÉ decidió la cascada y con qué evidencia, incluidas las
+        # abstenciones (que hasta ahora no dejaban rastro y obligaban a reproducir la cascada —y a
+        # re-pagar el LLM— para saber por qué se abstuvo). No participa de ninguna decisión.
+        decisions=SqlCategoryDecisionRecorder(session),
+        # Igual que en la API: sin los nombres el juez no puede arbitrar el conflicto de señales.
+        leaf_names=leaf_names,
+        # Gate de DEPARTAMENTO: NO se cablea. La capacidad existe y está testeada, pero el A/B con
+        # el juez encendido la desaconseja — ver `_department_of` en el use case.
     )
 
 

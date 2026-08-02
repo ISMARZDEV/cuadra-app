@@ -177,11 +177,15 @@ class RefreshCatalogPrices:
                         store_product_id=store_product_id,
                         market_id=entry.market_id,
                         name=entry.name,
-                        brand=entry.brand,
+                        # `or ""` porque Bravo y Nacional NO publican marca y `entry.brand` llega
+                        # None, mientras `IncomingStoreProduct` declara `brand: str`. Pasarlo crudo
+                        # abortaba la corrida entera aguas abajo (`None.strip()`). Medido 2026-08-01.
+                        brand=entry.brand or "",
                         size=entry.size_text,
                         ean=entry.ean,
                         source_category=" > ".join(entry.category_path),  # Etapa C: señal de categoría
                         run_id=run_id,
+                        provider_id=entry.provider_id,  # invariante de proveedor único
                     )
                 )
                 self._classify(store_product_id, entry)  # clasifica el nuevo store_product

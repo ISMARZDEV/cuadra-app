@@ -26,6 +26,7 @@ from ..domain.entities import CanonicalProduct
 from ..domain.ports import CanonicalImageRepository, CanonicalProductRepository, StoreProductRepository
 from ..domain.ports.repositories import ProductMatchRepository
 from ..domain.value_objects import Quantity
+from .embed_canonical_product import EmbedCanonicalProduct
 from .resolve_review import ResolveReview
 
 MAX_INHERITED_IMAGES = 10
@@ -60,6 +61,7 @@ class CreateCanonicalAndLink:
         match_repo: ProductMatchRepository | None = None,
         store_repo: StoreProductRepository | None = None,
         image_repo: CanonicalImageRepository | None = None,
+        embedder: EmbedCanonicalProduct | None = None,
     ) -> None:
         self._canonical_repo = canonical_repo
         self._resolver = resolver
@@ -70,6 +72,10 @@ class CreateCanonicalAndLink:
         # Ninguna foto vale bloquear la resolución de una fila de la cola.
         self._store_repo = store_repo
         self._image_repo = image_repo
+        # US-CP-L14: sin él el canónico nace con `embedding` NULL — invisible para la etapa
+        # vectorial hasta el próximo backfill. Opcional por la MISMA razón que los de arriba:
+        # ningún vector vale bloquear la resolución de una fila de la cola.
+        self._embedder = embedder
 
     def _inherited_images(self, store_product_id: str) -> list[str]:
         """Fotos que la tienda publicó para ese producto, en SU orden (`position`).
@@ -130,4 +136,8 @@ class CreateCanonicalAndLink:
                 self._image_repo.add_image(
                     canonical_id, url=url, source_store_product_id=match.store_product_id
                 )
+        # Último, y fail-safe adentro: el canónico ya está escrito y enlazado, así que un servicio
+        # de embeddings caído sólo deja el vector en NULL para el backfill — nunca revierte nada.
+        if self._embedder is not None:
+            self._embedder.execute(canonical_id)
         return canonical_id

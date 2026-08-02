@@ -31,6 +31,7 @@ from src.contexts.save.infrastructure.models import (
     PriceModel,
     ProviderModel,
     StoreProductModel,
+    TaxonomyNodeMarketModel,
     TaxonomyNodeModel,
 )
 from src.contexts.save.infrastructure.repositories import (
@@ -103,74 +104,6 @@ _GARZA_10LB_PRICES: dict[str, tuple[str, int]] = {
 
 _ARROZ_PATH = ["Despensa & Abarrotes", "Arroz, Granos & Legumbres", "Arroz", "Arroz Blanco"]
 
-# Taxonomía semilla completa (15 categorías tope + subcategorías, doc
-# docs/research/save-fable/Categorias_y_Subcategorias.md). El árbol real se sembrará desde las
-# fuentes (VTEX/Magento) en F2; esto da datos reales para la UI de categorías (Overview/Listing)
-# en las 15 categorías, no solo Despensa. Sin productos bajo la mayoría (ok: la plantilla Listing
-# ya maneja "sin productos"); "Arroz, Granos & Legumbres" se profundiza más abajo vía _ARROZ_PATH.
-_TAXONOMY: dict[str, list[str]] = {
-    "Alcohol": [
-        "Brandy / Cognac", "Cerveza", "Cigarrillos", "Espumantes / Champagne", "Ginebra",
-        "Hard Seltzer", "Licor", "Mamajuana", "Ron", "Sangría", "Sidra", "Tequila", "Vino",
-        "Vodka", "Whisky",
-    ],
-    "Bebés": [
-        "Accesorios De Bebé", "Alimentos Para Bebé", "Cuidado & Aseo Del Bebé",
-        "Juguetes & Muebles Del Bebé", "Lavado De Ropa De Bebé", "Maternidad & Lactancia",
-        "Pañales & Toallitas De Bebé",
-    ],
-    "Bebidas": [
-        "Agua", "Bebidas Energéticas", "Bebidas En Polvo", "Bebidas Hidratantes", "Jugo",
-        "Maltas", "Refresco", "Té Líquido",
-    ],
-    "Carnes & Pescados": [
-        "Albóndigas", "Aves & Carnes Especiales", "Carnes Congeladas", "Cerdo", "Chimi",
-        "Hamburguesas", "Pavo", "Pescados & Mariscos", "Pollo", "Res", "Sustituto De Carne",
-    ],
-    "Cuidado Del Hogar": [
-        "Cocina & Comedor", "Control De Plagas", "Cuidado De Calzado", "Eléctricos Del Hogar",
-        "Lavado De Ropa", "Limpieza Del Hogar", "Papel & Desechables", "Parrilla & Encendido",
-    ],
-    "Cuidado Personal": [
-        "Accesorios De Baño", "Afeitado & Depilación", "Cuidado Capilar", "Cuidado Corporal",
-        "Cuidado Facial", "Higiene Íntima", "Higiene Personal", "Maquillaje", "Repelente",
-    ],
-    "Despensa & Abarrotes": [
-        "Aceite & Vinagre", "Arroz, Granos & Legumbres", "Café", "Caldos & Sopas",
-        "Chocolate Para Beber", "Condimentos & Especias", "Desayuno & Cereal", "Endulzantes",
-        "Enlatados & Conservas", "Harinas", "Pastas", "Repostería", "Salsas",
-        "Semillas & Frutos Secos", "Té & Infusiones",
-    ],
-    "Embutidos & Delicatessen": [
-        "Charcutería", "Jamón", "Longaniza", "Salami", "Salchichas",
-    ],
-    "Escolares & Oficina": [
-        "Accesorios Escolares", "Arte & Manualidades", "Cuadernos & Agendas", "Escritura",
-        "Herramientas De Oficina & Geometría", "Libros", "Papelería Escolar & Oficina",
-        "Pegamentos & Cintas",
-    ],
-    "Frutas & Verduras": [
-        "Ensaladas", "Frutas", "Frutas Deshidratadas", "Hierbas Frescas", "Pulpa De Frutas",
-        "Vegetales", "Víveres",
-    ],
-    "Lácteos & Huevos": [
-        "Crema Agria", "Huevos", "Leche", "Mantequilla & Margarina", "Queso", "Yogurt",
-    ],
-    "Mascotas": [
-        "Accesorios Para Mascotas", "Alimento Para Gato", "Alimento Para Perro",
-        "Arena Para Gato", "Higiene Para Mascotas", "Otras Mascotas",
-    ],
-    "Panadería & Tortillería": [
-        "Bizcochos & Bizcochitos", "Discos De Masa", "Masa De Pizza", "Pan", "Tortillas",
-    ],
-    "Salud & Farmacia": [
-        "Maternidad & Lactancia", "Medicinas", "Primeros Auxilios", "Vitaminas & Suplementos",
-    ],
-    "Snacks & Dulces": [
-        "Chocolates & Caramelos", "Dulces Típicos", "Galletas & Barras", "Postres Listos",
-        "Snacks Salados & Picaderas", "Tostadas & Snacks Horneados",
-    ],
-}
 
 
 def provider_id(name: str) -> uuid.UUID:
@@ -183,18 +116,43 @@ def provider_id(name: str) -> uuid.UUID:
 
 
 def _taxonomy_leaf(session: Session, market_id: str, path: list[str]) -> str:
-    """Crea (idempotente) el árbol de taxonomía y devuelve el id de la HOJA."""
+    """Crea (idempotente) el árbol de taxonomía DEMO y devuelve el id de la HOJA.
+
+    Desde la Fase 2b el árbol es GLOBAL y la pertenencia a un mercado vive en
+    `taxonomy_node_market`: crear un nodo son DOS filas, y sin la segunda el nodo existe pero
+    `list_tree(market)` no lo devuelve — un seed que "no hace nada".
+
+    Ojo: el id sigue derivándose del NOMBRE (namespace demo, `taxonomy:{market}/{path}`) y no de una
+    key, a diferencia de `save_taxonomy_seed._upsert_node`. Es deliberado: estas hojas son fixtures
+    de la demo, no vienen del markdown y no tienen key. Por eso `key` queda NULL acá.
+    """
     parent: uuid.UUID | None = None
     accum = market_id
     node_id: uuid.UUID | None = None
     for level, name in enumerate(path):
         accum = f"{accum}/{name}"
-        node_id = uuid.uuid5(_NS, f"taxonomy:{accum}")
-        if session.get(TaxonomyNodeModel, node_id) is None:
+        # Se busca por (parent_id, name) — la unicidad REAL de la tabla — y no por el id derivado.
+        # Los ancestros de este path los siembra `seed_taxonomy` desde el markdown con OTRO esquema
+        # de id (`uuid5(taxonomy-key:…)`), así que buscar por id derivado intentaría crear un
+        # "Despensa & Abarrotes" duplicado y chocaría contra `uq_taxonomy_parent_name`.
+        existing = session.scalar(
+            select(TaxonomyNodeModel).where(
+                TaxonomyNodeModel.parent_id.is_(parent) if parent is None
+                else TaxonomyNodeModel.parent_id == parent,
+                TaxonomyNodeModel.name == name,
+            )
+        )
+        if existing is None:
+            node_id = uuid.uuid5(_NS, f"taxonomy:{accum}")
             session.add(
-                TaxonomyNodeModel(
-                    id=node_id, parent_id=parent, name=name, level=level, market_id=market_id
-                )
+                TaxonomyNodeModel(id=node_id, parent_id=parent, name=name, level=level)
+            )
+            session.flush()
+        else:
+            node_id = existing.id
+        if session.get(TaxonomyNodeMarketModel, (node_id, market_id)) is None:
+            session.add(
+                TaxonomyNodeMarketModel(node_id=node_id, market_id=market_id, active=True)
             )
             session.flush()
         parent = node_id
@@ -517,12 +475,17 @@ def seed_save(session: Session) -> None:
     # 1.5) fuentes de extracción (StoreRegistry) — Bravo Va (REST_CATALOG)
     _seed_sources(session)
 
-    # 2) taxonomía: las 15 categorías top + TODAS sus subcategorías + la hoja "Arroz Blanco"
-    #    (misma llave uuid5 determinista: el prefijo compartido con _ARROZ_PATH reusa el nodo).
-    for cat, subs in _TAXONOMY.items():
-        _taxonomy_leaf(session, "DO", [cat])
-        for sub in subs:
-            _taxonomy_leaf(session, "DO", [cat, sub])
+    # 2) taxonomía: se delega en el seed REAL, que lee el markdown — la única fuente de verdad.
+    #    Antes esto recorría un `_TAXONOMY` hardcodeado acá, copia del mismo documento; la copia se
+    #    desincronizó (le faltaban Congelados y Comidas Preparadas, y conservaba las 10 hojas
+    #    renombradas el 2026-08-01), así que `make seed` habría RECREADO los nodos huérfanos que se
+    #    borraron, con `key` NULL. Dos fuentes de verdad para el mismo árbol es el bug, no el drift.
+    #    Import diferido: `save_taxonomy_seed` importa `_NS` de este módulo (evita el ciclo).
+    from seeds.save_taxonomy_seed import seed_taxonomy
+
+    seed_taxonomy(session, market_id="DO")
+    # La hoja profunda "Arroz Blanco" sí es fixture de la demo (no está en el markdown): se cuelga
+    # del nodo real reusando el prefijo uuid5 determinista.
     node_id = _taxonomy_leaf(session, "DO", _ARROZ_PATH)
 
     # 3) producto canónico (matcheo manual = todos los store_products apuntan acá)

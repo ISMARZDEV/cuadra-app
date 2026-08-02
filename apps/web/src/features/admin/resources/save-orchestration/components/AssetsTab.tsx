@@ -16,21 +16,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui-base/tooltip";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TruncatedText } from "@/features/admin/components/TruncatedText";
 import { AdminDateTime } from "@/features/admin/components/AdminDateTime";
 import type { Locale } from "@/i18n/config";
 import { format, type MessageKey } from "@/i18n/messages";
 
-import { listPipelineAssets } from "../api";
+import { createAssetPolicy, listPipelineAssets } from "../api";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
+import { usePagination } from "@/features/admin/shell/use-pagination";
 
 type T = (key: MessageKey) => string;
 
@@ -62,18 +55,6 @@ const PARTS_NOUN_KEY: Record<string, MessageKey> = {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
-/** Ventana de páginas alrededor de la actual (evita pintar 40 botones). Misma que la consola. */
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}
-
 /** Tres estados REALMENTE distintos, y ninguno se puede confundir con otro:
  *  - `loading`      — se está preguntando
  *  - `unavailable`  — NO se pudo preguntar (runner caído)  → nunca una lista vacía
@@ -84,10 +65,18 @@ type State =
   | { kind: "unavailable" }
   | { kind: "ready"; assets: AssetAdminRowDto[] };
 
+/** Assets GLOBALES que la consola sabe ejecutar. Espeja `JOB_BY_ASSET` del backend: cerrado a
+ *  propósito — v1 no materializa assets Python arbitrarios (SDD §4). */
+const SCHEDULABLE = new Set(["freshness", "coverage"]);
+
 export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
   const [state, setState] = useState<State>({ kind: "loading" });
-  const [limit, setLimit] = useState(10);
-  const [offset, setOffset] = useState(0);
+  const [scheduled, setScheduled] = useState<ReadonlySet<string>>(new Set());
+
+  async function schedule(key: string) {
+    await createAssetPolicy(key);
+    setScheduled((prev) => new Set(prev).add(key));
+  }
 
   useEffect(() => {
     let alive = true;
@@ -98,6 +87,15 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
       alive = false;
     };
   }, []);
+
+  // El hook va ANTES de los early returns: llamarlo después lo volvería condicional y rompería
+  // las Reglas de Hooks. `assets` cae a [] mientras el estado no es `ready`.
+  const assets = state.kind === "ready" ? state.assets : [];
+  // Paginación client-side: la aritmética vivía copiada en 10 pantallas (`use-pagination`).
+  const {
+    limit, setLimit, offset, setOffset,
+    total, totalPages, currentPage, pageRows, from, to, pageSizeOptions,
+  } = usePagination(assets, { pageSizes: [10, 20, 50] });
 
   if (state.kind === "loading") {
     return (
@@ -125,17 +123,6 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
       </div>
     );
   }
-
-  const assets = state.kind === "ready" ? state.assets : [];
-  const total = assets.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = assets.slice(offset, offset + limit);
-  const from = total > 0 ? offset + 1 : 0;
-  const to = Math.min(offset + limit, total);
-  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
-    ? PAGE_SIZE_OPTIONS
-    : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
 
   if (state.assets.length === 0) {
     return (
@@ -266,6 +253,21 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
                 <AdminDateTime iso={a.last_materialized_at} locale={locale} />
               </TableCell>
               <TableCell>
+                {SCHEDULABLE.has(a.key) && (
+                  <button
+                    type="button"
+                    data-testid={`asset-schedule-${a.key}`}
+                    disabled={scheduled.has(a.key)}
+                    onClick={() => void schedule(a.key)}
+                    className="mr-2 rounded-full border border-border px-2 py-0.5 text-xs disabled:opacity-50"
+                  >
+                    {t(
+                      scheduled.has(a.key)
+                        ? "admin.orchestration.assets.scheduled"
+                        : "admin.orchestration.assets.schedule",
+                    )}
+                  </button>
+                )}
                 <span
                   data-testid={`asset-health-${a.key}`}
                   className={`inline-flex h-6 items-center rounded-full px-2 text-xs font-semibold ${
@@ -283,61 +285,22 @@ export function AssetsTab({ t, locale }: { t: T; locale: Locale }) {
 
       {/* Pie de paginación — mismo patrón que la tab Proveedores y que Fuentes, para que el admin no
           termine con dos gramáticas de tabla distintas. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span>{t("admin.orchestration.pagination.show")}</span>
-          <Select value={String(limit)} onValueChange={(v) => { setLimit(Number(v)); setOffset(0); }}>
-            <SelectTrigger size="sm" className="w-16">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {pageSizeOptions.map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span>{t("admin.orchestration.pagination.perPage")}</span>
-        </div>
-
-        <span data-testid="assets-pagination-range">
-          {format(locale, "admin.orchestration.pagination.of", {
+      <AdminTableFooter
+        limit={limit}
+        onLimitChange={setLimit}
+        pageSizeOptions={pageSizeOptions}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={(pg) => setOffset((pg - 1) * limit)}
+        rangeLabel={format(locale, "admin.orchestration.pagination.of", {
             from: String(from),
             to: String(to),
             total: String(total),
           })}
-        </span>
-
-        <Pagination className="mx-0 w-auto justify-end">
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-                aria-disabled={currentPage <= 1}
-                className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-              />
-            </PaginationItem>
-            {pageWindow(currentPage, totalPages).map((pg) => (
-              <PaginationItem key={pg}>
-                <PaginationLink
-                  isActive={pg === currentPage}
-                  onClick={() => setOffset((pg - 1) * limit)}
-                >
-                  {pg}
-                </PaginationLink>
-              </PaginationItem>
-            ))}
-            <PaginationItem>
-              <PaginationNext
-                onClick={() => setOffset(offset + limit)}
-                aria-disabled={currentPage >= totalPages}
-                className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      </div>
+        showLabel={t("admin.orchestration.pagination.show")}
+        perPageLabel={t("admin.orchestration.pagination.perPage")}
+        rangeTestId="assets-pagination-range"
+      />
     </div>
   );
 }

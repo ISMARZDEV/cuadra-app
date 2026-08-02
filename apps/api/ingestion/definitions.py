@@ -59,12 +59,13 @@ save_freshness_job = dg.define_asset_job(
 save_price_refresh_job = dg.define_asset_job(
     "save_price_refresh",
     selection=dg.AssetSelection.assets("price_refresh"),  # re-precio por id de TODO lo conocido
+    partitions_def=query_catalog_providers,  # una tienda por corrida (cupo por tienda)
 )
 
 # ── Por qué estos TRES schedules siguen en código (F4 #4.2b) ──────────────────────────────────
 # El sensor `save_orchestration_policies` mueve la programación a la DB para los PROVIDER-FLOWS, y
-# ahí el cron del admin manda de verdad. Estos tres NO son provider-flows: son assets GLOBALES
-# (coverage / freshness / price_refresh), y la consola de la Fase 4 solo gestiona provider-flows.
+# ahí el cron del admin manda de verdad. Estos DOS no son provider-flows: son assets GLOBALES
+# (coverage / freshness), y la consola sólo gestiona provider-flows.
 #
 # Moverlos ahora a la DB los dejaría en una tabla que NINGUNA pantalla expone: hoy su cadencia al
 # menos se lee acá; después sería una fila invisible que nadie puede cambiar sin SQL. Sería un
@@ -82,14 +83,9 @@ save_freshness_frequent = dg.ScheduleDefinition(
     job=save_freshness_job,
     cron_schedule="0 */2 * * *",  # cada 2h — precios de lo CUBIERTO+viejo (F3.2a, user-facing prioritario)
 )
-# Two-tier: `freshness` (covered, 2h) mantiene fresco lo que el usuario VE; `price_refresh` (TODO lo
-# conocido, 4h) alcanza además la cola de revisión. Superset (change-only → el solapamiento es inocuo);
-# para prod tunear/consolidar cadencias.
-save_price_refresh_frequent = dg.ScheduleDefinition(
-    name="save_price_refresh_frequent",
-    job=save_price_refresh_job,
-    cron_schedule="0 */4 * * *",  # cada 4h — re-precio por id de TODO lo conocido (Prices Batch, SRD §3.1)
-)
+# `price_refresh` YA NO tiene schedule acá: pasó a ser provider-flow (particionado por tienda) y su
+# cadencia la gobierna la policy del admin vía el sensor. Dejar las dos vías vivas sería la
+# duplicación que §5.1 prohíbe — y un job particionado no admite un ScheduleDefinition pelado.
 
 # Evalúa las AutomationCondition de la cadena diaria. Sin esto las condiciones son decoración: nadie
 # las mira y la cadena no arranca nunca.
@@ -117,7 +113,7 @@ defs = dg.Definitions(
         save_freshness_job, save_price_refresh_job,
     ],
     schedules=[
-        save_coverage_daily, save_freshness_frequent, save_price_refresh_frequent,
+        save_coverage_daily, save_freshness_frequent,
     ],
     sensors=[
         sync_rest_catalog_sections, sync_query_catalog_providers, save_automation_sensor,

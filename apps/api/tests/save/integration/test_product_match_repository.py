@@ -34,13 +34,15 @@ from src.contexts.save.infrastructure.models import (
     ProductMatchModel,
     ReviewCandidateModel,
     StoreProductModel,
-    TaxonomyNodeModel,
 )
 from src.contexts.save.infrastructure.repositories import (
+
     SqlCanonicalProductRepository,
     SqlProviderRepository,
     SqlStoreProductRepository,
 )
+
+from ._taxonomy import taxonomy_node
 
 
 def _uuid() -> str:
@@ -58,7 +60,7 @@ def _seed_provider_and_canonical(
             logo_url=logo_url,
         )
     )
-    node = TaxonomyNodeModel(name="Arroz", level=0, market_id=market_id)
+    node = taxonomy_node(db_session, name="Arroz", level=0, market_id=market_id)
     db_session.add(node)
     db_session.flush()
     crepo = SqlCanonicalProductRepository(db_session)

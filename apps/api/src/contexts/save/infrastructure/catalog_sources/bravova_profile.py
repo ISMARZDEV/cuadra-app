@@ -24,6 +24,7 @@ from src.shared.money import Currency, Money, primary_currency_for_market
 
 from ...domain.entities import PriceType
 from ...domain.ports import RawCatalogEntry
+from .bravova_sections import section_for_subfamily
 from .rest_catalog_adapter import CatalogProfile
 from .size_from_name import extract_size
 
@@ -41,12 +42,113 @@ def _price_major(item: dict) -> float | int | str:
     raise ValueError(f"Artículo Bravo Va sin precio: {item.get('idexternoArticulo')!r}")
 
 
-def _category_path(item: dict) -> tuple[str, ...]:
-    return tuple(
-        code
-        for code in (item.get("familiaArticulo"), item.get("subfamiliaArticulo"))
+# Secciones TRANSVERSALES de Bravo: un producto vive en la SUYA y también en éstas, así que no
+# nombran ninguna categoría. Viven acá (y no en el seed que construye el mapa) porque las consumen
+# los DOS: el generador las excluye del voto, y `_section_from_payload` las descarta cuando el
+# detalle las devuelve como sección primaria. `seeds/` puede importar de `src/`, no al revés.
+GENERIC_SECTIONS = frozenset({
+    "Alimentación general",
+    "Productos Nuevos",
+    "OFERTAS",
+    "Aniversario Arca",
+    "Arca",
+    "PROMOCIÓN 3X2 (DEBES PEDIR 3)",
+    "PROMOCION 2X1 (DEBES PEDIR 2)",
+    "Bodega (Vinos 3X2)",
+    "Cafetería Bravo",
+    "Vida sana",
+    # Pasillos de MARCA, no categorías: Bravo le da sección propia a cada marca de comida de perro
+    # y eso partía el voto de un concepto único (`AR-002` repartido entre Pro Plan / Royal Canin /
+    # Taste of the Wild / Comida mascotas, sin que ninguna llegara al umbral).
+    "Pro Plan caninos",
+    "Royal Canin caninos",
+    "Taste of the Wild caninos",
+})
+
+
+def _section_from_payload(item: dict) -> str:
+    """Nombre de sección que trae el PROPIO artículo, o `""`.
+
+    Sólo el detalle (`/public/articulo/get`) lo puebla: `associatedSeccion[].associatedSeccion.
+    nombreSeccion`. En `/list` y `/search` ese campo llega como lista VACÍA. Medido en vivo
+    2026-08-02 sobre 90 artículos: el detalle lo trae en el **100%** (y EAN global usable en el
+    66%, contra el 30% que documentaba este módulo).
+
+    Es la fuente más confiable de las tres y por eso va primero: el mapa `subfamilia → sección` es
+    derivado por voto, y `section_label` es la sección que se está NAVEGANDO —un artículo puede
+    vivir en varias—. Acá lo dice el artículo de sí mismo.
+    """
+    for enlace in item.get("associatedSeccion") or []:
+        if not isinstance(enlace, dict):
+            continue
+        seccion = enlace.get("associatedSeccion")
+        if isinstance(seccion, dict):
+            nombre = str(seccion.get("nombreSeccion") or "").strip()
+            # Una TRANSVERSAL no se acepta aunque sea la sección primaria del artículo: lo exacto
+            # no puede ganarle a lo útil. Medido sobre los 15 primeros enriquecidos, el detalle
+            # devolvía una transversal en el 40% (`FRESCAN POLLO Y ARROZ` pasaba de «Comida
+            # mascotas» —que el mapa resuelve bien— a «Arca», que no pega ningún token).
+            if nombre and nombre not in GENERIC_SECTIONS:
+                return nombre
+    return ""
+
+
+def _category_path(item: dict, section_label: str) -> tuple[str, ...]:
+    """Categoría de ORIGEN. Prefiere el NOMBRE de la sección; los códigos son el último recurso.
+
+    Corregido 2026-08-01. Devolvía `(familiaArticulo, subfamiliaArticulo)` = `('FV', 'FV-005')`:
+    códigos internos que no significan nada fuera de Bravo. Medido sobre la cola real, eso dejaba a
+    **235 productos (33% de lo no clasificado) SIN ninguna señal de origen** — el clasificador cruza
+    origen contra nombre, y de Bravo el origen no aportaba nada. `RABANO ROJO LB` llegaba con
+    `FV > FV-005` y terminaba en «sin señal suficiente».
+
+    Sondeado en vivo: Bravo publica `GET /public/seccion/list` con `nombreSeccion` legible
+    («Frutas y vegetales», «Víveres», «Lácteos»), y el adapter YA navega por sección, así que
+    conoce la de cada artículo sin pagar una request extra. El nombre entra por `section_label`.
+
+    Los códigos se CONSERVAN como fallback (búsqueda por EAN y por texto son globales: ahí no hay
+    sección, y algo de señal es mejor que ninguna). Van DESPUÉS del nombre a propósito:
+    `lexicon_match_path` recorre los segmentos del más hondo al más general, o sea que prueba el
+    código primero y cae al nombre — y el código nunca pega nada, así que el orden no le quita
+    oportunidades al nombre.
+
+    Al final va `metatagArticulo`: la palabra clave que Bravo ya normalizó para su buscador
+    (`COCA COLA 400 ML`→`refrescos`, `MUBRAVO QUESO DE FREIR`→`queso`). Último en la tupla = PRIMERO
+    en el recorrido, porque es lo más específico que manda la tienda: la sección dice «Lácteos» y el
+    metatag dice `queso`. Medido sobre 1025 artículos: presente en el 35%, **+63 productos que
+    empiezan a resolver, 0 que dejan de resolver**, 3 que cambian de hoja.
+
+    Costo conocido de esos 3: el metatag le gana a la sección cuando discrepan. Acierta en uno
+    (`ARO VAINILLA Y PASAS`: Galletas→Bizcochos) y falla en otro (`BRAVO CLAVO DULCE`:
+    Especias→Dulces Típicos, porque su metatag es `dulce` y el clavo dulce es una especia). 0.3% de
+    los casos contra un saldo de +63/−0 — se asume, y el juez de la banda gris sigue arbitrando.
+
+    Cuando NO hay `section_label` —que es el caso del camino de CANASTA, el único que corre hoy—
+    la sección se resuelve por el MAPA `subfamilia → sección` (`bravova_sections.py`, derivado
+    navegando el catálogo). `/public/articulo/search` trae `subfamiliaArticulo` en el **100%** de
+    sus resultados, así que el mapa cubre justo el camino donde el `section_label` no llega, y sin
+    pagar una request extra. Una subfamilia ambigua o nueva no está en el mapa y no aporta nada:
+    ante duda no se inventa, el producto cae al nombre/vector/juez.
+
+    Precedencia: `section_label` (EXACTO, lo dice el browse) > mapa (derivado) > sólo códigos.
+    """
+    subfamily = str(item.get("subfamiliaArticulo") or "").strip()
+    codes = tuple(
+        str(code).strip()
+        for code in (item.get("familiaArticulo"), subfamily)
         if code and str(code).strip()
     )
+    metatag = str(item.get("metatagArticulo") or "").strip()
+    tail = (metatag,) if metatag else ()
+
+    section = (
+        _section_from_payload(item)
+        or section_label.strip()
+        or (section_for_subfamily(subfamily) or "")
+    )
+    if section:
+        return (section, *codes, *tail)
+    return (*codes, *tail)
 
 
 # CDN de imágenes de Bravo (SRD `bravo-images.ts:34-39`): `{base}/{idexterno}_{n}.png?v={version}`.
@@ -92,8 +194,14 @@ def _global_ean(item: dict) -> str | None:
     return pick_global_ean(codes)
 
 
-def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalogEntry:
-    """Mapea un artículo del JSON de Bravo Va a `RawCatalogEntry`. Levanta ValueError si no hay precio."""
+def map_bravova_item(
+    item: dict, provider_id: str, market_id: str, section_label: str = ""
+) -> RawCatalogEntry:
+    """Mapea un artículo del JSON de Bravo Va a `RawCatalogEntry`. Levanta ValueError si no hay precio.
+
+    `section_label` es el nombre legible de la sección que se está navegando; llega vacío en los
+    caminos que no navegan (lookup por EAN, búsqueda por texto, detalle). Ver `_category_path`.
+    """
     currency = Currency(primary_currency_for_market(market_id))
     price = Money.from_major(str(_price_major(item)), currency)
     name = item.get("nombreArticulo", "")
@@ -117,7 +225,7 @@ def map_bravova_item(item: dict, provider_id: str, market_id: str) -> RawCatalog
         price=price,
         price_type=PriceType.ONLINE,
         source=_SOURCE,
-        category_path=_category_path(item),
+        category_path=_category_path(item, section_label),
         ean=_global_ean(item),
         url=None,
         image_urls=_image_urls(item),
@@ -156,6 +264,20 @@ BRAVOVA_PROFILE = CatalogProfile(
     # Bravo busca por barcode (sondeo en vivo 2026-07-15): `filterByEan` devuelve el artículo exacto y
     # funciona SIN `filterByIdSeccion` → lookup GLOBAL en una request. Habilita Loop B dirigido (F3.1)
     # y el recovery determinista (F3.2b) sobre una fuente "browse-only".
+    # CATÁLOGO DE SECCIONES (sondeado en vivo 2026-08-01): traduce el id de sección a nombre legible
+    # («Frutas y vegetales», «Víveres», «Lácteos»), que es lo que el clasificador puede leer. 50
+    # secciones, 41 son las que iteramos. Gotchas verificados contra el API real:
+    #   · exige `showOrder` como el browse, pero con OTRO valor (`ordenSeccion asc`) → params propios;
+    #   · `paginationMaxItems=200` da `typeMismatch`; 100 sí funciona y alcanza para las 50.
+    section_catalog_path="/public/seccion/list",
+    section_catalog_list_path=("data", "list"),
+    section_id_key="idSeccion",
+    section_name_key="nombreSeccion",
+    section_catalog_params=(
+        ("paginationMaxItems", "100"),
+        ("paginationOffset", "0"),
+        ("showOrder", "ordenSeccion asc"),
+    ),
     ean_param="model.filterByEan",
     # Y TAMBIÉN por texto (desbloqueo 2026-07-16): el `showOrder` que faltaba era `score`. Endpoint
     # DISTINTO del browse (`/public/articulo/search`, no `/list`) y con su propio `showOrder` (el

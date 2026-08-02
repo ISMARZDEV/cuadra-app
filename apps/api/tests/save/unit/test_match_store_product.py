@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+import pytest
+
 from src.contexts.save.application.match_store_product import (
     IncomingStoreProduct,
     MatchStoreProduct,
@@ -121,17 +123,28 @@ class FakeStoreProductLinkRepository:
     """Fake del escritor del FK denormalizado (store_product.canonical_product_id) + la consulta
     del EAN conocido de un canónico (gate de falso-merge EAN-negativo)."""
 
-    def __init__(self, canonical_eans: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        canonical_eans: dict[str, str] | None = None,
+        provider_siblings: set[tuple[str, str]] | None = None,
+    ) -> None:
         self.links: list[tuple[str, str]] = []
         # canonical_product_id -> un EAN conocido de alguno de sus store_products enlazados
         # ({} = ninguno tiene EAN conocido → sin señal negativa).
         self._canonical_eans = canonical_eans or {}
+        # (canonical_product_id, provider_id) que YA tienen un store_product enlazado.
+        self._provider_siblings = provider_siblings or set()
 
     def link_to_canonical(self, store_product_id: str, canonical_product_id: str) -> None:
         self.links.append((store_product_id, canonical_product_id))
 
     def find_ean_for_canonical(self, canonical_product_id: str) -> str | None:
         return self._canonical_eans.get(canonical_product_id)
+
+    def has_other_product_from_provider(
+        self, canonical_product_id: str, provider_id: str, excluding_store_product_id: str
+    ) -> bool:
+        return (canonical_product_id, provider_id) in self._provider_siblings
 
 
 class FakeEmbeddingProvider:
@@ -181,6 +194,13 @@ class FakeCanonicalProductRepository:
 def _canonical(
     cid: str, name: str = "Arroz La Garza 5lb", brand: str = "La Garza", size: str = "5 LB"
 ) -> CanonicalProduct:
+    """Canónico de prueba. Por defecto CONCUERDA con `_incoming()` en nombre/marca/tamaño.
+
+    Para anular los boosts y dejar el score crudo predecible, pasá `brand="", size="Otro"` — un
+    canónico SIN marca no gana boost (`_exact_match` corta ante candidato vacío) y tampoco exige
+    corroboración al brand gate. NO uses una marca ajena (`brand="Otra"`): eso ya no describe
+    "sin boost" sino un merge ENTRE MARCAS DISTINTAS, que el brand gate bloquea — y con razón.
+    """
     return CanonicalProduct(
         id=cid,
         name=name,
@@ -214,6 +234,7 @@ def _incoming(
     ean: str | None = None,
     source_category: str = "",
     run_id: str | None = None,
+    provider_id: str = "p-sirena",
 ) -> IncomingStoreProduct:
     return IncomingStoreProduct(
         store_product_id=store_product_id,
@@ -224,6 +245,7 @@ def _incoming(
         ean=ean,
         source_category=source_category,
         run_id=run_id,
+        provider_id=provider_id,
     )
 
 
@@ -237,11 +259,12 @@ def _make_use_case(
     category_lexicon: dict[str, str] | None = None,
     leaf_to_parent: dict[str, str] | None = None,
     no_judge: bool = False,
+    no_embedder: bool = False,
 ) -> tuple[MatchStoreProduct, dict]:
     match_repo = match_repo or FakeCascadeMatchRepository()
     store_repo = store_repo or FakeStoreProductLinkRepository()
     canonical_repo = canonical_repo or FakeCanonicalProductRepository({})
-    embedder = embedder or FakeEmbeddingProvider()
+    embedder = None if no_embedder else (embedder or FakeEmbeddingProvider())
     judge = None if no_judge else (judge or FakeJudge(FakeVerdict("uncertain", 0.0, [])))
     use_case = MatchStoreProduct(
         match_repo=match_repo,
@@ -410,7 +433,7 @@ def test_fusion_picks_consensus_candidate_and_auto_links_hybrid() -> None:
         vector_candidates=[MatchCandidate(canonical_product_id="canon-y", score=0.93)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-y": _canonical("canon-y", brand="Otra Marca", size="1 KG")}
+        {"canon-y": _canonical("canon-y", brand="", size="1 KG")}
     )
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
 
@@ -571,7 +594,7 @@ def test_ean_conflict_persists_review_candidate_snapshot() -> None:
         vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", name="Habichuela Verde", brand="La Famosa")}
+        {"canon-1": _canonical("canon-1")}
     )
     store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022949"})
     use_case, c = _make_use_case(
@@ -592,7 +615,7 @@ def test_ean_conflict_blocks_grey_band_judge_auto_link() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     store_repo = FakeStoreProductLinkRepository(canonical_eans={"canon-1": "00760593022949"})
     judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
@@ -652,12 +675,251 @@ def test_same_variant_still_auto_links() -> None:
     assert c["store_repo"].links == [("sp-1", "canon-1")]
 
 
+def test_legume_species_conflict_blocks_auto_link_when_color_matches() -> None:
+    """El falso positivo medido 2026-07-21 (aispace-men #822): `LA FAMOSA GANDULES VERDES 15 OZ`
+    auto-linkeó a `Habichuela Verde La Famosa 15 Oz` en 0.854. Marca, tamaño y COLOR coinciden —
+    el grupo color del variant gate no podía verlo. Solo difiere la ESPECIE, y trgm (difieren en
+    UN token) y el vector (ambos legumbre enlatada) coincidieron en equivocarse, así que el
+    consenso RRF reforzó el error. El gandul correcto existía en el catálogo pero en otro tamaño:
+    NO había canónico correcto, así que el destino legítimo era la cola.
+
+    Tamaño "5 LB" == la quantity del canónico → aísla el gate del size_gate, como el test de color.
+    """
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuela Verde La Famosa", brand="La Famosa")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="LA FAMOSA GANDULES VERDES", brand="La Famosa", size="5 LB")
+    )
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []  # gandul ≠ habichuela: distinto SKU
+
+
+def test_regional_synonym_of_the_same_legume_still_auto_links() -> None:
+    # Contraparte OBLIGATORIA: frijol ES habichuela (regionalismo, no especie distinta). Si el gate
+    # los separara, rompería matches BUENOS — el error inverso al que existe para evitar.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuelas Negras Goya", brand="Goya")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="Frijoles Negros Goya", brand="Goya", size="5 LB"))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+# ---------------------------------------------------------------- brand gate (sin evidencia de marca) --
+# `ARROZ SELECTO 10 LB` de Bravo auto-linkeó a `Arroz Selecto Wala 10 Lb` en 0.850 (medido
+# 2026-07-21, aispace-men #822): Bravo no declara marca y su nombre no nombra a Wala, o sea CERO
+# evidencia — pero las cadenas difieren en UN token (el de la marca) y el parecido bastó. Mismo
+# mecanismo que gandules→habichuela, otro eje. A diferencia de los demás gates, éste bloquea por
+# AUSENCIA de evidencia y no por contradicción; ver el docstring de `brand_gate`.
+
+
+def test_no_brand_evidence_blocks_auto_link_into_a_branded_canonical() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Selecto Wala", brand="Wala")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="ARROZ SELECTO 10 LB", brand="", size="5 LB"))
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []  # nada prueba que ese arroz sea Wala
+
+
+def test_brand_named_only_in_the_store_name_still_auto_links() -> None:
+    # Contraparte OBLIGATORIA: Bravo/Nacional no declaran marca pero la ESCRIBEN en el nombre. Éstos
+    # son los matches BUENOS de la corrida medida (`LA FAMOSA HABICHUELAS…` 1.000) — no romperlos es
+    # justo lo que hace viable bloquear por ausencia de evidencia.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Habichuelas Negras La Famosa", brand="La Famosa")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="LA FAMOSA HABICHUELAS NEGRAS", brand="", size="5 LB")
+    )
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_generic_canonical_without_brand_is_never_gated() -> None:
+    # Produce suelto / pan de la casa: no hay marca que exigir → el gate no debe entrometerse.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Platano Barahonero", brand="")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="PLATANO BARAHONERO UNIDAD", brand="", size="5 LB")
+    )
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+# ------------------------------------------------- proveedor único (una tienda no vende lo mismo 2x) --
+# Medido 2026-08-01: de 61 auto-enlaces, CINCO canónicos habían absorbido SKUs distintos de la MISMA
+# tienda. Los ejes eran cuatro y todos distintos (línea de calidad, seco/verde, con vegetales, estilo
+# americano) — perseguirlos de a uno es una carrera sin final. Este invariante los cubre TODOS, y
+# también los ejes que no se nos ocurrieron: una tienda no publica el mismo producto dos veces, así
+# que un segundo SKU sobre el mismo canónico es, por construcción, otro producto.
+
+
+def test_a_second_sku_from_the_same_provider_never_auto_links() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    # canon-1 ya tiene un producto de p-nacional (el "Guandules Secos con Coco" que llegó primero).
+    store_repo = FakeStoreProductLinkRepository(provider_siblings={("canon-1", "p-nacional")})
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    result = use_case.execute(_incoming(provider_id="p-nacional"))
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []
+
+
+def test_a_first_sku_from_that_provider_still_auto_links() -> None:
+    # Contraparte: el invariante NO puede impedir el primer enlace de cada tienda — que es
+    # justamente lo que hace comparable un canónico entre supermercados.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    # canon-1 tiene productos de OTRA tienda: eso no estorba.
+    store_repo = FakeStoreProductLinkRepository(provider_siblings={("canon-1", "p-sirena")})
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, store_repo=store_repo
+    )
+
+    result = use_case.execute(_incoming(provider_id="p-nacional"))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+# ---------------------------------------------------------------- quality gate (línea de calidad) --
+# Medido 2026-08-01 en la primera corrida con catálogo poblado: `Arroz Pimco Selecto 10 Lbs` había
+# absorbido TRES SKUs distintos de Nacional (Premium, Selecto, Super Selecto Gourmet) — una tienda
+# no vende el mismo producto tres veces. Llegaban a confianza 1.000: misma marca + mismo tamaño +
+# misma categoría hacen que los tres boosts empujen al tope justo a esta clase de error.
+
+
+def test_a_different_quality_line_blocks_auto_link_at_the_top_of_the_band() -> None:
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Pimco Selecto", brand="Pimco")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="Arroz Premium Pimco Funda", brand="Pimco", size="5 LB")
+    )
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []  # Premium ≠ Selecto: distinto SKU
+
+
+def test_super_selecto_is_not_selecto() -> None:
+    # El caso que un match por token suelto NO ve: los dos nombres contienen "selecto".
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Pimco Selecto", brand="Pimco")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(
+        _incoming(name="Arroz Super Selecto Pimco", brand="Pimco", size="5 LB")
+    )
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []
+
+
+def test_the_same_quality_line_still_auto_links() -> None:
+    # Contraparte OBLIGATORIA: de los 3 SKUs fusionados, éste era el enlace BUENO.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Pimco Selecto", brand="Pimco")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="Arroz Selecto Pimco", brand="Pimco", size="5 LB"))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_no_brand_evidence_blocks_grey_band_judge_auto_link() -> None:
+    # Defensa para cuando el LLM se re-encienda, igual que el EAN gate: el juez puede decir "match"
+    # con alta confianza, pero sin evidencia de marca no se auto-mergea en un SKU de marca.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Selecto Wala", brand="Wala")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(name="ARROZ SELECTO 10 LB", brand="", size="5 LB"))
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == []
+
+
 def test_grey_band_invokes_judge_and_auto_links_on_match_verdict() -> None:
     match_repo = FakeCascadeMatchRepository(
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -680,7 +942,7 @@ def test_grey_band_match_verdict_at_confidence_floor_auto_links() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("match", 0.70, ["brand agrees"]))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -700,7 +962,7 @@ def test_grey_band_low_confidence_match_verdict_routes_to_pending_review() -> No
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("match", 0.60, ["brand agrees"]))  # < JUDGE_MATCH_MIN_CONFIDENCE
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -720,7 +982,7 @@ def test_grey_band_no_match_verdict_routes_to_pending_review() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("no_match", 0.10, ["brand disagrees"]))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -740,7 +1002,7 @@ def test_grey_band_uncertain_verdict_routes_to_pending_review() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("uncertain", 0.0, []))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -791,7 +1053,7 @@ def test_same_transaction_invariant_writes_link_and_match_together() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
 
@@ -925,7 +1187,7 @@ def test_high_band_auto_link_never_persists_review_candidates() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.95)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
 
@@ -939,7 +1201,7 @@ def test_grey_band_strong_match_auto_link_never_persists_review_candidates() -> 
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -957,7 +1219,7 @@ def test_grey_band_strong_match_wires_judge_cost_onto_auto_linked_record() -> No
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(
         FakeVerdict(
@@ -981,7 +1243,7 @@ def test_grey_band_weak_verdict_wires_judge_cost_onto_pending_review_record() ->
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(
         FakeVerdict(
@@ -1082,7 +1344,11 @@ def _grey_band_with(verdict: FakeVerdict):  # type: ignore[no-untyped-def]
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        # `brand=""` (no una marca ajena): la forma DOCUMENTADA de anular los boosts sin activar el
+        # brand gate — ver el docstring de `_canonical`. Con `brand="Otra"` estos tests no probaban
+        # la banda gris sino un par ya VETADO por marca, y desde que los gates se evalúan antes del
+        # juez ese par ni siquiera llega a consultarlo.
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(verdict)
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -1149,3 +1415,251 @@ def test_a_match_outside_a_run_has_no_run_id() -> None:
     use_case, _ = _make_use_case(no_judge=True)
 
     assert use_case.execute(_incoming(run_id=None)).run_id is None
+
+
+# ------------------------- un gate que veta se resuelve SIN pagar el juez (medido 2026-08-01) --
+#
+# Los gates son vetos DETERMINISTAS: si alguno se activa, el par va a revisión sea cual sea el
+# veredicto. Llamar al juez ahí no cambia el desenlace — sólo gasta tokens y latencia.
+#
+# Medido sobre la cola real (334 pendientes) justo antes de encender `SAVE_LLM_JUDGE_ENABLED`:
+# de los 158 pares en banda gris, **152 (96.2%) tenían al menos un gate activo** — es decir, 152
+# de cada 158 llamadas al juez habrían tenido el resultado predeterminado. Desglose: brand 133,
+# size 83, provider_dup 31, quality 10, variant 8 (no excluyentes).
+#
+# Estos tests fijan el orden: gates primero, juez sólo sobre lo que el juez puede decidir.
+
+
+def test_missing_brand_evidence_resolves_without_paying_for_a_judge_call() -> None:
+    # El gate más frecuente de la medición (133/158). Mismo caso que
+    # `test_no_brand_evidence_blocks_grey_band_judge_auto_link`, que ya fija el DESENLACE; este
+    # fija el COSTO: el juez ni siquiera se consulta.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Selecto Wala", brand="Wala")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, _ = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(name="ARROZ SELECTO 10 LB", brand="", size="5 LB"))
+
+    assert judge.calls == []  # el veredicto no podía cambiar nada: no se paga
+    assert result.status == "pending_review"
+
+
+def test_a_size_conflict_resolves_without_paying_for_a_judge_call() -> None:
+    # Segundo gate más frecuente (83/158). Tamaños comparables y en conflicto = SKU distinto.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, _ = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    # El canónico pesa 2.267 kg (5 lb); el entrante declara 20 LB → conflicto duro de tamaño.
+    result = use_case.execute(_incoming(size="20 LB"))
+
+    assert judge.calls == []
+    assert result.status == "pending_review"
+
+
+def test_a_second_sku_from_the_same_provider_resolves_without_paying_for_a_judge_call() -> None:
+    # El invariante ESTRUCTURAL (31/158): una tienda no publica el mismo producto dos veces.
+    # No hay nada que un LLM pueda aportar sobre un hecho de la base de datos.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
+    )
+    store_repo = FakeStoreProductLinkRepository(
+        provider_siblings={("canon-1", "p-sirena")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, _ = _make_use_case(
+        match_repo=match_repo,
+        canonical_repo=canonical_repo,
+        store_repo=store_repo,
+        judge=judge,
+    )
+
+    result = use_case.execute(_incoming())
+
+    assert judge.calls == []
+    assert result.status == "pending_review"
+
+
+def test_a_gate_vetoed_pair_is_recorded_as_human_with_the_cascade_score() -> None:
+    """Un par vetado por un gate se registra con la MISMA semántica que el camino "juez apagado".
+
+    `method="human"` porque el juez no dictaminó — es la distinción que ya defienden el camino
+    `judge is None` y el camino `degraded`: `llm` debe significar "el juez falló el caso", nunca
+    "el juez estuvo presente pero su opinión daba igual". Y la confianza es la de la CASCADA
+    (score fusionado + boosts), no la de un veredicto que no se pidió.
+
+    Sin esto, la cola mostraría `method="llm"` en pares que el LLM nunca decidió, y las columnas
+    de costo (`judge_*`) atribuirían tokens a una llamada que no ocurrió.
+    """
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Selecto Wala", brand="Wala")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"], input_tokens=120, model="gpt-4o"))
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(name="ARROZ SELECTO 10 LB", brand="", size="5 LB"))
+
+    assert judge.calls == []
+    assert result.method == "human"
+    # Score de la cascada (0.60 crudo + 0.05 del boost de tamaño exacto), NO el 0.97 del juez.
+    assert result.confidence == pytest.approx(0.65)
+    record = c["match_repo"].records[-1]
+    assert record["method"] == "human"
+    assert "judge_input_tokens" not in record  # no se gastaron tokens: no se reportan
+    assert "judge_model" not in record
+
+
+def test_a_clean_grey_band_pair_still_reaches_the_judge() -> None:
+    # La contracara: sin ningún gate activo, el juez SIGUE siendo quien decide. La optimización
+    # recorta llamadas inútiles, no la banda gris — son los 6 de 158 que sí necesitan criterio
+    # (p.ej. `GOYA ARROZ INTEGRAL 32 OZ` vs `Arroz Goya Integral 2 Lb.`, donde 32 oz == 2 lb).
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming())
+
+    assert len(judge.calls) == 1
+    assert result.status == "auto_linked"
+    assert result.method == "llm"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+# ---------------------------------- form gate (forma de preparación, medido 2026-08-01) --
+#
+# 8.º gate. La FORMA distingue SKUs que comparten marca, tamaño, categoría, color y especie:
+# harina de arroz no es arroz; habichuelas guisadas no son secas. Los 3 falsos merges de la primera
+# corrida con el juez encendido: dos los produjo el JUEZ (0.850) y uno la cascada DETERMINISTA
+# (hybrid, 0.902) — el eje falla en los dos caminos. Ver `cascade/form_gate.py`.
+
+
+def test_a_different_preparation_blocks_auto_link_at_the_top_of_the_band() -> None:
+    # El caso `Guandules Verdes Guisados Goya` → `Guandules Verdes Goya`: la cascada lo auto-enlazó
+    # con 0.902 porque marca, tamaño, color y especie COINCIDEN. Sólo difiere la preparación.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.90)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="Arroz Guisado La Garza 5lb"))
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == [], "una preparación distinta NUNCA auto-enlaza"
+
+
+def test_harina_never_auto_links_into_the_plain_grain() -> None:
+    # `GOYA HARINA ARROZ 24OZ` → `Arroz Goya Valencia 24 Oz`, el falso merge que el juez firmó
+    # con 0.850. Acá se prueba por el camino determinista: ni siquiera debe llegar a la banda gris.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.90)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="Harina de Arroz La Garza 5lb"))
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []
+
+
+def test_the_same_preparation_still_auto_links() -> None:
+    # La contracara obligatoria: dos harinas SÍ son el mismo SKU. Sin esto el gate podría estar
+    # bloqueando todo y los tests de arriba seguirían pasando.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.90)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Harina de Arroz La Garza 5lb")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="HARINA ARROZ LA GARZA 5LB"))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_a_form_conflict_resolves_without_paying_for_a_judge_call() -> None:
+    # El gate nuevo entra al mismo corte que los otros 7: en banda gris se resuelve sin consultar
+    # al juez, porque su veredicto no podría levantar el veto.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, _ = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(name="Harina de Arroz La Garza 5lb"))
+
+    assert judge.calls == []
+    assert result.status == "pending_review"
+
+
+# ------------------------------------------------- sin embedder (API sin modelo) ----------
+
+
+def test_without_embedder_the_vector_stage_is_SKIPPED_not_fed_a_fake_vector() -> None:
+    """La API no siempre tiene modelo: `build_api_embedder` devuelve `None` cuando no hay endpoint
+    HTTP ni modelo in-process. Antes el embedder era obligatorio, así que la única forma de correr
+    la cascada desde la API era inventar un vector — y un vector falso NO es "sin señal": la
+    búsqueda vectorial devolvería vecinos arbitrarios y el RRF los fusionaría como si fueran
+    candidatos reales. Omitir la etapa deja la cascada con trgm, que es honesto.
+    """
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-trgm-1", score=0.9)],
+        vector_candidates=[MatchCandidate(canonical_product_id="canon-vector-1", score=0.99)],
+    )
+    use_case, _ = _make_use_case(match_repo=match_repo, no_embedder=True)
+
+    result = use_case.execute(_incoming(ean=None))
+
+    assert match_repo.vector_calls == []  # jamás se consultó el índice vectorial
+    assert result.method == "trgm"  # y el método reportado NO miente sobre qué corrió
+
+
+def test_without_embedder_the_ean_stage_still_auto_links() -> None:
+    # El EAN es la señal más fuerte y no depende del modelo: sin embedder debe seguir enlazando.
+    match_repo = FakeCascadeMatchRepository(
+        ean_candidates=[MatchCandidate(canonical_product_id="canon-ean-1", score=1.0)]
+    )
+    use_case, _ = _make_use_case(match_repo=match_repo, no_embedder=True)
+
+    result = use_case.execute(_incoming(ean="7501234567890"))
+
+    assert result.status == "auto_linked"
+    assert result.method == "ean"

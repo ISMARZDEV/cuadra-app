@@ -18,7 +18,9 @@ from src.contexts.save.infrastructure.catalog_sources.rest_catalog_adapter impor
 from src.shared.money import Currency, Money
 
 
-def _fake_map(item: dict, provider_id: str, market_id: str) -> RawCatalogEntry:
+def _fake_map(
+    item: dict, provider_id: str, market_id: str, section_label: str = ""
+) -> RawCatalogEntry:
     if "price" not in item:
         raise ValueError("sin precio")
     return RawCatalogEntry(
@@ -391,3 +393,105 @@ def test_fetch_rejects_both_ean_and_text() -> None:
             ean="7460083780146", text="arroz",
             http_get=lambda url: {"result": {"count": 0, "items": []}},
         )
+
+
+# --- Catálogo de SECCIONES: el browse sabe en qué sección está y debe poder nombrarla ----------
+#
+# Sondeado en vivo 2026-08-01: Bravo publica `GET /public/seccion/list` con `nombreSeccion`
+# ("Frutas y vegetales", "Víveres", "Lácteos"). El adapter YA navega sección por sección, así que
+# conoce el id de cada artículo que trae — pero lo tiraba, y el profile guardaba los códigos opacos
+# (`FV > FV-005`), dejando a Bravo SIN señal de origen. Resolver el nombre es capacidad OPCIONAL del
+# profile, como `ean_param`/`text_param`: sin ella el adapter se comporta igual que antes.
+
+
+def _map_with_section(
+    item: dict, provider_id: str, market_id: str, section_label: str
+) -> RawCatalogEntry:
+    return replace(_fake_map(item, provider_id, market_id, ""), category_path=(section_label,))
+
+
+SECTION_PROFILE = replace(
+    FAKE_PROFILE,
+    map_item=_map_with_section,
+    section_catalog_path="/catalog/sections",
+    section_catalog_list_path=("result", "sections"),
+    section_id_key="catId",
+    section_name_key="catName",
+)
+
+
+def _adapter(profile: CatalogProfile, sections: list[str]) -> RestCatalogAdapter:
+    return RestCatalogAdapter(
+        base_url="https://api.fakesuper.test",
+        provider_id="p-fake",
+        market_id="DO",
+        profile=profile,
+        sections=sections,
+        store_id="55",
+    )
+
+
+def test_the_section_name_reaches_the_item_mapping() -> None:
+    def fake_get(url: str) -> dict:
+        if "/catalog/sections" in url:
+            return {"result": {"sections": [
+                {"catId": 7, "catName": "Frutas y vegetales"},
+                {"catId": 9, "catName": "Víveres"},
+            ]}}
+        if "catId=9" in url:
+            return {"result": {"count": 1, "items": [_entry(2)]}}
+        return {"result": {"count": 1, "items": [_entry(1)]}}
+
+    adapter = _adapter(SECTION_PROFILE, ["7", "9"])
+    adapter._http_get = fake_get  # type: ignore[method-assign]
+    entries = list(adapter.fetch())
+
+    assert [e.category_path for e in entries] == [("Frutas y vegetales",), ("Víveres",)]
+
+
+def test_the_section_catalog_is_fetched_once_not_per_page() -> None:
+    # Son 50 secciones fijas: pedirlas en cada página multiplicaría las requests contra el proveedor
+    # y es justo lo que el rate limit castiga.
+    calls: list[str] = []
+
+    def fake_get(url: str) -> dict:
+        calls.append(url)
+        if "/catalog/sections" in url:
+            return {"result": {"sections": [{"catId": 7, "catName": "Frutas y vegetales"}]}}
+        offset = 0 if "skip=0" in url else 30
+        return {"result": {"count": 60, "items": [_entry(offset)]}}
+
+    adapter = _adapter(SECTION_PROFILE, ["7"])
+    adapter._http_get = fake_get  # type: ignore[method-assign]
+    list(adapter.fetch())
+
+    assert sum("/catalog/sections" in u for u in calls) == 1
+
+
+def test_an_unknown_section_degrades_to_an_empty_label_instead_of_crashing() -> None:
+    # El catálogo de secciones y la lista configurada pueden desincronizarse (el proveedor renombra
+    # o retira una). Eso NO puede tumbar una corrida: se mapea sin nombre y sigue.
+    def fake_get(url: str) -> dict:
+        if "/catalog/sections" in url:
+            return {"result": {"sections": [{"catId": 7, "catName": "Frutas y vegetales"}]}}
+        return {"result": {"count": 1, "items": [_entry(1)]}}
+
+    adapter = _adapter(SECTION_PROFILE, ["999"])
+    adapter._http_get = fake_get  # type: ignore[method-assign]
+    entries = list(adapter.fetch())
+
+    assert [e.category_path for e in entries] == [("",)]
+
+
+def test_a_profile_without_a_section_catalog_never_asks_for_one() -> None:
+    calls: list[str] = []
+
+    def fake_get(url: str) -> dict:
+        calls.append(url)
+        return {"result": {"count": 1, "items": [_entry(1)]}}
+
+    adapter = _adapter(FAKE_PROFILE, ["7"])
+    adapter._http_get = fake_get  # type: ignore[method-assign]
+    list(adapter.fetch())
+
+    assert not any("section" in u.lower() for u in calls)

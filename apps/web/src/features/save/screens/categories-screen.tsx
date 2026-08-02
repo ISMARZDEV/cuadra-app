@@ -1,6 +1,7 @@
 import { useData } from "vike-react/useData";
 
 import { Card } from "@/components/ui/card";
+import { categoryLabel } from "@/i18n/categories";
 import { usePageI18n } from "@/i18n/usePageI18n";
 import { localeHref } from "@/lib/links";
 
@@ -21,7 +22,7 @@ export function CategoriesScreen() {
           {categories.map((c) => (
             <li key={c.slug}>
               <a href={catHref(c.slug)} className="block rounded-md px-3 py-2 hover:bg-secondary">
-                {c.name}
+                {categoryLabel(c.key, c.name, locale)}
               </a>
             </li>
           ))}
@@ -33,7 +34,7 @@ export function CategoriesScreen() {
           {categories.map((c) => (
             <a key={c.slug} href={catHref(c.slug)}>
               <Card className="flex h-32 items-end bg-muted/30 p-3 text-sm font-medium hover:border-primary">
-                {c.name}
+                {categoryLabel(c.key, c.name, locale)}
               </Card>
             </a>
           ))}

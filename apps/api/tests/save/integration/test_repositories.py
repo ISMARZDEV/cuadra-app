@@ -23,7 +23,6 @@ from src.contexts.save.infrastructure.models import (
     CanonicalProductModel,
     PriceModel,
     StoreProductModel,
-    TaxonomyNodeModel,
 )
 from src.contexts.save.infrastructure.repositories import (
     SqlAlertRepository,
@@ -32,6 +31,9 @@ from src.contexts.save.infrastructure.repositories import (
     SqlStoreProductRepository,
 )
 from src.shared.money import Currency, Money
+
+from ._taxonomy import taxonomy_node
+
 
 DOP = Currency("DOP")
 
@@ -74,7 +76,7 @@ def _seed_provider_and_canonical(db_session, market_id: str = "DO") -> tuple[str
     prov = SqlProviderRepository(db_session)
     pid = _uuid()
     prov.add(Provider(pid, "Sirena", ProviderType.SUPERMARKET, SourcePlatform.VTEX, market_id))
-    node = TaxonomyNodeModel(name="Arroz", level=0, market_id=market_id)
+    node = taxonomy_node(db_session, name="Arroz", level=0, market_id=market_id)
     db_session.add(node)
     db_session.flush()
     crepo = SqlCanonicalProductRepository(db_session)
@@ -223,6 +225,96 @@ def test_canonical_add_dedupes_slug_per_market(db_session) -> None:  # type: ign
     assert got.slug == "zqx-duplicado-slug-marcaz-2"
 
 
+# --- Invariante: editar el texto que se embebe INVALIDA el embedding (US-CP-L14) ---------------
+# `build_embedding_text` = "{name} {brand} {display_size}". Si alguno cambia, el vector guardado
+# describe al producto VIEJO — y eso es peor que no tener vector: la etapa semántica lo devolvería
+# como candidato por un nombre que ya no existe. `list_without_embedding` sólo levanta los NULL, así
+# que sin esta invalidación el backfill NO puede reparar un vector obsoleto: queda mintiendo para
+# siempre. Mismo patrón que `SqlTaxonomyRepository.set_terms` (repositories.py), donde ya regía.
+
+_STUB_EMBEDDING = [0.1] * 1024
+
+
+def _canonical_with_embedding(db_session, **overrides) -> str:  # type: ignore[no-untyped-def]
+    repo = SqlCanonicalProductRepository(db_session)
+    cid = _uuid()
+    repo.add(
+        CanonicalProduct(
+            cid,
+            overrides.get("name", "Zqx Producto Embebido"),
+            overrides.get("brand", "MarcaZ"),
+            Quantity(Decimal("2"), UnitMeasure.MASS),
+            taxonomy_node_id="",
+            market_id="DO",
+            display_size=overrides.get("display_size", "5 LB"),
+        )
+    )
+    repo.set_embedding(cid, _STUB_EMBEDDING)
+    return cid
+
+
+def _stored_embedding(db_session, cid: str):  # type: ignore[no-untyped-def]
+    return db_session.get(CanonicalProductModel, uuid.UUID(cid)).embedding
+
+
+def test_editing_the_name_invalidates_the_embedding(db_session) -> None:  # type: ignore[no-untyped-def]
+    cid = _canonical_with_embedding(db_session)
+    assert _stored_embedding(db_session, cid) is not None
+
+    SqlCanonicalProductRepository(db_session).update_attributes(cid, name="Zqx Nombre Nuevo")
+
+    assert _stored_embedding(db_session, cid) is None
+
+
+def test_editing_the_brand_invalidates_the_embedding(db_session) -> None:  # type: ignore[no-untyped-def]
+    cid = _canonical_with_embedding(db_session)
+
+    SqlCanonicalProductRepository(db_session).update_attributes(cid, brand="Otra Marca Zqx")
+
+    assert _stored_embedding(db_session, cid) is None
+
+
+def test_editing_the_display_size_invalidates_the_embedding(db_session) -> None:  # type: ignore[no-untyped-def]
+    cid = _canonical_with_embedding(db_session)
+
+    SqlCanonicalProductRepository(db_session).update_attributes(cid, display_size="10 LB")
+
+    assert _stored_embedding(db_session, cid) is None
+
+
+def test_editing_outside_the_embedding_text_keeps_the_embedding(db_session) -> None:  # type: ignore[no-untyped-def]
+    # Descripción, foto y calidad NO entran en la receta → invalidar acá sería tirar un vector
+    # bueno y mandar al canónico a re-embeberse por nada.
+    cid = _canonical_with_embedding(db_session)
+
+    SqlCanonicalProductRepository(db_session).update_attributes(
+        cid, description="Texto curado", image_url="https://x/y.jpg", quality="Premium"
+    )
+
+    assert _stored_embedding(db_session, cid) is not None
+
+
+def test_rewriting_the_same_name_keeps_the_embedding(db_session) -> None:  # type: ignore[no-untyped-def]
+    # "Se pasó el campo" no es "el campo cambió": un PATCH que reenvía el nombre igual no debe
+    # costar un re-embed. Por eso el invariante compara el TEXTO resultante, no qué argumentos vinieron.
+    cid = _canonical_with_embedding(db_session, name="Zqx Nombre Estable")
+
+    SqlCanonicalProductRepository(db_session).update_attributes(cid, name="Zqx Nombre Estable")
+
+    assert _stored_embedding(db_session, cid) is not None
+
+
+def test_editing_only_the_quantity_keeps_the_embedding(db_session) -> None:  # type: ignore[no-untyped-def]
+    # La receta usa `display_size` (el texto de empaque), NO la `quantity` normalizada.
+    cid = _canonical_with_embedding(db_session)
+
+    SqlCanonicalProductRepository(db_session).update_attributes(
+        cid, quantity=Quantity(Decimal("3"), UnitMeasure.MASS)
+    )
+
+    assert _stored_embedding(db_session, cid) is not None
+
+
 def test_canonical_list_by_market_for_sitemap(db_session) -> None:  # type: ignore[no-untyped-def]
     market = f"T{uuid.uuid4().hex[:6]}"
     _pid, cid = _seed_provider_and_canonical(db_session, market_id=market)
@@ -326,15 +418,15 @@ def test_taxonomy_tree_ancestors_and_products(db_session) -> None:  # type: igno
 
     market = f"T{uuid.uuid4().hex[:6]}"
     # árbol: Despensa & Abarrotes > Arroz, Granos & Legumbres > Arroz
-    despensa = TaxonomyNodeModel(name="Despensa & Abarrotes", level=0, market_id=market)
+    despensa = taxonomy_node(db_session, name="Despensa & Abarrotes", level=0, market_id=market)
     db_session.add(despensa)
     db_session.flush()
-    granos = TaxonomyNodeModel(
+    granos = taxonomy_node(db_session, 
         name="Arroz, Granos & Legumbres", level=1, market_id=market, parent_id=despensa.id
     )
     db_session.add(granos)
     db_session.flush()
-    arroz = TaxonomyNodeModel(name="Arroz", level=2, market_id=market, parent_id=granos.id)
+    arroz = taxonomy_node(db_session, name="Arroz", level=2, market_id=market, parent_id=granos.id)
     db_session.add(arroz)
     db_session.flush()
 
@@ -363,6 +455,49 @@ def test_taxonomy_tree_ancestors_and_products(db_session) -> None:  # type: igno
     under = repo.list_products_under(str(granos.id))
     assert [p.id for p in under] == [cid]
     assert repo.list_products_under(str(despensa.id))[0].id == cid  # sube más arriba también
+
+
+# --- El slug PÚBLICO sale de la key, no de la etiqueta (2a) -------------------------------------
+# La etiqueta se traduce; la URL no puede. Si el slug se derivara del nombre, `/categorias/lacteos-
+# huevos` se convertiría en `/categories/dairy-eggs` al cambiar de idioma, y renombrar una etiqueta
+# rompería enlaces compartidos. La key es estable por diseño (Fase 1) → es la fuente correcta.
+
+
+def test_the_public_slug_comes_from_the_key_not_the_label(db_session) -> None:  # type: ignore[no-untyped-def]
+    from src.contexts.save.infrastructure.repositories import SqlTaxonomyRepository
+
+    market = f"T{uuid.uuid4().hex[:6]}"
+    # La key es única GLOBALMENTE desde la Fase 2b (el árbol es un solo árbol compartido), así que
+    # un fixture NO puede reusar una del catálogo real aunque siembre en un mercado de prueba.
+    key = f"zz-lacteos-{uuid.uuid4().hex[:6]}"
+    node = taxonomy_node(
+        db_session, name="Lácteos & Huevos", key=key, level=0, market_id=market
+    )
+
+    tree = SqlTaxonomyRepository(db_session).list_tree(market)
+
+    assert tree[0].key == key
+    assert tree[0].slug == key  # sin punto, la key ES el último segmento
+
+    # Renombrar la ETIQUETA no mueve la URL: la key manda.
+    node.name = "Dairy & Eggs"
+    db_session.flush()
+    assert SqlTaxonomyRepository(db_session).list_tree(market)[0].slug == key
+
+
+def test_a_node_without_key_falls_back_to_slugifying_its_name(db_session) -> None:  # type: ignore[no-untyped-def]
+    # Los nodos de nivel ≥2 (hijos de la demo) no vienen del markdown y no tienen key. Sin fallback
+    # quedarían sin slug y su página moriría en 404.
+    from src.contexts.save.infrastructure.repositories import SqlTaxonomyRepository
+
+    market = f"T{uuid.uuid4().hex[:6]}"
+    db_session.add(taxonomy_node(db_session, name="Arroz Blanco", level=0, market_id=market))
+    db_session.flush()
+
+    tree = SqlTaxonomyRepository(db_session).list_tree(market)
+
+    assert tree[0].key is None
+    assert tree[0].slug == "arroz-blanco"
 
 
 def test_exists_by_natural_key(db_session) -> None:  # type: ignore[no-untyped-def]
@@ -407,7 +542,7 @@ class TestUnaMarcaNoPuedeEntrarDosVeces:
         from src.contexts.save.domain.entities import CanonicalProduct
 
         repo = SqlCanonicalProductRepository(db_session)
-        node = TaxonomyNodeModel(name="Zz Test", level=0, market_id="DO")
+        node = taxonomy_node(db_session, name="Zz Test", level=0, market_id="DO")
         db_session.add(node)
         db_session.flush()
         cid = str(uuid.uuid4())

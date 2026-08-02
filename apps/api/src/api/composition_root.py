@@ -38,10 +38,16 @@ from src.contexts.save.application.resolve_brand import ResolveBrand
 from src.contexts.save.application.bulk_resolve_review import BulkResolveReview
 from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
 from src.contexts.save.application.set_product_category import SetProductCategory
+from src.contexts.save.application.match_store_product import MatchStoreProduct
+from src.contexts.save.application.rematch_pending import RematchPending
+from src.contexts.save.infrastructure.classification.category_judge import CategoryJudge
+from src.contexts.save.infrastructure.matching.llm_judge import LlmJudge
 from src.contexts.save.infrastructure.classification.lexicon import build_lexicon_index
+from src.contexts.save.infrastructure.matching.embeddings import build_api_embedder
 from src.contexts.save.application.categories import GetCategory, ListCategories
 from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.create_canonical_and_link import CreateCanonicalAndLink
+from src.contexts.save.application.embed_canonical_product import EmbedCanonicalProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.canonical_catalog import (
     AddCanonicalImage,
@@ -108,7 +114,11 @@ from src.contexts.save.application.preview_basket_query import PreviewBasketQuer
 from src.contexts.save.application.test_source import TestSource
 from src.contexts.save.domain.ports.orchestrator import PipelineOrchestrator
 from src.contexts.save.infrastructure.expo_push_sender import ExpoPushSender
-from src.contexts.save.application.orchestration_policies import CreateProviderFlow
+from src.contexts.save.infrastructure.matching.embeddings import BgeM3EmbeddingProvider
+from src.contexts.save.application.orchestration_policies import (
+    CreateAssetPolicy,
+    CreateProviderFlow,
+)
 from src.contexts.save.infrastructure.catalog_sources.factory import directed_capability
 from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
     DagsterGraphQLOrchestrator,
@@ -116,6 +126,7 @@ from src.contexts.save.infrastructure.orchestrator.dagster_graphql import (
 from src.contexts.save.infrastructure.orchestrator.policy_repository import (
     SqlOrchestrationGlobalConfigRepository,
     SqlOrchestrationPolicyRepository,
+    SqlSectionsReader,
 )
 from src.contexts.save.infrastructure.orchestrator.run_snapshot_repository import (
     SqlRunSnapshotRepository,
@@ -135,6 +146,7 @@ from src.contexts.save.infrastructure.repositories import (
     SqlStoreProductRepository,
     SqlStoreRegistryRepository,
     SqlCategoryCandidateRepository,
+    SqlCategoryDecisionRecorder,
     SqlCategoryClassificationRepository,
     SqlTaxonomyRepository,
 )
@@ -466,6 +478,16 @@ def get_create_provider_flow(session: Session = Depends(get_session)) -> CreateP
     )
 
 
+def get_sections_reader(session: Session = Depends(get_session)) -> SqlSectionsReader:
+    """Secciones de la fuente: el browse las necesita para armar sus particiones."""
+    return SqlSectionsReader(session)
+
+
+def get_create_asset_policy(session: Session = Depends(get_session)) -> CreateAssetPolicy:
+    """Assets GLOBALES: sin registry ni capacidad — no cuelgan de una tienda."""
+    return CreateAssetPolicy(policy_repo=SqlOrchestrationPolicyRepository(session))
+
+
 def get_create_provider(session: Session = Depends(get_session)) -> CreateProvider:
     return CreateProvider(SqlProviderRepository(session))
 
@@ -649,6 +671,10 @@ def get_create_canonical_and_link(
         # delicado de este flujo.
         store_repo=SqlStoreProductRepository(session),
         image_repo=SqlCanonicalImageRepository(session),
+        # US-CP-L14: el canónico entra al índice semántico al nacer. Sin esto quedaba invisible
+        # para la etapa vectorial hasta el próximo backfill — y como la cola es JUSTO donde nacen
+        # los canónicos, esa ventana se retroalimentaba.
+        embedder=build_inline_canonical_embedder(session),
     )
 
 
@@ -722,9 +748,60 @@ def get_bulk_classify_review(session: Session = Depends(get_session)) -> BulkCla
         classifier=ClassifyStoreProduct(
             classifications,
             SqlCategoryCandidateRepository(session),
-            None,
-            None,
+            # Etapa VECTORIAL: endpoint HTTP en prod, modelo in-process en dev, `None` si no hay
+            # ninguno (ver `build_api_embedder`). Sin ella la cascada retornaba antes de llegar al
+            # juez, así que desde el admin «Clasificar seleccionados» nunca lo invocaba —el flag no
+            # tenía nada que ver— y la banda gris quedaba sin resolver.
+            build_api_embedder(endpoint_url=settings.save_bge_m3_endpoint_url),
+            # Mismo switch preventivo que la ingesta. Sólo se alcanza si hay embedder.
+            CategoryJudge() if settings.save_llm_judge_enabled else None,
             build_lexicon_index(leaves),
+            # La bitácora también acá: una clasificación disparada a mano desde la consola es tan
+            # digna de auditar como una de la ingesta, y sin esto el 100% de las decisiones del
+            # admin serían invisibles para la medición.
+            decisions=SqlCategoryDecisionRecorder(session),
+            # Nombres de hoja: el juez necesita PREGUNTAR por una categoría con su nombre, y el
+            # léxico sólo devuelve ids. Sin esto no puede arbitrar el conflicto origen-vs-nombre.
+            leaf_names={leaf_id: name for leaf_id, name in leaves},
+            # Gate de DEPARTAMENTO: NO se cablea. La capacidad existe y está testeada, pero el A/B
+            # con el juez encendido la desaconseja — ver `_department_of` en el use case.
+        ),
+    )
+
+
+def get_rematch_pending(session: Session = Depends(get_session)) -> RematchPending:
+    """Re-corre la cascada sobre filas YA encoladas, contra el catálogo ACTUAL.
+
+    Los candidatos de la cola son ESTÁTICOS: `RefreshCatalogPrices` sólo enruta al matcher los
+    `store_product` DESCONOCIDOS, así que una fila que entró cuando el catálogo era chico arrastra
+    para siempre los candidatos de ese día. Esto es la única forma de refrescarlos sin descartar la
+    fila (que además pierde el histórico de precios).
+
+    La etapa VECTORIAL depende de `build_api_embedder`: endpoint HTTP (prod) → modelo in-process
+    (dev, donde el grupo `ingestion` sí está) → `None`. Con `None` la cascada la OMITE y corre con
+    EAN + trgm; no se le inventa un vector, que devolvería vecinos arbitrarios.
+
+    Mismo índice léxico por request que `get_bulk_classify_review`, y por la misma razón: una query
+    y un dict no justifican un cache que se desincronice al sembrar categorías.
+    """
+    tree = SqlTaxonomyRepository(session).list_tree(SAVE_MARKET)
+    leaves = [(child.id, child.name) for root in tree for child in root.children]
+    return RematchPending(
+        scope=session,
+        products=SqlProductMatchRepository(session),
+        # Nombres de los canónicos enlazados: sin ellos el resumen del lote son ids contra ids y
+        # el operador no puede auditar si el enlace fue correcto.
+        canonicals=SqlCanonicalProductRepository(session),
+        matcher=MatchStoreProduct(
+            match_repo=SqlProductMatchRepository(session),
+            store_repo=SqlStoreProductRepository(session),
+            canonical_repo=SqlCanonicalProductRepository(session),
+            embedding_provider=build_api_embedder(
+                endpoint_url=settings.save_bge_m3_endpoint_url
+            ),
+            judge=LlmJudge() if settings.save_llm_judge_enabled else None,
+            category_lexicon=build_lexicon_index(leaves),
+            leaf_to_parent={child.id: root.id for root in tree for child in root.children},
         ),
     )
 
@@ -798,11 +875,37 @@ def get_list_canonical_duplicates(
     return ListCanonicalDuplicates(SqlAdminCanonicalCatalogRepository(session))
 
 
+def build_inline_canonical_embedder(session: Session) -> EmbedCanonicalProduct | None:
+    """Embebe en el acto lo que el admin escribe (US-CP-L14). `None` = se deja al backfill.
+
+    Dos condiciones, y ninguna es caprichosa:
+
+    - `save_matching_cascade_enabled`: con la cascada dark NADIE lee embeddings, así que embeber
+      sería puro costo. Mismo gate que `build_canonical_embedder` en la ingesta, y MISMO modelo —
+      vectores de modelos distintos no son comparables.
+    - `save_bge_m3_endpoint_url`: sin endpoint, `build_embedding_provider` caería al BGE-M3
+      IN-PROCESS (sentence-transformers), que dentro de un worker de FastAPI significa cargar el
+      modelo en el proceso que atiende requests. Eso no se hace por conveniencia: en el API el
+      embebido inline existe SÓLO contra el servicio dedicado.
+
+    En ambos casos el `embedding` queda NULL y el backfill lo levanta — la corrección no depende de
+    esto, sólo la latencia con que el canónico entra al índice semántico.
+    """
+    if not settings.save_matching_cascade_enabled or not settings.save_bge_m3_endpoint_url:
+        return None
+    return EmbedCanonicalProduct(
+        SqlCanonicalProductRepository(session),
+        BgeM3EmbeddingProvider(settings.save_bge_m3_endpoint_url),
+    )
+
+
 def get_create_canonical_product(
     session: Session = Depends(get_session),
 ) -> CreateCanonicalProduct:
     return CreateCanonicalProduct(
-        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+        SqlCanonicalProductRepository(session),
+        SqlAdminCanonicalCatalogRepository(session),
+        embedder=build_inline_canonical_embedder(session),
     )
 
 
@@ -810,7 +913,9 @@ def get_update_canonical_product(
     session: Session = Depends(get_session),
 ) -> UpdateCanonicalProduct:
     return UpdateCanonicalProduct(
-        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+        SqlCanonicalProductRepository(session),
+        SqlAdminCanonicalCatalogRepository(session),
+        embedder=build_inline_canonical_embedder(session),
     )
 
 

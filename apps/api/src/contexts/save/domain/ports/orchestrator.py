@@ -305,8 +305,35 @@ class PipelineAsset:
         return AssetHealth.FAILED if p.materialized == 0 else AssetHealth.DEGRADED
 
 
+@dataclass(frozen=True, slots=True)
+class OrchestratorHealth:
+    """¿El runner puede EJECUTAR algo? Distinto de que responda: su webserver puede estar sano con
+    el código caído, y ahí no existe ningún job."""
+
+    ok: bool
+    locations: tuple[str, ...] = ()
+    reason: str = ""
+
+
 class PipelineOrchestrator(Protocol):
     """Lo que la consola necesita del runner. Todo puede levantar `OrchestratorUnavailable`."""
+
+    def launch_backfill(
+        self,
+        *,
+        job_name: str,
+        partition_keys: Sequence[str],
+        policy_id: str,
+        trigger: RunTrigger = RunTrigger.MANUAL,
+        actor_user_id: str | None = None,
+    ) -> str:
+        """Lanza N particiones de una y devuelve el id del BACKFILL. Sus corridas heredan los tags,
+        así que `list_runs(policy_id=…)` las encuentra y retry/cancel siguen siendo por corrida."""
+        ...
+
+    def health(self) -> OrchestratorHealth:
+        """Estado de las code locations. `ok=False` = hay políticas activas que no pueden correr."""
+        ...
 
     def launch(
         self,

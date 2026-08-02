@@ -18,17 +18,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui-base/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/features/admin/components/ConfirmDialog";
 import { SelectCheckbox } from "@/features/admin/resources/save-matching/components/SelectCheckbox";
+import { AdminTableFooter } from "@/features/admin/components/AdminTableFooter";
 import { useAdminList } from "@/features/admin/shell/use-admin-list";
 import { useAdminI18n } from "@/features/admin/shell/useAdminI18n";
 import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
@@ -36,6 +28,7 @@ import { format, type MessageKey } from "@/i18n/messages";
 
 import {
   cancelRun,
+  fetchOrchestratorHealth,
   deletePolicy,
   listProviderFlowEntries,
   pausePolicy,
@@ -53,6 +46,7 @@ import { OrchestrationRow } from "./OrchestrationRow";
 import { OrchestrationTabs, type OrchestrationTab } from "./OrchestrationTabs";
 import { OrchestrationToolbar } from "./OrchestrationToolbar";
 import { PolicyModal } from "./PolicyModal";
+import { usePagination } from "@/features/admin/shell/use-pagination";
 
 type T = (key: MessageKey) => string;
 
@@ -63,17 +57,6 @@ const LIVE_POLL_MS = 5_000;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 /** Ventana de páginas alrededor de la actual (evita pintar 40 botones). */
-function pageWindow(current: number, total: number, max = 5): number[] {
-  if (total <= max) return Array.from({ length: total }, (_, i) => i + 1);
-  let start = Math.max(1, current - Math.floor(max / 2));
-  let end = start + max - 1;
-  if (end > total) {
-    end = total;
-    start = end - max + 1;
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}
-
 /** Qué confirmación está abierta. `null` = ninguna. */
 type Pending =
   | { kind: "cancel"; policyId: string; runId: string }
@@ -115,22 +98,25 @@ export function OrchestrationScreen() {
   const [editing, setEditing] = useState<ProviderFlowDto["policy"] | null>(null);
   const [tab, setTab] = useState<OrchestrationTab>("flows");
   const [creating, setCreating] = useState(false);
+  // Salud del RUNNER, distinta de `runnerDisconnected`: las corridas viven en la DB de Dagster y se
+  // leen aunque su código esté caído, así que ese flag queda en true y la consola pinta verde.
+  const [unhealthy, setUnhealthy] = useState<string | null>(null);
   const [filters, setFilters] = useState<FlowFilters>({ search: "" });
 
-  const [limit, setLimit] = useState(10);
-  const [offset, setOffset] = useState(0);
 
   const visible = useMemo(() => filterFlows(flows, filters), [flows, filters]);
 
-  const total = visible.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const currentPage = Math.min(totalPages, Math.floor(offset / limit) + 1);
-  const pageRows = useMemo(() => visible.slice(offset, offset + limit), [visible, offset, limit]);
-  const from = total > 0 ? offset + 1 : 0;
-  const to = Math.min(offset + limit, total);
-  const pageSizeOptions = PAGE_SIZE_OPTIONS.includes(limit)
-    ? PAGE_SIZE_OPTIONS
-    : [...PAGE_SIZE_OPTIONS, limit].sort((a, b) => a - b);
+  // Paginación client-side: la aritmética vivía copiada en 10 pantallas (`use-pagination`).
+  const {
+    limit, setLimit, offset, setOffset,
+    total, totalPages, currentPage, pageRows, from, to, pageSizeOptions,
+  } = usePagination(visible);
+
+  useEffect(() => {
+    void fetchOrchestratorHealth().then((r) => {
+      setUnhealthy(r.data && !r.data.ok ? r.data.reason : null);
+    });
+  }, []);
 
   // Filtrar o cambiar el tamaño de página vuelve a la primera: quedarse en la página 4 de un
   // resultado que ahora tiene una sola muestra una tabla vacía que parece un error.
@@ -253,6 +239,16 @@ export function OrchestrationScreen() {
           <AssetsTab t={t} locale={locale} />
         ) : (
           <>
+        {unhealthy && (
+          // Nada corre aunque los flujos figuren activos: el estado del flujo es CONFIGURACIÓN, no
+          // capacidad. Rojo y no ámbar — no es degradado, es que no se ejecuta nada.
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+            <p className="font-semibold">{t("admin.orchestration.health.title")}</p>
+            <p className="mt-0.5">{t("admin.orchestration.health.body")}</p>
+            <p className="mt-1 font-mono text-xs opacity-80">{unhealthy}</p>
+          </div>
+        )}
+
         {runnerDisconnected && (
           // Estado DEGRADADO explícito, no un error. La política sigue visible y editable porque
           // vive en NUESTRA DB — es justo cuando el operador más necesita mirarla. Y lo declara el
@@ -408,61 +404,22 @@ export function OrchestrationScreen() {
 
             {/* Footer de paginación — mismo patrón que Fuentes: tamaño de página, rango y páginas.
                 Pagina lo FILTRADO, no la lista cruda: el rango tiene que cuadrar con lo que se ve. */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <span>{t("admin.orchestration.pagination.show")}</span>
-                <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-                  <SelectTrigger size="sm" className="w-16">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pageSizeOptions.map((n) => (
-                      <SelectItem key={n} value={String(n)}>
-                        {n}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span>{t("admin.orchestration.pagination.perPage")}</span>
-              </div>
-
-              <span data-testid="pagination-range">
-                {format(locale, "admin.orchestration.pagination.of", {
-                  from: String(from),
-                  to: String(to),
-                  total: String(total),
-                })}
-              </span>
-
-              <Pagination className="mx-0 w-auto justify-end">
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      onClick={() => setOffset(Math.max(0, offset - limit))}
-                      aria-disabled={currentPage <= 1}
-                      className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
-                    />
-                  </PaginationItem>
-                  {pageWindow(currentPage, totalPages).map((pg) => (
-                    <PaginationItem key={pg}>
-                      <PaginationLink
-                        isActive={pg === currentPage}
-                        onClick={() => setOffset((pg - 1) * limit)}
-                      >
-                        {pg}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext
-                      onClick={() => setOffset(offset + limit)}
-                      aria-disabled={currentPage >= totalPages}
-                      className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            </div>
+            <AdminTableFooter
+              limit={limit}
+              onLimitChange={setLimit}
+              pageSizeOptions={pageSizeOptions}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={(pg) => setOffset((pg - 1) * limit)}
+              rangeLabel={format(locale, "admin.orchestration.pagination.of", {
+                from: String(from),
+                to: String(to),
+                total: String(total),
+              })}
+              showLabel={t("admin.orchestration.pagination.show")}
+              perPageLabel={t("admin.orchestration.pagination.perPage")}
+              rangeTestId="pagination-range"
+            />
           </div>
         )}
           </>
@@ -519,11 +476,14 @@ export function OrchestrationScreen() {
       {creating ? (
         <CreateFlowModal
           providers={providers}
-          // Un proveedor que ya tiene flujo no se ofrece: la policy es única por
-          // (provider, market, flow) y una PAUSADA sigue ocupando el lugar.
-          existingProviderIds={flows
-            .map((f) => f.policy.provider_id)
-            .filter((id): id is string => id != null)}
+          // Se excluye el PAR (proveedor, flujo), no el proveedor: uno con descubrimiento puede
+          // tener además refresco de precios. Una policy PAUSADA sigue ocupando el lugar.
+          existingFlows={flows
+            .map((f) => ({
+              provider_id: f.policy.provider_id ?? "",
+              flow_key: f.policy.flow_key ?? "",
+            }))
+            .filter((f) => f.provider_id && f.flow_key)}
           onClose={() => setCreating(false)}
           refresh={refreshOrWarn}
           t={t}

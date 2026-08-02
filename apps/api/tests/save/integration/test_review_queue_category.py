@@ -20,13 +20,13 @@ from src.contexts.save.infrastructure.repositories import SqlCategoryClassificat
 from .test_list_review_queue import _seed_pending_match
 from .test_product_match_repository import _seed_provider_and_canonical
 
-_ENTRIES = [("Despensa & Abarrotes", ["Arroz, Granos & Legumbres"])]
+_ENTRIES = [(("Despensa & Abarrotes", "despensa"), [("Arroz, Granos & Legumbres", "despensa.arroz")])]
 
 
 def _leaf_id(db_session, market: str, name: str) -> str:  # type: ignore[no-untyped-def]
     node = db_session.scalar(
         select(TaxonomyNodeModel).where(
-            TaxonomyNodeModel.market_id == market, TaxonomyNodeModel.name == name
+            TaxonomyNodeModel.name == name
         )
     )
     return str(node.id)

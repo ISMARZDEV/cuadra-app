@@ -14,7 +14,7 @@ from src.contexts.save.application.orchestration_policies import (
     CreateProviderFlow,
     ProviderFlowNotSupported,
 )
-from src.contexts.save.domain.entities.orchestration import ExecutionMode, FlowKey
+from src.contexts.save.domain.entities.orchestration import ExecutionMode, FlowKey, PolicyScope
 from src.contexts.save.domain.directed_query import DirectedCapability
 
 
@@ -24,6 +24,8 @@ class FakePolicyRepo:
         self._existing = existing_provider_ids or set()
 
     def find_active(self, *, provider_id, market_id, flow_key):  # type: ignore[no-untyped-def]
+        if provider_id is None:  # scope ASSET: la clave es el asset, no la tienda
+            return next((p for p in self.added if p.asset_key == flow_key), None)
         return object() if provider_id in self._existing else None
 
     def add(self, policy) -> None:  # type: ignore[no-untyped-def]
@@ -136,4 +138,88 @@ class TestGuards:
         with pytest.raises(ProviderFlowNotSupported, match="[Yy]a existe"):
             use_case.execute(
                 provider_id="prov-x", market_id="DO", flow_key=FlowKey.PROVIDER_PRICES_REFRESH
+            )
+
+
+class TestPriceRefreshEligibility:
+    """El refresco re-fetchea por DETALLE (camino A) con fallback a browse, así que no necesita
+    saber buscar por texto — a diferencia del descubrimiento, que son búsquedas de canasta."""
+
+    def test_a_browse_only_source_can_still_refresh_prices(self) -> None:
+        use_case, repo = _use_case(
+            sources={"prov-bravo": _Source("rest_catalog")},
+            capabilities={"rest_catalog": DirectedCapability(by_ean=True, by_text=False)},
+        )
+
+        use_case.execute(
+            provider_id="prov-bravo",
+            market_id="DO",
+            flow_key=FlowKey.PROVIDER_PRICE_REFRESH,
+        )
+
+        assert len(repo.added) == 1
+        assert repo.added[0].flow_key is FlowKey.PROVIDER_PRICE_REFRESH
+
+    def test_discovery_still_demands_text_search(self) -> None:
+        use_case, _ = _use_case(
+            sources={"prov-bravo": _Source("rest_catalog")},
+            capabilities={"rest_catalog": DirectedCapability(by_ean=True, by_text=False)},
+        )
+
+        with pytest.raises(ProviderFlowNotSupported):
+            use_case.execute(
+                provider_id="prov-bravo",
+                market_id="DO",
+                flow_key=FlowKey.PROVIDER_PRICES_REFRESH,
+            )
+
+
+class TestCreateAssetPolicy:
+    """Los jobs GLOBALES (`freshness`, `coverage`) tenían su cron en código, invisible para el
+    operador. `PolicyScope.ASSET` ya existía en el modelo y nunca se había usado."""
+
+    def test_creates_a_policy_for_an_offerable_asset(self) -> None:
+        from src.contexts.save.application.orchestration_policies import CreateAssetPolicy
+
+        repo = FakePolicyRepo()
+        CreateAssetPolicy(policy_repo=repo).execute(asset_key="freshness", market_id="DO")
+
+        assert len(repo.added) == 1
+        policy = repo.added[0]
+        assert policy.scope is PolicyScope.ASSET
+        assert policy.asset_key == "freshness"
+        assert policy.provider_id is None
+        assert policy.execution_mode is ExecutionMode.MANUAL  # nace parada, como los provider-flows
+
+    def test_refuses_an_asset_the_console_cannot_run(self) -> None:
+        from src.contexts.save.application.orchestration_policies import CreateAssetPolicy
+
+        with pytest.raises(ProviderFlowNotSupported):
+            CreateAssetPolicy(policy_repo=FakePolicyRepo()).execute(
+                asset_key="cualquier_cosa", market_id="DO"
+            )
+
+    def test_refuses_a_duplicate(self) -> None:
+        from src.contexts.save.application.orchestration_policies import CreateAssetPolicy
+
+        repo = FakePolicyRepo()
+        uc = CreateAssetPolicy(policy_repo=repo)
+        uc.execute(asset_key="coverage", market_id="DO")
+
+        with pytest.raises(ProviderFlowNotSupported):
+            uc.execute(asset_key="coverage", market_id="DO")
+
+
+class TestBrowseEligibility:
+    def test_a_source_without_sections_cannot_browse(self) -> None:
+        """El browse recorre las secciones una por una: sin secciones no navega nada, y crear el
+        flow igual produciría un backfill vacío que Dagster rechaza."""
+        use_case, _ = _use_case(
+            sources={"prov-x": _Source("rest_catalog")},
+            capabilities={"rest_catalog": DirectedCapability(by_ean=True, by_text=True)},
+        )
+
+        with pytest.raises(ProviderFlowNotSupported):
+            use_case.execute(
+                provider_id="prov-x", market_id="DO", flow_key=FlowKey.PROVIDER_BROWSE
             )

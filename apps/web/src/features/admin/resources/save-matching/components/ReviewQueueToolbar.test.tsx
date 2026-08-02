@@ -23,6 +23,7 @@ function renderToolbar(overrides: Partial<Parameters<typeof ReviewQueueToolbar>[
     onBulkApprove: vi.fn(),
     onBulkReject: vi.fn(),
     onBulkClassify: vi.fn(),
+    onBulkRematch: vi.fn(),
   onBulkResolveBrands: vi.fn(),
     onBulkCanonize: vi.fn(),
     locale: "es" as const,
@@ -107,5 +108,17 @@ describe("ReviewQueueToolbar — contador de selección", () => {
     renderToolbar({ selectedCount: 0 });
 
     expect(screen.queryByTestId("review-selected-count")).not.toBeInTheDocument();
+  });
+});
+
+describe("ReviewQueueToolbar — re-evaluar", () => {
+  // Los candidatos de la cola son ESTÁTICOS: una fila que entró cuando el catálogo era chico
+  // arrastra para siempre los candidatos de ese día. Sin esta acción la única salida era descartar
+  // la fila (que además pierde el histórico de precios) o correr un script de CLI.
+  it("ofrece «Re-evaluar» y dispara onBulkRematch", () => {
+    const props = renderToolbar({ selectedCount: 3 });
+    fireEvent.click(screen.getByRole("button", { name: /Acciones/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Re-evaluar/ }));
+    expect(props.onBulkRematch).toHaveBeenCalled();
   });
 });

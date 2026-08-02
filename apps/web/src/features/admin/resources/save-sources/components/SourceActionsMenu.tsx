@@ -37,11 +37,20 @@ export function SourceActionsMenu({
   const onTogglePause = async () => {
     setBusy(true);
     setError(null);
-    const res = isPaused ? await resumeSourceConfig(source.id) : await pauseSourceConfig(source.id);
-    setBusy(false);
-    if (res.error)
-      setError(t(isPaused ? "admin.sources.actions.errResume" : "admin.sources.actions.errPause"));
-    else await refresh();
+    const errKey = isPaused ? "admin.sources.actions.errResume" : "admin.sources.actions.errPause";
+    // `finally`: si la promesa RECHAZA, un `setBusy(false)` suelto no corre y el menú de la fila
+    // queda bloqueado hasta recargar la página.
+    try {
+      const res = isPaused
+        ? await resumeSourceConfig(source.id)
+        : await pauseSourceConfig(source.id);
+      if (res.error) setError(t(errKey));
+      else await refresh();
+    } catch {
+      setError(t(errKey));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

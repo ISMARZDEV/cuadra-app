@@ -48,3 +48,53 @@ def test_color_as_substring_does_not_false_trigger() -> None:
     # El color debe matchear como PALABRA completa, no como subcadena: "Pintada" contiene "pinta"
     # pero NO es el color pinta. Un match por subcadena dispararía un falso conflicto contra "negra".
     assert not variants_conflict("Crema Pintada Especial", "Habichuelas Negras La Famosa")
+
+
+# --- Grupo LEGUMBRE (especie) -------------------------------------------------------------
+# El color no alcanza: el falso positivo medido 2026-07-21 comparte color. `LA FAMOSA GANDULES
+# VERDES 15 OZ` auto-linkeó a `Habichuela Verde La Famosa 15 Oz` en 0.854 — misma marca, mismo
+# tamaño, MISMO color; solo difiere la ESPECIE, y trgm+vector coincidieron en equivocarse (el
+# consenso RRF refuerza el sesgo compartido en vez de detectarlo). Ver aispace-men #822.
+
+
+def test_gandules_vs_habichuela_conflict() -> None:
+    # EL caso real medido: mismo color (verde), misma marca, mismo tamaño. Solo la especie difiere.
+    assert variants_conflict("LA FAMOSA GANDULES VERDES 15 OZ", "Habichuela Verde La Famosa 15 Oz")
+
+
+def test_guandules_spelling_variant_conflicts_the_same() -> None:
+    # El catálogo escribe "Guandules" (con U) y Bravo "GANDULES" — la misma legumbre. La grafía no
+    # debe cambiar la decisión: sigue estando en conflicto contra habichuela.
+    assert variants_conflict("Guandules Verdes La Famosa 820 Gr", "Habichuelas Verdes La Famosa 15 Oz")
+
+
+def test_frijol_is_a_synonym_of_habichuela_and_does_not_conflict() -> None:
+    # REGIONALISMO, no especie distinta: frijol/poroto/judía = habichuela. Tratarlos como valores
+    # distintos rompería matches BUENOS (un empaque mexicano contra el canónico dominicano).
+    assert not variants_conflict("Frijoles Negros Goya 15 Oz", "Habichuelas Negras Goya 15 Oz")
+
+
+def test_same_legume_different_spelling_does_not_conflict() -> None:
+    # Gandules vs Guandules: misma especie. El tamaño distinto es problema del size_gate, no de este.
+    assert not variants_conflict("GANDULES VERDES LA FAMOSA 15 OZ", "Guandules Verdes La Famosa 820 Gr")
+
+
+def test_lenteja_vs_garbanzo_conflict() -> None:
+    assert variants_conflict("Lentejas La Famosa 15 Oz", "Garbanzos La Famosa 15 Oz")
+
+
+def test_only_one_side_names_a_legume_does_not_conflict() -> None:
+    # Conservador, igual que el grupo color: sin contradicción POSITIVA no se bloquea.
+    assert not variants_conflict("La Famosa Verdes 15 Oz", "Habichuela Verde La Famosa 15 Oz")
+
+
+def test_mixed_product_naming_both_legumes_does_not_conflict() -> None:
+    # "Habichuelas con Gandules" nombra AMBAS: los conjuntos se intersectan → no es contradicción.
+    assert not variants_conflict(
+        "Habichuelas con Gandules La Famosa 15 Oz", "Habichuela Verde La Famosa 15 Oz"
+    )
+
+
+def test_legume_as_substring_does_not_false_trigger() -> None:
+    # "Habanero" contiene "haba" pero NO es la legumbre. Match por PALABRA completa, nunca subcadena.
+    assert not variants_conflict("Salsa Habanero Picante", "Habas Secas La Famosa 15 Oz")
