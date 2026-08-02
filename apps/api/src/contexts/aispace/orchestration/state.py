@@ -1,8 +1,9 @@
 """Estado del grafo del orquestador AISpace (§7.2). Extiende `MessagesState`.
 
-Reducers explícitos (best practice LangGraph): `messages` acumula vía `add_messages`;
-`ui_actions` vía `add` (si no, se pierde entre nodos — bug #1 del padre). El resto son
-campos de un solo valor que cada nodo sobrescribe.
+Reducers (best practice LangGraph): `messages` acumula vía `add_messages`. El DEFAULT del
+framework es SOBREESCRIBIR — un campo que deba acumular necesita `Annotated[list, add]`
+explícito, y omitirlo es la fuente #1 de bugs de «estado perdido». `ui_actions` NO lo lleva
+a propósito (ver su comentario abajo). El resto son campos de un solo valor.
 """
 from __future__ import annotations
 
