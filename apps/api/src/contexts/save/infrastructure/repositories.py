@@ -19,6 +19,7 @@ from ..domain.alerts import Alert, AlertNotification, AlertSubscription
 from ..domain.classification import (
     CategoryCandidate,
     CategoryClassification,
+    CategoryDecision,
     ClassifiableProduct,
 )
 from ..domain.canonical_catalog import (
@@ -73,6 +74,7 @@ from .models import (
     BrandModel,
     CanonicalProductModel,
     CategoryClassificationModel,
+    CategoryDecisionModel,
     CollectionModel,
     CollectionProductModel,
     PriceAlertModel,
@@ -2797,4 +2799,49 @@ class SqlCanonicalImageRepository:
             .where(CanonicalProductModel.id == canonical_product_id)
             .values(image_url=first.url if first else None)
         )
+        self._s.flush()
+
+
+class SqlCategoryDecisionRecorder:
+    """Adapter de `CategoryDecisionRecorder` — bitácora append-only de decisiones de clasificación.
+
+    Append-only a propósito: cada corrida deja su rastro y ninguna pisa a la anterior. Eso permite
+    comparar el comportamiento de la cascada ENTRE corridas (¿el cambio de vocabulario mejoró o
+    empeoró?), que es justamente la pregunta que hoy no se puede responder.
+
+    No falla la ingesta: registrar es observabilidad, y una bitácora rota nunca debe tumbar una
+    corrida de precios. Ver `record`.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def record(self, decision: CategoryDecision) -> None:
+        ref = _parse_uuid(decision.ref_id)
+        if ref is None:
+            return  # ref no-UUID (tests/fixtures): nada que registrar, y nada que romper
+        row = CategoryDecisionModel(
+            store_product_id=None if decision.is_canonical else ref,
+            canonical_product_id=ref if decision.is_canonical else None,
+            market_id=decision.market_id,
+            method=decision.method,
+            taxonomy_node_id=_parse_uuid(decision.taxonomy_node_id or ""),
+            confidence=decision.confidence,  # type: ignore[arg-type]
+            band=decision.band,
+            source_leaf_id=_parse_uuid(decision.source_leaf_id or ""),
+            name_leaf_id=_parse_uuid(decision.name_leaf_id or ""),
+            matched_tokens=", ".join(decision.matched_tokens) or None,
+            # Se guarda como objeto (no lista suelta) para poder sumarle claves después sin migrar.
+            vector_top=(
+                {
+                    "candidates": [
+                        {"node_id": c.taxonomy_node_id, "score": c.score, "name": c.name}
+                        for c in decision.vector_top
+                    ]
+                }
+                if decision.vector_top
+                else None
+            ),
+        )
+        self._s.add(row)
         self._s.flush()

@@ -15,9 +15,13 @@ el índice HNSW — nunca un flip de configuración/env var sobre este mismo ada
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
+from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 _EMBED_TIMEOUT_SECONDS = 30.0
 
@@ -78,3 +82,43 @@ class SentenceTransformersEmbeddingProvider:
         if not texts:
             return []
         return (self._encode_fn or self._encode)(texts)
+
+
+def build_api_embedder(
+    *,
+    endpoint_url: str,
+    loader: Callable[[], Any] | None = None,
+) -> Any | None:
+    """Embedder utilizable desde la API, que NO lleva el grupo de dependencias `ingestion`.
+
+    Existe porque, desde el admin, «Clasificar seleccionados» nunca llegaba al juez LLM. No era el
+    flag: la cascada corta ANTES de la etapa vectorial cuando no hay embedder, y el juez vive
+    DESPUÉS de ella (`_classify_by_name`). Sin embedder, inyectar el juez no cambia nada.
+
+    Orden de preferencia, y por qué:
+      1. **Endpoint HTTP** (`SAVE_BGE_M3_ENDPOINT_URL`) — el camino de PRODUCCIÓN. El modelo corre
+         en un servicio aparte y la API sólo hace una request; nada pesado en su imagen.
+      2. **Modelo in-process** — el camino de DEV, donde el grupo `ingestion` sí está instalado.
+      3. **`None`** — comportamiento previo exacto: la cascada se queda con léxico + señal de
+         origen y se abstiene en la banda gris. La regla sagrada intacta.
+
+    El paso 2 usa un import PROTEGIDO y perezoso, y ahí está la seguridad: en producción el paquete
+    no existe, salta `ImportError`, y la API sigue comportándose como antes en vez de reventar.
+    Cargarlo al importar el módulo —que es lo que la composición evitaba— sí la habría tumbado al
+    arrancar, con un fallo invisible en local porque acá el grupo está.
+    """
+    if endpoint_url:
+        return BgeM3EmbeddingProvider(endpoint_url)
+
+    def _default_loader() -> Any:
+        return SentenceTransformersEmbeddingProvider()
+
+    try:
+        return (loader or _default_loader)()
+    except Exception:  # noqa: BLE001 — cualquier fallo de carga degrada, nunca tumba la request
+        logger.warning(
+            "build_api_embedder: sin endpoint y sin modelo local — la clasificación desde el "
+            "admin se queda con léxico + señal de origen (banda gris sin juez)",
+            exc_info=True,
+        )
+        return None

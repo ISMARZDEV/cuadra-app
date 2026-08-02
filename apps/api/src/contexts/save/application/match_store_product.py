@@ -38,6 +38,7 @@ from ..infrastructure.matching.cascade.banding import JUDGE_MATCH_MIN_CONFIDENCE
 from ..infrastructure.matching.cascade.brand_gate import brand_unsupported
 from ..infrastructure.matching.cascade.category_gate import categories_conflict, category_boost
 from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
+from ..infrastructure.matching.cascade.form_gate import forms_conflict
 from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
 from ..infrastructure.matching.cascade.quality_gate import qualities_conflict
 from ..infrastructure.matching.cascade.scoring import apply_boosts
@@ -219,6 +220,14 @@ class MatchStoreProduct:
             canonical.quality if canonical else None,
         )
 
+        # Form gate: la FORMA de preparación distingue SKUs que comparten marca, tamaño, categoría,
+        # color y especie — harina de arroz no es arroz, y habichuelas guisadas no son secas. Medido
+        # 2026-08-01 en la primera corrida con el juez encendido: 3 falsos merges por este eje, dos
+        # firmados por el JUEZ (0.850) y uno por la cascada determinista (0.902). A diferencia del
+        # variant gate, un nombre SIN marca de forma no es "sin señal" sino la forma BASE; ver
+        # `form_gate` para por qué esa asimetría es deliberada.
+        form_conflict = forms_conflict(product.name, canonical.name if canonical else "")
+
         # Invariante de PROVEEDOR ÚNICO: una tienda no publica el mismo producto dos veces, así que
         # si el canónico ganador ya tiene un `store_product` de ESTA tienda, el entrante es otro SKU.
         #
@@ -231,21 +240,45 @@ class MatchStoreProduct:
             winner_id, product.provider_id, product.store_product_id
         )
 
+        # Los 8 gates son vetos DETERMINISTAS del auto-enlace: si cualquiera se activa, el par va a
+        # revisión cualquiera sea la banda y cualquiera sea el veredicto del juez. Colapsarlos en una
+        # sola señal permite evaluarla ANTES del juez (ver banda gris abajo), que es donde la
+        # diferencia se paga en dinero.
+        gate_veto = (
+            size_conflict
+            or category_conflict
+            or ean_conflict
+            or variant_conflict
+            or brand_missing
+            or quality_conflict
+            or form_conflict
+            or provider_dup
+        )
+
         if band == "auto_link":
-            if (
-                size_conflict
-                or category_conflict
-                or ean_conflict
-                or variant_conflict
-                or brand_missing
-                or quality_conflict
-                or provider_dup
-            ):
+            if gate_veto:
                 return self._to_review(
                     product, method=stage_method, confidence=final_score,
                     candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
                 )
             return self._auto_link(product, winner_id, confidence=final_score, method=stage_method)
+
+        # Banda gris con un gate activo: el desenlace YA está decidido, así que no se paga el juez.
+        # Un veredicto no puede levantar un veto determinista — la condición de auto-enlace de abajo
+        # exige `not gate_veto` — de modo que la llamada sólo agregaría tokens y latencia a un
+        # resultado idéntico. Medido sobre la cola real el 2026-08-01, justo antes de encender
+        # `SAVE_LLM_JUDGE_ENABLED`: de 158 pares en banda gris, 152 (96.2%) tenían un gate activo;
+        # encender el juez sin este corte habría gastado 152 llamadas de cada 158 en pares cuyo
+        # destino no dependía de la respuesta.
+        #
+        # Se registra con la MISMA semántica que el camino "juez apagado" de abajo (`method="human"`,
+        # confianza de la cascada, sin columnas de costo): el juez no dictaminó este par, y decir
+        # `llm` mentiría en la distinción que defienden tanto ese camino como el de `degraded`.
+        if band == "grey" and gate_veto:
+            return self._to_review(
+                product, method="human", confidence=final_score,
+                candidates=self._fused_snapshots(fused, trgm_candidates, vector_candidates),
+            )
 
         if band == "grey" and self._judge is None:
             # LLM apagado (`SAVE_LLM_JUDGE_ENABLED=false`): la banda gris va DIRECTO a revisión, sin
@@ -278,16 +311,14 @@ class MatchStoreProduct:
             # CRITICAL-1 (verify follow-up): un veredicto "match" del judge SOLO autolinkea si su
             # propia confianza alcanza el piso — por debajo, es un match débil y va a revisión
             # (method="llm", NO "human": el judge SÍ corrió, solo no fue lo bastante seguro).
+            # `not gate_veto` es hoy redundante (el corte de arriba ya retornó si algún gate se
+            # activó) y se conserva a propósito: es el invariante que hace SEGURO ese corte —
+            # ningún veredicto auto-enlaza por encima de un veto. Si alguien reordena la cascada,
+            # el veto sigue puesto acá y los tests de los gates en banda gris lo siguen cubriendo.
             if (
                 verdict.decision == "match"
                 and verdict.confidence >= JUDGE_MATCH_MIN_CONFIDENCE
-                and not size_conflict
-                and not category_conflict
-                and not ean_conflict
-                and not variant_conflict
-                and not brand_missing
-                and not quality_conflict
-                and not provider_dup
+                and not gate_veto
             ):
                 return self._auto_link(
                     product, winner_id, confidence=verdict.confidence, method="llm",

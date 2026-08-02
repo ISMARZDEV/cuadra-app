@@ -63,6 +63,20 @@ class StructuredChatModel(Protocol):
 _UNCERTAIN = CategoryVerdict(decision="uncertain", confidence=0.0, cited_fields=[])
 
 
+def _uncertain_with(usage: dict[str, Any] | None) -> CategoryVerdict:
+    """Fail-safe que igual reporta el costo cuando SÍ se gastaron tokens (la llamada salió bien
+    pero la salida era ilegible). Pagar y no poder confiar en lo que volvió no son contradictorios:
+    es la lectura honesta del gasto."""
+    if usage is None:
+        return _UNCERTAIN
+    return CategoryVerdict(
+        decision="uncertain", confidence=0.0, cited_fields=[],
+        input_tokens=usage.get("input_tokens"),
+        output_tokens=usage.get("output_tokens"),
+        model=usage.get("model"),
+    )
+
+
 class CategoryJudge:
     """Adapter around the LLM judge for the grey-band classification step."""
 
@@ -74,7 +88,25 @@ class CategoryJudge:
     ) -> None:
         # max_retries=0: fallo instantáneo si el LLM está caído (sin backoff), para que el breaker
         # corte rápido (mismo patrón que LlmJudge).
-        self._model = model or get_chat_model("smart", max_retries=0).with_structured_output(
+        # Tier `fast`, NO `smart` — decidido con un A/B, no por ahorrar a ciegas.
+        #
+        # Medido 2026-08-01 sobre 119 pares reales de banda gris, los mismos por los dos modelos:
+        # **96% de acuerdo en el desenlace** (asigna la hoja o no). Y de los 5 desacuerdos, `fast`
+        # acierta 3, `smart` 1 y uno es discutible:
+        #   · `CREMA PROTECTORA PAÑAL` → «Cuidado Prenatal»: smart asigna, fast rechaza (fast bien)
+        #   · `SAL CEBOLLA` → «Condimentos»: fast asigna, smart duda (fast bien)
+        #   · `Galleta Arroz Baby Mum-Mum` → «Arroz, Granos»: smart asigna (MAL — es el error del
+        #     ingrediente que el subsistema combate; fast lo rechaza)
+        #   · `JAMON PECHUGA PAVO` → «Jamón»: smart asigna (bien), fast rechaza
+        #
+        # O sea que el modelo caro no era más preciso acá: la tarea es un sí/no sobre un texto
+        # corto contra UNA categoría candidata, no razonamiento abierto. Y este juez es el que más
+        # llama del subsistema (147 clasificaciones contra 12 del de matching).
+        #
+        # El juez de MATCHING sigue en `smart` a propósito: no se midió, su desenlace es un
+        # auto-enlace (más caro de equivocar) y son ~6 llamadas por corrida — no hay ahorro que
+        # justifique el riesgo. Re-medir con `seeds.ab_judge_tier` antes de tocarlo.
+        self._model = model or get_chat_model("fast", max_retries=0).with_structured_output(
             _Verdict, include_raw=True
         )
         # Corta el retry-storm si el LLM está caído/sin cuota (mismo patrón que LlmJudge).
@@ -101,9 +133,14 @@ class CategoryJudge:
 
         if not isinstance(result, dict):
             return _UNCERTAIN
+
+        # Se lee ANTES de validar la salida: la llamada ya se pagó aunque la respuesta no sirva, y
+        # si no se contara acá el gasto quedaría subestimado justo en el camino que más falla.
+        usage = self._read_usage(result.get("raw"))
+
         if result.get("parsing_error") is not None or result.get("parsed") is None:
             logger.warning("category_judge: unparseable output, degrading to uncertain")
-            return _UNCERTAIN
+            return _uncertain_with(usage)
 
         parsed = result["parsed"]
         payload = parsed.model_dump() if isinstance(parsed, BaseModel) else (
@@ -113,10 +150,31 @@ class CategoryJudge:
             verdict = _Verdict.model_validate(payload)
         except ValidationError:
             logger.warning("category_judge: schema validation failed, degrading to uncertain")
-            return _UNCERTAIN
+            return _uncertain_with(usage)
 
         return CategoryVerdict(
             decision=verdict.decision,
             confidence=verdict.confidence,
             cited_fields=verdict.cited_fields,
+            input_tokens=usage.get("input_tokens") if usage else None,
+            output_tokens=usage.get("output_tokens") if usage else None,
+            model=usage.get("model") if usage else None,
         )
+
+    @staticmethod
+    def _read_usage(raw: Any) -> dict[str, Any] | None:
+        """Metadata de uso de la respuesta. `None` cuando no hay nada que reportar.
+
+        Provider-agnóstico: langchain-openai expone el modelo en `model_name` y langchain-anthropic
+        en `model` — leer sólo uno dejaba el campo en 'unknown' con el otro proveedor (mismo bug ya
+        corregido en `llm_judge`).
+        """
+        usage = getattr(raw, "usage_metadata", None) if raw is not None else None
+        if not usage:
+            return None
+        metadata = getattr(raw, "response_metadata", {}) or {}
+        return {
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "model": metadata.get("model_name") or metadata.get("model") or "unknown",
+        }

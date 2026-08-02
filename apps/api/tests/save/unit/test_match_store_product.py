@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+import pytest
+
 from src.contexts.save.application.match_store_product import (
     IncomingStoreProduct,
     MatchStoreProduct,
@@ -959,7 +961,7 @@ def test_grey_band_low_confidence_match_verdict_routes_to_pending_review() -> No
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("match", 0.60, ["brand agrees"]))  # < JUDGE_MATCH_MIN_CONFIDENCE
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -979,7 +981,7 @@ def test_grey_band_no_match_verdict_routes_to_pending_review() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("no_match", 0.10, ["brand disagrees"]))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -999,7 +1001,7 @@ def test_grey_band_uncertain_verdict_routes_to_pending_review() -> None:
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(FakeVerdict("uncertain", 0.0, []))
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -1240,7 +1242,7 @@ def test_grey_band_weak_verdict_wires_judge_cost_onto_pending_review_record() ->
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(
         FakeVerdict(
@@ -1341,7 +1343,11 @@ def _grey_band_with(verdict: FakeVerdict):  # type: ignore[no-untyped-def]
         trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
     )
     canonical_repo = FakeCanonicalProductRepository(
-        {"canon-1": _canonical("canon-1", brand="Otra", size="Otro")}
+        # `brand=""` (no una marca ajena): la forma DOCUMENTADA de anular los boosts sin activar el
+        # brand gate — ver el docstring de `_canonical`. Con `brand="Otra"` estos tests no probaban
+        # la banda gris sino un par ya VETADO por marca, y desde que los gates se evalúan antes del
+        # juez ese par ni siquiera llega a consultarlo.
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
     )
     judge = FakeJudge(verdict)
     use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo, judge=judge)
@@ -1408,3 +1414,216 @@ def test_a_match_outside_a_run_has_no_run_id() -> None:
     use_case, _ = _make_use_case(no_judge=True)
 
     assert use_case.execute(_incoming(run_id=None)).run_id is None
+
+
+# ------------------------- un gate que veta se resuelve SIN pagar el juez (medido 2026-08-01) --
+#
+# Los gates son vetos DETERMINISTAS: si alguno se activa, el par va a revisión sea cual sea el
+# veredicto. Llamar al juez ahí no cambia el desenlace — sólo gasta tokens y latencia.
+#
+# Medido sobre la cola real (334 pendientes) justo antes de encender `SAVE_LLM_JUDGE_ENABLED`:
+# de los 158 pares en banda gris, **152 (96.2%) tenían al menos un gate activo** — es decir, 152
+# de cada 158 llamadas al juez habrían tenido el resultado predeterminado. Desglose: brand 133,
+# size 83, provider_dup 31, quality 10, variant 8 (no excluyentes).
+#
+# Estos tests fijan el orden: gates primero, juez sólo sobre lo que el juez puede decidir.
+
+
+def test_missing_brand_evidence_resolves_without_paying_for_a_judge_call() -> None:
+    # El gate más frecuente de la medición (133/158). Mismo caso que
+    # `test_no_brand_evidence_blocks_grey_band_judge_auto_link`, que ya fija el DESENLACE; este
+    # fija el COSTO: el juez ni siquiera se consulta.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Selecto Wala", brand="Wala")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, _ = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(name="ARROZ SELECTO 10 LB", brand="", size="5 LB"))
+
+    assert judge.calls == []  # el veredicto no podía cambiar nada: no se paga
+    assert result.status == "pending_review"
+
+
+def test_a_size_conflict_resolves_without_paying_for_a_judge_call() -> None:
+    # Segundo gate más frecuente (83/158). Tamaños comparables y en conflicto = SKU distinto.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, _ = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    # El canónico pesa 2.267 kg (5 lb); el entrante declara 20 LB → conflicto duro de tamaño.
+    result = use_case.execute(_incoming(size="20 LB"))
+
+    assert judge.calls == []
+    assert result.status == "pending_review"
+
+
+def test_a_second_sku_from_the_same_provider_resolves_without_paying_for_a_judge_call() -> None:
+    # El invariante ESTRUCTURAL (31/158): una tienda no publica el mismo producto dos veces.
+    # No hay nada que un LLM pueda aportar sobre un hecho de la base de datos.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
+    )
+    store_repo = FakeStoreProductLinkRepository(
+        provider_siblings={("canon-1", "p-sirena")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, _ = _make_use_case(
+        match_repo=match_repo,
+        canonical_repo=canonical_repo,
+        store_repo=store_repo,
+        judge=judge,
+    )
+
+    result = use_case.execute(_incoming())
+
+    assert judge.calls == []
+    assert result.status == "pending_review"
+
+
+def test_a_gate_vetoed_pair_is_recorded_as_human_with_the_cascade_score() -> None:
+    """Un par vetado por un gate se registra con la MISMA semántica que el camino "juez apagado".
+
+    `method="human"` porque el juez no dictaminó — es la distinción que ya defienden el camino
+    `judge is None` y el camino `degraded`: `llm` debe significar "el juez falló el caso", nunca
+    "el juez estuvo presente pero su opinión daba igual". Y la confianza es la de la CASCADA
+    (score fusionado + boosts), no la de un veredicto que no se pidió.
+
+    Sin esto, la cola mostraría `method="llm"` en pares que el LLM nunca decidió, y las columnas
+    de costo (`judge_*`) atribuirían tokens a una llamada que no ocurrió.
+    """
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Arroz Selecto Wala", brand="Wala")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"], input_tokens=120, model="gpt-4o"))
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(name="ARROZ SELECTO 10 LB", brand="", size="5 LB"))
+
+    assert judge.calls == []
+    assert result.method == "human"
+    # Score de la cascada (0.60 crudo + 0.05 del boost de tamaño exacto), NO el 0.97 del juez.
+    assert result.confidence == pytest.approx(0.65)
+    record = c["match_repo"].records[-1]
+    assert record["method"] == "human"
+    assert "judge_input_tokens" not in record  # no se gastaron tokens: no se reportan
+    assert "judge_model" not in record
+
+
+def test_a_clean_grey_band_pair_still_reaches_the_judge() -> None:
+    # La contracara: sin ningún gate activo, el juez SIGUE siendo quien decide. La optimización
+    # recorta llamadas inútiles, no la banda gris — son los 6 de 158 que sí necesitan criterio
+    # (p.ej. `GOYA ARROZ INTEGRAL 32 OZ` vs `Arroz Goya Integral 2 Lb.`, donde 32 oz == 2 lb).
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["brand agrees"]))
+    use_case, c = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming())
+
+    assert len(judge.calls) == 1
+    assert result.status == "auto_linked"
+    assert result.method == "llm"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+# ---------------------------------- form gate (forma de preparación, medido 2026-08-01) --
+#
+# 8.º gate. La FORMA distingue SKUs que comparten marca, tamaño, categoría, color y especie:
+# harina de arroz no es arroz; habichuelas guisadas no son secas. Los 3 falsos merges de la primera
+# corrida con el juez encendido: dos los produjo el JUEZ (0.850) y uno la cascada DETERMINISTA
+# (hybrid, 0.902) — el eje falla en los dos caminos. Ver `cascade/form_gate.py`.
+
+
+def test_a_different_preparation_blocks_auto_link_at_the_top_of_the_band() -> None:
+    # El caso `Guandules Verdes Guisados Goya` → `Guandules Verdes Goya`: la cascada lo auto-enlazó
+    # con 0.902 porque marca, tamaño, color y especie COINCIDEN. Sólo difiere la preparación.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.90)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="Arroz Guisado La Garza 5lb"))
+
+    assert result.status == "pending_review"
+    assert result.canonical_product_id is None
+    assert c["store_repo"].links == [], "una preparación distinta NUNCA auto-enlaza"
+
+
+def test_harina_never_auto_links_into_the_plain_grain() -> None:
+    # `GOYA HARINA ARROZ 24OZ` → `Arroz Goya Valencia 24 Oz`, el falso merge que el juez firmó
+    # con 0.850. Acá se prueba por el camino determinista: ni siquiera debe llegar a la banda gris.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.90)],
+    )
+    canonical_repo = FakeCanonicalProductRepository({"canon-1": _canonical("canon-1")})
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="Harina de Arroz La Garza 5lb"))
+
+    assert result.status == "pending_review"
+    assert c["store_repo"].links == []
+
+
+def test_the_same_preparation_still_auto_links() -> None:
+    # La contracara obligatoria: dos harinas SÍ son el mismo SKU. Sin esto el gate podría estar
+    # bloqueando todo y los tests de arriba seguirían pasando.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.90)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", name="Harina de Arroz La Garza 5lb")}
+    )
+    use_case, c = _make_use_case(match_repo=match_repo, canonical_repo=canonical_repo)
+
+    result = use_case.execute(_incoming(name="HARINA ARROZ LA GARZA 5LB"))
+
+    assert result.status == "auto_linked"
+    assert c["store_repo"].links == [("sp-1", "canon-1")]
+
+
+def test_a_form_conflict_resolves_without_paying_for_a_judge_call() -> None:
+    # El gate nuevo entra al mismo corte que los otros 7: en banda gris se resuelve sin consultar
+    # al juez, porque su veredicto no podría levantar el veto.
+    match_repo = FakeCascadeMatchRepository(
+        trgm_candidates=[MatchCandidate(canonical_product_id="canon-1", score=0.60)],
+    )
+    canonical_repo = FakeCanonicalProductRepository(
+        {"canon-1": _canonical("canon-1", brand="", size="Otro")}
+    )
+    judge = FakeJudge(FakeVerdict("match", 0.97, ["name agrees"]))
+    use_case, _ = _make_use_case(
+        match_repo=match_repo, canonical_repo=canonical_repo, judge=judge
+    )
+
+    result = use_case.execute(_incoming(name="Harina de Arroz La Garza 5lb"))
+
+    assert judge.calls == []
+    assert result.status == "pending_review"
