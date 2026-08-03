@@ -13,6 +13,7 @@ from src.shared.money import Money
 
 from ..admin_audit import AdminAuditEntry
 from ..alerts import Alert, AlertNotification, AlertSubscription
+from ..basket import ProviderOffer
 from ..canonical_image import CanonicalImage
 from ..classification import (
     CategoryCandidate,
@@ -102,6 +103,18 @@ class StoreRegistryRepository(Protocol):
 
         `source.id` debe existir — el caller (use case) resuelve el `get_by_id` y arma el
         `StoreRegistry` actualizado antes de llamar aquí; este método es I/O puro (ADR 31)."""
+        ...
+
+
+class BasketOfferRepository(Protocol):
+    """Resuelve, en UNA query, qué producto de cada proveedor satisface cada rubro de la canasta.
+
+    Vive aparte de `BasketQueryRepository` porque son dos preguntas distintas: aquél administra la
+    lista curada (alta/baja/edición desde el admin); éste la RESUELVE contra el catálogo con precios.
+    """
+
+    def list_basket_offers(self, market_id: str) -> list[ProviderOffer]:
+        """Por (rubro × proveedor), el producto enlazado MÁS BARATO que satisface el rubro."""
         ...
 
 
