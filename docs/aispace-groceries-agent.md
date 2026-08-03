@@ -963,6 +963,30 @@ Cada fila es un caso **real hoy**, no hipotético:
 > El matiz de la segunda fila **no es cosmético**. Decir «tiene el mejor precio» cuando solo hay una
 > opción es una afirmación comparativa falsa. El usuario la creería.
 
+#### ✅ Estado medido (Fase 7, 2026-08-02) — las 6 filas con su test
+
+| # | Caso | Dónde vive el test | Nota |
+|---|---|---|---|
+| 1 | Retrieval vacío | integración | ya existía |
+| 2 | Una sola tienda | integración | ya existía |
+| 3 | Sin historial | integración (**ausencia**) | el test verifica que **ninguna tool** se llame `history`/`trend`/… — la mitigación es que la tool NO EXISTA, y esto impide que alguien la agregue antes de que haya historial |
+| 4 | Producto sin tamaño | integración | el canónico se siembra **sin** `Quantity` ni `display_size` |
+| 5 | Rubro que la tienda no vende | **unitario** | ⚠️ ver abajo |
+| 6 | Presupuesto insuficiente | integración | presupuesto de RD$1 → los 20 rubros quedan fuera y aparece el faltante |
+
+> ⚠️ **La fila 5 no se puede testear por integración, y el motivo importa.** Medido contra la base
+> de dev: las **3** tiendas cubren los **20** rubros, así que `groups_unavailable` está vacío en
+> todas y **no hay dato que produzca el caso**. Un test de integración ahí pasaría sin probar nada.
+> Por eso el renderizado de la canasta se extrajo a funciones puras (`render_comparison`,
+> `render_store_detail`): el hueco se construye a mano y el test prueba de verdad.
+>
+> **Segundo defecto que esto destapó, y es de método:** la primera versión del test de la fila 4
+> sembraba un producto llamado *«Sándwich De Pollo Del Mostrador»* y el resolver se quedó con un
+> **demo de la base**, no con el sembrado — el test fallaba por la razón equivocada. Un test de
+> integración que compite con datos reales por el mismo nombre no prueba lo que dice probar. La
+> regla: **nombre sin ningún token del catálogo, y assertear que resolvió al producto correcto**
+> antes de assertear el comportamiento.
+
 ### 8.2 Citas obligatorias
 
 Cada precio se muestra con:
@@ -1200,6 +1224,35 @@ No es opcional ni «cuando haya tiempo»: sin esto, las tres tablas de arriba so
 - **Se mide al cerrar la Fase 6** (el agente ya responde end-to-end) sobre las 5 preguntas guía de
   §1.2, **N=20 corridas**, y se reporta: costo/interacción, TTFT p50/p95, latencia total p50/p95.
 - **Si un objetivo no se cumple, se documenta como riesgo** — no se ajusta el objetivo para que dé.
+
+#### ✅ Resultado medido (2026-08-02, cierre de Fase 6, N=20)
+
+`make eval-perf INTENT=groceries N=4` — las 5 preguntas guía de §1.2, 4 repeticiones cada una.
+
+| Métrica | p50 | p95 | Objetivo | |
+|---|---:|---:|---|---|
+| **TTFT** | **2.20s** | 3.84s | <1s | ❌ |
+| **Latencia total** | **3.20s** | 9.38s | p95 <4s | ❌ |
+| **Streaming real (goteo)** | 20/20 | — | que gotee | ✅ |
+| **Costo / interacción** | — | — | <US$0.01 | ⬜ sin medir |
+
+**El costo sigue sin medirse**: exige la traza del proveedor o la factura, y LangSmith está en 429.
+
+Desglose por pregunta, que es donde está lo que el agregado esconde:
+
+| Pregunta | TTFT p50 | TOTAL p50 |
+|---|---:|---:|
+| *armame una lista de compra* | 1.55s | 2.20s |
+| *¿qué súper me conviene para el café?* | 2.00s | 2.57s |
+| *con RD$10,000 qué me alcanza* | 2.20s | 3.60s |
+| *¿dónde está más barato el arroz Rica?* | 2.30s | 2.84s |
+| ***precio del aceite*** (camino de desambiguación) | 3.69s | **9.30s** |
+
+> ⚠️ **El primer intento de esta medición dio TTFT p50 = 12.45s**, y la causa NO era el LLM: era que
+> el modelo de embeddings **se recargaba de disco en cada tool call** (ver riesgo 9). Arreglado, el
+> TTFT p50 cayó a 2.20s — 5.7x. **La lección es de método: el número que no cuadra con lo conocido
+> se investiga, no se promedia.** Si esa corrida se hubiera dejado terminar y publicado, el informe
+> habría culpado al LLM de un defecto que era nuestro y que costaba 8 segundos por llamada.
 
 ---
 
@@ -1549,6 +1602,11 @@ LLM? *Recomendación: aparte.*
 | 6 | La canasta depende de resolver 213 queries | Se mide con las 213 reales, no con una muestra |
 | 7 | ~~**`basket_query` vacía en la base local**~~ | ❌ **DESCARTADO — medido 2026-08-02 (Fase 1)**: la tabla tiene las **213 filas** en 20 grupos. No hay nada que reponer. Sí hay **deriva**: 1 fila con `category_label` NULL y filas semilla editadas desde la consola (`arroz la garza` → `arroz`), que es lo que hace fallar `test_backfill_populated_do_basket_queries` — un test que assertea contenido semilla exacto sobre una tabla que el admin puede editar |
 | 8 | `SAVE_MARKET` hardcodeado a `"DO"` | No es regresión de este plan (todo Save es así). Documentado |
+| 9 | ~~**El embedder BGE-M3 se recargaba en cada tool call**~~ | ✅ **CERRADO — medido y arreglado 2026-08-02** (`387d9bd`). `SentenceTransformersEmbeddingProvider` memoizaba el modelo en `self._model`, o sea POR INSTANCIA, y `_resolve()` construye un embedder nuevo por llamada → 568M de parámetros releídos de disco cada vez. Medido: la inferencia son **20 ms**, la recarga **8 s**. `compare_prices` end-to-end 7.86s → **0.065s**. El modelo pasó a ser un recurso de PROCESO (caché + lock) para que ningún call site pueda volver a pagarlo dos veces |
+| 10 | **TTFT p50 = 2.20s contra el objetivo de <1s** — ABIERTO | El camino de datos ya no es el problema (~65 ms). Los 2.2s son el LLM produciendo el primer token **después** de decidir la tool: el agente llama herramientas antes de generar texto. Palancas sin explorar: emitir un acuse de recibo antes de la tool, o un modelo más rápido para el primer turno. **No se relaja el objetivo** |
+| 11 | **La cola de ~5.6s del flujo de desambiguación** — ABIERTO, SIN DIAGNOSTICAR | *«precio del aceite»* da TOTAL p50 = 9.30s con TTFT 3.69s: triplica, cuando las otras 4 preguntas tienen colas de 0.5-1.4s. Sospecha (**no medida**): una segunda vuelta del loop ReAct. Quitar estas corridas baja el p95 de 9.38s a 5.06s — o sea que **explica gran parte del incumplimiento pero NO todo**: sin ellas el objetivo de 4s se sigue fallando |
+| 12 | **El costo por interacción nunca se midió** — ABIERTO | LangSmith responde 429 y `evals/agent_perf.py` mide tiempo, no tokens del proveedor. Exige la factura o una traza real. Es el único de los 3 ejes de §9.0 sin un número |
+| 13 | **La discrepancia con el TTFT de 1.79s anotado antes** — SIN EXPLICAR | El defecto del riesgo 9 no explica cómo se midió alguna vez 1.79s. O aquella corrida no llegaba a `_resolve`, o el entorno era otro. **No asumir que el defecto era nuevo de la Fase 6** |
 
 ---
 
