@@ -57,9 +57,19 @@ def _factory(session: Session):  # type: ignore[no-untyped-def]
 
 
 def _seed_product(
-    db: Session, *, name: str, brand: str, prices: dict[str, int], category: str = "Aceites"
+    db: Session,
+    *,
+    name: str,
+    brand: str,
+    prices: dict[str, int],
+    category: str = "Aceites",
+    with_size: bool = True,
 ) -> str:
-    """Un canónico con nombre irrepetible, presente en las tiendas de `prices`."""
+    """Un canónico con nombre irrepetible, presente en las tiendas de `prices`.
+
+    `with_size=False` es un canónico SIN tamaño declarado — legítimo desde PR #45 (un plato
+    preparado, un pan por pieza). Sin él no se puede ejercitar la fila 4 de §8.1.
+    """
     node = taxonomy_node(db, name=category, level=0, market_id=MARKET)
     db.add(node)
     db.flush()
@@ -69,10 +79,10 @@ def _seed_product(
             cid,
             name,
             brand,
-            Quantity(Decimal("1"), UnitMeasure.VOLUME),
+            Quantity(Decimal("1"), UnitMeasure.VOLUME) if with_size else None,
             taxonomy_node_id=str(node.id),
             market_id=MARKET,
-            display_size="1 Lt",
+            display_size="1 Lt" if with_size else None,
         )
     )
     store = SqlStoreProductRepository(db)
@@ -156,6 +166,76 @@ class TestGrounding:
         out = tool.invoke({"product": "flux capacitor de plutonio"})
 
         assert "no_match" in out
+
+
+class TestDegradacionHonesta:
+    """§8.1 — cada fila de la tabla de degradación, con su test. Fase 7.
+
+    La regla que las une: cuando falta un dato, se DICE. Inventarlo es el peor bug posible de este
+    agente, y callarlo es la versión educada del mismo bug.
+    """
+
+    def test_no_tool_offers_price_history_because_there_is_none(
+        self, db_session: Session
+    ) -> None:
+        """§8.1 fila 3 — sin superficie no hay alucinación.
+
+        Hay **1 solo snapshot** de precios: una tool de historial devolvería una serie de un punto
+        y el modelo hablaría de tendencias que no existen. La mitigación no es un prompt pidiendo
+        prudencia — es que la tool NO EXISTA. Este test es lo que impide que alguien la agregue
+        antes de que haya historial de verdad.
+        """
+        factory = _factory(db_session)
+        tools = [
+            build_search_groceries(factory, MARKET),
+            build_compare_prices(factory, MARKET),
+            build_explore_alternatives(factory, MARKET),
+            build_cheapest_store_by_category(factory, MARKET),
+            build_basket_for_budget(factory, MARKET),
+            build_monthly_cost(factory, MARKET),
+        ]
+        prohibited = ("history", "historial", "trend", "evolution", "over_time", "price_drop")
+
+        for tool in tools:
+            for word in prohibited:
+                assert word not in tool.name.lower(), f"{tool.name} promete historial"
+
+    def test_a_product_without_size_omits_the_unit_price_instead_of_printing_zero(
+        self, db_session: Session
+    ) -> None:
+        """§8.1 fila 4 — un canónico sin tamaño es legítimo (PR #45); `RD$0.00/kg` es una MENTIRA.
+
+        Un cero impreso no se lee como «no sé»: se lee como «gratis por kilo». Omitir es honesto.
+        """
+        _seed_product(
+            db_session,
+            # Nombre sin NINGÚN token del catálogo real: la primera versión decía «Sándwich De
+            # Pollo Del Mostrador» y el resolver se quedó con un demo de la base, no con el
+            # sembrado. Un test de integración que compite con datos reales no prueba nada.
+            name="Zzqwx Kkwr Producto Sin Tamano",
+            brand="Zzqwx",
+            prices={"Sirena": 18_500, "Nacional": 19_900},
+            with_size=False,
+        )
+        tool = build_compare_prices(_factory(db_session), MARKET)
+
+        out = tool.invoke({"product": "Zzqwx Kkwr Producto Sin Tamano"})
+
+        assert "Zzqwx" in out, "resolvió a otro producto: el test no está midiendo lo que dice"
+        assert "unit_price" not in out, "inventó un precio por unidad sin tamaño declarado"
+        assert "0.00/" not in out, "imprimió un precio por unidad en cero"
+
+    def test_a_budget_that_buys_nothing_says_how_much_is_missing(
+        self, db_session: Session
+    ) -> None:
+        """§8.1 fila 6 — «no te alcanza» sin decir cuánto falta no le sirve a nadie."""
+        tool = build_basket_for_budget(_factory(db_session), MARKET)
+
+        out = tool.invoke({"amount": 1})
+
+        assert "short_by=" in out, "no dice cuánto falta"
+        assert "did_not_fit=" in out, "no dice qué rubros quedaron fuera"
+        assert "items=0" in out
 
 
 class TestAntiIdorYContrato:

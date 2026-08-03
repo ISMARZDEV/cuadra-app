@@ -8,6 +8,7 @@ from __future__ import annotations
 from langchain_core.tools import tool
 
 from src.contexts.save.application.budget_basket import BudgetBasket
+from src.contexts.save.application.dtos import BudgetBasketDto, ProviderBasketDto
 from src.contexts.save.domain.basket import project_recurring_cost
 # Alias a propósito: la TOOL se llama `worth_second_store` y sombrearía a la función de dominio
 # dentro de su propio closure — se llamaría a sí misma.
@@ -19,6 +20,55 @@ from ._shared import NO_DATA, SessionFactory, money
 # El usuario habla en pesos ("con 10 mil"); la conversión a minor units la hace CÓDIGO, nunca el
 # modelo. Es la frontera exacta donde §5.5 se aplica.
 _MINOR_PER_MAJOR = 100
+
+
+# El renderizado se separa de la tool porque es lo que §8.1 exige testear y la tool sólo se puede
+# ejercitar con lo que haya en la base. Concreto: las 3 tiendas de dev cubren los 20 rubros, así
+# que `groups_unavailable` está SIEMPRE vacío y por integración ese caso no se puede provocar.
+# Funciones puras → el hueco se construye a mano y el test prueba de verdad.
+def render_store_detail(result: BudgetBasketDto, chosen: ProviderBasketDto) -> str:
+    """El detalle de UNA tienda (§5.4·B) — se pide, no se vuelca."""
+    lines = [
+        f"store={chosen.provider_name} | budget={money(result.budget_minor)} | "
+        f"spent={money(chosen.total_minor)} | left={money(chosen.remaining_minor)}"
+    ]
+    lines += [
+        f"item={line.name} | group={line.group} | units={line.units} | "
+        f"subtotal={money(line.subtotal_minor)}"
+        for line in chosen.lines
+    ]
+    if chosen.groups_unavailable:
+        lines.append(f"not_sold_here={','.join(chosen.groups_unavailable)}")
+    return "\n".join(lines)
+
+
+def render_comparison(result: BudgetBasketDto) -> str:
+    """El titular: una canasta por tienda, comparadas entre sí.
+
+    Los dos huecos van por SEPARADO y nunca se colapsan (§7.5): «esta tienda no lo vende» y «no te
+    alcanzó» son hechos distintos para quien compra —uno se arregla con más dinero, el otro no—.
+    """
+    lines = [f"budget={money(result.budget_minor)}"]
+    for basket in result.providers:
+        parts = [
+            f"store={basket.provider_name}",
+            f"groups_covered={len(basket.groups_covered)}",
+            f"items={basket.items_count}",
+            f"spent={money(basket.total_minor)}",
+            f"left={money(basket.remaining_minor)}",
+        ]
+        if basket.groups_unavailable:
+            parts.append(f"not_sold_here={','.join(basket.groups_unavailable)}")
+        if basket.groups_unaffordable:
+            parts.append(f"did_not_fit={','.join(basket.groups_unaffordable)}")
+        if basket.shortfall_minor is not None:
+            parts.append(f"short_by={money(basket.shortfall_minor)}")
+        lines.append(" | ".join(parts))
+    lines.append(
+        "note: one basket per store, because that is how a real shopping trip works. "
+        "A store covering FEWER groups is not automatically worse — say what it is missing"
+    )
+    return "\n".join(lines)
 
 
 def build_basket_for_budget(session_factory: SessionFactory, market_id: str):  # type: ignore[no-untyped-def]
@@ -59,40 +109,9 @@ def build_basket_for_budget(session_factory: SessionFactory, market_id: str):  #
             if chosen is None:
                 names = ", ".join(b.provider_name for b in result.providers)
                 return f"no_match: '{store}' is not one of the stores. Available: {names}"
-            detail = [
-                f"store={chosen.provider_name} | budget={money(result.budget_minor)} | "
-                f"spent={money(chosen.total_minor)} | left={money(chosen.remaining_minor)}"
-            ]
-            detail += [
-                f"item={line.name} | group={line.group} | units={line.units} | "
-                f"subtotal={money(line.subtotal_minor)}"
-                for line in chosen.lines
-            ]
-            if chosen.groups_unavailable:
-                detail.append(f"not_sold_here={','.join(chosen.groups_unavailable)}")
-            return "\n".join(detail)
+            return render_store_detail(result, chosen)
 
-        lines = [f"budget={money(result.budget_minor)}"]
-        for basket in result.providers:
-            parts = [
-                f"store={basket.provider_name}",
-                f"groups_covered={len(basket.groups_covered)}",
-                f"items={basket.items_count}",
-                f"spent={money(basket.total_minor)}",
-                f"left={money(basket.remaining_minor)}",
-            ]
-            if basket.groups_unavailable:
-                parts.append(f"not_sold_here={','.join(basket.groups_unavailable)}")
-            if basket.groups_unaffordable:
-                parts.append(f"did_not_fit={','.join(basket.groups_unaffordable)}")
-            if basket.shortfall_minor is not None:
-                parts.append(f"short_by={money(basket.shortfall_minor)}")
-            lines.append(" | ".join(parts))
-        lines.append(
-            "note: one basket per store, because that is how a real shopping trip works. "
-            "A store covering FEWER groups is not automatically worse — say what it is missing"
-        )
-        return "\n".join(lines)
+        return render_comparison(result)
 
     return basket_for_budget
 
