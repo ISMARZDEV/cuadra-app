@@ -69,6 +69,37 @@ price + agent + the append-only price history. Expands later to financial produc
    one adapter per platform → N chains → N countries. A new country = a row in a registry, not code.
    Never write "one scraper per chain."
 
+### 1b. THE DISCRIMINATION DOCTRINE — a token that names two things discriminates neither
+
+> **This defect has now bitten this codebase THREE times, in three different subsystems, and each
+> time it cost a measurement campaign to find.** Read this before writing ANY text→entity
+> resolution: a lexicon rule, a regex short-circuit, a similarity filter, a classifier prompt.
+
+| # | Where | The token | The two things it named | Fixed by |
+|---|---|---|---|---|
+| 1 | Category lexicon | `arroz` | the CLASS (rice) and the MATERIAL ("harina **de arroz**") | the complement of *de/del* stops deciding the class |
+| 2 | Router short-circuit | `compr` | *«compré»* (log a past expense) and *«la compra»* (go shopping) | dropped from the short-circuit; the classifier decides |
+| 3 | Basket resolution | a whole product NAME | "Atún En **Aceite**" matched the *Aceites* group at similarity **1.0** | the taxonomy gates what the name proposes |
+
+**The trap that makes it expensive:** the instinct is to *raise the threshold*. It never works,
+because **the bad match is not a weak match** — `word_similarity('aceite', 'Atún En Aceite Calvo')`
+is a legitimate `1.0`. Raising the floor only kills the true positives first.
+
+**The fix has the same SHAPE all three times: bring in an INDEPENDENT signal that breaks the tie.**
+Grammar (the complement of *de*), verb tense and context (the LLM classifier), or the taxonomy tree.
+Never a bigger number.
+
+**And ask where the false positive LANDS**, because the cost is not uniform: in *search* an extra
+result is harmless (be generous); in *matching* it is a false merge that corrupts the catalog (be
+conservative); in the *basket* it **occupies the slot of a household group and displaces the correct
+product** — the user reads it as "this is what fits in RD$5,000" and it is a lie.
+
+> **The rule to carry forward: the NAME PROPOSES, the STRUCTURE DISPOSES.** Where a structural
+> signal exists (taxonomy, EAN, grammar, price type), it decides; text only nominates candidates.
+
+Reference implementation: `save/domain/basket_taxonomy.py` (curated group↔taxonomy bridge, derived
+from measuring what actually landed in each group, with safe degradation for an unmapped group).
+
 ### 2. Where Save lives (layer map)
 
 | Layer | Path | What |

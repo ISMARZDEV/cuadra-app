@@ -104,8 +104,11 @@ _classify_by_name(product):           # NO trgm / NO RRF here (measured: it cont
 7. **The judge, if ever ON, judges the VECTOR top-1** (`vector[0].name`), not an RRF winner (there is
    none). `JUDGE_MATCH_MIN_CONFIDENCE=0.70` floor still applies (borrowed from matching banding).
 8. **A category-word that is also a common INGREDIENT anchors the lexicon and misclassifies**
-   (measured 2026-08-02 on Bravo). Same failure family as `polvo`/`agua`, but worse because the token
-   dominates the name. Every one of these landed in *Arroz, Granos & Legumbres*:
+   (measured 2026-08-02 on Bravo). This is **instance #1 of the discrimination doctrine** — the same
+   defect later hit the router (`compr`) and the basket resolution. Read **`cuadra-save` §1b** for
+   the doctrine and, above all, for why raising a threshold never fixes it. Same failure family as
+   `polvo`/`agua`, but worse because the token dominates the name. Every one of these landed in
+   *Arroz, Granos & Legumbres*:
 
    | Product | Truth | Anchoring token |
    |---|---|---|

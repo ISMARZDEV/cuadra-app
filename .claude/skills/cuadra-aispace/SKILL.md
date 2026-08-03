@@ -175,8 +175,12 @@ second (`Literal` + Pydantic makes an invalid intent impossible). The classifier
 > ⛔ **A pattern that matches two intents discriminates neither.** `compr` was in the expense
 > short-circuit and matched both *«compré»* (log a past expense) and *«la compra / comprar»* (go
 > grocery shopping) — it hijacked every supermarket question containing a digit. It was removed
-> (`95fc127`). Same defect as the `arroz` token in Save's category lexicon. **Before adding a token
-> to a short-circuit, ask which OTHER intent could contain it.**
+> (`95fc127`). **Before adding a token to a short-circuit, ask which OTHER intent could contain it.**
+>
+> This is instance #2 of a defect that has now hit three subsystems (category lexicon → router →
+> basket resolution). The full doctrine, the three cases, and why raising a threshold never fixes it
+> live in **`cuadra-save` §1b — the discrimination doctrine**. Read it before writing any
+> text→entity resolution.
 >
 > Also: the short-circuit only fires **with a digit present**, and it is narrower than it looks —
 > `pagu|pagué` does not match *«pagaron»*. Verify a claim about it with a test, don't read the regex.
