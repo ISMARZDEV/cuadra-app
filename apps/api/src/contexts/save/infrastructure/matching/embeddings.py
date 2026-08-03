@@ -16,6 +16,7 @@ el índice HNSW — nunca un flip de configuración/env var sobre este mismo ada
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -24,6 +25,31 @@ import httpx
 logger = logging.getLogger(__name__)
 
 _EMBED_TIMEOUT_SECONDS = 30.0
+
+# El modelo es un recurso de PROCESO, no de instancia. BGE-M3 son 568M de parámetros: cargarlo dos
+# veces en el mismo proceso nunca es correcto —son los mismos pesos y duplica la memoria—, y en el
+# camino de lectura del agente es carísimo. Medido el 2026-08-02: la inferencia son **20 ms** y
+# recargar el modelo **8 s**. 400x.
+#
+# La memoización vivía en `self._model`, o sea POR INSTANCIA, y `_resolve()` construye un embedder
+# nuevo en cada tool call → no memoizaba nada. Cachear acá lo vuelve imposible de usar mal: ningún
+# sitio de llamada puede pagar la carga dos veces, por descuidado que sea.
+_MODEL_CACHE: dict[str, Any] = {}
+_MODEL_LOCK = threading.Lock()
+
+
+def _load_sentence_transformer(name: str) -> Any:
+    from sentence_transformers import SentenceTransformer  # dep pesada, import perezoso
+
+    return SentenceTransformer(name)
+
+
+def _shared_model(name: str, loader: Callable[[str], Any]) -> Any:
+    """El modelo cargado UNA vez por proceso. El lock evita que dos requests lo carguen a la vez."""
+    with _MODEL_LOCK:
+        if name not in _MODEL_CACHE:
+            _MODEL_CACHE[name] = loader(name)
+        return _MODEL_CACHE[name]
 
 
 class BgeM3EmbeddingProvider:
@@ -58,25 +84,31 @@ class SentenceTransformersEmbeddingProvider:
 
     Para la ingesta batch (dev o despliegues chicos): el modelo corre en el mismo proceso, no en un
     servicio aparte. Es un patrón válido de producción para un pipeline batch (los embeddings se
-    computan en la escritura de la ingesta, no en el path de request). Carga PEREZOSA del modelo —
-    la dep pesada (torch) vive solo en el dep-group de ingesta y solo se importa al usarse de verdad.
-    `encode_fn` inyectable para testear sin torch. MISMO modelo (`BAAI/bge-m3`, 1024-dim) que el
-    adapter HTTP → los vectores son comparables (regla de oro de embeddings)."""
+    computan en la escritura de la ingesta, no en el path de request). Carga PEREZOSA del modelo y
+    **compartida por proceso** (`_shared_model`) — la dep pesada (torch) vive solo en el dep-group
+    de ingesta y solo se importa al usarse de verdad. La instancia es BARATA y descartable: crear
+    diez no cuesta diez cargas. MISMO modelo (`BAAI/bge-m3`, 1024-dim) que el adapter HTTP → los
+    vectores son comparables (regla de oro de embeddings).
+
+    Dos costuras de test, y no son intercambiables: `encode_fn` reemplaza el encoding entero (no
+    toca el modelo ni el caché); `model_loader` reemplaza SOLO la carga, y sirve para verificar que
+    de verdad se carga una sola vez."""
 
     _MODEL_NAME = "BAAI/bge-m3"
 
     def __init__(
-        self, encode_fn: Callable[[list[str]], list[list[float]]] | None = None
+        self,
+        encode_fn: Callable[[list[str]], list[list[float]]] | None = None,
+        model_loader: Callable[[str], Any] | None = None,
     ) -> None:
         self._encode_fn = encode_fn
-        self._model = None
+        self._model_loader = model_loader or _load_sentence_transformer
 
     def _encode(self, texts: list[str]) -> list[list[float]]:
-        if self._model is None:
-            from sentence_transformers import SentenceTransformer  # dep pesada, import perezoso
-
-            self._model = SentenceTransformer(self._MODEL_NAME)
-        return [v.tolist() for v in self._model.encode(texts, normalize_embeddings=True)]
+        # El modelo NO se guarda en la instancia: vive en el caché de proceso (`_shared_model`).
+        # Guardarlo acá es exactamente el defecto que costó 8s por tool call.
+        model = _shared_model(self._MODEL_NAME, self._model_loader)
+        return [v.tolist() for v in model.encode(texts, normalize_embeddings=True)]
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
