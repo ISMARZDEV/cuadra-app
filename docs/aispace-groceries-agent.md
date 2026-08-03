@@ -1058,7 +1058,46 @@ Las dos causas habituales:
    (`astream`) de punta a punta.
 2. **Filtrado de metadata mal puesto**, que descarta los chunks del agente.
 
-> 🔴 **CORREGIDO 2026-08-02 (Fase 2) — esta trampa NO es un riesgo futuro: ya está pasando.** Una
+> ### ✅ RESUELTO 2026-08-02 — medido, arreglado y vuelto a medir
+>
+> El diagnóstico de abajo era correcto, y la causa raíz resultó **arreglable**. El experimento
+> decisivo, contra el grafo real con LLM real:
+>
+> | Agente ReAct (`create_agent`) | chunks emitidos | TTFT | nodos que reporta |
+> |---|---:|---:|---|
+> | `graph.stream(...)` como estaba | **0** | — | `agent_run` |
+> | `graph.stream(..., subgraphs=True)` | **22** | 1.63 s | **`model`, `tools`** ← los INTERNOS |
+>
+> Dos causas encadenadas, no una: (1) sin `subgraphs=True` los tokens del grafo anidado **no
+> afloran**; (2) cuando afloran, llevan el nombre del nodo **interno**, así que la allowlist
+> `langgraph_node == "agent_run"` los tiraba igual.
+>
+> **El arreglo** (`orchestration/sse.py`): `subgraphs=True` + mover la allowlist al **NAMESPACE**
+> (`ns[0]` empieza con `agent_run:`), conservando el camino directo (`ns=()` + nodo `agent_run`)
+> para un agente que llama al LLM dentro del nodo. Lo que debía callarse **sigue callado**: el
+> clasificador emite texto de verdad (6 chunks de `{"intent":…}` medidos) y corre en el namespace
+> raíz, igual que los LLM internos de un flow. Cuatro tests lo fijan.
+>
+> **Resultado medido (`make eval-perf`, N=3, FinanceAgent):**
+>
+> | | Antes | Después |
+> |---|---:|---:|
+> | TTFT p50 | 3.23 s | **1.79 s** |
+> | Latencia total p95 | 3.24 s | 3.83 s ✅ (objetivo <4 s) |
+> | Corridas que gotean | **0/3** | **3/3** |
+>
+> **Queda un hueco honesto:** TTFT 1.79 s todavía incumple el objetivo de <1 s. La causa ya no es
+> el streaming sino lo que este mismo documento anticipaba — el agente **llama tools antes de
+> generar texto**. Para cerrarlo hace falta otra palanca (texto puente antes de la tool, o tools
+> más rápidas), no más streaming.
+>
+> **Corrección de una afirmación previa:** el `GeneralAgent` **sí** goteaba (24 chunks); una
+> heurística demasiado estricta lo había reportado como «todo junto». El que no streameaba era
+> exclusivamente el agente ReAct.
+>
+> ---
+>
+> 🔴 **DIAGNÓSTICO ORIGINAL (Fase 2).** Una
 > versión previa de este documento afirmaba que *«el `FinanceAgent` streamea hoy»*. **Es falso, y el
 > propio código lo documenta.** `sse.py` tiene un fallback `if not emitted:` cuyo comentario dice
 > literalmente que un agente ReAct construido con `create_agent` corre un **grafo anidado** cuyos
@@ -1147,6 +1186,14 @@ puede fallar sola.
 ### 9.4 Cómo se mide (y cuándo)
 
 No es opcional ni «cuando haya tiempo»: sin esto, las tres tablas de arriba son deseos.
+
+> ⚠️ **LangSmith NO se puede usar (verificado 2026-08-02): la cuenta responde `429 — Monthly
+> unique traces usage limit exceeded`.** Además de no trazar, inunda la salida de `pytest`
+> (workaround: `LANGSMITH_TRACING=false`). Para que eso no bloqueara la fase se construyó
+> **`apps/api/evals/agent_perf.py`** (`make eval-perf`), que mide TTFT y latencia total **desde el
+> propio camino SSE** — que además es donde el usuario SIENTE la latencia. Es el harness con el que
+> se midió y se validó el arreglo de [§9.2](#92-latencia--el-ttft-es-lo-que-el-usuario-siente).
+> El **costo por interacción** sigue pendiente: eso sí necesita la traza del proveedor o la factura.
 
 - **LangSmith ya está en el stack** — da trazas con **tokens, costo y latencia por nodo**. Eso
   responde «¿dónde se fue el tiempo?» sin instrumentar a mano.
@@ -1281,6 +1328,48 @@ Todo el §7.
 **✅ Éxito:** por proveedor, `{items, total_minor, remaining_minor, groups_covered}` con la suma
 verificada en entero y los 4 casos borde de §7.5 cubiertos con test. **Incluye `worth_second_store`
 (§7.6) y `monthly_cost` (§7.7)** — las tres piezas viven en el mismo dominio puro y se testean sin DB.
+
+**Hecho (2026-08-02).** `domain/basket.py` (puro) + `application/budget_basket.py` + puerto y
+adapter. Contra la base real, el ganador **cambia con el presupuesto** — que es justo lo que hace
+interesante a la feature: RD$1,000 → Nacional (6 rubros) · RD$5,000 → Sirena (20 rubros, 32
+artículos) · RD$10,000 → Sirena (60 artículos).
+
+Dos decisiones que conviene no re-litigar:
+
+- **Las 213 queries se resuelven en UNA query SQL**, no llamando a la búsqueda 213 veces (serían
+  213 llamadas al embedder por request).
+- **`groups_unavailable` y `groups_unaffordable` se reportan por SEPARADO.** «La tienda no lo
+  vende» y «no te alcanzó» son hechos distintos para quien compra.
+- **`project_recurring_cost` no tiene default de frecuencia.** Un default sería un supuesto de
+  consumo disfrazado de dato.
+
+#### ⚠️ El defecto que la corrida contra datos reales destapó — y cómo se cerró
+
+La resolución por similitud de NOMBRE atribuía productos al rubro equivocado:
+
+```
+[Aceites y grasas]    Atún En ACEITE Calvo      ← word_similarity = 1.0, y es atún
+[Huevos]              Spaghetti Rica
+[Granos y legumbres]  GALLETA CLAS INTEGRAL     ← 10 galletas entraron como granos
+[Carnes]              2 compotas de bebé · 2 alimentos para perro · 2 platos preparados
+```
+
+**Es el mismo defecto que `compr` en el router y `arroz` en el léxico, por TERCERA vez**: un token
+que aplica a dos cosas distintas no discrimina ninguna. Y subir el piso **no** lo arregla — «Aceite»
+es palabra entera dentro de «Atún En Aceite», así que su 1.0 es legítimo.
+
+En la canasta duele más que en la búsqueda: allí un resultado de más no hace daño; acá el producto
+mal atribuido **ocupa el lugar del rubro y desplaza al correcto**, que es exactamente lo que §8.1
+prohíbe.
+
+**Solución (`domain/basket_taxonomy.py`): el nombre PROPONE, la taxonomía DISPONE.** Un producto
+entra en un rubro sólo si su hoja —o algún ancestro— está en el conjunto curado de ese rubro. Los
+dos vocabularios no mapean 1:1 (20 rubros contra 17 raíces / 138 hojas), así que el puente es una
+tabla curada **derivada de medir** qué hojas caían en cada rubro. Un rubro sin mapeo **no
+desaparece**: degrada al comportamiento anterior.
+
+Efecto secundario: la segunda tensión se cerró sola. Antes, a RD$10,000 los tres gastaban ~RD$7,000
+y sobraban ~RD$3,000; con los productos correctos —más caros y reales— ahora gastan RD$9,760-9,943.
 
 Test explícito del umbral de equilibrio: dado un ahorro bruto conocido, la respuesta debe ser un
 **umbral condicionado**, nunca una recomendación absoluta.

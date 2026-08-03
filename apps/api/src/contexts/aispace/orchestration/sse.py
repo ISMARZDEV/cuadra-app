@@ -22,6 +22,25 @@ from collections.abc import Iterator
 from langchain_core.messages import AIMessageChunk
 
 
+_AGENT_NODE = "agent_run"
+
+
+def _is_user_facing(namespace: tuple, meta: dict) -> bool:  # type: ignore[type-arg]
+    """¿Este chunk es texto del agente que habla con el usuario?
+
+    Dos formas legítimas, medidas contra el grafo real:
+      - **anidada** — un agente ReAct corre en su propio subgrafo: `ns=('agent_run:<uuid>',)`,
+        con el nombre del nodo INTERNO (`model`).
+      - **directa** — un agente que llama al LLM dentro del nodo (GeneralAgent): `ns=()` y
+        `langgraph_node == 'agent_run'`.
+
+    Todo lo demás es maquinaria interna (el clasificador, los LLM de un flow) y se calla.
+    """
+    if namespace:
+        return str(namespace[0]).split(":", 1)[0] == _AGENT_NODE
+    return meta.get("langgraph_node") == _AGENT_NODE
+
+
 def sse_frame(payload: dict) -> str:
     """One SSE frame: `data: {json}\\n\\n` (UTF-8, no ASCII-escaping for es/pt)."""
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -57,12 +76,19 @@ def chat_result(snapshot, thread_id: str) -> dict:  # type: ignore[no-untyped-de
 def stream_events(graph, inputs: dict, cfg: dict, thread_id: str) -> Iterator[str]:  # type: ignore[no-untyped-def]
     """Drive the graph and translate it into SSE frames (see module docstring)."""
     emitted = False
-    for chunk, meta in graph.stream(inputs, cfg, stream_mode="messages"):
-        # stream_mode="messages" yields token chunks from EVERY LLM in the graph. Only the
-        # user-facing agent (`agent_run`) should reach the chat — the classifier (`classify_intent`,
-        # e.g. `{"intent":"other"}`) AND the flow's internal LLMs (`prepare_flow`, the category
-        # suggestion `{"items":[…]}`) must NOT leak. Allowlist agent_run; everything else is internal.
-        if meta.get("langgraph_node") != "agent_run":
+    # `subgraphs=True` is REQUIRED, not an optimization. A ReAct agent (`create_agent`) runs a
+    # NESTED graph, and without this flag its tokens emit **zero** chunks here — the chat stays
+    # mute and then prints the whole reply at once. Measured 2026-08-02 on the real graph:
+    #   subgraphs off → 0 chunks · subgraphs on → 22-33 chunks, first one at ~1.6s.
+    for namespace, (chunk, meta) in graph.stream(
+        inputs, cfg, stream_mode="messages", subgraphs=True
+    ):
+        # The allowlist is on the NAMESPACE, not on `langgraph_node`, because a nested chunk
+        # carries the INNER node's name (`model`, `tools`) — filtering by `agent_run` threw exactly
+        # the tokens we want away. What must stay silent still does: the classifier DOES emit text
+        # (measured: 6 chunks of `{"intent":…}`) and the flow's internal LLMs too, and both run at
+        # the ROOT namespace under their own node.
+        if not _is_user_facing(namespace, meta):
             continue
         if isinstance(chunk, AIMessageChunk) and chunk.content:
             emitted = True

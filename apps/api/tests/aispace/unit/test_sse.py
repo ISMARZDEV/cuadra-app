@@ -99,3 +99,91 @@ def test_chat_result_returns_links_and_reply_on_commit() -> None:
     assert res["interaction"] is None
     assert "registrado" in res["reply"]
     assert any(link["href"] == "insights" for link in res["links"])
+
+
+# ── Streaming del agente ReAct: la allowlist va por NAMESPACE, no por nombre de nodo ──
+#
+# MEDIDO 2026-08-02 contra el grafo real con LLM real:
+#   ns=()                        node='classify_intent'  → 12 chunks, 6 CON TEXTO  ← debe callarse
+#   ns=('agent_run:<uuid>',)     node='model'            → 33 chunks, 24 con texto ← debe salir
+#   ns=('agent_run:<uuid>',)     node='tools'            → 1 chunk,  0 con texto
+#
+# Sin `subgraphs=True` el agente ReAct emite CERO chunks (grafo anidado). Con él, sus chunks
+# llevan el nombre del nodo INTERNO (`model`), así que filtrar por `langgraph_node == "agent_run"`
+# los tiraba a la basura. Filtrar por namespace resuelve las dos cosas a la vez.
+
+class _FakeChunk:
+    """AIMessageChunk mínimo — evita construir un grafo con LLM real en un unit test."""
+
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class _FakeGraph:
+    """Grafo fake que emite la MISMA forma que `stream(..., subgraphs=True)`."""
+
+    def __init__(self, items) -> None:  # type: ignore[no-untyped-def]
+        self._items = items
+
+    def stream(self, inputs, cfg, stream_mode=None, subgraphs=False):  # type: ignore[no-untyped-def]
+        assert subgraphs is True, "sin subgraphs=True los tokens del ReAct no afloran"
+        yield from self._items
+
+    def get_state(self, cfg):  # type: ignore[no-untyped-def]
+        class _S:
+            tasks: tuple = ()
+            values: dict = {"messages": [AIMessage("respuesta final")], "ui_actions": []}
+
+        return _S()
+
+
+def _tokens(frames) -> list[str]:  # type: ignore[no-untyped-def]
+    return [e["content"] for e in _events(list(frames)) if e["type"] == "token"]
+
+
+def test_the_react_agents_nested_tokens_DO_reach_the_chat() -> None:
+    from langchain_core.messages import AIMessageChunk
+
+    graph = _FakeGraph(
+        [
+            (("agent_run:abc123",), (AIMessageChunk(content="El arroz "), {"langgraph_node": "model"})),
+            (("agent_run:abc123",), (AIMessageChunk(content="está en Bravo."), {"langgraph_node": "model"})),
+        ]
+    )
+
+    assert _tokens(stream_events(graph, {}, {}, "t")) == ["El arroz ", "está en Bravo."]
+
+
+def test_the_classifier_still_never_leaks_into_the_chat() -> None:
+    """El clasificador EMITE texto (6 chunks medidos: el JSON del structured output)."""
+    from langchain_core.messages import AIMessageChunk
+
+    graph = _FakeGraph(
+        [
+            ((), (AIMessageChunk(content='{"intent":'), {"langgraph_node": "classify_intent"})),
+            ((), (AIMessageChunk(content='"groceries"}'), {"langgraph_node": "classify_intent"})),
+        ]
+    )
+
+    assert _tokens(stream_events(graph, {}, {}, "t")) == ["respuesta final"]  # solo el fallback
+
+
+def test_an_internal_flow_llm_never_leaks_either() -> None:
+    from langchain_core.messages import AIMessageChunk
+
+    graph = _FakeGraph(
+        [((), (AIMessageChunk(content='{"items":['), {"langgraph_node": "prepare_flow"}))]
+    )
+
+    assert _tokens(stream_events(graph, {}, {}, "t")) == ["respuesta final"]
+
+
+def test_a_non_react_agent_in_the_node_itself_still_streams() -> None:
+    """El GeneralAgent corre el LLM DENTRO del nodo: ns vacío + node `agent_run`."""
+    from langchain_core.messages import AIMessageChunk
+
+    graph = _FakeGraph(
+        [((), (AIMessageChunk(content="¡Hola!"), {"langgraph_node": "agent_run"}))]
+    )
+
+    assert _tokens(stream_events(graph, {}, {}, "t")) == ["¡Hola!"]
