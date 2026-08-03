@@ -121,12 +121,17 @@ def build_monthly_cost(session_factory: SessionFactory, market_id: str):  # type
     def monthly_cost(group: str, times_per_month: int = 0) -> str:
         """Cost of ONE basket of a single household group (baby, cleaning, coffee, meat...).
 
-        Use it for "how much does a baby cost me?", "what do I spend on cleaning?". It returns the
-        cost of one basket of that group per store, and what it includes.
+        Use it for "how much does a baby cost me?", "what do I spend on cleaning?", "what does
+        coffee cost me a month?". ALWAYS call it immediately with `times_per_month=0`: that
+        already answers with the cost of one basket per store and what it includes. NEVER ask the
+        user anything before calling it — asking first costs a turn and delivers nothing.
 
-        `times_per_month` is OPTIONAL and must come from the USER. Leave it at 0 unless the user
-        told you how often they buy it: projecting a month without knowing their consumption would
-        be inventing the number. If they did say it, pass it and you will get the projection.
+        Pass `times_per_month` ONLY when the user ALREADY told you how often they buy it. Do not
+        ask for it and do not guess it: projecting a month without knowing their consumption would
+        be inventing the number. The tool result tells you when to ask.
+
+        Do NOT use it for a single product (compare_prices) nor for a whole budget
+        (basket_for_budget).
         """
         with session_factory() as session:
             offers = SqlBasketOfferRepository(session).list_basket_offers(market_id)

@@ -1574,19 +1574,72 @@ trazas de LangSmith cuando algo falla, para saber **dónde** falló.
 
 ### 12.3 El gate de faithfulness
 
-**No existe scaffolding hoy** — cero referencias a `ragas` en el repo; `observability.py` es tracing
-genérico, no evals. Es trabajo nuevo:
-
-1. Dataset de ~15-20 preguntas en `tests/aispace/evals/`.
-2. Runner que invoca el grafo real y compara **el texto de la respuesta contra el output crudo de las
-   tools** (el «contexto» es literal, no recuperado — encaja bien con RAGAS).
-3. **Gate:** si `faithfulness < umbral`, falla.
-
 > **Por qué es el test más importante del proyecto:** un precio inventado en una app de finanzas no
 > es un bug cosmético, es la destrucción de la confianza que constituye el producto.
 
-**Decisión abierta:** ¿entra a CI obligatorio de PRs o corre aparte (nocturno/manual) por costo de
-LLM? *Recomendación: aparte.*
+#### ✅ Construido (Fase 8, 2026-08-02) — y SIN RAGAS, a propósito
+
+**La decisión de diseño sale de este mismo párrafo:** acá el contexto es **literal, no recuperado**
+—es el output crudo de las tools—, y cuando el contexto es literal *«¿está este número en el
+contexto?»* deja de ser una pregunta de semántica y pasa a ser una de **subcadena**.
+
+| | RAGAS (lo planeado) | Determinista (lo construido) |
+|---|---|---|
+| Qué devuelve | un score difuso (`0.87`) | **la lista exacta de lo que se inventó** |
+| Costo | una llamada LLM por caso | cero |
+| Puede correr en CI | no | **sí** (11 tests, 0.01s) |
+| Dependencia nueva | `ragas` + juez | ninguna |
+
+Es la doctrina de discriminación aplicada al gate: la señal ESTRUCTURAL (§5.5 garantiza que cada
+número viaja de Postgres al texto sin que el modelo lo toque) es más fuerte que un score difuso.
+
+Dentro del verificador se repite el mismo criterio: **un número pelado no discrimina.** `24
+artículos` y `RD$24.00` no son la misma clase de cosa, así que una cifra cuenta como dinero solo si
+la acompaña una marca de moneda o trae céntimos. Sin eso, el gate se llenaría de falsos positivos
+hasta volverse ruido que se aprende a ignorar.
+
+> ⚠️ **Lo que NO cubre, y hay que decirlo:** afirmaciones cualitativas mal encuadradas —«es la mejor
+> opción», «te conviene»— quedan fuera de su alcance. Eso sí necesita un juez. Ataca el riesgo #4
+> (el precio inventado, el caro), no todos los modos de fallo.
+
+**Artefactos:** `evals/grounding.py` (puro) · `tests/aispace/unit/test_grounding_checker.py` (11
+tests, en CI) · `evals/groceries_eval.py` (18 casos etiquetados) · `evals/_graph.py` · `make
+eval-groceries`.
+
+`evals/_graph.py` no estaba en el plan. Se extrajo porque el defecto del harness de la Fase 6 fue
+exactamente esto: `agent_perf.py` tenía su propia copia de la composición, se olvidó de registrar el
+flujo de groceries y midió un camino que en producción no existe **sin que nada fallara**. Un eval
+que compone el grafo distinto que el composition root no mide el sistema: mide otro.
+
+#### ✅ Resultado medido (LLM real, 17 casos)
+
+| Métrica | Resultado | Objetivo | |
+|---|---|---|---|
+| **Selección de tool** (§12.2) | **16/17 = 94%** | ≥90% | ✅ |
+| **Fidelidad** (§12.3) | **17/17 sin invenciones** | 100% | ✅ |
+
+El único fallo de trayectoria fue **nuestro, no del modelo**: el docstring de `monthly_cost` decía
+*«must come from the USER»* y *«leave it at 0»* a la vez, y el agente eligió la lectura que cuesta un
+turno sin entregar nada (*«¿con qué frecuencia compras…?»*). **Una instrucción que admite dos
+lecturas no instruye ninguna** — la doctrina de discriminación aplicada al prompt.
+
+> Y un defecto de método en la primera versión del eval: exigía *«ninguna tool»* para
+> *«¿cuánto gasté en el súper este mes?»*, y marcaba en rojo justo cuando el sistema hacía LO
+> CORRECTO — rutear a Insights (`get_monthly_summary`), que es el handoff de §5.4·D. **Un eval que
+> castiga el comportamiento correcto es peor que no tener eval: enseña a ignorarlo.**
+
+#### ✅ Decisión cerrada: qué entra a CI y qué no
+
+Se parte en dos, porque son dos cosas distintas:
+
+| Pieza | Dónde | Por qué |
+|---|---|---|
+| **El verificador** (`grounding.py` + sus 11 tests) | **CI, obligatorio** | puro, sin LLM, sin red, 0.01s. No hay razón para no correrlo en cada PR |
+| **El runner** (`groceries_eval.py`) | **aparte, a demanda** | pega al LLM real: cuesta dinero y depende de la disponibilidad del proveedor |
+
+**Ya está garantizado por construcción**, no por disciplina: `pyproject.toml` fija
+`testpaths = ["tests"]`, así que CI nunca colecta `evals/`. El verificador vive en `tests/` y el
+runner en `evals/` — la separación es estructural.
 
 ---
 
