@@ -17,8 +17,10 @@ Reglas que respeta:
   - **Idempotente**: los `external_id` llevan el prefijo `demo-`; re-correrlo no duplica.
   - Los precios se derivan de forma DETERMINISTA del nombre, así que dos corridas dan lo mismo.
 
-⚠️ Son datos de PRUEBA, no ingesta real: los `store_product` no tienen URL de tienda verdadera ni
-EAN. Se distinguen por el prefijo `demo-` del `external_id`, que es lo que permite borrarlos.
+⚠️ Son datos de PRUEBA, no ingesta real: las URL apuntan a `demo.<tienda>.example` y no hay EAN.
+Se distinguen por el prefijo `demo-` del `external_id`, que es lo que permite borrarlos. La URL es
+DELIBERADAMENTE falsa pero PRESENTE: sin ninguna, el agente se veía tentado a inventar la home de
+la tienda para «ayudar» — y un enlace inventado es un hecho inventado.
 
 Uso:
     cd apps/api && uv run python -m seeds.demo_catalog            # siembra
@@ -388,6 +390,10 @@ def seed() -> None:
                     captured_at=now,
                     price_type=PriceType.ONLINE,
                     source="demo_seed",
+                    # URL de demostración: sin ella el agente no puede citar un enlace, y un
+                    # modelo tentado a "ayudar" se inventa la home de la tienda — violación de
+                    # grounding. Mejor un enlace explícitamente de prueba que ninguno.
+                    url=f"https://demo.{provider_name.lower()}.example/p/{external_id}",
                     name=name,
                     brand=brand,
                     size_text=size_text,
