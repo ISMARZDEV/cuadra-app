@@ -30,15 +30,9 @@ import uuid
 
 from langchain_core.messages import HumanMessage
 
-from src.api.composition_root import SessionLocal
-from src.contexts.aispace.agents.groceries.tools.catalog import compare_by_canonical_id
-from src.contexts.aispace.flows.expense.categories import suggest_expense_categories
-from src.contexts.aispace.flows.expense.flow import build_expense_flow
-from src.contexts.aispace.flows.groceries.flow import build_groceries_flow
-from src.contexts.aispace.orchestration.graph import build_graph
-from src.contexts.aispace.orchestration.registry import build_registry
-from src.contexts.aispace.orchestration.router import llm_classifier
 from src.contexts.aispace.orchestration.sse import stream_events
+
+from ._graph import build_eval_graph
 
 # Las 5 preguntas guía de §1.2 + una de gasto (control: el camino que YA existe).
 PROMPTS: dict[str, list[str]] = {
@@ -52,32 +46,6 @@ PROMPTS: dict[str, list[str]] = {
     "finance": ["gasté 500 en gasolina"],
     "general": ["hola, ¿cómo estás?"],
 }
-
-
-def _build_graph():  # type: ignore[no-untyped-def]
-    from langgraph.checkpoint.memory import MemorySaver
-
-    registry = build_registry(SessionLocal)
-    finance = registry["register_expense"]
-    expense_flow = build_expense_flow(
-        commit_action=lambda state, action: finance.commit({**state, "pending_action": action}),
-        suggest_categories=suggest_expense_categories,
-    )
-    # El flujo de desambiguación (§5.4·A) tiene que estar acá o se mide otro camino: sin él,
-    # «precio del aceite» stagea su `pending_action` y `hitl` cae al confirm+commit LEGACY —
-    # un «¿confirmás?» que en producción NUNCA aparece. El harness espeja el composition root.
-    groceries_flow = build_groceries_flow(
-        compare_by_id=lambda canonical_id: compare_by_canonical_id(
-            SessionLocal, "DO", canonical_id
-        )
-    )
-    # MemorySaver y no Postgres: se mide el GRAFO, no la persistencia.
-    return build_graph(
-        MemorySaver(),
-        classifier=llm_classifier,
-        registry=registry,
-        flow_registry={"register_expense": expense_flow, "groceries": groceries_flow},
-    )
 
 
 def _measure(graph, prompt: str) -> dict:  # type: ignore[no-untyped-def]
@@ -131,7 +99,7 @@ def main() -> None:
     parser.add_argument("--intent", default="finance", choices=sorted(PROMPTS))
     args = parser.parse_args()
 
-    graph = _build_graph()
+    graph = build_eval_graph()
     runs: list[dict] = []
     for prompt in PROMPTS[args.intent]:
         for _ in range(args.n):
