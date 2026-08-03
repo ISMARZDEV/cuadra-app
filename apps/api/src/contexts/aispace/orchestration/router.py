@@ -36,16 +36,32 @@ def make_classify_intent(classifier: Classifier):  # type: ignore[no-untyped-def
 
 
 class _IntentOut(BaseModel):
-    intent: Literal["register_expense", "query_metrics", "general"]
+    # El `Literal` + Pydantic hacen IMPOSIBLE un intent inválido: el tipo cierra la puerta que el
+    # prompt solo pediría amablemente. Añadir un agente = un valor más acá y una línea en el prompt.
+    intent: Literal["register_expense", "query_metrics", "general", "groceries"]
 
 
 # English prompt (cuadra-agent-prompts skill). `general` is the CONVERSATIONAL bucket (greetings,
 # smalltalk, thanks, off-topic) — handled by the GeneralAgent, NOT the canned respond_other.
 _CLASSIFY_PROMPT = """Classify the user's message into ONE intent for a personal-finance assistant.
 
-- register_expense — the user reports money moving (spent, paid, bought, got paid, earned).
-- query_metrics — the user asks about their money (balance, how much spent, safe to spend, budget).
-- general — greetings, small talk, thanks, how-are-you, or anything not about their own finances.
+- register_expense — the user reports money that ALREADY moved (spent, paid, bought, got paid).
+- query_metrics — the user asks about THEIR OWN money: balance, how much they have spent, how much
+  they CAN still spend today, whether they are on budget, safe-to-spend.
+- groceries — the user asks about SUPERMARKET PRICES or planning a shopping trip: where a product
+  is cheapest, what something costs in stores, comparing supermarkets, building a shopping list,
+  or what fits in a budget at the supermarket.
+- general — greetings, small talk, thanks, or anything else.
+
+BOUNDARY — register_expense vs groceries. The tense decides, not the words:
+- "gasté 500 comprando arroz" → register_expense (money ALREADY left their pocket)
+- "con RD$10,000 qué me alcanza para la compra" → groceries (planning a FUTURE purchase)
+- "quiero comprar pollo, cuál está más barato" → groceries (asking about prices, has not bought)
+
+BOUNDARY — query_metrics vs groceries. Whose money is it:
+- "cuánto gasté en el súper este mes" → query_metrics (THEIR spending)
+- "cuánto puedo gastar hoy" → query_metrics (THEIR budget, no product involved)
+- "cuánto cuesta la compra del mes" → groceries (the STORE's prices)
 
 Message: {text!r}"""
 
