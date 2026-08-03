@@ -47,6 +47,11 @@ class BasketOffer:
     canonical_product_id: str
     name: str
     price_minor: int
+    image_url: str | None = None
+    url: str | None = None
+    brand: str | None = None
+    display_size: str | None = None
+    captured_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +70,11 @@ class ProviderOffer:
     canonical_product_id: str
     name: str
     price_minor: int
+    image_url: str | None = None
+    url: str | None = None
+    brand: str | None = None
+    display_size: str | None = None
+    captured_at: str | None = None
 
     def as_offer(self) -> BasketOffer:
         return BasketOffer(
@@ -72,6 +82,11 @@ class ProviderOffer:
             canonical_product_id=self.canonical_product_id,
             name=self.name,
             price_minor=self.price_minor,
+            image_url=self.image_url,
+            url=self.url,
+            brand=self.brand,
+            display_size=self.display_size,
+            captured_at=self.captured_at,
         )
 
 
@@ -82,6 +97,11 @@ class BasketLine:
     name: str
     unit_price_minor: int
     units: int
+    image_url: str | None = None
+    url: str | None = None
+    brand: str | None = None
+    display_size: str | None = None
+    captured_at: str | None = None
 
     @property
     def subtotal_minor(self) -> int:
@@ -152,13 +172,20 @@ def plan_basket(
     lines = tuple(
         BasketLine(
             group=group.label,
-            canonical_product_id=cheapest_by_group[group.label].canonical_product_id,
-            name=cheapest_by_group[group.label].name,
-            unit_price_minor=cheapest_by_group[group.label].price_minor,
+            canonical_product_id=chosen.canonical_product_id,
+            name=chosen.name,
+            unit_price_minor=chosen.price_minor,
             units=units[group.label],
+            image_url=chosen.image_url,
+            url=chosen.url,
+            brand=chosen.brand,
+            display_size=chosen.display_size,
+            captured_at=chosen.captured_at,
         )
         for group in ordered
         if units.get(group.label)
+        for chosen in (cheapest_by_group.get(group.label),)
+        if chosen is not None
     )
     total = sum(line.subtotal_minor for line in lines)
     unaffordable = tuple(

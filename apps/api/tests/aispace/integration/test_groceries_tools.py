@@ -238,6 +238,107 @@ class TestDegradacionHonesta:
         assert "items=0" in out
 
 
+class TestLaToolStageaLaTarjeta:
+    """La tool entrega los DATOS de la comparación; el chrome lo pone el cliente (§4.3 revisado).
+
+    El enlace externo se descartó: mandar al navegador abandona la conversación. La comparación
+    se pinta dentro de la burbuja, así que la tool tiene que stagear la tabla entera.
+    """
+
+    def test_search_groceries_stages_provider_products_carousel(
+        self, db_session: Session
+    ) -> None:
+        staging: dict = {}
+        _seed_product(
+            db_session,
+            name="Zzqwx Carrusel Producto Unico",
+            brand="Zzqwx",
+            prices={"Sirena": 21_500, "Nacional": 22_900},
+        )
+        tool = build_search_groceries(_factory(db_session), MARKET, staging)
+
+        out = tool.invoke({"query": "Zzqwx Carrusel"})
+
+        assert "Zzqwx" in out
+        assert "provider_products" in staging
+        [action] = staging["provider_products"]
+        assert action["type"] == "provider_products"
+        assert action["currency"] == "DOP"
+        provider_names = {p["provider_name"] for p in action["providers"]}
+        assert provider_names == {"Sirena", "Nacional"}
+        sirena = next(p for p in action["providers"] if p["provider_name"] == "Sirena")
+        assert len(sirena["items"]) == 1
+        item = sirena["items"][0]
+        assert item["index"] == 1
+        assert item["name"] == "Zzqwx Carrusel Producto Unico"
+        # El dinero sale formateado, nunca como entero crudo.
+        assert "215.00" in item["unit_price"]
+        assert not isinstance(item["unit_price"], int)
+
+    def test_compare_prices_stages_the_card_with_one_row_per_store(
+        self, db_session: Session
+    ) -> None:
+        staging: dict = {}
+        _seed_product(
+            db_session,
+            name="Zzqwx Tarjeta Producto Kkwr",
+            brand="Zzqwx",
+            prices={"Sirena": 21_500, "Nacional": 22_900},
+        )
+        tool = build_compare_prices(_factory(db_session), MARKET, staging)
+
+        out = tool.invoke({"product": "Zzqwx Tarjeta Producto Kkwr"})
+
+        assert "Zzqwx" in out, "resolvió a otro producto: el test no mide lo que dice"
+        card = staging["product"]
+        assert "Zzqwx" in card["name"]
+        assert {s["provider"] for s in card["stores"]} == {"Sirena", "Nacional"}
+
+    def test_the_staged_prices_are_FORMATTED_never_raw_integers(
+        self, db_session: Session
+    ) -> None:
+        # Misma regla que hacia el modelo (§5.5): un entero es una invitación a redondearlo.
+        staging: dict = {}
+        _seed_product(
+            db_session,
+            name="Zzqwx Formato Producto Kkwr",
+            brand="Zzqwx",
+            prices={"Sirena": 21_500},
+        )
+        tool = build_compare_prices(_factory(db_session), MARKET, staging)
+
+        tool.invoke({"product": "Zzqwx Formato Producto Kkwr"})
+
+        [row] = staging["product"]["stores"]
+        assert "215" in row["price"] and not isinstance(row["price"], int)
+
+    def test_a_product_in_ONE_store_is_not_flagged_cheapest_in_the_card(
+        self, db_session: Session
+    ) -> None:
+        """§8.1 fila 2 otra vez, ahora en la UI: la tarjeta tampoco puede afirmarlo."""
+        staging: dict = {}
+        _seed_product(
+            db_session,
+            name="Zzqwx Unica Tienda Kkwr",
+            brand="Zzqwx",
+            prices={"Sirena": 21_500},
+        )
+        tool = build_compare_prices(_factory(db_session), MARKET, staging)
+
+        tool.invoke({"product": "Zzqwx Unica Tienda Kkwr"})
+
+        from src.contexts.aispace.agents.groceries.tools._shared import product_action
+
+        [action] = product_action(staging["product"])
+        assert action["stores"][0]["is_cheapest"] is False
+
+    def test_without_a_staging_channel_it_still_answers(self, db_session: Session) -> None:
+        # El canal es OPCIONAL: los tests y los evals construyen la tool sin él.
+        tool = build_compare_prices(_factory(db_session), MARKET)
+
+        assert "no_match" in tool.invoke({"product": "flux capacitor de plutonio"})
+
+
 class TestAntiIdorYContrato:
     def test_no_tool_exposes_market_id_to_the_model(self, db_session: Session) -> None:
         """El mercado se liga por closure: el modelo no puede pedir el catálogo de otro país."""
@@ -299,11 +400,14 @@ class TestBusquedaYCanasta:
     def test_basket_for_budget_reports_one_basket_per_store(
         self, db_session: Session
     ) -> None:
-        tool = build_basket_for_budget(_factory(db_session), MARKET)
+        staging: dict = {}
+        tool = build_basket_for_budget(_factory(db_session), MARKET, staging)
 
         out = tool.invoke({"amount": 5000})
 
         assert "groups" in out.lower() or "no_data" in out
+        assert "basket" in staging
+        assert staging["basket"].providers
 
     def test_basket_rejects_a_non_positive_budget_without_crashing(
         self, db_session: Session
@@ -324,22 +428,28 @@ class TestRevelacionProgresiva:
     def test_without_a_store_it_returns_the_headline_not_the_items(
         self, db_session: Session
     ) -> None:
-        tool = build_basket_for_budget(_factory(db_session), MARKET)
+        staging: dict = {}
+        tool = build_basket_for_budget(_factory(db_session), MARKET, staging)
 
         out = tool.invoke({"amount": 5000})
 
         assert "groups_covered" in out
         assert "item=" not in out, "el titular no debe traer el detalle de artículos"
+        assert "basket" in staging
 
     def test_asking_for_ONE_store_returns_its_item_list(self, db_session: Session) -> None:
-        tool = build_basket_for_budget(_factory(db_session), MARKET)
+        staging: dict = {}
+        tool = build_basket_for_budget(_factory(db_session), MARKET, staging)
         headline = tool.invoke({"amount": 5000})
         store = headline.splitlines()[1].split("store=")[1].split(" |")[0]
+        basket_after_headline = staging["basket"]
 
         detail = tool.invoke({"amount": 5000, "store": store})
 
         assert "item=" in detail
         assert store in detail
+        # El detalle por tienda NO stagea la acción visual; eso ya lo hizo el titular.
+        assert staging["basket"] is basket_after_headline
 
     def test_an_unknown_store_lists_the_ones_that_exist(self, db_session: Session) -> None:
         tool = build_basket_for_budget(_factory(db_session), MARKET)

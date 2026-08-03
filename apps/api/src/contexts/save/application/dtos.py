@@ -501,6 +501,11 @@ class BasketLineDto(BaseModel):
     unit_price_minor: int
     units: int
     subtotal_minor: int
+    # Campos visuales para la card del chat (no se calculan en el LLM).
+    image_url: str | None = None
+    url: str | None = None
+    brand: str | None = None
+    display_size: str | None = None
 
 
 class ProviderBasketDto(BaseModel):
@@ -515,6 +520,7 @@ class ProviderBasketDto(BaseModel):
     groups_unavailable: tuple[str, ...]
     groups_unaffordable: tuple[str, ...]
     shortfall_minor: int | None = None
+    is_cheapest: bool = False
 
     @property
     def items_count(self) -> int:
@@ -535,6 +541,10 @@ class ProviderBasketDto(BaseModel):
                     unit_price_minor=line.unit_price_minor,
                     units=line.units,
                     subtotal_minor=line.subtotal_minor,
+                    image_url=line.image_url,
+                    url=line.url,
+                    brand=line.brand,
+                    display_size=line.display_size,
                 )
                 for line in basket.lines
             ),

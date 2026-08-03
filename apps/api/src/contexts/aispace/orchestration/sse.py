@@ -4,7 +4,7 @@ unit-testable without the HTTP stack or an LLM.
 Two entry points, ONE generic contract (scales to any flow — this module knows nothing about
 expenses, only interrupts + ui_actions):
   - `stream_events` → SSE frames for `POST /chat/stream` (the first turn): `token`* → `interaction`?
-    → `link`* → `done`.
+    → one frame per `ui_action` (`link`, `product`, …) → `done`.
   - `chat_result` → the JSON body for `POST /chat` and `POST /chat/resume`: the next `interaction`
     (if the graph paused) or the final `reply`, plus any `links`.
 
@@ -12,6 +12,7 @@ Frame/field types:
   token        {type, content}          assistant text chunk
   interaction  {type, interaction}      the graph paused at interrupt() → {prompt, options[]}
   link         {type, text, href}       a ui_actions deep link (e.g. "Ver en Insight" → insights)
+  product      {type, name, stores[]}    Save's in-chat comparison card (see `ui_action_frames`)
   done         {type, thread_id}        terminal
 """
 from __future__ import annotations
@@ -59,6 +60,19 @@ def links(state: dict) -> list[dict]:
     return [a for a in state.get("ui_actions", []) if a.get("type") == "link"]
 
 
+def ui_action_frames(state: dict) -> list[dict]:
+    """Every `ui_action` as its own frame, whatever its type.
+
+    Generic ON PURPOSE, and it is what lets this module keep the promise in its docstring. Save's
+    product card shipped without `sse.py` learning what a product is: a ui_action already has the
+    frame shape (`{"type": …, …}`), so it travels verbatim. The alternative — an `if` per new type —
+    would make every feature touch the transport.
+
+    An action without a `type` is dropped: it would break the client's switch.
+    """
+    return [a for a in state.get("ui_actions", []) if a.get("type")]
+
+
 def chat_result(snapshot, thread_id: str) -> dict:  # type: ignore[no-untyped-def]
     """Body for the non-streaming endpoints: the next interaction (paused) OR the final reply."""
     state = snapshot.values
@@ -69,7 +83,12 @@ def chat_result(snapshot, thread_id: str) -> dict:  # type: ignore[no-untyped-de
         "thread_id": thread_id,
         "reply": reply,
         "interaction": interaction,
+        # `links` se mantiene para los clientes que ya lo leen; `ui_actions` es el canal completo.
+        # Tenerlo SOLO en el stream fue un bug real: al elegir en el dock, la respuesta viaja por
+        # `/chat/resume` (o sea por acá), y la tarjeta de producto desaparecía en silencio porque
+        # su `type` no era `link`. Los dos caminos deben entregar lo MISMO.
         "links": links(state),
+        "ui_actions": ui_action_frames(state),
     }
 
 
@@ -112,7 +131,7 @@ def stream_events(graph, inputs: dict, cfg: dict, thread_id: str) -> Iterator[st
     if interaction:
         yield sse_frame({"type": "interaction", "interaction": interaction})
 
-    for link in links(state):
-        yield sse_frame({"type": "link", "text": link["text"], "href": link["href"]})
+    for action in ui_action_frames(state):
+        yield sse_frame(action)
 
     yield sse_frame({"type": "done", "thread_id": thread_id})

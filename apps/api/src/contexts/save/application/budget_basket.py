@@ -50,4 +50,11 @@ class BudgetBasket:
         # aproximadamente el mismo presupuesto, así que ordenar por total premiaría al que menos
         # compró.
         baskets.sort(key=lambda b: (len(b.groups_covered), b.items_count), reverse=True)
+
+        # "Más barato" se juzga por total gastado dentro de la canasta; el primero en empate gana.
+        if baskets:
+            cheapest_total = min(b.total_minor for b in baskets)
+            for b in baskets:
+                b.is_cheapest = b.total_minor == cheapest_total
+
         return BudgetBasketDto(budget_minor=budget_minor, providers=tuple(baskets))

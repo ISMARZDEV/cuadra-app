@@ -12,17 +12,18 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 OptionVariant = Literal["primary", "secondary"]
-OptionKind = Literal["pill", "chip"]
+OptionKind = Literal["pill", "chip", "product"]
 
 
 @dataclass(frozen=True)
 class Option:
     value: str                         # what the client resumes with
-    label: str | None = None           # pill text (None for icon-only chips)
+    label: str | None = None           # pill text (None for icon-only chips/products)
     variant: OptionVariant = "primary"  # primary = lime fill; secondary = translucent green
-    kind: OptionKind = "pill"          # pill = text button; chip = round icon-only
+    kind: OptionKind = "pill"          # pill = text button; chip = round icon-only; product = carousel card
     icon: str | None = None            # emoji / icon name for chips
     color: str | None = None           # chip ring color (hex) — per-category accent (Img 10)
+    product: dict | None = None        # product card data when kind == "product"
 
     def to_dict(self) -> dict:
         return {
@@ -32,6 +33,7 @@ class Option:
             "kind": self.kind,
             "icon": self.icon,
             "color": self.color,
+            "product": self.product,
         }
 
 

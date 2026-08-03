@@ -23,9 +23,22 @@ from src.contexts.save.infrastructure.repositories import (
 )
 from src.config import settings
 
+from src.contexts.save.domain.query_coverage import covers_query
 from src.contexts.save.domain.search_ambiguity import is_ambiguous
 
-from ._shared import NO_MATCH, SessionFactory, money, price_metadata
+from ._shared import (
+    NO_MATCH,
+    SessionFactory,
+    money,
+    price_metadata,
+    product_action,
+    product_option,
+    provider_products_action,
+)
+
+# Antes se pedía 1 y se tomaba ése. Ahora el ranking PROPONE varios y la cobertura elige: hace
+# falta cola para que «el primero que de verdad cubre» tenga entre qué elegir.
+_RESOLVE_CANDIDATES = 5
 
 
 def _not_a_category(name: str) -> str:
@@ -52,14 +65,27 @@ def _find_node(nodes, slug: str):  # type: ignore[no-untyped-def]
 
 
 def _resolve(session, market_id: str, text: str):  # type: ignore[no-untyped-def]
-    """Texto difuso del usuario → el canónico más probable. Devuelve None si no hay nada."""
+    """Texto difuso del usuario → el canónico más probable. Devuelve None si NINGUNO lo cubre.
+
+    RESOLVER no es BUSCAR. Buscar puede ser generoso —un resultado de más es inofensivo—; resolver
+    elige UN producto y lo presenta como «el que pediste», con su precio y su botón de compra. Ahí
+    el falso positivo es una mentira accionable.
+
+    Por eso el ranking PROPONE y la cobertura de tokens DISPONE: se recorre el ranking y se toma el
+    primero que contenga de verdad lo que el usuario escribió. Sin esta guarda, «arroz Rica»
+    resolvía a «Galleta Arroz Ricecrisps» (score 0.818) — y un piso no lo arreglaba, porque tres
+    matches CORRECTOS puntúan más bajo que ese (ver `save/domain/query_coverage.py`).
+    """
     repo = SqlCanonicalProductRepository(session)
     results = SearchProducts(
         repo,
         embedding_provider=build_api_embedder(endpoint_url=settings.save_bge_m3_endpoint_url),
-        limit=1,
+        limit=_RESOLVE_CANDIDATES,
     ).execute(text, market_id)
-    return results[0] if results else None
+    for candidate in results:
+        if covers_query(text, f"{candidate.name} {candidate.brand or ''}"):
+            return candidate
+    return None
 
 
 def _ambiguous_options(session, market_id: str, text: str) -> list[dict] | None:  # type: ignore[no-untyped-def]
@@ -67,39 +93,82 @@ def _ambiguous_options(session, market_id: str, text: str) -> list[dict] | None:
 
     La decisión vive en el dominio (`is_ambiguous`) y se toma sobre el score CRUDO de la etapa
     léxica — RRF comprime todo y no distingue una consulta ambigua de una específica.
+
+    Cada opción viaja como una card de producto (`kind="product"`) con imagen, precio y tamaño,
+    para que el chat la pinte como un carrusel en vez de un listado de pills.
     """
-    repo = SqlCanonicalProductRepository(session)
-    candidates = repo.search_lexical(text, market_id, limit=5)
+    canonical_repo = SqlCanonicalProductRepository(session)
+    store_repo = SqlStoreProductRepository(session)
+    taxonomy_repo = SqlTaxonomyRepository(session)
+    candidates = canonical_repo.search_lexical(text, market_id, limit=5)
     if not is_ambiguous([c.score for c in candidates]):
         return None
-    products = {p.id: p for p in repo.get_many([c.canonical_product_id for c in candidates], market_id)}
-    return [
-        {"value": c.canonical_product_id, "label": products[c.canonical_product_id].name}
-        for c in candidates
-        if c.canonical_product_id in products
-    ]
+    products = {
+        p.id: p
+        for p in canonical_repo.get_many(
+            [c.canonical_product_id for c in candidates], market_id
+        )
+    }
+    currency = "DOP"
+    options: list[dict] = []
+    for index, candidate in enumerate(candidates, start=1):
+        canonical = products.get(candidate.canonical_product_id)
+        if canonical is None:
+            continue
+        try:
+            comparison = CompareProduct(
+                canonical_repo, store_repo, taxonomy_repo
+            ).execute(canonical.slug or canonical.id, market_id)
+        except Exception:
+            continue
+        options.append(
+            product_option(
+                canonical, comparison, index=index, currency=currency
+            )
+        )
+    return options or None
 
 
-def build_search_groceries(session_factory: SessionFactory, market_id: str):  # type: ignore[no-untyped-def]
+def build_search_groceries(  # type: ignore[no-untyped-def]
+    session_factory: SessionFactory, market_id: str, staging: dict | None = None
+):
     @tool
     def search_groceries(query: str) -> str:
         """Find supermarket products in the catalog by a fuzzy user phrase.
 
         Use it when the user names a product vaguely, misspells it, or uses a regional synonym
-        ("arros", "habichuelas", "algo para sofreir") and you need to know WHICH products exist
-        before doing anything else. Returns up to 5 ranked products with their id.
+        ("arros", "habichuelas", "algo para sofreir") and you need to know WHICH products exist.
+        Returns up to 5 ranked products with their id. The app renders the same results as a
+        carousel grouped by store below your reply, so do NOT list them again in prose.
 
-        Do NOT use it to get a price: it returns names, not prices. Once you know which product
-        the user means, call compare_prices with that name.
+        Do NOT use it to compare the price of ONE specific product across stores: for that, call
+        compare_prices with the exact product name.
         """
         with session_factory() as session:
+            canonical_repo = SqlCanonicalProductRepository(session)
             results = SearchProducts(
-                SqlCanonicalProductRepository(session),
+                canonical_repo,
                 embedding_provider=build_api_embedder(
                     endpoint_url=settings.save_bge_m3_endpoint_url
                 ),
                 limit=5,
             ).execute(query, market_id)
+            if staging is not None and results:
+                comparisons = []
+                for result in results:
+                    try:
+                        comparison = CompareProduct(
+                            canonical_repo,
+                            SqlStoreProductRepository(session),
+                            SqlTaxonomyRepository(session),
+                        ).execute(result.slug or result.id, market_id)
+                        comparisons.append(comparison)
+                    except Exception:
+                        # Si un canónico no tiene cotizaciones, se omite silenciosamente del carrusel.
+                        continue
+                staging.setdefault("provider_products", [])
+                for action in provider_products_action(comparisons):
+                    staging["provider_products"].append(action)
         if not results:
             return NO_MATCH
         return "\n".join(
@@ -165,6 +234,28 @@ def build_compare_prices(  # type: ignore[no-untyped-def]
             ).execute(canonical.slug, market_id)
 
             meta = price_metadata(session, comparison.canonical_product_id)
+            # §4.3 (revisado) — la comparación viaja como TARJETA por `ui_actions` y se pinta dentro
+            # de la burbuja. Acá van sólo DATOS, con el dinero ya formateado; el chrome lo pone el
+            # cliente, que es quien tiene i18n.
+            if staging is not None:
+                first = comparison.entries[0] if comparison.entries else None
+                staging["product"] = {
+                    "name": comparison.name,
+                    "brand": comparison.brand,
+                    "image_url": comparison.image_url,
+                    "captured_at": meta.get(first.provider_id, ("unknown", ""))[0]
+                    if first
+                    else "unknown",
+                    "stores": [
+                        {
+                            "provider": e.provider_name,
+                            "price": money(e.price_minor, e.currency),
+                            "is_cheapest": e.is_cheapest,
+                            "url": e.url,
+                        }
+                        for e in comparison.entries
+                    ],
+                }
             lines = [f"product={comparison.name} | brand={comparison.brand}"]
             for entry in comparison.entries:
                 parts = [
@@ -296,33 +387,41 @@ def build_cheapest_store_by_category(session_factory: SessionFactory, market_id:
 
 def compare_by_canonical_id(  # type: ignore[no-untyped-def]
     session_factory: SessionFactory, market_id: str, canonical_product_id: str
-) -> tuple[str, list[dict]]:
-    """Comparación de un canónico YA elegido → (texto, ui_actions).
+) -> tuple[str | None, list[dict]]:
+    """Comparación de un canónico YA elegido → (nombre del producto, ui_actions con la tarjeta).
 
     Es el paso terminal del flujo de desambiguación (§5.4·A): el usuario ya tocó una pill, así que
-    no hay nada que resolver — se compara ESE producto y se devuelven sus enlaces.
+    no hay nada que resolver — se compara ESE producto.
+
+    Devuelve el NOMBRE y no una frase armada: antes construía acá el texto en español hardcodeado
+    («← más barato», «Precios en línea capturados el…»), que rompe la regla de que ningún string de
+    cara al usuario se escriba en un solo idioma. La frase la arma el flujo, que sí conoce el
+    idioma; acá sólo salen datos.
     """
     with session_factory() as session:
         repo = SqlCanonicalProductRepository(session)
         products = repo.get_many([canonical_product_id], market_id)
         if not products:
-            return NO_MATCH, []
+            return None, []
         comparison = CompareProduct(
             repo, SqlStoreProductRepository(session), SqlTaxonomyRepository(session)
         ).execute(products[0].slug or products[0].id, market_id)
         meta = price_metadata(session, comparison.canonical_product_id)
 
-    lines = [f"{comparison.name} ({comparison.brand})"]
-    ui_actions: list[dict] = []
-    for entry in comparison.entries:
-        when, price_type = meta.get(entry.provider_id, ("unknown", "online"))
-        mark = " ← más barato" if entry.is_cheapest and len(comparison.entries) > 1 else ""
-        lines.append(
-            f"{entry.provider_name}: {money(entry.price_minor, entry.currency)}{mark}"
-        )
-        if entry.url:
-            ui_actions.append(
-                {"type": "link", "text": entry.provider_name, "href": entry.url}
-            )
-    lines.append(f"Precios en línea capturados el {when}; pueden variar en tienda.")
-    return "\n".join(lines), ui_actions
+    first = comparison.entries[0] if comparison.entries else None
+    staged = {
+        "name": comparison.name,
+        "brand": comparison.brand,
+        "image_url": comparison.image_url,
+        "captured_at": meta.get(first.provider_id, ("unknown", ""))[0] if first else "unknown",
+        "stores": [
+            {
+                "provider": e.provider_name,
+                "price": money(e.price_minor, e.currency),
+                "is_cheapest": e.is_cheapest,
+                "url": e.url,
+            }
+            for e in comparison.entries
+        ],
+    }
+    return comparison.name, product_action(staged)

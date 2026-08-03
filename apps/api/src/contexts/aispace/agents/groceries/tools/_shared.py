@@ -16,9 +16,13 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from src.contexts.save.application.dtos import BudgetBasketDto, PriceComparisonDto
+from src.contexts.save.domain.entities import CanonicalProduct
 from src.shared.money import Currency, Money
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
+
+# Number of search results to show in the provider-products carousel.
 
 NO_MATCH = "no_match: that product is not in the catalog"
 NO_DATA = "no_data: there is no priced catalog for this market yet"
@@ -60,3 +64,171 @@ def price_metadata(session: Session, canonical_product_id: str) -> dict[str, tup
         {"cid": canonical_product_id},
     ).all()
     return {str(r.provider_id): (captured(r.captured_at), r.price_type) for r in rows}
+
+def product_action(staged: dict | None) -> list[dict]:
+    """Comparación stageada por la tool → la tarjeta que se pinta DENTRO de la burbuja del chat.
+
+    Reemplaza al enlace externo: mandar al navegador abandona la conversación, y la comparación es
+    justo lo que el usuario vino a ver. Acá viajan sólo DATOS — `is_cheapest` es un booleano, no la
+    cadena «Más barato», porque el cliente ya tiene i18n y traducir del lado del servidor haría que
+    un chat en inglés mostrara una etiqueta en español.
+
+    Los precios llegan ya formateados por `Money.format()` (§5.5): ningún entero crudo de dinero
+    sale de acá, ni hacia el modelo ni hacia la UI.
+    """
+    if not staged:
+        return []
+    stores = staged.get("stores", [])
+    # §8.1 fila 2 — con UNA sola tienda no hay con qué comparar, así que nada es «lo más barato».
+    comparable = len(stores) > 1
+    return [
+        {
+            "type": "product",
+            "name": staged.get("name"),
+            "brand": staged.get("brand"),
+            "image_url": staged.get("image_url"),
+            "captured_at": staged.get("captured_at"),
+            "stores": [
+                {
+                    "provider": s["provider"],
+                    "price": s["price"],
+                    "is_cheapest": bool(s.get("is_cheapest")) and comparable,
+                    "url": s.get("url"),
+                }
+                for s in stores
+            ],
+        }
+    ]
+
+
+def basket_action(result: BudgetBasketDto | None) -> list[dict]:
+    """Canasta por presupuesto → card con tabs por provider + carrusel de productos.
+
+    El dinero viaja formateado por `Money.format()`; el cliente no recibe enteros.
+    """
+    if not result or not result.providers:
+        return []
+    currency = "DOP"
+    return [
+        {
+            "type": "basket",
+            "budget": money(result.budget_minor, currency),
+            "currency": currency,
+            "providers": [
+                {
+                    "provider_id": provider.provider_id,
+                    "provider_name": provider.provider_name,
+                    "total": money(provider.total_minor, currency),
+                    "remaining": money(provider.remaining_minor, currency),
+                    "items_count": provider.items_count,
+                    "groups_covered": list(provider.groups_covered),
+                    "groups_unavailable": list(provider.groups_unavailable),
+                    "groups_unaffordable": list(provider.groups_unaffordable),
+                    "is_cheapest": provider.is_cheapest,
+                    "items": [
+                        {
+                            "index": index + 1,
+                            "canonical_product_id": line.canonical_product_id,
+                            "name": line.name,
+                            "brand": line.brand,
+                            "size": line.display_size,
+                            "image_url": line.image_url,
+                            "url": line.url,
+                            "unit_price": money(line.unit_price_minor, currency),
+                            "subtotal": money(line.subtotal_minor, currency),
+                            "units": line.units,
+                        }
+                        for index, line in enumerate(provider.lines)
+                    ],
+                }
+                for provider in result.providers
+            ],
+        }
+    ]
+
+
+def provider_products_action(comparisons: list[PriceComparisonDto] | None) -> list[dict]:
+    """Búsqueda de productos → carrusel por proveedor, sin totales de canasta.
+
+    Cada producto se repite bajo cada proveedor que lo tiene, con el precio de ESA tienda.
+    El dinero viaja formateado por `Money.format()`; el cliente no recibe enteros.
+    """
+    if not comparisons:
+        return []
+
+    by_provider: dict[str, dict] = {}
+    for comparison in comparisons:
+        for entry in comparison.entries:
+            provider = by_provider.setdefault(
+                entry.provider_id,
+                {
+                    "provider_id": entry.provider_id,
+                    "provider_name": entry.provider_name,
+                    "items": [],
+                },
+            )
+            unit_price_str = (
+                money(entry.unit_price_minor, comparison.currency)
+                if entry.unit_price_minor is not None
+                else money(entry.price_minor, comparison.currency)
+            )
+            provider["items"].append(
+                {
+                    "index": len(provider["items"]) + 1,
+                    "canonical_product_id": comparison.canonical_product_id,
+                    "name": comparison.name,
+                    "brand": comparison.brand,
+                    "size": comparison.display_size,
+                    "image_url": comparison.image_url,
+                    "url": entry.url,
+                    "unit_price": unit_price_str,
+                }
+            )
+
+    if not by_provider:
+        return []
+
+    return [
+        {
+            "type": "provider_products",
+            "currency": comparisons[0].currency,
+            "providers": list(by_provider.values()),
+        }
+    ]
+
+
+def product_option(
+    canonical: CanonicalProduct,
+    comparison: PriceComparisonDto,
+    *,
+    index: int,
+    currency: str,
+) -> dict:
+    """One disambiguation option rendered as a product carousel card.
+
+    Uses the cheapest store's price as the card's headline price and its URL as the primary link.
+    Money is already formatted by `Money.format()` via `PriceComparisonDto`.
+    """
+    entry = comparison.entries[0] if comparison.entries else None
+    unit_price_str = (
+        money(entry.unit_price_minor, currency)
+        if entry and entry.unit_price_minor is not None
+        else money(entry.price_minor, currency)
+        if entry
+        else money(0, currency)
+    )
+    return {
+        "value": canonical.id,
+        "label": canonical.name,
+        "kind": "product",
+        "product": {
+            "index": index,
+            "canonical_product_id": canonical.id,
+            "name": canonical.name,
+            "brand": canonical.brand or None,
+            "size": canonical.display_size,
+            "image_url": canonical.image_url,
+            "url": entry.url if entry else None,
+            "unit_price": unit_price_str,
+        },
+    }

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/ui/icon";
 import { useDrawer } from "@/store/drawer-store";
+import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import { CHAT_SESSIONS } from "../mock";
 
@@ -41,13 +42,13 @@ export function ChatSessionsSidebar() {
     >
       {/* Header — title + search */}
       <View className="flex-row items-center justify-between px-2 pb-1">
-        <Text style={{ color: c.text, fontSize: 24, fontWeight: "700" }}>AISpace</Text>
+        <Text style={{ color: c.text, fontSize: 24, fontFamily: KANTUMRUY_SEMIBOLD }}>AISpace</Text>
         <Pressable accessibilityRole="button" hitSlop={10} style={{ padding: 6 }}>
           <Icon as={Search} size={22} color={c.text} />
         </Pressable>
       </View>
 
-      <Text style={{ color: c.muted, fontSize: 13, fontWeight: "600", paddingHorizontal: 8, marginTop: 14, marginBottom: 4 }}>
+      <Text style={{ color: c.muted, fontSize: 13, fontFamily: KANTUMRUY_SEMIBOLD, paddingHorizontal: 8, marginTop: 14, marginBottom: 4 }}>
         Recientes
       </Text>
 
@@ -66,7 +67,7 @@ export function ChatSessionsSidebar() {
                 backgroundColor: active ? c.surface : "transparent",
               }}
             >
-              <Text numberOfLines={1} style={{ color: c.text, fontSize: 16 }}>
+              <Text numberOfLines={1} style={{ color: c.text, fontSize: 16, fontFamily: KANTUMRUY_MEDIUM }}>
                 {session.title}
               </Text>
             </Pressable>
@@ -90,7 +91,7 @@ export function ChatSessionsSidebar() {
           }}
         >
           <Icon as={SquarePen} size={18} color="#FFFFFF" />
-          <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>Nuevo chat</Text>
+          <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: KANTUMRUY_SEMIBOLD }}>Nuevo chat</Text>
         </Pressable>
         <View
           style={{
@@ -102,7 +103,7 @@ export function ChatSessionsSidebar() {
             justifyContent: "center",
           }}
         >
-          <Text style={{ color: c.text, fontSize: 14, fontWeight: "700" }}>IM</Text>
+          <Text style={{ color: c.text, fontSize: 14, fontFamily: KANTUMRUY_SEMIBOLD }}>IM</Text>
         </View>
       </View>
     </View>

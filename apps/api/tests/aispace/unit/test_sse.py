@@ -14,7 +14,12 @@ from langgraph.types import Command
 
 from src.contexts.aispace.flows.expense.flow import build_expense_flow
 from src.contexts.aispace.orchestration.graph import build_graph
-from src.contexts.aispace.orchestration.sse import chat_result, stream_events
+from src.contexts.aispace.orchestration.sse import (
+    chat_result,
+    sse_frame,
+    stream_events,
+    ui_action_frames,
+)
 
 
 class _WriteAgent:
@@ -61,6 +66,64 @@ def _events(frames: list[str]) -> list[dict]:
         if line.startswith("data:"):
             out.append(json.loads(line[len("data:"):].strip()))
     return out
+
+
+class TestElCanalDeUiActionsEsGENERICO:
+    """El módulo declara «no sabe de gastos, sólo de interrupts + ui_actions». Que lo cumpla.
+
+    La tarjeta de producto de Save entró sin que `sse.py` aprendiera qué es un producto: cada
+    `ui_action` viaja como su propio frame. Si en vez de eso hubiera que agregar un `if` por cada
+    tipo nuevo, el módulo dejaría de ser genérico y cada feature tocaría el transporte.
+    """
+
+    def test_a_link_action_still_arrives_exactly_as_before(self) -> None:
+        # Contrato viejo intacto: el cliente que ya lee `link` no se entera del cambio.
+        [frame] = _events(
+            [sse_frame(a) for a in ui_action_frames({"ui_actions": [
+                {"type": "link", "text": "Ver en Insight", "href": "insights"}
+            ]})]
+        )
+
+        assert frame == {"type": "link", "text": "Ver en Insight", "href": "insights"}
+
+    def test_an_unknown_action_type_travels_without_sse_knowing_it(self) -> None:
+        card = {"type": "product", "name": "Café", "stores": [{"provider": "Sirena"}]}
+
+        [frame] = _events([sse_frame(a) for a in ui_action_frames({"ui_actions": [card]})])
+
+        assert frame == card
+
+    def test_an_action_without_a_type_is_dropped(self) -> None:
+        # Un frame sin `type` rompería el switch del cliente: no se emite.
+        assert ui_action_frames({"ui_actions": [{"text": "huérfano"}]}) == []
+
+    def test_chat_result_carries_the_SAME_actions_as_the_stream(self) -> None:
+        """Los DOS caminos tienen que entregar lo mismo, y este test nace de un fallo real.
+
+        `stream_events` se hizo genérico pero `chat_result` —el body de `/chat/resume`— siguió
+        filtrando `type == "link"`. Consecuencia medida en el device: el usuario elegía un arroz en
+        el dock, el agente contestaba «Acá está Arroz Pimco Premium 10 Lbs:» y la TARJETA
+        DESAPARECÍA en silencio, porque su `type` era `product` y ese filtro la tiraba.
+
+        Es el mismo defecto que este canal vino a resolver, un escalón más abajo: dos caminos con
+        contratos distintos para una sola cosa.
+        """
+
+        class _Snapshot:
+            tasks: tuple = ()
+            values = {
+                "messages": [AIMessage("Acá está Arroz Pimco Premium 10 Lbs:")],
+                "ui_actions": [
+                    {"type": "product", "name": "Arroz Pimco Premium 10 Lbs", "stores": []},
+                    {"type": "link", "text": "Ver en Insight", "href": "insights"},
+                ],
+            }
+
+        res = chat_result(_Snapshot(), "t1")
+
+        assert [a["type"] for a in res["ui_actions"]] == ["product", "link"]
+        # `links` sobrevive para los clientes que ya lo leen; NO se rompe nada al agregar el campo.
+        assert [link["href"] for link in res["links"]] == ["insights"]
 
 
 def test_stream_emits_coach_message_then_interaction_then_done() -> None:

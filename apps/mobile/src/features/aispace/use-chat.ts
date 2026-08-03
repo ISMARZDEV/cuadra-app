@@ -4,7 +4,14 @@ import { getLanguage } from "@/i18n";
 
 import { resumeChat, streamChat } from "./chat-stream";
 import { ChatRole } from "./enums";
-import type { ChatMessage, DockInteraction, DockOption } from "./interfaces";
+import type {
+  BasketCardData,
+  ChatMessage,
+  DockInteraction,
+  DockOption,
+  ProductCardData,
+  ProviderProductsData,
+} from "./interfaces";
 
 let _seq = 0;
 const uid = () => `m${++_seq}`;
@@ -29,6 +36,25 @@ export function useChat() {
 
   const appendAgent = useCallback((text: string, href?: string) => {
     setMessages((m) => [...m, { id: uid(), role: ChatRole.Agent, text, href }]);
+  }, []);
+
+  // La tarjeta de Save llega como su propio frame y va en su propia burbuja: el texto del agente
+  // dice el titular y la tarjeta carga la tabla, así ninguno repite al otro.
+  const appendProduct = useCallback((product: ProductCardData) => {
+    setMessages((m) => [...m, { id: uid(), role: ChatRole.Agent, text: "", product }]);
+  }, []);
+
+  // La canasta por presupuesto: accordion de tiendas + carrusel de productos.
+  const appendBasket = useCallback((basket: BasketCardData) => {
+    setMessages((m) => [...m, { id: uid(), role: ChatRole.Agent, text: "", basket }]);
+  }, []);
+
+  // Lista de productos por proveedor: gemelo de la canasta, sin totales.
+  const appendProviderProducts = useCallback((providerProducts: ProviderProductsData) => {
+    setMessages((m) => [
+      ...m,
+      { id: uid(), role: ChatRole.Agent, text: "", provider_products: providerProducts },
+    ]);
   }, []);
 
   const send = useCallback(
@@ -58,6 +84,18 @@ export function useChat() {
           } else if (e.type === "interaction") {
             setIsThinking(false);
             setInteraction(e.interaction); // first HITL step (e.g. confirm) — dock opens
+          } else if (e.type === "product") {
+            setIsThinking(false);
+            const { type: _t, ...product } = e;
+            appendProduct(product);
+          } else if (e.type === "basket") {
+            setIsThinking(false);
+            const { type: _t, ...basket } = e;
+            appendBasket(basket);
+          } else if (e.type === "provider_products") {
+            setIsThinking(false);
+            const { type: _t, ...providerProducts } = e;
+            appendProviderProducts(providerProducts);
           } else if (e.type === "link") {
             appendAgent(e.text, e.href); // deep link as a tappable message (Img 11)
           } else if (e.type === "done") {
@@ -74,7 +112,7 @@ export function useChat() {
       setIsStreaming(false);
       setIsThinking(false);
     },
-    [appendAgent],
+    [appendAgent, appendBasket, appendProduct, appendProviderProducts],
   );
 
   // `question` = the prompt of the step being answered, passed by the screen (which holds the live
@@ -98,7 +136,22 @@ export function useChat() {
         setInteraction(res.interaction ?? null); // swap to the next step, or close when the flow ends
         if (!res.interaction) {
           if (res.reply) appendAgent(res.reply); // final reply ("Listo, registrado ✅")
-          res.links.forEach((l) => appendAgent(l.text, l.href)); // "Ver en Insight"
+          // El MISMO canal que el stream. Antes leía sólo `links`, así que al elegir un producto
+          // en el dock la tarjeta se descartaba en silencio y quedaba el texto solo.
+          for (const action of res.uiActions) {
+            if (action.type === "product") {
+              const { type: _t, ...product } = action;
+              appendProduct(product);
+            } else if (action.type === "basket") {
+              const { type: _t, ...basket } = action;
+              appendBasket(basket);
+            } else if (action.type === "provider_products") {
+              const { type: _t, ...providerProducts } = action;
+              appendProviderProducts(providerProducts);
+            } else {
+              appendAgent(action.text, action.href); // "Ver en Insight"
+            }
+          }
         }
       } catch {
         setInteraction(null);
@@ -107,7 +160,7 @@ export function useChat() {
         setIsThinking(false);
       }
     },
-    [appendAgent],
+    [appendAgent, appendBasket, appendProduct, appendProviderProducts],
   );
 
   return { messages, interaction, isStreaming, isThinking, threadId, send, select };

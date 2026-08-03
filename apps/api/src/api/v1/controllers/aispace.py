@@ -81,6 +81,7 @@ class ChatResponse(BaseModel):
     reply: str | None = None
     interaction: dict | None = None     # próximo paso HITL multi-step → {prompt, options[]}
     links: list[dict] = []              # deep links que dejó el flow (p. ej. "Ver en Insight")
+    ui_actions: list[dict] = []        # tarjetas/links generados este turno (canal unificado SSE/HTTP)
     pending_action: dict | None = None  # DEPRECATED — back-compat; != null → grafo pausado
 
 
@@ -93,7 +94,8 @@ def _respond(thread_id: str, graph, cfg: dict) -> ChatResponse:  # type: ignore[
     pending = snapshot.values.get("pending_action") if res["interaction"] else None
     return ChatResponse(
         thread_id=thread_id, reply=reply,
-        interaction=res["interaction"], links=res["links"], pending_action=pending,
+        interaction=res["interaction"], links=res["links"],
+        ui_actions=res["ui_actions"], pending_action=pending,
     )
 
 

@@ -2,15 +2,17 @@ import { fetch } from "expo/fetch";
 
 import { API_BASE_URL, getApiAuthToken } from "@/lib/api/client";
 
-import type { DockInteraction, StreamChatArgs } from "./interfaces";
+import type { ChatUiAction, DockInteraction, StreamChatArgs } from "./interfaces";
 import type { ChatStreamEvent } from "./types";
 
 // Result of resuming a paused HITL step (POST /chat/resume). The graph either pauses at the NEXT
-// step (`interaction` set) or finishes (`reply` + any `links`).
+// step (`interaction` set) or finishes (`reply` + any `ui_actions`).
 export interface ResumeResult {
   reply: string | null;
   interaction: DockInteraction | null;
-  links: { text: string; href: string }[];
+  // Mismo canal que el stream: enlaces, tarjetas de producto y lo que venga. Leer sólo `links`
+  // hacía que la tarjeta de Save desapareciera al elegir en el dock — el resume va por acá.
+  uiActions: ChatUiAction[];
   threadId: string;
 }
 
@@ -32,12 +34,12 @@ export async function resumeChat(threadId: string, value: string): Promise<Resum
     thread_id: string;
     reply: string | null;
     interaction: DockInteraction | null;
-    links?: { text: string; href: string }[];
+    ui_actions?: ChatUiAction[];
   };
   return {
     reply: data.reply ?? null,
     interaction: data.interaction ?? null,
-    links: data.links ?? [],
+    uiActions: data.ui_actions ?? [],
     threadId: data.thread_id,
   };
 }

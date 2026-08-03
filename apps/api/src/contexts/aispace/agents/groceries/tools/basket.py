@@ -71,7 +71,9 @@ def render_comparison(result: BudgetBasketDto) -> str:
     return "\n".join(lines)
 
 
-def build_basket_for_budget(session_factory: SessionFactory, market_id: str):  # type: ignore[no-untyped-def]
+def build_basket_for_budget(  # type: ignore[no-untyped-def]
+    session_factory: SessionFactory, market_id: str, staging: dict | None = None
+):
     @tool
     def basket_for_budget(amount: int, store: str = "") -> str:
         """Build the best household shopping basket that fits a budget, one per supermarket.
@@ -101,6 +103,7 @@ def build_basket_for_budget(session_factory: SessionFactory, market_id: str):  #
             return NO_DATA
 
         # §5.4·B — revelación progresiva: el TITULAR primero, el detalle sólo si lo piden.
+        # El card visual viaja SOLO con el titular; el detalle por tienda es texto para el agente.
         if store.strip():
             wanted = store.strip().lower()
             chosen = next(
@@ -111,6 +114,8 @@ def build_basket_for_budget(session_factory: SessionFactory, market_id: str):  #
                 return f"no_match: '{store}' is not one of the stores. Available: {names}"
             return render_store_detail(result, chosen)
 
+        if staging is not None:
+            staging["basket"] = result
         return render_comparison(result)
 
     return basket_for_budget

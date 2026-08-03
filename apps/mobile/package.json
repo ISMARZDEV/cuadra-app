@@ -15,6 +15,7 @@
     "@clerk/expo": "^3.6.5",
     "@cuadra/api-client": "workspace:*",
     "@expo-google-fonts/akshar": "^0.4.1",
+    "@expo-google-fonts/kantumruy-pro": "^0.4.1",
     "@expo/metro-runtime": "~56.0.16",
     "@hookform/resolvers": "^5.4.0",
     "@react-native-masked-view/masked-view": "0.3.2",

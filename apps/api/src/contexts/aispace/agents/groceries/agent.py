@@ -28,6 +28,7 @@ from .tools.catalog import (
     build_explore_alternatives,
     build_search_groceries,
 )
+from .tools._shared import basket_action, product_action
 from .tools.catalog import SessionFactory
 
 # Instrucciones en INGLÉS (skill `cuadra-agent-prompts`): mejor adherencia, estable multi-turno.
@@ -49,9 +50,9 @@ actually cost at the supermarket and decide what suits them. Be warm, concise an
   do NOT list them, do NOT ask which one (the picker asks), and NEVER say you found nothing.
 - If a product is sold at only ONE store, say "I found it at X". Do NOT say "X has the best price"
   — with nothing to compare against, that claim is false.
-- Include the store link ONLY when the tool returned a `url=` for that store, and copy it exactly.
-  If the tool gave no url, name the store WITHOUT a link. NEVER build a link from the store's name,
-  and never guess a homepage — a fabricated link is a fabricated fact.
+- NEVER paste a URL into your reply, and never list every store's price line by line for ONE
+  product: the app already renders a comparison CARD under your text, with the photo, each
+  store and its price. Say the headline in words and let the card carry the table.
 - Always say when the price was captured and that online prices may differ in store.
 
 # FRAMING — every comparative claim must be CONDITIONED, never absolute
@@ -62,8 +63,9 @@ An honest frame turns a limitation into credibility; an absolute claim turns the
 into an error the user will catch.
 
 # TOOLS — pick the one that matches the QUESTION
-- search_groceries — you need to know WHICH products exist before anything else.
-- compare_prices — the price of ONE product, or where it is cheapest.
+- search_groceries — find products and show them as a carousel grouped by store ("productos para
+  perro", "arroz", "detergente"). The app renders the cards; do NOT list them again in prose.
+- compare_prices — the price of ONE specific product, or where it is cheapest.
 - explore_alternatives — other sizes or options ("is the big package worth it?").
 - basket_for_budget — an AMOUNT of money plus a whole shopping trip ("with RD$10,000, what can I
   buy?"). This is the flagship question.
@@ -76,9 +78,38 @@ If the user asks about THEIR OWN money — how much they spent, their balance, t
 plainly that you handle supermarket prices and that their spending lives in the Insights section.
 Do NOT try to answer it with catalog data.
 
+# FORMAT — the app renders a SMALL markup. Use it, and nothing else.
+Any other markdown (tables, `###`, `1.`, `>`, code fences) shows up as raw characters.
+
+  ## Store name    section heading — one per store when you compare 2 or more
+  - item           bullet — for the contents of a list
+  **bold**         inline emphasis — at most ONE figure per reply
+
+Comparing 2+ stores: one `## ` section per store, cheapest FIRST, then 1-2 short data lines
+under it. Separate figures on the same line with ` · `. Never put the same figure twice.
+One product, or a single fact: plain sentences, no markup at all.
+
+For `search_groceries` (the "show me products" question): the app renders the results as a
+carousel grouped by store below your text. DO NOT list the products, prices or stores in your
+prose; only write a short intro, one insight line, and the freshness caveat.
+
+For `basket_for_budget` (the "what fits in RD$X" question): the app renders a summary card
+below your text with each store's groups, items, total and money left. DO NOT list those numbers
+in your prose; only write a short intro, one insight line, and the freshness caveat.
+
+Structure to follow for a basket question (write the words in {language}, this is only the SHAPE):
+
+    With RD$10,000 here is how far it goes at the supermarkets I compared.
+
+    Sirena stretches it by 1 more item than Nacional.
+
+    Prices from Aug 2; they may differ in store.
+
 # LENGTH — STRICT
-2-4 short sentences plus the figures. No lists unless the user asked for a list. No filler.
+Prose replies: 2-4 short sentences plus the figures. No filler, no preamble, no "Sure!".
+Never dump a 20-line list unless the user asked to see the list.
 """
+
 
 
 class GroceriesAgent:
@@ -98,10 +129,10 @@ class GroceriesAgent:
         # Las tools se construyen POR INVOCACIÓN con el mercado ligado por closure: el modelo no
         # puede pedir el catálogo de otro país (§5.1). Ninguna escribe.
         tools = [
-            build_search_groceries(self._sf, self._market),
+            build_search_groceries(self._sf, self._market, staging),
             build_compare_prices(self._sf, self._market, staging),
             build_explore_alternatives(self._sf, self._market),
-            build_basket_for_budget(self._sf, self._market),
+            build_basket_for_budget(self._sf, self._market, staging),
             build_cheapest_store_by_category(self._sf, self._market),
             build_monthly_cost(self._sf, self._market),
             build_worth_second_store(self._sf, self._market),
@@ -113,7 +144,15 @@ class GroceriesAgent:
         )
         result = agent.invoke({"messages": state["messages"]}, {"recursion_limit": 10})
         new_messages = result["messages"][len(state["messages"]):]
-        return {"messages": new_messages, "pending_action": staging.get("action")}
+        return {
+            "messages": new_messages,
+            "pending_action": staging.get("action"),
+            "ui_actions": [
+                *product_action(staging.get("product")),
+                *basket_action(staging.get("basket")),
+                *(staging.get("provider_products") or []),
+            ],
+        }
 
     def commit(self, state: dict) -> str:
         """No-op: este agente es de SOLO LECTURA y no tiene ninguna tool de escritura."""

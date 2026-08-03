@@ -42,7 +42,15 @@ def _pick_step() -> Step:
         lang = state.get("ui_language") or state.get("language", "es")
         return Interaction(
             prompt=t(_PROMPT_KEY, lang),
-            options=[Option(value=o["value"], label=o["label"]) for o in options],
+            options=[
+                Option(
+                    value=o["value"],
+                    label=o.get("label"),
+                    kind=o.get("kind", "product"),
+                    product=o.get("product"),
+                )
+                for o in options
+            ],
         )
 
     return Step(id="pick", build=build)
@@ -61,9 +69,14 @@ def build_groceries_flow(
         chosen = answers.get("pick")
         if not chosen:
             return {"pending_action": None}
-        reply, ui_actions = compare_by_id(chosen)
+        name, ui_actions = compare_by_id(chosen)
+        if name is None:
+            return {"pending_action": None}
+        # La frase se arma ACÁ y no en la tool: acá se conoce el idioma. Antes la tool devolvía
+        # español hardcodeado, que a un usuario en inglés le llegaba en español.
+        lang = state.get("ui_language") or state.get("language", "es")
         return {
-            "messages": [AIMessage(reply)],
+            "messages": [AIMessage(t("groceries.here_it_is", lang, product=name))],
             "pending_action": None,
             "ui_actions": ui_actions,
         }

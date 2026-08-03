@@ -26,6 +26,7 @@ import { Icon } from "@/components/ui/icon";
 import { t, type TranslationKey, useLang } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { palette } from "@/theme";
+import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 import { MONEY_ROLE_COLORS, type MoneyRole } from "@/theme/money-role-colors";
 
 import type { ChatEmptyStateProps } from "../interfaces";
@@ -207,7 +208,7 @@ function WidgetCard({ widget, onSelect }: { widget: Widget; onSelect: (prompt: s
       }}
     >
       <Icon as={widget.icon} size={ICON_SIZE} color={fg} />
-      <Text style={{ flex: 1, color: fg, fontSize: 12, fontWeight: "500", lineHeight: 13 }}>
+      <Text style={{ flex: 1, color: fg, fontSize: 12, fontFamily: KANTUMRUY_MEDIUM, lineHeight: 13 }}>
         {t(widget.labelKey)}
       </Text>
       <Icon as={widget.trailingIcon ?? CirclePlus} size={ICON_SIZE} color={fg} />
@@ -291,7 +292,7 @@ export function ChatEmptyState({ onSelect, viewportHeight = 0 }: ChatEmptyStateP
             per letter, which breaks the single continuous gradient across the line — see GradientText. */}
         <GradientText
           height={44}
-          textStyle={{ fontSize: 36, fontWeight: "800", lineHeight: 38, textAlign: "center" }}
+          textStyle={{ fontSize: 36, fontFamily: KANTUMRUY_SEMIBOLD, lineHeight: 38, textAlign: "center" }}
           colors={isDark ? ["#FFFFFF", "#848484"] : ["#000000", "#848484"]}
         >
           {t("chat.emptyState.greetingLine1")}
@@ -299,18 +300,18 @@ export function ChatEmptyState({ onSelect, viewportHeight = 0 }: ChatEmptyStateP
       </WaveIn>
       <View className="mb-2 flex-row justify-center">
         <WaveIn delay={LINE2_START} start={ready}>
-          <Text className="text-text" style={{ fontSize: 32, fontWeight: "500", lineHeight: 34, color: palette.accent }}>
+          <Text className="text-text" style={{ fontSize: 32, fontFamily: KANTUMRUY_MEDIUM, lineHeight: 34, color: palette.accent }}>
             {name}
           </Text>
         </WaveIn>
         <WaveIn delay={LINE2_START + LINE2_WORD_STAGGER} start={ready}>
-          <Text className="text-text" style={{ fontSize: 32, fontWeight: "500", lineHeight: 34 }}>
+          <Text className="text-text" style={{ fontSize: 32, fontFamily: KANTUMRUY_MEDIUM, lineHeight: 34 }}>
             {" "}😃💸👋!
           </Text>
         </WaveIn>
       </View>
       <FadeInUp delay={SUBTITLE_START} start={ready}>
-        <Text className="mb-5 text-center text-lg text-text">{t("chat.emptyState.subtitle")}</Text>
+        <Text className="mb-5 text-center font-sans text-lg text-text">{t("chat.emptyState.subtitle")}</Text>
       </FadeInUp>
 
       <View className="flex-row flex-wrap justify-between gap-y-3">

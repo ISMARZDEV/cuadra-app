@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from "react-native";
+import { Linking, Pressable, Text, View } from "react-native";
 import { type Href, useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
 
@@ -8,7 +8,7 @@ import { StreamingText } from "./streaming-text";
 function inlineBold(line: string) {
   return line.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith("**") && part.endsWith("**") ? (
-      <Text key={i} style={{ fontWeight: "800" }}>
+      <Text key={i} className="font-sans-semibold">
         {part.slice(2, -2)}
       </Text>
     ) : (
@@ -17,30 +17,79 @@ function inlineBold(line: string) {
   );
 }
 
+// La gramática que el agente puede escribir. Es MÍNIMA a propósito: cada marca nueva es una forma
+// más de que el usuario vea sintaxis cruda si el render falla.
+//
+//   **Titular**   línea entera → el opener grande del coach de finanzas (Img 21)
+//   ## Sección    línea entera → subtítulo de datos (el nombre de una tienda)
+//   - item        viñeta
+//   **inline**    negrita dentro de una línea
+//
+// Por qué `##` y no reusar `**Tienda**`: una línea entera en negrita YA significaba «titular a
+// 24px». Reusarla para el nombre de una tienda haría que un mismo token nombrara dos cosas y
+// ninguna quedaría bien — el nombre de la tienda saldría gigante, o el titular del coach chico.
+const HEADLINE = /^\*\*[^*]+\*\*$/;
+const SECTION = /^##\s+(.+)$/;
+const BULLET = /^[-•]\s+(.+)$/;
+
+export const hasRichMarkup = (text: string) =>
+  text.includes("**") || /^##\s+/m.test(text) || /^[-•]\s+/m.test(text);
+
 // Coach-style reply (Img 21): a bold surprised opener on its own line (e.g. "**Wow!!! 🫣**") rendered
-// as a big heading, then normal-text coaching lines. A whole-line **…** is the heading; inline **…**
-// stays bold at body size. Used only when the message carries markdown — plain streamed replies keep
-// the per-word fade.
+// as a big heading, then normal-text coaching lines. Save's comparisons add `## store` sections and
+// `- ` bullets so 3 stores × 4 figures stop arriving as one paragraph. Plain replies without any
+// markup keep the per-word fade.
 function RichText({ text }: { text: string }) {
   return (
     <View>
       {text.split("\n").map((line, i) => {
         const trimmed = line.trim();
-        if (!trimmed) return <View key={i} style={{ height: 6 }} />;
-        if (/^\*\*[^*]+\*\*$/.test(trimmed)) {
+        if (!trimmed) return <View key={i} style={{ height: 8 }} />;
+
+        if (HEADLINE.test(trimmed)) {
           return (
             <Text
               key={i}
               selectable
-              className="mb-1 text-text"
-              style={{ fontSize: 24, fontWeight: "800", lineHeight: 30 }}
+              className="mb-1 font-sans-semibold text-text"
+              style={{ fontSize: 24, lineHeight: 30 }}
             >
               {trimmed.slice(2, -2)}
             </Text>
           );
         }
+
+        const section = SECTION.exec(trimmed);
+        if (section) {
+          return (
+            <Text
+              key={i}
+              selectable
+              className="mb-0.5 mt-3 font-sans-semibold text-text"
+              style={{ fontSize: 17, lineHeight: 22 }}
+            >
+              {section[1]}
+            </Text>
+          );
+        }
+
+        const bullet = BULLET.exec(trimmed);
+        if (bullet) {
+          return (
+            // Sangría colgante: la 2ª línea de una viñeta larga alinea con el texto, no con el punto.
+            <View key={i} className="flex-row pr-2">
+              <Text className="font-sans-medium text-lg leading-6 text-text" style={{ width: 16 }}>
+                {"•"}
+              </Text>
+              <Text selectable className="flex-1 font-sans-medium text-lg leading-6 text-text">
+                {inlineBold(bullet[1])}
+              </Text>
+            </View>
+          );
+        }
+
         return (
-          <Text key={i} selectable className="text-lg leading-6 text-text">
+          <Text key={i} selectable className="font-sans-medium text-lg leading-6 text-text">
             {inlineBold(line)}
           </Text>
         );
@@ -59,11 +108,17 @@ export function AgentMessage({ text, href }: { text: string; href?: string }) {
 
   if (href) {
     const linkColor = colorScheme === "dark" ? "#C2FB7E" : "#16A34A";
-    const path = (href.startsWith("/") ? href : `/${href}`) as Href;
+    // Un mismo campo lleva DOS destinos distintos: "insights" es una ruta interna de expo-router,
+    // pero un enlace de tienda de Save es http(s) y hay que SALIR al navegador. Sin distinguir,
+    // `router.push("/https://sirena…")` no lleva a ninguna parte.
+    const isExternal = /^https?:\/\//i.test(href);
+    const open = isExternal
+      ? () => void Linking.openURL(href)
+      : () => router.push((href.startsWith("/") ? href : `/${href}`) as Href);
     return (
       <View className="w-full px-3 py-2">
-        <Pressable accessibilityRole="link" onPress={() => router.push(path)}>
-          <Text className="text-lg font-semibold leading-6 underline" style={{ color: linkColor }}>
+        <Pressable accessibilityRole="link" onPress={open}>
+          <Text className="font-sans-semibold text-lg leading-6 underline" style={{ color: linkColor }}>
             {text}
           </Text>
         </Pressable>
@@ -73,7 +128,7 @@ export function AgentMessage({ text, href }: { text: string; href?: string }) {
 
   return (
     <View className="w-full px-3 py-2">
-      {text.includes("**") ? (
+      {hasRichMarkup(text) ? (
         <RichText text={text} />
       ) : (
         <StreamingText text={text} textClassName="text-lg leading-6 text-text" />

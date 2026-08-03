@@ -8,6 +8,7 @@ import { GlassButton } from "@/components/ui/glass-button";
 import { t, useLang } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { useColorScheme } from "nativewind";
+import { KANTUMRUY_MEDIUM } from "@/theme/fonts";
 
 import type { ChatInputBarProps } from "../interfaces";
 
@@ -95,6 +96,7 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
             color: inputColor,
             maxHeight: 120,
             padding: 0,
+            fontFamily: KANTUMRUY_MEDIUM,
           }}
           placeholder={t("chat.inputPlaceholder")}
           placeholderTextColor={placeholderColor}

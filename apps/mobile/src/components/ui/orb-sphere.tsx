@@ -16,6 +16,7 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useDerivedValue,
+  useFrameCallback,
   useSharedValue,
   withRepeat,
   withSequence,
@@ -172,13 +173,24 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   const CW = w + PAD * 2;
   const CH = h + PAD * 2;
 
-  const t = useDerivedValue(() => clock.value / 1000);
   const level = useSharedValue(0.6); // wave energy (idle ≈ 0.6, swells on tap)
-  const p0 = useDerivedValue(() => buildWave(COLORS[0], t.value, level.value, w, h));
-  const p1 = useDerivedValue(() => buildWave(COLORS[1], t.value, level.value, w, h));
-  const p2 = useDerivedValue(() => buildWave(COLORS[2], t.value, level.value, w, h));
-  const p3 = useDerivedValue(() => buildWave(COLORS[3], t.value, level.value, w, h));
+  const p0 = useSharedValue(Skia.Path.Make());
+  const p1 = useSharedValue(Skia.Path.Make());
+  const p2 = useSharedValue(Skia.Path.Make());
+  const p3 = useSharedValue(Skia.Path.Make());
   const paths = [p0, p1, p2, p3];
+
+  // Drive the wave paths from the Skia clock on every frame. We intentionally avoid
+  // Reanimated's useDerivedValue with Skia's clock because Reanimated v4 can crash with
+  // "animation.onStart is not a function" when mixing the two value systems.
+  useFrameCallback(() => {
+    "worklet";
+    const time = clock.value / 1000;
+    p0.value = buildWave(COLORS[0], time, level.value, w, h);
+    p1.value = buildWave(COLORS[1], time, level.value, w, h);
+    p2.value = buildWave(COLORS[2], time, level.value, w, h);
+    p3.value = buildWave(COLORS[3], time, level.value, w, h);
+  });
 
   // Tap → swell the wave then settle (water-style: quick rise, slow ease back).
   const pulse = useOrbStore((s) => s.pulse);

@@ -1,6 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 
 import { t, useLang } from "@/i18n";
+import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import type { QuickActionsProps } from "../interfaces";
 
@@ -42,7 +43,7 @@ export function QuickActions({ onSelect }: QuickActionsProps) {
               alignItems: "center",
             }}
           >
-            <Text style={{ color: pillText, fontSize: 13, fontWeight: "700", textAlign: "center" }}>
+            <Text style={{ color: pillText, fontSize: 13, fontFamily: KANTUMRUY_SEMIBOLD, textAlign: "center" }}>
               {label}
             </Text>
           </Pressable>

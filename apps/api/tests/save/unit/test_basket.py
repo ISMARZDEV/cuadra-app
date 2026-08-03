@@ -21,9 +21,28 @@ def _g(label: str, priority: int) -> BasketGroup:
     return BasketGroup(label=label, priority=priority)
 
 
-def _o(group: str, name: str, price_minor: int, pid: str | None = None) -> BasketOffer:
+def _o(
+    group: str,
+    name: str,
+    price_minor: int,
+    pid: str | None = None,
+    *,
+    image_url: str | None = None,
+    url: str | None = None,
+    brand: str | None = None,
+    display_size: str | None = None,
+    captured_at: str | None = None,
+) -> BasketOffer:
     return BasketOffer(
-        group=group, canonical_product_id=pid or name, name=name, price_minor=price_minor
+        group=group,
+        canonical_product_id=pid or name,
+        name=name,
+        price_minor=price_minor,
+        image_url=image_url,
+        url=url,
+        brand=brand,
+        display_size=display_size,
+        captured_at=captured_at,
     )
 
 
@@ -83,6 +102,31 @@ class TestCoberturaPorPrioridad:
         assert basket.total_minor == sum(line.subtotal_minor for line in basket.lines)
         assert basket.total_minor + basket.remaining_minor == 50_000
         assert isinstance(basket.total_minor, int)
+
+    def test_basket_lines_carry_visual_fields_from_the_offer(self) -> None:
+        """Las líneas de la canasta necesitan image_url, url, brand, size y captured_at para renderizar la card."""
+        groups = [_g("Arroz", 1)]
+        offers = [
+            _o(
+                "Arroz",
+                "Arroz Campos 20 Lb",
+                10_000,
+                image_url="https://example.com/arroz.jpg",
+                url="https://sirena.com/arroz",
+                brand="Campos",
+                display_size="20 Lb",
+                captured_at="2026-08-02",
+            )
+        ]
+
+        basket = plan_basket(groups, offers, budget_minor=100_000)
+
+        line = basket.lines[0]
+        assert line.image_url == "https://example.com/arroz.jpg"
+        assert line.url == "https://sirena.com/arroz"
+        assert line.brand == "Campos"
+        assert line.display_size == "20 Lb"
+        assert line.captured_at == "2026-08-02"
 
 
 class TestCasosBorde:

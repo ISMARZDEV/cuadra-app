@@ -2974,10 +2974,12 @@ class SqlBasketOfferRepository:
                            MIN(bq.position) OVER (PARTITION BY bq.category_label) AS priority,
                            cp.id   AS canonical_id,
                            cp.name AS canonical_name,
-                           sp.provider_id,
-                           pr.name AS provider_name,
-                           sp.current_price_minor AS price_minor,
-                           ROW_NUMBER() OVER (
+                            sp.provider_id,
+                            pr.name AS provider_name,
+                            sp.current_price_minor AS price_minor,
+                            b.name AS canonical_brand,
+                            ROW_NUMBER() OVER (
+
                                PARTITION BY bq.category_label, sp.provider_id
                                ORDER BY sp.current_price_minor ASC, cp.name ASC
                            ) AS rn
@@ -2990,12 +2992,15 @@ class SqlBasketOfferRepository:
                       LEFT JOIN save.taxonomy_node p1 ON p1.id = leaf.parent_id
                       LEFT JOIN save.taxonomy_node p2 ON p2.id = p1.parent_id
                       LEFT JOIN save.taxonomy_node p3 ON p3.id = p2.parent_id
-                      JOIN save.store_product sp
-                        ON sp.canonical_product_id = cp.id
-                       AND sp.is_available
-                      JOIN save.provider pr
-                        ON pr.id = sp.provider_id
-                       AND pr.archived_at IS NULL
+                       JOIN save.store_product sp
+                         ON sp.canonical_product_id = cp.id
+                        AND sp.is_available
+                       JOIN save.provider pr
+                         ON pr.id = sp.provider_id
+                        AND pr.archived_at IS NULL
+                       LEFT JOIN save.brand b
+                         ON b.id = cp.brand_id
+
                      WHERE bq.market_id = :market
                        AND bq.active
                        AND bq.category_label IS NOT NULL
@@ -3013,11 +3018,20 @@ class SqlBasketOfferRepository:
                              )
                            )
                 )
-                SELECT group_label, priority, canonical_id, canonical_name,
-                       provider_id, provider_name, price_minor
-                  FROM matched
-                 WHERE rn = 1
-                 ORDER BY priority, group_label, provider_name
+                SELECT m.group_label, m.priority, m.canonical_id, m.canonical_name,
+                       m.provider_id, m.provider_name, m.price_minor,
+                        m.canonical_brand,
+                        cp.image_url AS canonical_image_url,
+                        cp.display_size AS canonical_display_size,
+                        sp.url AS store_url
+
+                   FROM matched m
+                   JOIN save.canonical_product cp ON cp.id = m.canonical_id
+                   JOIN save.store_product sp ON sp.canonical_product_id = m.canonical_id
+                                               AND sp.provider_id = m.provider_id
+                  WHERE rn = 1
+                  ORDER BY m.priority, m.group_label, m.provider_name
+
                 """
             ),
             {
@@ -3036,6 +3050,10 @@ class SqlBasketOfferRepository:
                 canonical_product_id=str(r.canonical_id),
                 name=r.canonical_name,
                 price_minor=int(r.price_minor),
+                image_url=r.canonical_image_url,
+                url=r.store_url,
+                brand=r.canonical_brand,
+                display_size=r.canonical_display_size,
             )
             for r in rows
         ]

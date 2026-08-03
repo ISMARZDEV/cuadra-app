@@ -88,7 +88,7 @@ describe("useChat — multi-step HITL", () => {
     resumeChat.mockResolvedValue({
       reply: null,
       interaction: { prompt: "¿Deseas colocarlo en alguna categoria?", options: [] },
-      links: [],
+      uiActions: [],
       threadId: "t1",
     });
 
@@ -117,7 +117,7 @@ describe("useChat — multi-step HITL", () => {
     resumeChat.mockResolvedValue({
       reply: "Listo, tu gasto ha sido registrado ✅",
       interaction: null,
-      links: [{ text: "Ver en Insight", href: "insights" }],
+      uiActions: [{ type: "link", text: "Ver en Insight", href: "insights" }],
       threadId: "t1",
     });
 
@@ -134,5 +134,40 @@ describe("useChat — multi-step HITL", () => {
     const link = result.current.messages.find((m) => m.href === "insights");
     expect(link?.text).toBe("Ver en Insight");
     expect(result.current.interaction).toBeNull();
+  });
+
+  test("al elegir un producto en el dock, la TARJETA llega — no sólo el texto", async () => {
+    // Bug real, visto en el device: el usuario elegía «Arroz Pimco Premium 10 Lbs», el agente
+    // contestaba «Acá está …:» y NO aparecía nada más. La respuesta del dock viaja por
+    // `/chat/resume`, y ese camino leía sólo `links`, así que la tarjeta se descartaba callada.
+    streamChat.mockImplementation(async ({ onEvent }: { onEvent: (e: unknown) => void }) => {
+      onEvent({ type: "interaction", interaction: { prompt: "¿Cuál?", options: [] } });
+      onEvent({ type: "done", thread_id: "t1" });
+    });
+    resumeChat.mockResolvedValue({
+      reply: "Acá está Arroz Pimco Premium 10 Lbs:",
+      interaction: null,
+      uiActions: [
+        {
+          type: "product",
+          name: "Arroz Pimco Premium 10 Lbs",
+          captured_at: "2026-08-02",
+          stores: [{ provider: "Sirena", price: "RD$525.00", is_cheapest: false }],
+        },
+      ],
+      threadId: "t1",
+    });
+
+    const { result } = renderHook(() => useChat());
+    await act(async () => {
+      await result.current.send("¿dónde está más barato el arroz?");
+    });
+    await act(async () => {
+      await result.current.select({ value: "cid-1", label: "Arroz Pimco Premium 10 Lbs", variant: "primary" });
+    });
+
+    const card = result.current.messages.find((m) => m.product);
+    expect(card?.product?.name).toBe("Arroz Pimco Premium 10 Lbs");
+    expect(card?.product?.stores[0].price).toBe("RD$525.00");
   });
 });
