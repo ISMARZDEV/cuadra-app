@@ -39,7 +39,7 @@ from ..infrastructure.matching.cascade.brand_gate import brand_unsupported
 from ..infrastructure.matching.cascade.category_gate import categories_conflict, category_boost
 from ..infrastructure.matching.cascade.embedding_text import build_embedding_text
 from ..infrastructure.matching.cascade.form_gate import forms_conflict
-from ..infrastructure.matching.cascade.fusion import reciprocal_rank_fusion
+from ..domain.rank_fusion import reciprocal_rank_fusion
 from ..infrastructure.matching.cascade.quality_gate import qualities_conflict
 from ..infrastructure.matching.cascade.scoring import apply_boosts
 from ..infrastructure.matching.cascade.size_gate import sizes_conflict

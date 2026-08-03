@@ -37,3 +37,42 @@ def test_money_movement_maps_to_register_expense(text: str) -> None:
 )
 def test_money_questions_map_to_query_metrics(text: str) -> None:
     assert llm_classifier(text, []) == "query_metrics"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "con RD$10,000 qué me alcanza para la compra del hogar",
+        "¿dónde está más barato el arroz Rica?",
+        "precio del aceite",
+        "armame una lista de compra",
+        "qué súper me conviene para el café",
+        "cuánto cuesta un bebé al mes en el súper",
+        "quiero comprar 2 libras de pollo, cuál está más barato",
+    ],
+)
+def test_supermarket_questions_map_to_groceries(text: str) -> None:
+    """Las 5 preguntas guía de §1.2 + las frases que el cortocircuito secuestraba."""
+    assert llm_classifier(text, []) == "groceries"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "gasté 500 comprando arroz",          # frontera: gasto PASADO con producto de súper
+        "compré una pizza de 350",
+        "pagué 1200 en el supermercado ayer",
+    ],
+)
+def test_a_past_purchase_is_still_an_expense_not_groceries(text: str) -> None:
+    """El par confundible (§13, riesgo 5). El tiempo verbal es lo que discrimina."""
+    assert llm_classifier(text, []) == "register_expense"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["cuánto gasté en el súper este mes", "cuánto llevo gastado en comida"],
+)
+def test_asking_about_MY_spending_is_metrics_not_groceries(text: str) -> None:
+    """Insights, no Save: pregunta por SU dinero, no por precios del catálogo."""
+    assert llm_classifier(text, []) == "query_metrics"

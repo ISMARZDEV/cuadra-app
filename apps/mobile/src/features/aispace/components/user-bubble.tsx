@@ -7,7 +7,7 @@ export function UserBubble({ text }: { text: string }) {
   return (
     <View className="w-full flex-row justify-end px-3 py-2">
       <GlassSurface style={{ maxWidth: "80%", borderRadius: 24, paddingHorizontal: 16, paddingVertical: 12 }} intensity={50}>
-        <Text selectable className="text-lg leading-6 text-text">{text}</Text>
+        <Text selectable className="font-sans-medium text-lg leading-6 text-text">{text}</Text>
       </GlassSurface>
     </View>
   );

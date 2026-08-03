@@ -135,7 +135,7 @@ sobre cimientos que soportan los 50 pisos). Por eso:
 | **Identidad** | Auth + modelo de roles/capabilities **multi-rol ready**, pero solo el rol **Usuario Normal** activo |
 | **Insights** | Wallets multi-moneda **DOP/USD**, transacciones (ingreso/gasto/transferencia), categorías, presupuesto + anillo, Spaces, balance, Daily Diary. Captura: **voz + chat + OCR** (manual) |
 | **Save** | Catálogo de **supermercados** (replicar SupermercadosRD): pipeline scraping → normalización → matching → taxonomía; búsqueda; comparación; **lista de compra** |
-| **AISpace** (Chat IA) | Router LangGraph (router-a-nodos) + subagentes: **Finance, Purchases, Coach, Support**. Entrada por **voz (STT)** y texto. **Multilenguaje es/en/pt** (§7.11). Acciones con confirmación (human-in-the-loop) |
+| **AISpace** (Chat IA) | Router LangGraph (router-a-nodos) + subagentes: **Finance, Groceries, Coach, Support**. Entrada por **voz (STT)** y texto. **Multilenguaje es/en/pt** (§7.11). Acciones con confirmación (human-in-the-loop) |
 | **News** | Feed *masonry* curado por **Super Admin + agente IA** (noticias oficiales DGII/BCRD + contenido financiero). Sin rol Influencer aún |
 | **Config** | Perfil, monedas, suscripción freemium con **cancelación de 1 toque** |
 
@@ -273,7 +273,7 @@ intercambiable por país/proveedor (mismo patrón que los conectores del proyect
 │  └───────────────────────┘  │ spaces, metas    │  └──────────────────┘  └───────────────┘   │
 │                             └──────────────────┘                                            │
 │  ┌──── DOS PLANOS (LangGraph, §7.9) ───────────────────────────────────────────────────┐   │
-│  │  CONVERSACIONAL (real-time): router+handoff → {Finance·Purchases·Coach·Support} LEE ──┼─┐ │
+│  │  CONVERSACIONAL (real-time): router+handoff → {Finance·Groceries·Coach·Support} LEE ──┼─┐ │
 │  │  BACKGROUND (async, batch): Agente Insights + enriquecimiento (§5.6)  ESCRIBE ────────┼┐│ │
 │  │  Tools determinísticas · interrupt() · Postgres checkpointer                          │││ │
 │  └──────────────────────────────────────────────────────────────────────────────────────┘││ │
@@ -452,7 +452,7 @@ Scraping = **bootstrap**. Endgame (fase 3): los proveedores (rol Commercial) car
 > **Decisión (gap #4, §12·D):** multi-agente **desde el día 1**, pero por **router-a-nodos**, NO por
 > el patrón `langgraph-supervisor` (que mete una llamada LLM completa POR TURNO solo para rutear =
 > **~3× tokens**). El MVP es el grafo de abajo con un **router barato** (clasificación + cortocircuitos,
-> §7.8) que enruta a **nodos especializados** (Finance · Purchases · Coach · Support), cada uno un agente
+> §7.8) que enruta a **nodos especializados** (Finance · Groceries · Coach · Support), cada uno un agente
 > con sus tools. **Validado por el proyecto de reuso** (`backend/orchestrator/graph.py`: `classify_intent`
 > → conditional edges a nodos) **y por Cleo** (router clasificador + handoff, incluso encoder-only a
 > 50 ms). Se **gradúa** añadiendo el protocolo de handoff (`select_new_agent`, abajo) y, solo si la
@@ -470,6 +470,17 @@ Scraping = **bootstrap**. Endgame (fase 3): los proveedores (rol Commercial) car
 > El **handoff** (`select_new_agent`) es un patrón aparte (estilo *Swarm*) que se monta **encima** del
 > Router — esa página no lo incluye; nosotros sí (lección de Cleo).
 
+> ⚠️ **Nomenclatura (renombrado 2026-08-02): `PurchasesAgent` → `GroceriesAgent`.** Un agente se
+> nombra por su **vertical**, nunca por un verbo. «Purchases» nombra la acción de comprar, y comprar
+> un seguro también es una compra: el nombre no separa a los hermanos que vienen (tarjetas,
+> préstamos, seguros, inversión — `ProviderType` ya tiene `BANK` e `INSURER`). Y el que más sufre es
+> el **clasificador del router**, porque *el nombre del intent es parte de su prompt*: separar
+> `purchases` de `financial_products` es pedirle al modelo que adivine un matiz; separar `groceries`
+> de `financial_products` es trivial. Precedente en el propio código: `FinanceAgent` está nombrado
+> por el dominio que sirve (Insights), no por el verbo. **Corolario:** el hermano financiero NO debe
+> llamarse `FinancialAgent` — sería indistinguible del `FinanceAgent` para un humano y para el
+> clasificador. Plan de implementación: [`aispace-groceries-agent.md`](./aispace-groceries-agent.md).
+
 Usamos **LangGraph Graph API** (declarativa, ideal para routing condicional y orquestación
 multi-agente), no Functional API. El proyecto fiscal-contable validó este patrón.
 
@@ -481,7 +492,7 @@ multi-agente), no Functional API. El proyecto fiscal-contable validó este patr�
              ┌──────────────────┬─────────┴────────┬──────────────────┐
              ▼                  ▼                   ▼                  ▼
      ┌──────────────┐  ┌──────────────┐   ┌───────────────┐   ┌────────────┐
-     │ FinanceAgent │  │PurchasesAgent│   │  CoachAgent   │   │SupportAgent│
+     │ FinanceAgent │  │GroceriesAgent│   │  CoachAgent   │   │SupportAgent│
      │ (Insights)   │  │ (Save)       │   │ (Insights ×   │   │ (RAG/FAQ)  │
      │              │  │              │   │  Save)◄fan-out│   │            │
      └──────┬───────┘  └──────┬───────┘   └──────┬────────┘   └─────┬──────┘
@@ -1007,7 +1018,7 @@ con código Morse para transferir US$150K). Mitigaciones obligatorias:
 
 | Fase | Nombre | Qué entra | KPIs guía |
 |------|--------|-----------|-----------|
-| **0 / MVP** | Usuario Normal | Insights (manual/voz/OCR) · **enriquecimiento básico de tx (§5.6)** · **safe-to-spend** · Save (supermercados) · AISpace/Chat (Finance/Purchases/Coach/Support) · News curado · freemium DOP/USD | Retención D30/D90 · tx/usuario/semana · % que usa voz |
+| **0 / MVP** | Usuario Normal | Insights (manual/voz/OCR) · **enriquecimiento básico de tx (§5.6)** · **safe-to-spend** · Save (supermercados) · AISpace/Chat (Finance/Groceries/Coach/Support) · News curado · freemium DOP/USD | Retención D30/D90 · tx/usuario/semana · % que usa voz |
 | **1** | Retención + proactividad | **Captura por correo bancario** · **Agente Proactivo de Insights + push (§7.9)** · **Daily Plan/Roadmap (Autopilot read-only)** · gamificación · metas/ahorro | D30 ↑ · % con push accionado · captura automática vs manual |
 | **2** | **Rol Accountant (fiscal)** | e-CF (proveedor certificado DGII) · ITBIS/606 · **Caja de Impuestos** · FiscalAgent · export al contador (reembolso) | e-CF emitidos · % activa Caja de Impuestos |
 | **3** | **Save proveedores + Rol Commercial** | Proveedores cargan data · KYB · **cobro por promoción** · más categorías (bancos, seguros) · marketplace 2 lados | Proveedores activos · take-rate |
@@ -1142,7 +1153,7 @@ con código Morse para transferir US$150K). Mitigaciones obligatorias:
     Save: `provider · canonical_product · store_product · price · offer · shopping_list`; delivery:
     `subscription · notification_preference · notification_log · outcome`; ports: `MovementSource ·
     CatalogSource · DataProvider · FiscalProvider · OCRPort · STTPort · LLMPort`; agents:
-    `FinanceAgent · PurchasesAgent · CoachAgent · SupportAgent`.
+    `FinanceAgent · GroceriesAgent · CoachAgent · SupportAgent`.
 33. **Monolito modular microservices-ready: schema y rol de DB por contexto + referencia por ID**
     (estructura-monorepo §6). Es un **modular monolith** (lo correcto para el MVP — "monolith first";
     Shopify/Notion volvieron a esto en 2025); los bounded contexts son las **costuras** de extracción.
@@ -1170,10 +1181,17 @@ con código Morse para transferir US$150K). Mitigaciones obligatorias:
 
 ## 16. Estado de implementación y próximos pasos
 
-> **Actualizado: 2026-06-26.** El backend del contexto **Insights** está COMPLETO end-to-end
-> (commit `feat(insights)`, **147 tests verdes**, RED-first). **Identity** ya estaba completo
-> (auth JWT + roles/capabilities + gating). El resto del MVP (Save, AISpace, News, Config, móvil)
-> aún **no se ha iniciado**.
+> **Actualizado: 2026-08-02** (antes 2026-06-26, cuando esta sección decía que Save y AISpace «no se
+> han iniciado» — **ya no es cierto**). **Identity** e **Insights** están completos. **Save** está
+> construido end-to-end (ingesta medallion, cascada de matching, clasificador de taxonomía, consolas
+> admin de Productos Canónicos y Orquestación) — su limitación hoy es **cobertura de datos**, no
+> código. **AISpace** está construido: grafo LangGraph, router de dos capas, checkpointer Postgres,
+> HITL con `interrupt()`, streaming SSE, `FinanceAgent` + `GeneralAgent`, y chat móvil real.
+> **1995+ tests verdes** en el backend.
+>
+> Lo que falta del triángulo es el **puente Save ↔ AISpace**: el `GroceriesAgent`
+> ([plan](./aispace-groceries-agent.md)). Hasta el 2026-08-02 había **cero referencias cruzadas**
+> entre `contexts/aispace` y `contexts/save`.
 
 ### 16.1 ✅ Listo (backend)
 
@@ -1208,11 +1226,16 @@ con código Morse para transferir US$150K). Mitigaciones obligatorias:
 - **Búsqueda semántica** de transacciones y **reportes IA** (§5.5).
 - `GET /net-worth` dedicado (hoy vive dentro de `/metrics`). **FX display-only** (diferido §12·B).
 
-**Otras piezas del MVP — no iniciadas**
-- **Save (pieza 2)**: pipeline scraping → normalización → matching → taxonomía, búsqueda,
-  comparación, lista de compra. Requiere su **spike** (ver §16.3·3).
-- **AISpace (pieza 3)**: orquestador LangGraph router-a-nodos + subagentes (Finance, Purchases,
-  Coach, Support), STT por voz, HITL. Hoy solo existe el `LLMPort` intercambiable.
+**Otras piezas del MVP**
+- **Save (pieza 2)** — ✅ **construido**: pipeline medallion, cascada de matching, clasificador de
+  taxonomía, consolas admin. 🔲 Pendiente: **cobertura de ingesta** (el catálogo es delgado y sin
+  historial de precios: 1 snapshot por producto ⇒ todo lo de inflación/alertas está bloqueado por
+  DATOS, no por código) y la **superficie Save en móvil** (solo existe la campana de alertas).
+- **AISpace (pieza 3)** — ✅ **construido**: grafo, router de dos capas, checkpointer Postgres, HITL
+  con `interrupt()`, streaming SSE, `FinanceAgent` + `GeneralAgent`, chat móvil con SSE real.
+  🔲 Pendiente: el **`GroceriesAgent`** ([plan](./aispace-groceries-agent.md)) — el puente a Save y el
+  lado que falta del triángulo —, **STT por voz**, el **handoff** (`select_new_agent`, diseñado sin
+  cablear) y los **evals de faithfulness** (hoy solo existe `evals/finance_eval.py`).
 - **News (§8)**: feed *masonry* curado (Super Admin + agente).
 - **Config**: perfil, monedas, suscripción freemium con cancelación de 1 toque.
 - **Móvil (Expo)**: tab bar + Insights (estado vacío → con datos) + chat con streaming.
@@ -1226,13 +1249,17 @@ con código Morse para transferir US$150K). Mitigaciones obligatorias:
 1. ~~Confirmar el corte del MVP de §2~~ y ~~diseño detallado de Insights~~ → **hechos**.
 2. **Generar el `@cuadra/api-client`** (OpenAPI → hey-api) del backend Insights para arrancar el
    móvil contra contratos reales (ADR 24, §E.1).
-3. **Spike técnico de Save**: auditar qué cadenas son VTEX (API) vs HTML; validar pipeline con
-   **2 tiendas, 1 categoría** end-to-end (normalización + matching).
-4. **Spike del orquestador**: router + 1 subagente (Finance) con checkpointer Postgres y registro
-   de gasto por voz, end-to-end → [`spike-orquestador.md`](./spike-orquestador.md) (T0-T7 +
-   go/no-go). Puede **REUSAR los casos de uso de Insights ya construidos** como tools
-   determinísticas (§7.3).
-5. **Esqueleto móvil Expo**: tab bar + Insights (estado vacío → con datos) + chat con streaming.
+3. ~~**Spike técnico de Save**~~ → **hecho y superado**: el pipeline corre en producción de dev sobre
+   3 cadenas (VTEX / Magento / REST_CATALOG). Lo que queda es **cobertura**, no spike.
+4. ~~**Spike del orquestador**~~ → **hecho**: router + checkpointer Postgres + registro de gasto
+   end-to-end ([`spike-orquestador.md`](./spike-orquestador.md)). Reusó los casos de uso de Insights
+   como tools determinísticas (§7.3), tal como estaba previsto.
+5. ~~**Esqueleto móvil Expo**~~ → **hecho** (tab bar + Insights + chat con streaming).
+6. **`GroceriesAgent`** — el puente Save ↔ AISpace y el lado que falta del triángulo.
+   Ver [`aispace-groceries-agent.md`](./aispace-groceries-agent.md).
+7. **Arrancar el reloj de la ingesta**: sin snapshots acumulados no hay historial, y sin historial
+   queda bloqueado todo el territorio de inflación, alertas y «qué subió esta semana» — la mitad de
+   lo que la audiencia más valora. Es **dependencia de datos, no de código**.
 
 ---
 

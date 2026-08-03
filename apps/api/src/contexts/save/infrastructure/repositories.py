@@ -7,15 +7,18 @@ siempre refresca `last_seen_at`. El brand se resuelve get-or-create por (market,
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_, exists, func, or_, select, update
+from sqlalchemy import and_, exists, func, or_, select, text, update
 from sqlalchemy.orm import Session, aliased
 
 from src.shared.money import Currency, Money
 
 from ..domain.alerts import Alert, AlertNotification, AlertSubscription
+from ..domain.basket import ProviderOffer
+from ..domain.basket_taxonomy import mapping_pairs
 from ..domain.classification import (
     CategoryCandidate,
     CategoryClassification,
@@ -42,6 +45,7 @@ from ..domain.entities import (
     BasketQuery,
     CanonicalProduct,
     Collection,
+    MatchCandidate,
     PriceType,
     Provider,
     ProviderType,
@@ -104,6 +108,17 @@ def _parse_uuid(value: str) -> uuid.UUID | None:
 # `translate()` sí lo es.
 _BRAND_ACCENTS = "ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ"
 _BRAND_PLAIN = "AAAAAEEEEIIIIOOOOOUUUUNC"
+
+# Piso de similitud léxica de la búsqueda del USUARIO. Deliberadamente GENEROSO (§6.4): acá un
+# resultado de más no hace daño, a diferencia del matching. Número a TUNEAR con el set etiquetado.
+_LEXICAL_MIN_SIMILARITY = 0.35
+
+# Piso de similitud SEMÁNTICA. Sin él, pgvector devuelve sus vecinos más cercanos por lejos que
+# estén: «sonic screwdriver» traía 5 productos con cara de respuesta, y el agente los habría
+# citado. Un catálogo honesto tiene que poder decir «no lo tengo» (§8.1).
+# MEDIDO 2026-08-02 con BGE-M3 sobre este catálogo: consultas reales mín **0.5122**, consultas
+# inexistentes máx **0.4145**. El piso va en medio del hueco.
+_SEMANTIC_MIN_SIMILARITY = 0.46
 
 
 def brand_key_sql(column):  # type: ignore[no-untyped-def]
@@ -611,6 +626,67 @@ class SqlCanonicalProductRepository:
             select(CanonicalProductModel).where(
                 CanonicalProductModel.market_id == market_id,
                 CanonicalProductModel.name.ilike(f"%{query}%"),
+                CanonicalProductModel.archived_at.is_(None),
+            )
+        ).all()
+        return [canonical_to_entity(m, self._brand_name(m.brand_id)) for m in models]
+
+    def search_lexical(
+        self, query: str, market_id: str, limit: int = 20
+    ) -> list[MatchCandidate]:
+        # `word_similarity(q, target)`, NO `similarity`: la consulta del usuario es CORTA y el
+        # nombre del catálogo es largo ("Arroz Campos Premium 20 Lb"). `similarity` divide por la
+        # unión de trigramas, así que "arroz" contra ese nombre puntúa bajísimo; `word_similarity`
+        # compara la consulta contra el mejor TRAMO del nombre, que es la pregunta real.
+        name_score = func.word_similarity(query, CanonicalProductModel.name)
+        brand_score = func.coalesce(func.word_similarity(query, BrandModel.name), 0.0)
+        score = func.greatest(name_score, brand_score).label("score")
+        rows = self._s.execute(
+            select(CanonicalProductModel.id, score)
+            .outerjoin(BrandModel, CanonicalProductModel.brand_id == BrandModel.id)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.archived_at.is_(None),
+                score > _LEXICAL_MIN_SIMILARITY,
+            )
+            .order_by(score.desc())
+            .limit(limit)
+        ).all()
+        return [MatchCandidate(canonical_product_id=str(r.id), score=float(r.score)) for r in rows]
+
+    def search_semantic(
+        self, embedding: list[float], market_id: str, limit: int = 20
+    ) -> list[MatchCandidate]:
+        distance = CanonicalProductModel.embedding.cosine_distance(embedding).label("distance")
+        rows = self._s.execute(
+            select(CanonicalProductModel.id, distance)
+            .where(
+                CanonicalProductModel.market_id == market_id,
+                CanonicalProductModel.archived_at.is_(None),
+                CanonicalProductModel.embedding.is_not(None),  # sin vector no hay vecindad
+            )
+            .order_by(distance)
+            .limit(limit)
+        ).all()
+        # El puerto habla en SIMILITUD [0,1] (como trgm); pgvector devuelve DISTANCIA coseno.
+        # El piso se aplica ACÁ y no en el SQL: el índice HNSW ordena por distancia, así que
+        # filtrar después de traer el top-N no cuesta nada y mantiene la query indexada.
+        candidates = [
+            MatchCandidate(canonical_product_id=str(r.id), score=1.0 - float(r.distance))
+            for r in rows
+        ]
+        return [c for c in candidates if c.score >= _SEMANTIC_MIN_SIMILARITY]
+
+    def get_many(
+        self, product_ids: Sequence[str], market_id: str
+    ) -> list[CanonicalProduct]:
+        uuids = [u for u in (_parse_uuid(pid) for pid in product_ids) if u is not None]
+        if not uuids:
+            return []
+        models = self._s.scalars(
+            select(CanonicalProductModel).where(
+                CanonicalProductModel.id.in_(uuids),
+                CanonicalProductModel.market_id == market_id,
                 CanonicalProductModel.archived_at.is_(None),
             )
         ).all()
@@ -2869,3 +2945,115 @@ class SqlCategoryDecisionRecorder:
         )
         self._s.add(row)
         self._s.flush()
+
+
+class SqlBasketOfferRepository:
+    """Resuelve la canasta curada contra el catálogo con precios, en UNA sola query.
+
+    Une `basket_query` (los 20 rubros del hogar) → `canonical_product` por similitud léxica →
+    `store_product` por proveedor, y se queda con el MÁS BARATO de cada (rubro × proveedor).
+
+    Por qué léxico y no la búsqueda híbrida: resolver las 213 queries una por una a través de
+    `SearchProducts` costaría 213 llamadas al embedder POR REQUEST. Acá la resolución vive donde
+    están los datos. Medido: con el catálogo actual la cobertura léxica de la canasta es del 100%.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def list_basket_offers(self, market_id: str) -> list[ProviderOffer]:
+        pairs = mapping_pairs()
+        rows = self._s.execute(
+            text(
+                """
+                WITH allowed(grp, node_name) AS (
+                    SELECT * FROM unnest(CAST(:groups AS text[]), CAST(:nodes AS text[]))
+                ),
+                matched AS (
+                    SELECT bq.category_label AS group_label,
+                           MIN(bq.position) OVER (PARTITION BY bq.category_label) AS priority,
+                           cp.id   AS canonical_id,
+                           cp.name AS canonical_name,
+                            sp.provider_id,
+                            pr.name AS provider_name,
+                            sp.current_price_minor AS price_minor,
+                            b.name AS canonical_brand,
+                            ROW_NUMBER() OVER (
+
+                               PARTITION BY bq.category_label, sp.provider_id
+                               ORDER BY sp.current_price_minor ASC, cp.name ASC
+                           ) AS rn
+                      FROM save.basket_query bq
+                      JOIN save.canonical_product cp
+                        ON cp.market_id = bq.market_id
+                       AND cp.archived_at IS NULL
+                       AND word_similarity(bq.query_text, cp.name) > :threshold
+                      JOIN save.taxonomy_node leaf ON leaf.id = cp.taxonomy_node_id
+                      LEFT JOIN save.taxonomy_node p1 ON p1.id = leaf.parent_id
+                      LEFT JOIN save.taxonomy_node p2 ON p2.id = p1.parent_id
+                      LEFT JOIN save.taxonomy_node p3 ON p3.id = p2.parent_id
+                       JOIN save.store_product sp
+                         ON sp.canonical_product_id = cp.id
+                        AND sp.is_available
+                       JOIN save.provider pr
+                         ON pr.id = sp.provider_id
+                        AND pr.archived_at IS NULL
+                       LEFT JOIN save.brand b
+                         ON b.id = cp.brand_id
+
+                     WHERE bq.market_id = :market
+                       AND bq.active
+                       AND bq.category_label IS NOT NULL
+                       -- El nombre PROPONE, la taxonomía DISPONE: el producto entra sólo si su
+                       -- hoja o algún ancestro está permitido para el rubro. Un rubro SIN mapeo
+                       -- (nuevo, creado desde el admin) no se filtra: degrada, no desaparece.
+                       AND (
+                             NOT EXISTS (
+                                 SELECT 1 FROM allowed a WHERE a.grp = bq.category_label
+                             )
+                             OR EXISTS (
+                                 SELECT 1 FROM allowed a
+                                  WHERE a.grp = bq.category_label
+                                    AND a.node_name IN (leaf.name, p1.name, p2.name, p3.name)
+                             )
+                           )
+                )
+                SELECT m.group_label, m.priority, m.canonical_id, m.canonical_name,
+                       m.provider_id, m.provider_name, m.price_minor,
+                        m.canonical_brand,
+                        cp.image_url AS canonical_image_url,
+                        cp.display_size AS canonical_display_size,
+                        sp.url AS store_url
+
+                   FROM matched m
+                   JOIN save.canonical_product cp ON cp.id = m.canonical_id
+                   JOIN save.store_product sp ON sp.canonical_product_id = m.canonical_id
+                                               AND sp.provider_id = m.provider_id
+                  WHERE rn = 1
+                  ORDER BY m.priority, m.group_label, m.provider_name
+
+                """
+            ),
+            {
+                "market": market_id,
+                "threshold": _LEXICAL_MIN_SIMILARITY,
+                "groups": [g for g, _ in pairs],
+                "nodes": [n for _, n in pairs],
+            },
+        ).all()
+        return [
+            ProviderOffer(
+                provider_id=str(r.provider_id),
+                provider_name=r.provider_name,
+                group=r.group_label,
+                priority=int(r.priority),
+                canonical_product_id=str(r.canonical_id),
+                name=r.canonical_name,
+                price_minor=int(r.price_minor),
+                image_url=r.canonical_image_url,
+                url=r.store_url,
+                brand=r.canonical_brand,
+                display_size=r.canonical_display_size,
+            )
+            for r in rows
+        ]

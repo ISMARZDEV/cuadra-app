@@ -277,8 +277,11 @@ class CanonicalProductModel(Base):
     quality: Mapped[str | None] = mapped_column(Text)            # Premium|Selecto|…
     display_size: Mapped[str | None] = mapped_column(Text)       # tamaño original ("10 LB")
     image_url: Mapped[str | None] = mapped_column(Text)
-    size_amount: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)  # Quantity (VO)
-    size_measure: Mapped[str] = mapped_column(Text, nullable=False)               # mass|volume|count
+    # NULL = el producto no declara tamaño (PR #45). La base YA los tiene nullable; el modelo
+    # decía `nullable=False` y ese desfase habría hecho que el próximo autogenerate propusiera
+    # volver a poner NOT NULL sobre una columna con NULLs legítimos.
+    size_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 8))  # Quantity (VO)
+    size_measure: Mapped[str | None] = mapped_column(Text)               # mass|volume|count
     taxonomy_node_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("save.taxonomy_node.id")
     )

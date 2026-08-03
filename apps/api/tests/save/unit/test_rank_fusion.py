@@ -1,13 +1,13 @@
-"""Unit — fusión RRF (Reciprocal Rank Fusion) de candidatos de matching (F2.0). PURA, sin DB."""
+"""Unit — fusión RRF de candidatos rankeados. DOMINIO PURO, sin DB.
+
+La consumen los DOS caminos: la cascada de matching (ingesta) y la búsqueda del usuario.
+"""
 from __future__ import annotations
 
 import pytest
 
 from src.contexts.save.domain.entities import MatchCandidate
-from src.contexts.save.infrastructure.matching.cascade.fusion import (
-    DEFAULT_RRF_K,
-    reciprocal_rank_fusion,
-)
+from src.contexts.save.domain.rank_fusion import DEFAULT_RRF_K, reciprocal_rank_fusion
 
 
 def _candidates(*ids: str) -> list[MatchCandidate]:

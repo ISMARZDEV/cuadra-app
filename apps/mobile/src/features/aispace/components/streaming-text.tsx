@@ -39,7 +39,7 @@ function FadingWord({
           that reliably fires here), so native selection is scoped to ONE word per gesture — dragging
           across word boundaries doesn't extend the selection. Good enough to grab a specific word or
           amount; not a full-paragraph drag-select. */}
-      <Text selectable className={textClassName}>{word}{" "}</Text>
+      <Text selectable className={`font-sans-medium ${textClassName ?? ""}`}>{word}{" "}</Text>
     </Animated.View>
   );
 }

@@ -25,6 +25,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useColorScheme } from "nativewind";
+import { type Href, useRouter } from "expo-router";
 
 import { GlassSurface } from "@/components/ui/glass-surface";
 import {
@@ -36,6 +37,9 @@ import { useDrawer } from "@/store/drawer-store";
 import { useChatExpandStore } from "@/store/chat-expand-store";
 
 import { AgentMessage } from "./components/agent-message";
+import { BasketCard } from "./components/basket-card";
+import { ProductCard } from "./components/product-card";
+import { ProviderProductsCard } from "./components/provider-products-card";
 import { ChatDock } from "./components/chat-dock";
 import { ChatEmptyState } from "./components/chat-empty-state";
 import { ChatHeader } from "./components/chat-header";
@@ -121,6 +125,7 @@ export function ChatScreen() {
 
   // Live chat — streams turns from the agent (SSE) and stages HITL writes (§7.4).
   const chat = useChat();
+  const router = useRouter();
 
   // ── Glass dock (collapsible panel above the input) ─────────────────────────
   // Open manually to show quick-action suggestions; auto-opens when a HITL step (`pending`) arrives
@@ -167,23 +172,10 @@ export function ChatScreen() {
   // Pan on the card itself. Uses the CAPTURE phase so it intercepts clearly-horizontal drags BEFORE
   // the inner ScrollView grabs them (bubble-phase PanResponder loses to a native ScrollView).
   // Vertical drags fail the check → scrolling still works.
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_, g) =>
-        Math.abs(g.dx) > Math.abs(g.dy) * 1.4 && Math.abs(g.dx) > 14,
-      onPanResponderGrant: () => {
-        dragStart.current = drawerProgress.value;
-      },
-      onPanResponderMove: (_, g) => trackDrag(g.dx),
-      onPanResponderRelease: (_, g) => settleDrag(g.vx),
-      onPanResponderTerminate: () => settleDrag(0),
-    }),
-  ).current;
-
-  // LEFT-EDGE pan catcher — the card has a 10px side margin, so an edge swipe never reaches the card
-  // pan above. This thin strip on the very left edge CLAIMS on touch start (nothing interactive sits
-  // there) so a rightward edge-swipe always opens the drawer (ChatGPT/iOS drawer gesture), with no
-  // competition from the ScrollView.
+  // LEFT-EDGE pan catcher — the card has a 10px side margin, so a rightward edge-swipe opens the
+  // drawer (ChatGPT/iOS drawer gesture). This thin strip CLAIMS on touch start so the inner ScrollView
+  // never competes. We do NOT put a pan responder on the whole card: horizontal swipes inside the
+  // basket/product carousels must scroll freely without pulling the drawer.
   const edgePanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -376,7 +368,7 @@ export function ChatScreen() {
       {/* Shadow holder — no overflow:hidden on iOS or shadows are clipped. Horizontal pan here
           drives the drawer; the gesture only claims clearly-horizontal drags so vertical scroll
           still works. */}
-      <Animated.View style={[styles.shadowWrap, shadowStyle]} {...panResponder.panHandlers}>
+      <Animated.View style={[styles.shadowWrap, shadowStyle]}>
         {/* Liquid Glass card with gradient border: iOS 26 → GlassView, older/Android → BlurView + SquircleView + gradient border. */}
         <GlassSurface
           // Real RN border (style) — the native GlassView honors it; its `borderWidth` PROP (the
@@ -445,6 +437,15 @@ export function ChatScreen() {
                   {chat.messages.map((m) =>
                     m.role === ChatRole.User ? (
                       <UserBubble key={m.id} text={m.text} />
+                    ) : m.basket ? (
+                      // Canasta por presupuesto: accordion por proveedor + carrusel de productos.
+                      <BasketCard key={m.id} data={m.basket} />
+                    ) : m.provider_products ? (
+                      // Resultados de búsqueda de productos: carrusel por proveedor, sin totales.
+                      <ProviderProductsCard key={m.id} data={m.provider_products} />
+                    ) : m.product ? (
+                      // La comparación de Save se pinta acá dentro, no manda al navegador.
+                      <ProductCard key={m.id} data={m.product} />
                     ) : (
                       <AgentMessage key={m.id} text={m.text} href={m.href} />
                     ),
@@ -520,7 +521,15 @@ export function ChatScreen() {
                 {chat.interaction ? (
                   <DockInteractionView
                     interaction={chat.interaction}
-                    onSelect={(opt) => chat.select(opt, chat.interaction?.prompt)}
+                    // Tocar la tarjeta ELIGE el producto y sigue la conversación acá. Salir del chat
+                    // es una decisión aparte: solo la barra lima ("ver producto") manda a Save.
+                    onSelect={(opt) => {
+                      void chat.select(opt, chat.interaction?.prompt);
+                    }}
+                    onViewProduct={(opt) => {
+                      void chat.select(opt, chat.interaction?.prompt);
+                      router.push("/save" as Href);
+                    }}
                   />
                 ) : manualOpen ? (
                   <QuickActions

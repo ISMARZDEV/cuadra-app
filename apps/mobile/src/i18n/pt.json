@@ -114,5 +114,18 @@
   "save.alerts.droppedFromTo": "baixou de {from} para {to} em {store}",
   "save.alerts.unsubscribe": "Deixar de seguir",
   "save.alerts.dropTitle": "Baixou de preço!",
-  "save.alerts.dropBody": "{product} baixou em {store}"
+  "save.alerts.dropBody": "{product} baixou em {store}",
+  "chat.product.cheapest": "Mais barato",
+  "chat.product.capturedOn": "Preços de {date} · podem variar na loja",
+  "chat.basket.budget": "Orçamento",
+  "chat.basket.items": "{count} itens",
+  "chat.basket.remaining": "Restante",
+  "chat.basket.groups": "{count} rubros",
+  "chat.basket.cheapest": "Melhor cesta",
+  "chat.basket.spent": "Você gasta {spent} · {remaining} restante",
+  "chat.basket.seeList": "Ver lista de produtos",
+  "chat.basket.viewProduct": "Ver produto",
+  "chat.basket.addPlaceholder": "Adicionar",
+  "chat.basket.unitCount": "X UND",
+  "chat.basket.pricePerUnit": "{price} X {unit}"
 }

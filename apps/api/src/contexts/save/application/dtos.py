@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from ..domain.basket import ProviderBasket
 from ..domain.comparison import PriceComparison
 from ..domain.drops import PriceDrop
 from ..domain.entities import CanonicalProduct
@@ -489,3 +490,75 @@ class BulkResolveResultDto(BaseModel):
             succeeded=result.succeeded,
             failed=[BulkResolveFailureDto(match_id=f.match_id, error=f.error) for f in result.failed],
         )
+
+
+class BasketLineDto(BaseModel):
+    """Una línea de la canasta. `subtotal_minor` viene calculado del dominio, en enteros."""
+
+    group: str
+    canonical_product_id: str
+    name: str
+    unit_price_minor: int
+    units: int
+    subtotal_minor: int
+    # Campos visuales para la card del chat (no se calculan en el LLM).
+    image_url: str | None = None
+    url: str | None = None
+    brand: str | None = None
+    display_size: str | None = None
+
+
+class ProviderBasketDto(BaseModel):
+    provider_id: str
+    provider_name: str
+    lines: tuple[BasketLineDto, ...]
+    total_minor: int
+    remaining_minor: int
+    groups_covered: tuple[str, ...]
+    # Los dos huecos se reportan POR SEPARADO: «esta tienda no lo vende» y «no te alcanzó» son
+    # hechos distintos para quien compra, y mezclarlos sería deshonesto (§7.5).
+    groups_unavailable: tuple[str, ...]
+    groups_unaffordable: tuple[str, ...]
+    shortfall_minor: int | None = None
+    is_cheapest: bool = False
+
+    @property
+    def items_count(self) -> int:
+        return sum(line.units for line in self.lines)
+
+    @classmethod
+    def from_domain(
+        cls, provider_id: str, provider_name: str, basket: "ProviderBasket"
+    ) -> "ProviderBasketDto":
+        return cls(
+            provider_id=provider_id,
+            provider_name=provider_name,
+            lines=tuple(
+                BasketLineDto(
+                    group=line.group,
+                    canonical_product_id=line.canonical_product_id,
+                    name=line.name,
+                    unit_price_minor=line.unit_price_minor,
+                    units=line.units,
+                    subtotal_minor=line.subtotal_minor,
+                    image_url=line.image_url,
+                    url=line.url,
+                    brand=line.brand,
+                    display_size=line.display_size,
+                )
+                for line in basket.lines
+            ),
+            total_minor=basket.total_minor,
+            remaining_minor=basket.remaining_minor,
+            groups_covered=basket.groups_covered,
+            groups_unavailable=basket.groups_unavailable,
+            groups_unaffordable=basket.groups_unaffordable,
+            shortfall_minor=basket.shortfall_minor,
+        )
+
+
+class BudgetBasketDto(BaseModel):
+    """La comparación entre proveedores para un presupuesto dado (§7)."""
+
+    budget_minor: int
+    providers: tuple[ProviderBasketDto, ...]

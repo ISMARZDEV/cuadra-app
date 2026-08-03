@@ -114,5 +114,18 @@
   "save.alerts.droppedFromTo": "dropped from {from} to {to} at {store}",
   "save.alerts.unsubscribe": "Unfollow",
   "save.alerts.dropTitle": "Price dropped!",
-  "save.alerts.dropBody": "{product} dropped at {store}"
+  "save.alerts.dropBody": "{product} dropped at {store}",
+  "chat.product.cheapest": "Cheapest",
+  "chat.product.capturedOn": "Prices from {date} · they may differ in store",
+  "chat.basket.budget": "Budget",
+  "chat.basket.items": "{count} items",
+  "chat.basket.remaining": "Remaining",
+  "chat.basket.groups": "{count} groups",
+  "chat.basket.cheapest": "Best basket",
+  "chat.basket.spent": "You spend {spent} · {remaining} left",
+  "chat.basket.seeList": "View product list",
+  "chat.basket.viewProduct": "View product",
+  "chat.basket.addPlaceholder": "Add",
+  "chat.basket.unitCount": "X UNIT",
+  "chat.basket.pricePerUnit": "{price} X {unit}"
 }

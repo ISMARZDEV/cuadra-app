@@ -1,16 +1,19 @@
 import * as Haptics from "expo-haptics";
-import { Pressable, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 import { useColorScheme } from "nativewind";
 
 import { sounds } from "@/lib/sounds";
+import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
+import BasketProductCard, { CARD_WIDTH } from "./basket-product-card";
 import type { DockInteractionViewProps, DockOption } from "../interfaces";
 
 // One HITL step rendered inside the glass dock (register-expense flow, Img 8-11): a centered prompt
 // with a row of options. Generic — the backend emits {prompt, options} and this paints it, so
-// confirm / category / suggestion steps all reuse it. Two option kinds: `pill` (text button) and
-// `chip` (round icon-only avatar, the category suggestions of Img 10). The whole option is reported
-// back (the hook echoes the choice as a user bubble before resuming).
+// confirm / category / suggestion steps all reuse it. Three option kinds: `pill` (text button),
+// `chip` (round icon-only avatar, the category suggestions of Img 10), and `product` (carousel card
+// for grocery disambiguation). The whole option is reported back (the hook echoes the choice as a
+// user bubble before resuming).
 
 // primary = lime affirmative; secondary = translucent green. Theme-inverted so neither washes out.
 function pillColors(primary: boolean, isDark: boolean) {
@@ -37,8 +40,8 @@ function OptionPill({ option, onPress }: { option: DockOption; onPress: () => vo
         paddingVertical: 12,
       }}
     >
-      {option.icon ? <Text style={{ fontSize: 16 }}>{option.icon}</Text> : null}
-      <Text style={{ color: fg, fontSize: 15, fontWeight: "700" }}>{option.label}</Text>
+      {option.icon ? <Text style={{ fontSize: 16, fontFamily: KANTUMRUY_MEDIUM }}>{option.icon}</Text> : null}
+      <Text style={{ color: fg, fontSize: 15, fontFamily: KANTUMRUY_SEMIBOLD }}>{option.label}</Text>
     </Pressable>
   );
 }
@@ -66,7 +69,7 @@ function IconChip({ option, onPress }: { option: DockOption; onPress: () => void
         elevation: 4,
       }}
     >
-      <Text style={{ fontSize: 24 }}>{option.icon}</Text>
+      <Text style={{ fontSize: 24, fontFamily: KANTUMRUY_MEDIUM }}>{option.icon}</Text>
     </Pressable>
   );
 }
@@ -75,10 +78,10 @@ function IconChip({ option, onPress }: { option: DockOption; onPress: () => void
 function PromptText({ prompt, accent }: { prompt: string; accent: string }) {
   const parts = prompt.split(/(\*\*[^*]+\*\*)/g);
   return (
-    <Text className="mb-3 text-center text-lg leading-6 text-text">
+    <Text className="mb-3 text-center font-sans text-lg leading-6 text-text">
       {parts.map((part, i) =>
         part.startsWith("**") && part.endsWith("**") ? (
-          <Text key={i} style={{ color: accent, fontWeight: "800" }}>
+          <Text key={i} className="font-sans-semibold" style={{ color: accent }}>
             {part.slice(2, -2)}
           </Text>
         ) : (
@@ -89,7 +92,58 @@ function PromptText({ prompt, accent }: { prompt: string; accent: string }) {
   );
 }
 
-export function DockInteractionView({ interaction, onSelect }: DockInteractionViewProps) {
+// El ancho lo manda la tarjeta (CARD_WIDTH). Copiarlo acá hacía que `getItemLayout` mintiera en
+// cuanto la tarjeta cambiaba de tamaño.
+const CARD_GAP = 5;
+const CAROUSEL_INSET = 16; // == the px-4 of the prompt
+
+function ProductOptionsCarousel({
+  options,
+  onSelect,
+  onViewProduct,
+}: {
+  options: DockOption[];
+  onSelect: (option: DockOption) => void;
+  onViewProduct?: (option: DockOption) => void;
+}) {
+  return (
+    <FlatList
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      // The scroll VIEWPORT must span the dock edge to edge — the inset lives in the content, not
+      // in the container. With padding on the wrapper the list clipped 16px short of the chat
+      // card, so a card vanished mid-scroll instead of at the card's own rounded limit.
+      style={{ alignSelf: "stretch" }}
+      data={options}
+      keyExtractor={(option) => option.value}
+      renderItem={({ item }) =>
+        item.product ? (
+          <BasketProductCard
+            item={item.product}
+            currency={item.product.currency}
+            mode="picker"
+            onSelect={() => onSelect(item)}
+            onView={() => onViewProduct?.(item)}
+          />
+        ) : null
+      }
+      ItemSeparatorComponent={() => <View style={{ width: 5 }} />}
+      // Same 16px as the prompt above, so the first card lines up with the text.
+      contentContainerStyle={{ paddingHorizontal: CAROUSEL_INSET }}
+      nestedScrollEnabled
+      removeClippedSubviews
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      getItemLayout={(_data, index) => ({
+        length: CARD_WIDTH,
+        offset: CAROUSEL_INSET + (CARD_WIDTH + CARD_GAP) * index,
+        index,
+      })}
+    />
+  );
+}
+
+export function DockInteractionView({ interaction, onSelect, onViewProduct }: DockInteractionViewProps) {
   const { colorScheme } = useColorScheme();
   // Readable lime: brand lime on dark, a deeper green on the off-white card.
   const accent = colorScheme === "dark" ? "#C2FB7E" : "#16A34A";
@@ -101,18 +155,32 @@ export function DockInteractionView({ interaction, onSelect }: DockInteractionVi
     sounds.send();
     onSelect(option);
   };
+
+  const productOptions = interaction.options.filter((o) => o.kind === "product");
+  const hasProducts = productOptions.length > 0;
+
   return (
-    <View className="px-4 py-2">
-      <PromptText prompt={interaction.prompt} accent={accent} />
-      <View className="flex-row flex-wrap items-center justify-center gap-3">
-        {interaction.options.map((option) =>
-          option.kind === "chip" ? (
-            <IconChip key={option.value} option={option} onPress={() => handleSelect(option)} />
-          ) : (
-            <OptionPill key={option.value} option={option} onPress={() => handleSelect(option)} />
-          ),
-        )}
+    <View className="py-2">
+      <View className="px-4">
+        <PromptText prompt={interaction.prompt} accent={accent} />
       </View>
+      {hasProducts ? (
+        <ProductOptionsCarousel
+          options={productOptions}
+          onSelect={handleSelect}
+          onViewProduct={onViewProduct}
+        />
+      ) : (
+        <View className="flex-row flex-wrap items-center justify-center gap-3 px-4">
+          {interaction.options.map((option) =>
+            option.kind === "chip" ? (
+              <IconChip key={option.value} option={option} onPress={() => handleSelect(option)} />
+            ) : (
+              <OptionPill key={option.value} option={option} onPress={() => handleSelect(option)} />
+            ),
+          )}
+        </View>
+      )}
     </View>
   );
 }

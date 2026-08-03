@@ -24,6 +24,16 @@ module.exports = {
         danger: "#EF4444",
         success: "#22C55E",
       },
+      fontFamily: {
+        // Kantumruy Pro — the entire app's typeface. Each weight is a separate TTF, so NativeWind
+        // gets one utility per face. Use `font-sans` for body text and `font-sans-semibold` for
+        // emphasis; the numeric fontWeight utilities are NOT used because RN would not resolve the
+        // correct file in this multi-file setup.
+        sans: ["KantumruyPro_400Regular"],
+        "sans-medium": ["KantumruyPro_500Medium"],
+        "sans-semibold": ["KantumruyPro_600SemiBold"],
+        "sans-bold": ["KantumruyPro_700Bold"],
+      },
     },
   },
 };

@@ -13,6 +13,7 @@ from src.shared.money import Money
 
 from ..admin_audit import AdminAuditEntry
 from ..alerts import Alert, AlertNotification, AlertSubscription
+from ..basket import ProviderOffer
 from ..canonical_image import CanonicalImage
 from ..classification import (
     CategoryCandidate,
@@ -102,6 +103,18 @@ class StoreRegistryRepository(Protocol):
 
         `source.id` debe existir — el caller (use case) resuelve el `get_by_id` y arma el
         `StoreRegistry` actualizado antes de llamar aquí; este método es I/O puro (ADR 31)."""
+        ...
+
+
+class BasketOfferRepository(Protocol):
+    """Resuelve, en UNA query, qué producto de cada proveedor satisface cada rubro de la canasta.
+
+    Vive aparte de `BasketQueryRepository` porque son dos preguntas distintas: aquél administra la
+    lista curada (alta/baja/edición desde el admin); éste la RESUELVE contra el catálogo con precios.
+    """
+
+    def list_basket_offers(self, market_id: str) -> list[ProviderOffer]:
+        """Por (rubro × proveedor), el producto enlazado MÁS BARATO que satisface el rubro."""
         ...
 
 
@@ -271,6 +284,29 @@ class CanonicalProductRepository(Protocol):
     def get_by_id(self, product_id: str) -> CanonicalProduct | None: ...
     def get_by_slug(self, slug: str, market_id: str) -> CanonicalProduct | None: ...
     def search(self, query: str, market_id: str) -> list[CanonicalProduct]: ...
+
+    def search_lexical(
+        self, query: str, market_id: str, limit: int = 20
+    ) -> list[MatchCandidate]:
+        """Etapa LÉXICA de la búsqueda del usuario (§6): trgm sobre nombre + marca.
+
+        Distinta de `find_candidates_trgm` de la cascada de matching, con la que comparte técnica
+        pero NO postura (§6.4): allí el error caro es el falso merge y se es conservador; acá la
+        pregunta es «¿qué quiso decir?» y un resultado de más no hace daño.
+        """
+        ...
+
+    def search_semantic(
+        self, embedding: list[float], market_id: str, limit: int = 20
+    ) -> list[MatchCandidate]:
+        """Etapa SEMÁNTICA (pgvector): sinónimos regionales y typos que el léxico no alcanza."""
+        ...
+
+    def get_many(
+        self, product_ids: Sequence[str], market_id: str
+    ) -> list[CanonicalProduct]:
+        """Hidrata canónicos por id. NO promete orden — lo impone quien llama."""
+        ...
     def list_by_market(
         self, market_id: str, limit: int = 1000, offset: int = 0
     ) -> list[CanonicalProduct]:

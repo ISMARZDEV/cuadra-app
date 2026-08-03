@@ -369,8 +369,10 @@ def get_aispace_checkpointer() -> object:
 
 
 def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):  # type: ignore[no-untyped-def]
+    from src.contexts.aispace.agents.groceries.tools.catalog import compare_by_canonical_id
     from src.contexts.aispace.flows.expense.categories import suggest_expense_categories
     from src.contexts.aispace.flows.expense.flow import build_expense_flow
+    from src.contexts.aispace.flows.groceries.flow import build_groceries_flow
     from src.contexts.aispace.orchestration.graph import build_graph
     from src.contexts.aispace.orchestration.registry import build_registry
     from src.contexts.aispace.orchestration.router import llm_classifier
@@ -386,17 +388,34 @@ def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):
         commit_action=lambda state, action: finance.commit({**state, "pending_action": action}),
         suggest_categories=suggest_expense_categories,
     )
+    # groceries corre el flujo de DESAMBIGUACIÓN (§5.4·A): cuando la consulta nombra una familia
+    # («arroz») y no un producto, el dock pregunta cuál en vez de que el agente adivine. Es de
+    # SOLO LECTURA — el paso terminal compara el elegido, no escribe nada.
+    groceries_flow = build_groceries_flow(
+        compare_by_id=lambda canonical_id: compare_by_canonical_id(
+            # "DO" fijo, igual que el default del agente y del resto de Save (riesgo #8 del
+            # plan: el mercado todavía no sale de configuración). No es regresión de esta fase.
+            SessionLocal, "DO", canonical_id
+        )
+    )
     return build_graph(
         checkpointer,
         classifier=llm_classifier,
         registry=registry,
-        flow_registry={"register_expense": expense_flow},
+        flow_registry={"register_expense": expense_flow, "groceries": groceries_flow},
     )
 
 
 # ── Save (catálogo de precios) ──
 def get_search_products(session: Session = Depends(get_session)) -> SearchProducts:
-    return SearchProducts(SqlCanonicalProductRepository(session))
+    # Búsqueda HÍBRIDA (§6): léxica + semántica fusionadas por RRF. Sin embedder resuelto,
+    # `SearchProducts` omite la etapa semántica y degrada a léxica — nunca inventa un vector.
+    return SearchProducts(
+        SqlCanonicalProductRepository(session),
+        embedding_provider=build_api_embedder(
+            endpoint_url=settings.save_bge_m3_endpoint_url
+        ),
+    )
 
 
 def get_compare_product(session: Session = Depends(get_session)) -> CompareProduct:

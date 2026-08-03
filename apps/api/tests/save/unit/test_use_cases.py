@@ -15,7 +15,7 @@ from src.contexts.save.application.errors import CanonicalProductNotFoundError
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.domain.comparison import StoreQuote
-from src.contexts.save.domain.entities import CanonicalProduct
+from src.contexts.save.domain.entities import CanonicalProduct, MatchCandidate
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
 from src.shared.money import Currency, Money
 
@@ -42,6 +42,21 @@ class FakeCanonicalRepo:
             p for p in self._p.values()
             if query.lower() in p.name.lower() and p.market_id == market_id
         ]
+
+    def search_lexical(self, query: str, market_id: str, limit: int = 20):  # type: ignore[no-untyped-def]
+        # Fake léxico: substring. La etapa real es trgm — la cubren test_hybrid_search (unit) y
+        # test_api (integración, contra el SQL de verdad).
+        return [
+            MatchCandidate(canonical_product_id=p.id, score=1.0)
+            for p in self._p.values()
+            if query.lower() in p.name.lower() and p.market_id == market_id
+        ][:limit]
+
+    def search_semantic(self, embedding: list[float], market_id: str, limit: int = 20):  # type: ignore[no-untyped-def]
+        return []
+
+    def get_many(self, product_ids, market_id: str) -> list[CanonicalProduct]:  # type: ignore[no-untyped-def]
+        return [self._p[pid] for pid in product_ids if pid in self._p]
 
     def list_by_market(
         self, market_id: str, limit: int = 1000, offset: int = 0

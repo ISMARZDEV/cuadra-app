@@ -74,11 +74,51 @@ def _seed(db_session: Session, market_id: str = "DO") -> str:
     return cid
 
 
-def test_search_endpoint_finds_product(db_session: Session) -> None:
-    cid = _seed(db_session)
+def _seed_distinctive(db_session: Session, name: str, brand: str) -> str:
+    """Un canónico con nombre IRREPETIBLE: el catálogo de dev tiene decenas de arroces que empatan
+    en similitud, y un top-N rankeado no puede prometer cuál de los empatados devuelve."""
+    node = taxonomy_node(db_session, name="Aceites", level=0, market_id="DO")
+    db_session.add(node)
+    db_session.flush()
+    cid = str(uuid.uuid4())
+    SqlCanonicalProductRepository(db_session).add(
+        CanonicalProduct(
+            cid, name, brand, None, taxonomy_node_id=str(node.id), market_id="DO"
+        )
+    )
+    return cid
+
+
+def test_search_endpoint_finds_a_product_by_name(db_session: Session) -> None:
+    cid = _seed_distinctive(db_session, "Aceite Zumbaquisqueya Extra Virgen 1 Lt", "Zumbaquisqueya")
+
+    r = _client(db_session).get(
+        "/v1/save/search", params={"q": "zumbaquisqueya", "market": "DO"}
+    )
+
+    assert r.status_code == 200
+    # PRIMERO, no único: un canónico recién creado todavía no tiene embedding (lo puebla el
+    # backfill), así que la etapa semántica no lo ve y aporta vecinos ajenos que RRF arrastra.
+    assert [item["id"] for item in r.json()][0] == cid
+
+
+def test_search_endpoint_tolerates_a_typo(db_session: Session) -> None:
+    """El ILIKE anterior devolvía CERO para un typo. La etapa léxica trgm sí lo alcanza (§6.1)."""
+    cid = _seed_distinctive(db_session, "Aceite Zumbaquisqueya Extra Virgen 1 Lt", "Zumbaquisqueya")
+
+    r = _client(db_session).get(
+        "/v1/save/search", params={"q": "zumbakisqueya", "market": "DO"}
+    )
+
+    assert r.status_code == 200
+    assert cid in [item["id"] for item in r.json()]
+
+
+def test_search_endpoint_returns_a_ranked_top_n(db_session: Session) -> None:
+    _seed(db_session)
     r = _client(db_session).get("/v1/save/search", params={"q": "arroz", "market": "DO"})
     assert r.status_code == 200
-    assert any(item["id"] == cid for item in r.json())
+    assert 0 < len(r.json()) <= 5  # rankeado y acotado, ya no un volcado sin orden
 
 
 def test_compare_endpoint_returns_sorted_table(db_session: Session) -> None:

@@ -10,12 +10,14 @@ from src.contexts.aispace.agents.base import AgentSpec
 from src.contexts.aispace.agents.finance.agent import FinanceAgent
 from src.contexts.aispace.agents.finance.tools.transactions import SessionFactory
 from src.contexts.aispace.agents.general.agent import GeneralAgent
+from src.contexts.aispace.agents.groceries.agent import GroceriesAgent
 
 
 def build_registry(session_factory: SessionFactory) -> dict[str, AgentSpec]:
     finance = FinanceAgent(session_factory)
     general = GeneralAgent()  # conversación: LLM simple, sin deps de DB
-    agents: list[AgentSpec] = [finance, general]
+    groceries = GroceriesAgent(session_factory)  # Save: precios de supermercado (SOLO LECTURA)
+    agents: list[AgentSpec] = [finance, general, groceries]
     registry: dict[str, AgentSpec] = {}
     for agent in agents:
         for intent in agent.intents:

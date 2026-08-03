@@ -24,6 +24,9 @@ export default defineConfig({
       { find: "lucide-react-native", replacement: path.resolve(__dirname, "src/test/icon-stub.cjs") },
       // react-native-svg → passthrough stub (containers keep their children; native source unparseable).
       { find: "react-native-svg", replacement: path.resolve(__dirname, "src/test/svg-stub.tsx") },
+      // expo-haptics → stub: su build web llama a `window.matchMedia` en el import y jsdom no lo
+      // tiene, así que el módulo revienta antes de que corra un solo test.
+      { find: "expo-haptics", replacement: path.resolve(__dirname, "src/test/haptics-stub.ts") },
       // reanimated → stub: its source can't pass vitest's SSR transform and needs Metro-only
       // globals; the stub exposes Animated.* + inert hooks/helpers so components still render.
       { find: "react-native-reanimated", replacement: path.resolve(__dirname, "src/test/reanimated-stub.tsx") },
