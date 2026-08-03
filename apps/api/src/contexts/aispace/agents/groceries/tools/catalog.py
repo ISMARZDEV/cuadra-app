@@ -23,7 +23,21 @@ from src.contexts.save.infrastructure.repositories import (
 )
 from src.config import settings
 
+from src.contexts.save.domain.search_ambiguity import is_ambiguous
+
 from ._shared import NO_MATCH, SessionFactory, money, price_metadata
+
+
+def _not_a_category(name: str) -> str:
+    """Un nombre de PRODUCTO llegó a la tool de categorías: se redirige en vez de decir «nada».
+
+    Decir `no_data` hacía que el modelo respondiera «no encontré precios» — una mentira, porque el
+    producto SÍ está. El error no era del catálogo sino de la elección de tool.
+    """
+    return (
+        f"wrong_tool: '{name}' is not a store section — it looks like a PRODUCT. "
+        "Call compare_prices with it instead. Do NOT tell the user there are no prices."
+    )
 
 
 def _find_node(nodes, slug: str):  # type: ignore[no-untyped-def]
@@ -46,6 +60,24 @@ def _resolve(session, market_id: str, text: str):  # type: ignore[no-untyped-def
         limit=1,
     ).execute(text, market_id)
     return results[0] if results else None
+
+
+def _ambiguous_options(session, market_id: str, text: str) -> list[dict] | None:  # type: ignore[no-untyped-def]
+    """Si la consulta nombra una FAMILIA y no un producto, devuelve las opciones para preguntar.
+
+    La decisión vive en el dominio (`is_ambiguous`) y se toma sobre el score CRUDO de la etapa
+    léxica — RRF comprime todo y no distingue una consulta ambigua de una específica.
+    """
+    repo = SqlCanonicalProductRepository(session)
+    candidates = repo.search_lexical(text, market_id, limit=5)
+    if not is_ambiguous([c.score for c in candidates]):
+        return None
+    products = {p.id: p for p in repo.get_many([c.canonical_product_id for c in candidates], market_id)}
+    return [
+        {"value": c.canonical_product_id, "label": products[c.canonical_product_id].name}
+        for c in candidates
+        if c.canonical_product_id in products
+    ]
 
 
 def build_search_groceries(session_factory: SessionFactory, market_id: str):  # type: ignore[no-untyped-def]
@@ -78,13 +110,19 @@ def build_search_groceries(session_factory: SessionFactory, market_id: str):  # 
     return search_groceries
 
 
-def build_compare_prices(session_factory: SessionFactory, market_id: str):  # type: ignore[no-untyped-def]
+def build_compare_prices(  # type: ignore[no-untyped-def]
+    session_factory: SessionFactory, market_id: str, staging: dict | None = None
+):
     @tool
     def compare_prices(product: str) -> str:
         """Compare the price of ONE product across the supermarkets that carry it.
 
-        Use it for "where is X cheapest?", "how much does X cost?", "price of X". This is the tool
-        that answers any question about the price of a single product.
+        Use it whenever X is a PRODUCT you could put in a cart: "arroz", "café Santo Domingo",
+        "aceite", "leche", "pañales". "Where is X cheapest?", "how much does X cost?", "price of X".
+
+        X is a PRODUCT, not a category. If the user names a whole SECTION of the store
+        ("lácteos", "bebidas", "limpieza", "cuidado personal") use cheapest_store_by_category
+        instead. When in doubt between the two, X is almost always a product — use this one.
 
         It returns one line per store with the exact price, the unit price when the product
         declares a size, the store URL, the capture date and the price type. If the product is
@@ -95,6 +133,28 @@ def build_compare_prices(session_factory: SessionFactory, market_id: str):  # ty
         (use cheapest_store_by_category).
         """
         with session_factory() as session:
+            # Ambigüedad → NO se adivina: se stagea la pregunta y el dock la hace (§5.4·A).
+            # Comparar el producto equivocado es justo lo que el usuario detecta y castiga.
+            if staging is not None:
+                options = _ambiguous_options(session, market_id, product)
+                if options:
+                    staging["action"] = {
+                        "requires_confirmation": True,
+                        "kind": "disambiguate",
+                        "summary": product,
+                        "options": options,
+                    }
+                    # El prefijo importa: `ambiguous:` se leía como un error hermano de
+                    # `no_match:` y el modelo respondía «no encontré nada». `found_several:`
+                    # dice lo que de verdad pasó — hay DEMASIADO, no muy poco.
+                    return (
+                        f"found_several: there are {len(options)} products matching "
+                        f"'{product}', and nothing the user said tells them apart. This is a "
+                        "SUCCESS, not a failure. The app is ALREADY showing the user a picker "
+                        "with the options. Reply with ONE short friendly line saying you found "
+                        "several and to pick one. Do NOT list them. Do NOT ask a question — the "
+                        "picker already asks."
+                    )
             canonical = _resolve(session, market_id, product)
             if canonical is None:
                 return NO_MATCH
@@ -185,9 +245,12 @@ def build_cheapest_store_by_category(session_factory: SessionFactory, market_id:
     def cheapest_store_by_category(category: str) -> str:
         """Rank the supermarkets by price WITHIN one category (rice, dairy, cleaning...).
 
-        Use it for "which supermarket is cheaper for X?", "where should I buy my meat?". It
-        answers the question behind the myth that one single supermarket is cheapest overall —
-        each one usually wins in a different category.
+        Use it ONLY when the user names a whole SECTION of the store, not a product: "lácteos",
+        "bebidas", "limpieza", "cuidado personal", "snacks". It answers the myth that one single
+        supermarket is cheapest overall — each one usually wins in a different section.
+
+        "arroz", "café", "leche", "aceite" are PRODUCTS, not categories: for those use
+        compare_prices. Calling this tool with a product name returns nothing useful.
 
         Report the ranking as conditioned: it covers only the stores and the products in the
         catalog, on the capture date, on absolute price. Do NOT use it for one product
@@ -200,7 +263,7 @@ def build_cheapest_store_by_category(session_factory: SessionFactory, market_id:
             taxonomy = SqlTaxonomyRepository(session)
             node = _find_node(taxonomy.list_tree(market_id), slugify(category))
             if node is None:
-                return f"no_match: '{category}' is not a category in the catalog"
+                return _not_a_category(category)
             rows = SqlStoreProductRepository(session).list_category_offerings(
                 taxonomy.descendant_ids(node.id)
             )
@@ -211,7 +274,7 @@ def build_cheapest_store_by_category(session_factory: SessionFactory, market_id:
             totals.setdefault(row.provider_name, []).append(row.price.amount_minor)
             products.add(row.product_id)
         if not totals:
-            return f"no_data: no priced products in '{category}'"
+            return _not_a_category(category)
 
         ranked = sorted(
             ((name, sum(p) // len(p), len(p)) for name, p in totals.items()),
@@ -229,3 +292,37 @@ def build_cheapest_store_by_category(session_factory: SessionFactory, market_id:
         return "\n".join(lines)
 
     return cheapest_store_by_category
+
+
+def compare_by_canonical_id(  # type: ignore[no-untyped-def]
+    session_factory: SessionFactory, market_id: str, canonical_product_id: str
+) -> tuple[str, list[dict]]:
+    """Comparación de un canónico YA elegido → (texto, ui_actions).
+
+    Es el paso terminal del flujo de desambiguación (§5.4·A): el usuario ya tocó una pill, así que
+    no hay nada que resolver — se compara ESE producto y se devuelven sus enlaces.
+    """
+    with session_factory() as session:
+        repo = SqlCanonicalProductRepository(session)
+        products = repo.get_many([canonical_product_id], market_id)
+        if not products:
+            return NO_MATCH, []
+        comparison = CompareProduct(
+            repo, SqlStoreProductRepository(session), SqlTaxonomyRepository(session)
+        ).execute(products[0].slug or products[0].id, market_id)
+        meta = price_metadata(session, comparison.canonical_product_id)
+
+    lines = [f"{comparison.name} ({comparison.brand})"]
+    ui_actions: list[dict] = []
+    for entry in comparison.entries:
+        when, price_type = meta.get(entry.provider_id, ("unknown", "online"))
+        mark = " ← más barato" if entry.is_cheapest and len(comparison.entries) > 1 else ""
+        lines.append(
+            f"{entry.provider_name}: {money(entry.price_minor, entry.currency)}{mark}"
+        )
+        if entry.url:
+            ui_actions.append(
+                {"type": "link", "text": entry.provider_name, "href": entry.url}
+            )
+    lines.append(f"Precios en línea capturados el {when}; pueden variar en tienda.")
+    return "\n".join(lines), ui_actions

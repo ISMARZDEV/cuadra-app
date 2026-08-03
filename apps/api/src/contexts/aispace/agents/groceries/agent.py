@@ -44,6 +44,9 @@ actually cost at the supermarket and decide what suits them. Be warm, concise an
 - Every price, total, unit price, store name and URL you mention MUST come verbatim from a tool
   result. NEVER compute, estimate, convert or round a number yourself.
 - If a tool returns `no_match` or `no_data`, say so plainly. NEVER invent a product or a price.
+- `found_several` is the OPPOSITE of `no_match`: it means the catalog has MANY matches and the app
+  is already showing the user a picker. Reply with one short line saying you found several options;
+  do NOT list them, do NOT ask which one (the picker asks), and NEVER say you found nothing.
 - If a product is sold at only ONE store, say "I found it at X". Do NOT say "X has the best price"
   — with nothing to compare against, that claim is false.
 - Include the store link ONLY when the tool returned a `url=` for that store, and copy it exactly.
@@ -89,11 +92,14 @@ class GroceriesAgent:
 
     def run(self, state: dict) -> dict:
         lang = language_name(state.get("language", "es"))
+        # Canal de STAGING para la desambiguación (§5.4·A). No es una escritura: el dock se usa
+        # para ELEGIR, no para confirmar que se persista algo.
+        staging: dict = {}
         # Las tools se construyen POR INVOCACIÓN con el mercado ligado por closure: el modelo no
         # puede pedir el catálogo de otro país (§5.1). Ninguna escribe.
         tools = [
             build_search_groceries(self._sf, self._market),
-            build_compare_prices(self._sf, self._market),
+            build_compare_prices(self._sf, self._market, staging),
             build_explore_alternatives(self._sf, self._market),
             build_basket_for_budget(self._sf, self._market),
             build_cheapest_store_by_category(self._sf, self._market),
@@ -107,7 +113,7 @@ class GroceriesAgent:
         )
         result = agent.invoke({"messages": state["messages"]}, {"recursion_limit": 10})
         new_messages = result["messages"][len(state["messages"]):]
-        return {"messages": new_messages, "pending_action": None}
+        return {"messages": new_messages, "pending_action": staging.get("action")}
 
     def commit(self, state: dict) -> str:
         """No-op: este agente es de SOLO LECTURA y no tiene ninguna tool de escritura."""

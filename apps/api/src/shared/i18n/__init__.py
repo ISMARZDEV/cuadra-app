@@ -27,6 +27,7 @@ _CATALOG: dict[str, dict[str, str]] = {
         "expense.suggestions": "Estas son mis sugerencias según tu tipo de gasto, selecciona una:",
         "expense.forget_category": "Olvídalo, sin categoría",
         "see_in_insight": "Ver en Insight",
+        "groceries.which_one": "Tengo varios. ¿Cuál te interesa?",
     },
     "en": {
         "registered": "Done — I registered {display} in {category} from {wallet}.",
@@ -45,6 +46,7 @@ _CATALOG: dict[str, dict[str, str]] = {
         "expense.suggestions": "These are my suggestions for this kind of expense, pick one:",
         "expense.forget_category": "Forget it, no category",
         "see_in_insight": "See in Insight",
+        "groceries.which_one": "I found several. Which one?",
     },
     "pt": {
         "registered": "Pronto, registrei {display} em {category} de {wallet}.",
@@ -63,6 +65,7 @@ _CATALOG: dict[str, dict[str, str]] = {
         "expense.suggestions": "Estas são minhas sugestões para este tipo de gasto, escolha uma:",
         "expense.forget_category": "Esqueça, sem categoria",
         "see_in_insight": "Ver no Insight",
+        "groceries.which_one": "Encontrei vários. Qual deles?",
     },
 }
 
