@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 
+import pytest
 from sqlalchemy.orm import Session
 
 from src.contexts.aispace.agents.groceries.tools.basket import (
@@ -105,6 +106,77 @@ def _seed_product(
             url=f"https://{provider_name.lower()}.example/p",
         )
     return cid
+
+
+# Catálogo mínimo de canasta ---------------------------------------------------------------------
+#
+# Los cinco tests de canasta corrían contra los datos INGESTADOS de la base de desarrollo. En una
+# base recién migrada —CI— no hay catálogo: las tools contestan `no_data`, que es la respuesta
+# CORRECTA, y los asserts reventaban. Estaban verdes en local por leer datos reales, no por el
+# código: exactamente el patrón que denuncia el comentario de `ci.yml`. Acá el catálogo se SIEMBRA,
+# así que los tests miden el contrato y no el contenido de una base.
+#
+# Para que un canónico entre en la canasta tienen que darse las CUATRO condiciones de
+# `list_basket_offers`:
+#   1. un `basket_query` activo con su rubro — esos los siembra la migración 0990d45c068a,
+#   2. `word_similarity(query_text, nombre) > umbral` — de ahí que los nombres calquen el rubro,
+#   3. que la hoja de taxonomía del producto esté PERMITIDA para ese rubro
+#      (`ALLOWED_TAXONOMY_BY_GROUP`: el nombre propone, la taxonomía dispone), y
+#   4. un `store_product` disponible con precio.
+# Si alguna falta, el producto no desaparece de la búsqueda: desaparece de la CANASTA, en silencio.
+_BASKET_CATALOG: tuple[tuple[str, str, str, int], ...] = (
+    # (nombre del canónico, marca, nodo permitido para su rubro, precio base en minor)
+    ("Arroz La Garza 10 Lb", "La Garza", "Arroz", 48_500),          # Granos y legumbres
+    ("Aceite Mazola 48 Oz", "Mazola", "Aceite & Vinagre", 32_900),  # Aceites y grasas
+    ("Leche Rica Entera 1 Lt", "Rica", "Leche Entera & Descremada", 9_500),  # Lácteos
+)
+
+# Dos tiendas COMPARTIDAS por todos los productos. Que sean compartidas es el punto: `_seed_product`
+# crea un proveedor nuevo por llamada, y con eso cada producto caería en su propia tienda — la
+# comparación «una canasta por súper» no tendría con qué comparar.
+_BASKET_STORES: tuple[tuple[str, int], ...] = (("Tienda Alfa", 0), ("Tienda Beta", 1_500))
+
+
+@pytest.fixture
+def basket_catalog(db_session: Session) -> None:
+    """Siembra un catálogo con precio para tres rubros de la canasta, en dos tiendas."""
+    providers = SqlProviderRepository(db_session)
+    store = SqlStoreProductRepository(db_session)
+    canonicals = SqlCanonicalProductRepository(db_session)
+
+    provider_ids: list[str] = []
+    for name, _ in _BASKET_STORES:
+        pid = str(uuid.uuid4())
+        providers.add(Provider(pid, name, ProviderType.SUPERMARKET, SourcePlatform.VTEX, MARKET))
+        provider_ids.append(pid)
+
+    for name, brand, node_name, price_minor in _BASKET_CATALOG:
+        node = taxonomy_node(db_session, name=node_name, level=0, market_id=MARKET)
+        db_session.add(node)
+        db_session.flush()
+        cid = str(uuid.uuid4())
+        canonicals.add(
+            CanonicalProduct(
+                cid,
+                name,
+                brand,
+                Quantity(Decimal("1"), UnitMeasure.VOLUME),
+                taxonomy_node_id=str(node.id),
+                market_id=MARKET,
+                display_size="1 Lt",
+            )
+        )
+        for pid, (_, surcharge) in zip(provider_ids, _BASKET_STORES):
+            store.record_observation(
+                provider_id=pid,
+                external_id=f"basket-test-{uuid.uuid4()}",
+                canonical_product_id=cid,
+                price=Money(price_minor + surcharge, DOP),
+                captured_at=datetime.now(timezone.utc),
+                price_type=PriceType.ONLINE,
+                source="test",
+                url="https://tienda.example/p",
+            )
 
 
 class TestGrounding:
@@ -226,7 +298,7 @@ class TestDegradacionHonesta:
         assert "0.00/" not in out, "imprimió un precio por unidad en cero"
 
     def test_a_budget_that_buys_nothing_says_how_much_is_missing(
-        self, db_session: Session
+        self, db_session: Session, basket_catalog: None
     ) -> None:
         """§8.1 fila 6 — «no te alcanza» sin decir cuánto falta no le sirve a nadie."""
         tool = build_basket_for_budget(_factory(db_session), MARKET)
@@ -398,7 +470,7 @@ class TestBusquedaYCanasta:
         assert "no_match" in tool.invoke({"query": "sonic screwdriver"})
 
     def test_basket_for_budget_reports_one_basket_per_store(
-        self, db_session: Session
+        self, db_session: Session, basket_catalog: None
     ) -> None:
         staging: dict = {}
         tool = build_basket_for_budget(_factory(db_session), MARKET, staging)
@@ -426,7 +498,7 @@ class TestRevelacionProgresiva:
     """
 
     def test_without_a_store_it_returns_the_headline_not_the_items(
-        self, db_session: Session
+        self, db_session: Session, basket_catalog: None
     ) -> None:
         staging: dict = {}
         tool = build_basket_for_budget(_factory(db_session), MARKET, staging)
@@ -437,7 +509,9 @@ class TestRevelacionProgresiva:
         assert "item=" not in out, "el titular no debe traer el detalle de artículos"
         assert "basket" in staging
 
-    def test_asking_for_ONE_store_returns_its_item_list(self, db_session: Session) -> None:
+    def test_asking_for_ONE_store_returns_its_item_list(
+        self, db_session: Session, basket_catalog: None
+    ) -> None:
         staging: dict = {}
         tool = build_basket_for_budget(_factory(db_session), MARKET, staging)
         headline = tool.invoke({"amount": 5000})
@@ -451,7 +525,9 @@ class TestRevelacionProgresiva:
         # El detalle por tienda NO stagea la acción visual; eso ya lo hizo el titular.
         assert staging["basket"] is basket_after_headline
 
-    def test_an_unknown_store_lists_the_ones_that_exist(self, db_session: Session) -> None:
+    def test_an_unknown_store_lists_the_ones_that_exist(
+        self, db_session: Session, basket_catalog: None
+    ) -> None:
         tool = build_basket_for_budget(_factory(db_session), MARKET)
 
         out = tool.invoke({"amount": 5000, "store": "Supermercado Inventado"})
