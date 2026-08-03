@@ -231,3 +231,39 @@ class TestBusquedaYCanasta:
         tool = build_basket_for_budget(_factory(db_session), MARKET)
 
         assert "invalid_budget" in tool.invoke({"amount": 0})
+
+
+class TestRevelacionProgresiva:
+    """§5.4·B — el titular primero; el detalle SOLO si lo piden.
+
+    La canasta son ~20 líneas × 3 proveedores. Volcarlo entero es un muro de texto en el chat Y un
+    gasto de tokens que casi nadie va a leer. Pero el detalle tiene que ser ALCANZABLE: sin él, un
+    «dame la lista de Bravo» no tiene respuesta posible.
+    """
+
+    def test_without_a_store_it_returns_the_headline_not_the_items(
+        self, db_session: Session
+    ) -> None:
+        tool = build_basket_for_budget(_factory(db_session), MARKET)
+
+        out = tool.invoke({"amount": 5000})
+
+        assert "groups_covered" in out
+        assert "item=" not in out, "el titular no debe traer el detalle de artículos"
+
+    def test_asking_for_ONE_store_returns_its_item_list(self, db_session: Session) -> None:
+        tool = build_basket_for_budget(_factory(db_session), MARKET)
+        headline = tool.invoke({"amount": 5000})
+        store = headline.splitlines()[1].split("store=")[1].split(" |")[0]
+
+        detail = tool.invoke({"amount": 5000, "store": store})
+
+        assert "item=" in detail
+        assert store in detail
+
+    def test_an_unknown_store_lists_the_ones_that_exist(self, db_session: Session) -> None:
+        tool = build_basket_for_budget(_factory(db_session), MARKET)
+
+        out = tool.invoke({"amount": 5000, "store": "Supermercado Inventado"})
+
+        assert "no_match" in out

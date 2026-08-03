@@ -23,13 +23,49 @@ Classifier = Callable[[str, list[str]], str]  # (texto, capabilities) -> intent
 _EXPENSE_RE = re.compile(r"\b(gast|gaste|gasté|pagu|pagué)", re.IGNORECASE)
 
 
+# Intents de LECTURA a los que es seguro pegarse. `register_expense` queda FUERA a propósito:
+# pegarse a un intent de ESCRITURA significaría re-registrar un gasto por una elipsis.
+_STICKY_INTENTS = frozenset({"groceries", "query_metrics"})
+# Una elipsis real empieza por «y …» («¿y el aceite?»). Una frase breve cualquiera («hola») NO
+# es una elipsis: la pegajosidad tiene que ser ESTRECHA o el agente secuestra la conversación.
+_ELLIPSIS_RE = re.compile(r"^\s*[¿¡]?\s*y\b", re.IGNORECASE)
+_MAX_ELLIPSIS_WORDS = 6
+
+
+# Verbos que ROMPEN la pegajosidad. Es a propósito MÁS AMPLIA que `_EXPENSE_RE` —incluye `compr`,
+# que la Fase 1 tuvo que sacar del cortocircuito— y la razón es que la ASIMETRÍA DE COSTOS es otra:
+#
+#   `_EXPENSE_RE` decide un INTENT. Un falso positivo manda al agente equivocado → debe ser PRECISA.
+#   esta decide si SALTARSE el clasificador. Un falso positivo cuesta UNA llamada LLM → puede ser
+#   generosa, porque el fallback es «preguntale al clasificador», que es la respuesta segura.
+#
+# Mismo token, consecuencia distinta. Por eso acá `compr` sí sirve y allá no.
+_BREAKS_STICKINESS_RE = re.compile(r"\b(gast|pagu|pagué|compr|cobr|vend)", re.IGNORECASE)
+
+
+def _is_elliptical_follow_up(text: str) -> bool:
+    """¿Es un «¿y el aceite?» — un seguimiento que solo se entiende con el turno anterior?"""
+    if not _ELLIPSIS_RE.match(text):
+        return False
+    if len(text.split()) > _MAX_ELLIPSIS_WORDS:
+        return False  # una frase completa cambió de tema: que decida el clasificador
+    # «y compré pan» lleva un verbo de dinero: no es un seguimiento de precios.
+    return not _BREAKS_STICKINESS_RE.search(text)
+
+
 def make_classify_intent(classifier: Classifier):  # type: ignore[no-untyped-def]
-    """Nodo `classify_intent`: cortocircuito → si no, el clasificador inyectado."""
+    """Nodo `classify_intent`: cortocircuito → intent pegajoso → si no, el clasificador inyectado."""
 
     def classify_intent(state: dict) -> dict:
         text = state["messages"][-1].content
         if _EXPENSE_RE.search(text) and any(c.isdigit() for c in text):
             return {"intent": "register_expense"}
+        # §5.4·C — el clasificador solo ve el ÚLTIMO mensaje, así que «¿y el aceite?» aislado no
+        # parece una consulta de supermercado. Mantener el intent es más preciso, más barato y
+        # más rápido a la vez; la guarda de arriba es lo que impide que secuestre la conversación.
+        previous = state.get("intent")
+        if previous in _STICKY_INTENTS and _is_elliptical_follow_up(text):
+            return {"intent": previous}
         return {"intent": classifier(text, state.get("capabilities", []))}
 
     return classify_intent

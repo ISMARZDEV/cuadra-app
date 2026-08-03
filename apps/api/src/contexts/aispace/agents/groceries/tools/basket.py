@@ -23,7 +23,7 @@ _MINOR_PER_MAJOR = 100
 
 def build_basket_for_budget(session_factory: SessionFactory, market_id: str):  # type: ignore[no-untyped-def]
     @tool
-    def basket_for_budget(amount: int) -> str:
+    def basket_for_budget(amount: int, store: str = "") -> str:
         """Build the best household shopping basket that fits a budget, one per supermarket.
 
         Use it for "with RD$10,000, what can I buy for the house?", "make me a shopping list with
@@ -31,12 +31,14 @@ def build_basket_for_budget(session_factory: SessionFactory, market_id: str):  #
         that pairs an amount of money with a whole shopping trip. Pass `amount` in PESOS as the
         user said it (10000 for RD$10,000) — never in cents.
 
-        It covers the essential household groups first, one item each by priority, and only then
-        repeats with the leftover. It returns, per store: groups covered, item count, total spent
-        and money left, plus the groups that store does not carry.
+        Leave `store` EMPTY the first time: you get the comparison across supermarkets — groups
+        covered, item count, total spent and money left for each. That headline is what the user
+        wants first; a 20-line list is a wall of text nobody reads.
 
-        Report which store stretches the budget furthest and by how much. Do NOT use it for a
-        single product (compare_prices).
+        Pass `store` with one supermarket's name ONLY when the user then asks to see that list
+        ("dame la lista de Bravo", "qué lleva la de Sirena"). Then you get the items.
+
+        Do NOT use it for a single product (compare_prices).
         """
         if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
             return "invalid_budget: the budget must be a positive amount in pesos"
@@ -47,6 +49,28 @@ def build_basket_for_budget(session_factory: SessionFactory, market_id: str):  #
             )
         if not result.providers:
             return NO_DATA
+
+        # §5.4·B — revelación progresiva: el TITULAR primero, el detalle sólo si lo piden.
+        if store.strip():
+            wanted = store.strip().lower()
+            chosen = next(
+                (b for b in result.providers if b.provider_name.lower() == wanted), None
+            )
+            if chosen is None:
+                names = ", ".join(b.provider_name for b in result.providers)
+                return f"no_match: '{store}' is not one of the stores. Available: {names}"
+            detail = [
+                f"store={chosen.provider_name} | budget={money(result.budget_minor)} | "
+                f"spent={money(chosen.total_minor)} | left={money(chosen.remaining_minor)}"
+            ]
+            detail += [
+                f"item={line.name} | group={line.group} | units={line.units} | "
+                f"subtotal={money(line.subtotal_minor)}"
+                for line in chosen.lines
+            ]
+            if chosen.groups_unavailable:
+                detail.append(f"not_sold_here={','.join(chosen.groups_unavailable)}")
+            return "\n".join(detail)
 
         lines = [f"budget={money(result.budget_minor)}"]
         for basket in result.providers:
