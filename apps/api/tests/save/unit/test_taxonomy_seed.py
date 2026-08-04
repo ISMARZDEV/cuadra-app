@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 
 import pytest
 
+from seeds.category_terms_data import CATEGORY_TERMS, ROOT_TERMS
 from seeds.save_taxonomy_seed import load_taxonomy_entries, parse_taxonomy
 from src.contexts.save.infrastructure.classification.lexicon import _tokens
 
@@ -106,3 +107,58 @@ def test_every_leaf_owns_at_least_one_unambiguous_token() -> None:
         f"{invisible}. Renombralas para que aporten una palabra (≥3 letras) que ninguna otra use. "
         "El tokenizador NO lematiza: `leche` ≠ `leches`, `frescas` ≠ `frescos`."
     )
+
+
+# --- Regla de cobertura: toda hoja debe traer descriptores curados ----------------------------
+# `seed_category_terms` siembra `classification_terms` desde `CATEGORY_TERMS`. Una hoja ausente del
+# dict queda SIN términos y cae a la receta pobre (padre+nombre), que mide 43% top-1 contra el 77%
+# de la receta descriptiva — en silencio, sin error.
+#
+# El dict se llavea por la KEY del nodo, no por la etiqueta: el MD declara la key como IDENTIDAD y
+# el nombre como etiqueta MUTABLE ("renombrar una etiqueta actualiza el nodo"). Llavear por nombre
+# —como se hacía— hacía que un rename descolgara los términos curados en silencio: pasó con 9 hojas
+# (`Frutas`→`Frutas Frescas`, `Arena Para Gato`→`Arena Sanitaria`, `Lavado De Ropa`→`Detergentes &
+# Suavizantes`, …) y el hueco lo tapó el CLI del LLM con términos de peor calidad.
+
+
+def _leaf_keys() -> list[str]:
+    return [key for _cat, subs in load_taxonomy_entries() for _name, key in subs]
+
+
+def test_every_leaf_has_curated_terms() -> None:
+    missing = sorted(set(_leaf_keys()) - set(CATEGORY_TERMS))
+    assert missing == [], (
+        f"estas hojas no tienen descriptores curados en CATEGORY_TERMS: {missing}. "
+        "Agregalas a `seeds/category_terms_data.py` llaveadas por su key del MD. Sin términos la "
+        "hoja cae a la receta pobre padre+nombre (43% top-1 vs 77%)."
+    )
+
+
+def test_no_orphan_terms_keys() -> None:
+    """Una key del dict que ya no existe en el MD no falla: simplemente no se aplica nunca."""
+    orphans = sorted(set(CATEGORY_TERMS) - set(_leaf_keys()))
+    assert orphans == [], (
+        f"estas keys de CATEGORY_TERMS no corresponden a ninguna hoja del MD: {orphans}. "
+        "Borralas o corregilas — hoy son peso muerto que nunca se siembra."
+    )
+
+
+def _root_keys() -> list[str]:
+    return [key for (_name, key), _subs in load_taxonomy_entries()]
+
+
+def test_every_root_has_terms() -> None:
+    """Las raíces NO las lee el clasificador (sus consultas filtran `level == 1`), pero se pueblan
+    igual para que la tabla esté completa y haya una descripción del pasillo disponible."""
+    missing = sorted(set(_root_keys()) - set(ROOT_TERMS))
+    assert missing == [], f"raíces sin descriptores en ROOT_TERMS: {missing}"
+
+
+def test_no_orphan_root_keys() -> None:
+    orphans = sorted(set(ROOT_TERMS) - set(_root_keys()))
+    assert orphans == [], f"keys de ROOT_TERMS que no son raíces del MD: {orphans}"
+
+
+def test_root_and_leaf_terms_never_share_a_key() -> None:
+    """Dos dicts, dos niveles: una key en ambos significaría que el mismo nodo es raíz y hoja."""
+    assert set(ROOT_TERMS) & set(CATEGORY_TERMS) == set()

@@ -102,7 +102,12 @@ _GARZA_10LB_PRICES: dict[str, tuple[str, int]] = {
     "Sirena": ("14210", 47500),            # RD$475.00 — productId real VTEX
 }
 
-_ARROZ_PATH = ["Despensa & Abarrotes", "Arroz, Granos & Legumbres", "Arroz", "Arroz Blanco"]
+# El árbol es de DOS niveles: el markdown es su única fuente y sólo produce nivel 0 y 1. Este path
+# terminaba en `… > Arroz > Arroz Blanco`, y `_taxonomy_leaf` creaba esos dos nodos al vuelo, SIN
+# key — invisibles para el clasificador (filtra `level == 1`) y sin más efecto que colgar ramas
+# vacías de la navegación. Una segunda fuente de verdad para el mismo árbol, que es exactamente el
+# bug que este archivo ya documenta más abajo sobre el `_TAXONOMY` hardcodeado.
+_ARROZ_PATH = ["Despensa & Abarrotes", "Arroz, Granos & Legumbres"]
 
 
 
@@ -186,12 +191,16 @@ def _drop_legacy_key(session: Session, provider_uuid: uuid.UUID, current_externa
 #    verificar en vivo paginación (>40 en la rama), facetas ricas (Ver más), orden y ofertas.
 #    Precios deterministas por tienda (idempotente); algunos "en oferta" con historial de bajada.
 _GL = ["Despensa & Abarrotes", "Arroz, Granos & Legumbres"]
+# Las cinco claves siguen existiendo porque `_CATALOG` agrupa los productos demo por ellas, pero
+# TODAS cuelgan de la misma hoja real del markdown: el propósito del catálogo demo es ver >40
+# productos en UNA rama (paginación, facetas "Ver más", orden, ofertas), y para eso la sub-rama
+# inventada no aportaba nada — sólo nodos sin key.
 _LEAVES: dict[str, list[str]] = {
-    "arroz-blanco": [*_GL, "Arroz", "Arroz Blanco"],
-    "arroz-integral": [*_GL, "Arroz", "Arroz Integral"],
-    "granos": [*_GL, "Granos"],
-    "habichuelas": [*_GL, "Legumbres", "Habichuelas"],
-    "lentejas": [*_GL, "Legumbres", "Lentejas"],
+    "arroz-blanco": _GL,
+    "arroz-integral": _GL,
+    "granos": _GL,
+    "habichuelas": _GL,
+    "lentejas": _GL,
 }
 
 # (key, brand, name, size_str, display_size, quality, leaf, base_minor, on_sale)
@@ -250,7 +259,7 @@ _CATALOG: list[tuple[str, str, str, str, str, str | None, str, int, bool]] = [
 # ── Colecciones curadas (A6): productos hand-pick de Protector solar y Limpieza, con sus hojas de
 #    taxonomía propias. Se agrupan en dos colecciones EDITORIALES (no responden a "en oferta" ni a
 #    una sola categoría) → alimentan los carruseles curados de la home y su página propia.
-_PROTECTOR_LEAF = ["Cuidado Personal", "Cuidado Corporal", "Protector Solar"]
+_PROTECTOR_LEAF = ["Cuidado Personal", "Cuidado Corporal"]  # `Protector Solar` no está en el MD
 _LIMPIEZA_LEAF = ["Cuidado Del Hogar", "Limpieza Del Hogar"]
 
 # (key, brand, name, size, disp, quality, base_minor, on_sale)
@@ -484,6 +493,16 @@ def seed_save(session: Session) -> None:
     from seeds.save_taxonomy_seed import seed_taxonomy
 
     seed_taxonomy(session, market_id="DO")
+    # 2.1) descriptores curados del dominio, PEGADOS al seed del árbol y no en un CLI aparte.
+    #      Vivieron sin ningún llamador: `CATEGORY_TERMS` estaba en el repo y nada lo sembraba, así
+    #      que una base nueva quedaba con las 134 hojas en NULL. Y como `EmbedCategories` SÍ corre
+    #      en la ingesta (`build_category_embedder`), las embebía igual con la receta pobre
+    #      padre+nombre — 43% top-1 contra el 77% de la descriptiva. Sin error: el índice se veía
+    #      completo y era la mitad de bueno. Sembrar acá lo vuelve imposible de olvidar.
+    from seeds.category_terms_data import seed_category_terms, seed_root_terms
+
+    seed_category_terms(session, "DO")
+    seed_root_terms(session, "DO")
     # La hoja profunda "Arroz Blanco" sí es fixture de la demo (no está en el markdown): se cuelga
     # del nodo real reusando el prefijo uuid5 determinista.
     node_id = _taxonomy_leaf(session, "DO", _ARROZ_PATH)
