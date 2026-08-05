@@ -417,6 +417,17 @@ class StoreProductModel(Base):
     # Etapa B (save-category-classification): categoría CRUDA de la fuente (path del adapter, ej.
     # "Despensa > Arroz y Granos"). Segunda señal — la cascada la cruza con el nombre para clasificar.
     source_category: Mapped[str | None] = mapped_column(Text)
+    # PROCEDENCIA: la query de `basket_query` que DESCUBRIÓ este producto. NULL cuando no hubo una
+    # detrás — el browse REST de Bravo itera SECCIONES y Loop B re-pide por `external_id`. No es
+    # dato de la tienda como `source_category`, es dato NUESTRO: de qué búsqueda salió.
+    #
+    # Se persiste (y no se pasa en memoria) porque los consumidores corren FUERA del bucle de
+    # descubrimiento: cruzar la hoja que asignó el clasificador contra el rubro CURADO de la query
+    # (`basket_query.category_label`) es la única forma de medir su acierto sin etiquetar a mano, y
+    # esa medición se hace después, sobre la tabla. Sin FK a `basket_query`: la query se puede
+    # borrar o renombrar desde la consola y la procedencia histórica del producto no debe morir con
+    # ella (es un HECHO de la corrida, no una relación viva).
+    source_query: Mapped[str | None] = mapped_column(Text)
     # Descripción publicada por la TIENDA (F5, tarea 9). Es dato crudo de la tienda, igual que
     # `name`/`brand`: el canónico tiene la suya propia (`canonical_product.description`), curada.
     description: Mapped[str | None] = mapped_column(Text)

@@ -123,12 +123,23 @@ class RefreshCatalogPrices:
         source: CatalogSource,
         captured_at: datetime | None = None,
         run_id: str | None = None,
+        source_query: str | None = None,
     ) -> RefreshResult:
         """`run_id` = la corrida del orquestador que ejecuta este refresh (F4 #4.5). Se estampa en
         cada `product_match` que produzca la cascada, y es lo que después permite filtrar la cola
         por corrida y atribuirle los canónicos que salgan de ella. `None` cuando se corre fuera del
-        orquestador (p.ej. el CLI `make save-refresh`): no hay corrida a la que atribuir."""
+        orquestador (p.ej. el CLI `make save-refresh`): no hay corrida a la que atribuir.
+
+        `source_query` = la búsqueda de la CANASTA que encontró estos productos, para estamparla
+        como procedencia. Lo pasa el runner, que es quien itera queries; este use-case recibe UNA
+        `CatalogSource` y no sabe qué representa. `None` cuando no hay query de canasta detrás — el
+        browse REST de Bravo itera SECCIONES, y Loop B re-pide por `external_id`. **No se inventa
+        una**: la procedencia sirve para cruzar contra el rubro que un humano curó, y rellenarla con
+        el nombre de una sección haría que ese cruce compare contra algo que nadie curó."""
         ts = captured_at or datetime.now(timezone.utc)
+        # "" y NULL significan lo mismo ("no sé de dónde vino") y dos representaciones del mismo
+        # hecho obligan a cada consumidor a comprobar las dos. Se normaliza acá, en la escritura.
+        query = (source_query or "").strip() or None
         seen = refreshed = unmatched = matched = discarded = 0
         auto_linked = queued_for_review = 0
         for raw_entry in source.fetch():
@@ -171,6 +182,7 @@ class RefreshCatalogPrices:
                     description=entry.description,
                     source_category=" > ".join(entry.category_path) or None,
                     source_ref=entry.source_ref,
+                    source_query=query,
                 )
                 outcome = self._matcher.execute(
                     IncomingStoreProduct(
@@ -214,6 +226,7 @@ class RefreshCatalogPrices:
                     description=entry.description,
                 source_category=" > ".join(entry.category_path) or None,
                 source_ref=entry.source_ref,
+                source_query=query,
             )
             self._classify(store_product_id, entry)  # clasifica (idempotente) el conocido si falta
             refreshed += 1

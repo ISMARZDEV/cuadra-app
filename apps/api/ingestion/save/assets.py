@@ -177,6 +177,10 @@ def query_catalog_prices(context) -> dg.MaterializeResult:
             matcher=build_matcher(session), classifier=build_classifier(session),
             relevance_gate=build_relevance_gate(session),
             brand_resolver=build_brand_resolver(session),
+            # PROCEDENCIA: `adapters` se construye UNO POR QUERY y en el mismo orden, así que el
+            # índice las aparea. El browse REST (`rest_catalog_prices`) NO pasa esto: itera
+            # secciones, no queries de canasta, y ahí la procedencia honesta es NULL.
+            source_queries=queries,
             # El progreso se PERSISTE en cada query, no solo se loguea: sin esto la consola no
             # tiene qué mostrar hasta que la corrida termina, y la barra aparece siempre al 100%.
             # Va en sesión propia (ver `build_progress_recorder`) porque la de la ingesta commitea

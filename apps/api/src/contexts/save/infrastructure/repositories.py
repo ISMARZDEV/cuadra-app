@@ -895,6 +895,7 @@ class SqlStoreProductRepository:
         image_urls: tuple[str, ...] = (),
         description: str | None = None,
         source_category: str | None = None,
+        source_query: str | None = None,
         source_ref: dict | None = None,
     ) -> str:
         # Unidades canónicas desde la FUENTE: el tamaño se guarda ya normalizado ("20 Lbs" → "20 Lb").
@@ -921,6 +922,7 @@ class SqlStoreProductRepository:
                 image_url=image_url,
                 description=description,
                 source_category=source_category,
+                source_query=source_query,
                 source_ref=source_ref,
                 last_seen_at=captured_at,
                 is_available=True,
@@ -945,6 +947,9 @@ class SqlStoreProductRepository:
                 sp.description = description
             if source_category is not None:
                 sp.source_category = source_category
+            # `source_query` NO se refresca a propósito: registra QUIÉN DESCUBRIÓ el producto, y eso
+            # pasó una sola vez. Pisarlo en cada re-observación lo convertiría en "la última query
+            # que lo volvió a ver", que es otra cosa y arruina la medición contra el rubro curado.
             if source_ref is not None:  # §15.3: se refresca el localizador de detalle cuando llega
                 sp.source_ref = source_ref
             if ean is not None:

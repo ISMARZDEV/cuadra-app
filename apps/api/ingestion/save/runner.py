@@ -7,7 +7,7 @@ suman los conteos. Lo usan tanto los assets de Dagster como el CLI `make save-re
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 
 from src.contexts.save.application.classify_store_product import ClassifyStoreProduct
@@ -32,6 +32,7 @@ def refresh_source(
     relevance_gate: RelevanceGate | None = None,
     run_id: str | None = None,
     brand_resolver: ResolveBrand | None = None,
+    source_queries: Sequence[str] | None = None,
 ) -> RefreshResult:
     """Corre el refresh sobre cada adapter de la fuente y agrega los conteos.
 
@@ -45,6 +46,11 @@ def refresh_source(
     (`composition.py` arma uno por término ACTIVO de la canasta), así que sin pausa esto es un
     martilleo — el mismo bug que en price_refresh/Loop B/browse. Acá el round-robin ni participa.
     `None` = sin espera (tests); prod wirea `build_pace()`.
+    `source_queries` opcional: la query de canasta que corresponde a CADA adapter, por índice, para
+    estamparla como PROCEDENCIA en los productos que descubra. Va acá y no dentro del adapter porque
+    `CatalogSource` es un Protocol de un solo método (`fetch()`) a propósito: obligar a todos los
+    adapters a cargar procedencia haría mentir al browse REST de Bravo, que itera SECCIONES y no
+    queries. `None` (o más adapters que queries) → procedencia NULL, que es el valor honesto.
     """
     use_case = RefreshCatalogPrices(
         store_repo,
@@ -60,7 +66,15 @@ def refresh_source(
     for index, adapter in enumerate(adapters, start=1):
         if index > 1 and pace is not None:
             pace()  # ENTRE búsquedas, nunca antes de la primera (SRD `scrape-many.ts`)
-        result = use_case.execute(adapter, captured_at=captured_at, run_id=run_id)
+        # `index` arranca en 1 (enumerate start=1) → el elemento del adapter es `index - 1`.
+        query = (
+            source_queries[index - 1]
+            if source_queries is not None and index - 1 < len(source_queries)
+            else None
+        )
+        result = use_case.execute(
+            adapter, captured_at=captured_at, run_id=run_id, source_query=query
+        )
         seen += result.seen
         refreshed += result.refreshed
         unmatched += result.unmatched
