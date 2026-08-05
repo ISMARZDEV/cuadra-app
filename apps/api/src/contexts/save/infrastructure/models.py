@@ -155,6 +155,20 @@ class BrandModel(Base):
     __tablename__ = "brand"
     __table_args__ = (
         UniqueConstraint("market_id", "name", name="uq_brand_market_name"),
+        # Índice por EXPRESIÓN: deduplica marcas ignorando mayúsculas y acentos («Nestlé» = «NESTLE»).
+        # Lo creó la migración `d7c4b2e91f58` y la expresión está congelada desde `brand_key`
+        # (`domain/canonical_import.py`). Se declara acá — aunque el ORM no lo use para consultar —
+        # porque si el modelo no lo conoce, `alembic check` propone DROPEARLO en cada autogenerate:
+        # el chequeo queda rojo para siempre y deja de servir para detectar drift real.
+        Index(
+            "uq_brand_market_key",
+            "market_id",
+            text(
+                "translate(upper(btrim(name)), "
+                "'ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ', 'AAAAAEEEEIIIIOOOOOUUUUNC')"
+            ),
+            unique=True,
+        ),
         {"schema": _SCHEMA},
     )
 
@@ -169,7 +183,17 @@ class ProviderModel(Base):
     """Tienda/proveedor. `base_url` alimenta el adapter de ingesta."""
 
     __tablename__ = "provider"
-    __table_args__ = {"schema": _SCHEMA}
+    __table_args__ = (
+        # Índice PARCIAL sobre los providers vivos (soft-delete por `archived_at`), creado por la
+        # migración `b2e4f7a91c3d`. Mismo motivo que el de `brand` para declararlo: sin esto el
+        # autogenerate no lo ve y propone dropearlo en cada corrida.
+        Index(
+            "ix_provider_market_active",
+            "market_id",
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+        {"schema": _SCHEMA},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
