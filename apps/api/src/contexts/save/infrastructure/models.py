@@ -274,6 +274,14 @@ class CanonicalProductModel(Base):
     __table_args__ = (
         Index("ix_canonical_product_market", "market_id"),
         Index("ix_canonical_product_origin_run", "origin_run_id"),
+        # Las dos FKs por las que SE CONSULTA esta tabla, y que estaban sin índice: el listado por
+        # categoría del sitio público y los filtros del admin entran por `taxonomy_node_id` (10
+        # sitios de consulta), y el detalle/listado por marca por `brand_id` (13). Sin índice, cada
+        # página de categoría es un scan secuencial del catálogo entero: irrelevante con 287
+        # productos, caro con los ~100k a los que apunta Save con 5 cadenas.
+        # `ix_canonical_product_market` no salva: en una base de un solo mercado selecciona todo.
+        Index("ix_canonical_product_taxonomy_node", "taxonomy_node_id"),
+        Index("ix_canonical_product_brand", "brand_id"),
         # Parcial: el 99% de las lecturas pide sólo los activos (migración 1b48d0f4dc93). Se
         # declara acá para que autogenerate no proponga borrarlo en cada revisión.
         Index(
@@ -560,6 +568,9 @@ class ProductMatchModel(Base):
     __tablename__ = "product_match"
     __table_args__ = (
         UniqueConstraint("store_product_id", name="uq_product_match_store_product"),
+        # Lookup puntual «todos los matches de ESTE canónico» (`repositories.py:2683`), que alimenta
+        # la evidencia del detalle canónico. Sin índice es un scan de toda la tabla de matches.
+        Index("ix_product_match_canonical", "canonical_product_id"),
         # Deep-link corrida→cola: `/admin/review-queue?run_id=` filtra por (corrida, estado).
         # Compuesto porque la consulta SIEMPRE lleva las dos: "lo que ESTA corrida dejó pendiente".
         Index("ix_product_match_run_status", "run_id", "status"),
