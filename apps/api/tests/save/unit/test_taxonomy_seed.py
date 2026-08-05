@@ -162,3 +162,26 @@ def test_no_orphan_root_keys() -> None:
 def test_root_and_leaf_terms_never_share_a_key() -> None:
     """Dos dicts, dos niveles: una key en ambos significaría que el mismo nodo es raíz y hoja."""
     assert set(ROOT_TERMS) & set(CATEGORY_TERMS) == set()
+
+
+def test_no_two_roots_share_a_name() -> None:
+    """Dos raíces homónimas volverían ambiguos TODOS sus tokens para el léxico y duplicarían el
+    pasillo en la navegación — y `seed_taxonomy` no lo notaría, porque busca por `(market_id, key)`
+    y las keys serían distintas.
+
+    El invariante vive ACÁ y no en un UNIQUE de la tabla: el árbol es GLOBAL, así que exigir
+    nombres únicos en `taxonomy_node` impediría a los tests de integración armar fixtures aislados
+    (rompía 41). En producción el único que escribe raíces es este markdown, así que cazarlo al
+    escribirlo es más barato y más claro que cazarlo al insertarlo.
+    """
+    roots = [name for (name, _key), _subs in load_taxonomy_entries()]
+    duplicates = [n for n, count in Counter(roots).items() if count > 1]
+    assert duplicates == [], f"raíces con nombre duplicado: {duplicates}"
+
+
+def test_no_root_shares_a_name_with_a_leaf() -> None:
+    """Un nombre que es a la vez pasillo y góndola hace ambiguo cada token que comparten, y el
+    léxico descarta el token que aparece en más de un nodo — los deja invisibles a los dos."""
+    roots = {name for (name, _key), _subs in load_taxonomy_entries()}
+    choque = sorted(roots & set(_leaf_names()))
+    assert choque == [], f"estos nombres son raíz Y hoja a la vez: {choque}"
