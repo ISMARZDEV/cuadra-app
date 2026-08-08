@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useColorScheme } from "nativewind";
 import { Platform, View, type ViewProps } from "react-native";
-import { SquircleView } from "react-native-squircle-view";
+import SquircleView from "react-native-squircle-view";
 
 // Cross-platform "glass" surface with Apple corner smoothing (squircle) + liquid glass border:
 //   • iOS 26+  → real Apple liquid glass (expo-glass-effect GlassView) — handles its own border
@@ -30,6 +30,11 @@ type GlassSurfaceProps = ViewProps & {
   // Override the edge-reflection gradient [top, bottom]. Use to make the contour MORE visible on a
   // specific surface (e.g. the chat card + dock) without changing every glass surface app-wide.
   borderColors?: [string, string];
+  // Variante del cristal nativo (iOS 26). `regular` = esmerilado, el defecto de toda la app.
+  // `clear` = mucho más transparente y refractivo: es el liquid glass que deja ver el contenido de
+  // detrás. Solo tiene sentido donde HAY contenido detrás — la doc de Expo lo dice explícitamente:
+  // "Content must exist behind the GlassView for the effect to render".
+  glassEffectStyle?: "regular" | "clear";
 };
 
 export function GlassSurface({
@@ -40,6 +45,7 @@ export function GlassSurface({
   tint,
   tintOpacity = 0.7,
   borderColors: borderColorsProp,
+  glassEffectStyle = "regular",
   style,
   children,
   ...rest
@@ -52,7 +58,7 @@ export function GlassSurface({
   if (isLiquidGlassAvailable() && isGlassEffectAPIAvailable()) {
     return (
       <GlassView
-        glassEffectStyle="regular"
+        glassEffectStyle={glassEffectStyle}
         colorScheme={colorSchemeProp}
         isInteractive={isInteractive}
         tintColor={tint}

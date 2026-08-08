@@ -22,6 +22,12 @@ metadata:
 > **Composes with `cuadra-design-system` (palette/look) and `cuadra-mobile` (structure).** This skill
 > is only the glass-button recipe + its non-obvious gotchas. For the liquid-glass surface itself see
 > `@/components/ui/glass-surface` (GlassSurface).
+>
+> **For a liquid-glass SURFACE (a card, a bar, a panel) read `cuadra-chat-input` first.** It owns
+> the five things that make `GlassView` read as glass and the four that silently kill it — none of
+> which is the radius or the colour: `regular` vs `clear`, a translucent tint, the shadow that lifts
+> the plate, drawing NO border, and one glass layer per zone. It also documents the reference
+> implementation (`rit3zh/expo-morphing-menu`) and why `react-native-squircle-view` cannot render.
 
 ## When to Use
 

@@ -50,6 +50,7 @@ metadata:
 | `MoneyText` | formats minor units w/ currency exponent; large integer + small decimals + sign color |
 | `TxRow` | recent-transaction row: merchant icon, name, date, amount, chevron |
 | `Chip` / `SegmentedTabs` | DOP/USD toggle, Hoy·Semana·Mes·Trimestre |
+| `PillButton` | **BUILT** — `components/ui/pill-button.tsx`. Pill-shaped secondary action: icon + label, gradient edge, theme-aware. `icon` is a NODE (lucide, per-theme SVG, image), so the component knows no icon source. Radius must never exceed half the height or RN clamps it to a capsule. See `cuadra-chat-input`. |
 | `IconButton` | round lucide button (the wheel's satellite buttons) |
 | `Bubble` | chat: agent (left, green accent bar) vs user (right, green bubble) |
 | `Avatar`, `Gauge`/`ProgressRing` | profile pic; the budget arc + "+75%" + ⭐ gamification |
