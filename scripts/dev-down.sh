@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dev-down.sh — Tumba TODO el entorno de dev de Cuadra: Metro (:8082), API (:8005) y Postgres.
+# dev-down.sh — Tumba TODO el entorno de dev de Cuadra: Metro (:8087), API (:8005) y Postgres.
 #
 #   Uso:  ./scripts/dev-down.sh          (o doble clic en dev-down.command / Atajo de Siri)
 #
@@ -8,7 +8,8 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_PORT=8005
-METRO_PORT=8082
+# DEBE coincidir con dev-up.sh: si no, este script "tumba" un puerto vacío y deja Metro vivo.
+METRO_PORT=8087
 
 echo "▶ Cerrando Metro (:${METRO_PORT}) y API (:${API_PORT})…"
 for port in "${METRO_PORT}" "${API_PORT}"; do
