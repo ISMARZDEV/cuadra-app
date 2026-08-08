@@ -7,11 +7,14 @@ description: >
   DI, money in minor units, multi-country via shared/market, schema-per-context isolation (ADR 33,
   enforced by import-linter), the Alembic workflow, contract-first api-client, and Strict TDD.
   Trigger: Writing or editing anything under apps/api — entities, use-cases, repos, endpoints,
-  migrations, ports/DTOs, the shared kernel, or backend tests.
+  migrations, ports/DTOs, the shared kernel, or backend tests. Also owns the schema-integrity rules
+  (§4b): keeping `alembic check` green, which FKs deserve an index, derived columns via trigger,
+  cycle guards on self-FK trees, and where an invariant belongs — the source that writes it, not
+  always the table.
 license: Apache-2.0
 metadata:
   author: aispace
-  version: "1.1"
+  version: "1.2"
 ---
 
 > **Your role:** a backend architect with 15+ years in Clean/Hexagonal/DDD, event-sourced ledgers,
@@ -98,6 +101,57 @@ Schema lives in the SQLAlchemy models (`infrastructure/models.py`); Alembic gene
   add constraint → set NOT NULL). Integration tests run against the REAL DB, so the migration must be
   APPLIED before they pass.
 
+### 4b. Schema integrity — what the DB must enforce, and what it must NOT
+
+*(Every rule below was paid for on 2026-08-04. Each one is a bug that produced **no error**.)*
+
+**`alembic check` must stay GREEN — it is the drift detector, and a check that always fails is a
+check that is off.** It ran red permanently because two indexes existed in the DB but not in the
+model metadata (`uq_brand_market_key`, an EXPRESSION index for accent-insensitive brand dedup;
+`ix_provider_market_active`, a PARTIAL index). Autogenerate proposed dropping them on every run, and
+five separate migrations had to delete that proposal **by hand**. The noise buried the signal — no
+one could tell a false positive from real drift.
+- **Declare every hand-made index in `__table_args__`**, even the ones the ORM never queries through:
+  `Index("name", "col", text("expr"), unique=True)` for expression indexes, `postgresql_where=text(...)`
+  for partial ones. If it genuinely cannot be modelled, add it to `_UNMANAGED_INDEXES` in
+  `migrations/env.py` — never leave it silently drifting.
+- `migrations/env.py::include_object` already excludes objects outside the managed schemas (LangGraph's
+  `public.checkpoint*`, spikes). That filter is deliberate: **do not "fix" a red check by deleting what
+  autogenerate wants to drop without reading what it is.** Losing an HNSW/trgm index breaks nothing
+  visibly — the query degrades to a sequential scan and keeps "working". It lies in green.
+- Guarded by `tests/shared/integration/test_schema_matches_models.py`.
+
+**Index the FKs you QUERY — not all of them.** An audit found 12 unindexed FKs. Only three were
+indexed, chosen by counting real query sites in `src/` per model attribute
+(`canonical_product.taxonomy_node_id` 10, `canonical_product.brand_id` 13,
+`product_match.canonical_product_id` 4). The other nine appear in **zero** queries — they would only
+help a DELETE cascade, which here is maintenance, **and every index is paid on every INSERT**.
+Ingestion is write-heavy: indexing "just in case" slows down the thing you do most. Create them while
+the table is empty (instant); on a large table you need `CONCURRENTLY` and a window.
+
+**A DERIVED column needs a trigger, not discipline.** `taxonomy_node.level` is the depth in the
+`parent_id` chain — denormalised on purpose (the classifier filters `level == 1` in hot queries), but
+nothing forced it to be true. A trigger now **computes** it from the parent instead of trusting the
+caller, and propagates it to descendants on re-parent. *A derived value is not believed, it is derived.*
+
+**An adjacency list (self-FK tree) needs a cycle guard.** Verified: setting a root as the child of its
+own child was accepted, the tree went 17 roots → 16, and `ancestors()` (`while current is not None`)
+**never terminates** — a hang, not an exception, which is the worst failure mode there is. The guard
+trigger also carries a hop cap, because without it the cycle check would hang exactly like the code it
+protects.
+
+**Enforce an invariant where it is WRITTEN, not where it is stored.** Tightening
+`uq_taxonomy_parent_name` to `UNIQUE NULLS NOT DISTINCT` (Postgres lets duplicate roots through
+because each NULL counts as distinct) broke **41 tests across 13 files** — and the tests were not
+wrong: the tree is GLOBAL, so table-level name uniqueness makes isolated fixtures impossible. In
+production the only writer of roots is a markdown file, so the rule lives in a unit test over that
+file. **Catching it at authoring time is cheaper and clearer than catching it at INSERT.** Method that
+found it in one step: revert ONLY the suspect change and re-run → isolate before you redesign.
+
+**After a mass delete, `VACUUM ANALYZE`.** Deleting ~1,400 rows left dead tuples and six tables that
+had **never** been analysed — the planner would have started the next ingestion with statistics from a
+database that no longer existed.
+
 ### 5. Contract-first API
 
 - Every endpoint declares a `response_model` (Pydantic DTO) → drives the OpenAPI → the generated
@@ -115,6 +169,17 @@ Schema lives in the SQLAlchemy models (`infrastructure/models.py`); Alembic gene
 - Domain/use-case tests use **FAKE repos** implementing the port (no DB). Optional deps (e.g. dagster)
   use `pytest.importorskip("dagster")` so CI without them still passes.
 - Money/matching/normalization logic is ALWAYS tested (a wrong number is the worst bug).
+- **A guard test you have never SEEN fail is not a guard.** After writing one, break the thing it
+  protects and confirm it goes red, then restore. Done for the `alembic check` guard by removing one
+  index declaration. A test that can only pass proves nothing — and this repo has already shipped a
+  guard that "passed for the wrong reason" (see `cuadra-save-vocabulary`).
+- **Never assert on data a human curates.** `test_backfill_populated_do_basket_queries` pinned
+  `len(rows) == 213` and two literal rows of `basket_query` — which an admin edits from the console.
+  The day someone renamed one, the test went red with nothing broken, and stayed red. Assert the
+  INVARIANT (populated, well-formed, labels within the known set), not the contents.
+- **A test failing on your branch is not automatically yours.** Check before you claim it: a
+  pre-existing red masked a real regression for a whole session here. Prove ownership by reverting
+  only the suspect change.
 
 ## Do / Don't
 
@@ -128,6 +193,13 @@ Schema lives in the SQLAlchemy models (`infrastructure/models.py`); Alembic gene
 | `response_model` on every endpoint + `make openapi` | Change a DTO without regenerating the client |
 | RED-first; fakes for unit, real DB for integration | Ship domain/money logic untested |
 | Fix an import-linter violation at the boundary | `# noqa` / suppress the contract |
+| Declare hand-made (expression/partial) indexes in `__table_args__` | Leave `alembic check` red — a check that always fails is off |
+| Index the FKs that appear in queries | Index all 12 FKs "for safety" — writes pay for every one |
+| Compute a derived column in a trigger | Trust the caller to keep `level`/depth in sync |
+| Key curated data to a stable `key`/id | Key anything to a name a human can rename |
+| Grep for the CALLER before believing seed data ships | Assume a data file is wired because it exists and is tested |
+| Enforce an invariant at the source that writes it | Push a table constraint that fixtures legitimately need to break |
+| Break a new guard test on purpose to see it go red | Trust a guard you have only ever seen green |
 
 ## Commands
 
@@ -140,6 +212,7 @@ uv run ruff check src tests            # lint (line-length 100, py312)
 uv run lint-imports                    # hexagonal boundaries (ADR 31/33)
 uv run alembic upgrade head            # apply migrations (DB up)
 uv run alembic revision --autogenerate -m "ctx: msg"
+uv run alembic check                   # drift: models vs migrated DB. MUST be green (see §4b)
 make openapi                           # (repo root) dump OpenAPI + regen api-client
 ```
 

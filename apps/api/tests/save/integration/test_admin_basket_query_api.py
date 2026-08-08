@@ -141,16 +141,49 @@ def test_delete_unknown_basket_query_returns_404(db_session) -> None:  # type: i
 
 
 def test_backfill_populated_do_basket_queries(db_session) -> None:  # type: ignore[no-untyped-def]
+    """El backfill dejó la canasta de DO POBLADA y bien formada.
+
+    Afirma el INVARIANTE, no el contenido literal. La versión anterior fijaba `len(rows) == 213` y
+    dos filas concretas (`"arroz la garza"`, `"corn flakes kelloggs"`) — pero `basket_query` es
+    DATO GESTIONADO: lo cura un admin desde la consola, y ninguna migración lo repone. En cuanto
+    alguien renombró `"arroz la garza"` el test se puso rojo sin que nada estuviera roto, y así
+    quedó: un test que sólo puede estar verde si nadie usa la consola no mide nada útil.
+    """
     repo = SqlBasketQueryRepository(db_session)
 
     rows = repo.list_by_market("DO")
 
-    assert len(rows) == 213
-    assert any(
-        r.query_text == "arroz la garza" and r.category_label == "Granos y legumbres"
-        for r in rows
+    # Poblada a escala de canasta real (el backfill sembró ~213; se tolera la curación humana).
+    assert len(rows) >= 200, f"la canasta de DO quedó en {len(rows)} — ¿corrió el backfill?"
+    # Bien formada: una consulta vacía se dispararía contra la tienda y traería cualquier cosa.
+    assert all(r.query_text and r.query_text.strip() for r in rows)
+    # Y clasificada en rubros: el puente rubro↔taxonomía se llavea por `category_label`.
+    labels = {r.category_label for r in rows if r.category_label}
+    assert len(labels) >= 15, f"sólo {len(labels)} rubros distintos: {sorted(labels)}"
+
+
+def test_no_active_basket_query_is_invisible_to_the_basket(db_session) -> None:  # type: ignore[no-untyped-def]
+    """Una query ACTIVA sin rubro, o con un rubro que el puente no conoce, es un no-op silencioso:
+    se ingiere igual —gasta cuota contra la tienda— y sus productos NUNCA llegan a la canasta,
+    porque `list_basket_offers` cruza `bq.category_label` contra `ALLOWED_TAXONOMY_BY_GROUP` por
+    NOMBRE (`unnest`), y lo que no matchea simplemente no aparece. Sin error y sin log.
+
+    `category_label` es opcional a propósito (`str | None`, semántica PATCH en `UpdateBasketQuery`),
+    así que el modelo no puede impedirlo: lo impide este guard.
+    """
+    from src.contexts.save.domain.basket_taxonomy import ALLOWED_TAXONOMY_BY_GROUP
+
+    rows = [r for r in SqlBasketQueryRepository(db_session).list_by_market("DO") if r.active]
+
+    sin_rubro = [r.query_text for r in rows if not (r.category_label or "").strip()]
+    assert sin_rubro == [], (
+        f"estas queries activas no tienen rubro y nunca llegarán a la canasta: {sin_rubro}"
     )
-    assert any(
-        r.query_text == "corn flakes kelloggs" and r.category_label == "Cereales y avena"
-        for r in rows
+
+    desconocidos = sorted(
+        {r.category_label for r in rows if r.category_label not in ALLOWED_TAXONOMY_BY_GROUP}
+    )
+    assert desconocidos == [], (
+        f"estos rubros no existen en ALLOWED_TAXONOMY_BY_GROUP: {desconocidos}. "
+        "El puente se llavea por NOMBRE: un rubro que no está ahí no matchea nada."
     )

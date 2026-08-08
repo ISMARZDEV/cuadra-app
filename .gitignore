@@ -28,6 +28,9 @@ venv/
 *.sqlite3
 apps/api/openapi.json
 packages/api-client/src/generated/
+# Respaldos locales de datos (p. ej. la canasta antes de rehacerla). Son DATOS, no código: en el
+# historial de git quedarían para siempre y engordarían cada clon.
+*_backup_*.sql
 
 # ── OS / IDE ──
 .DS_Store

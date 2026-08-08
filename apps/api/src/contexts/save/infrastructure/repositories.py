@@ -895,6 +895,7 @@ class SqlStoreProductRepository:
         image_urls: tuple[str, ...] = (),
         description: str | None = None,
         source_category: str | None = None,
+        source_query: str | None = None,
         source_ref: dict | None = None,
     ) -> str:
         # Unidades canónicas desde la FUENTE: el tamaño se guarda ya normalizado ("20 Lbs" → "20 Lb").
@@ -921,6 +922,7 @@ class SqlStoreProductRepository:
                 image_url=image_url,
                 description=description,
                 source_category=source_category,
+                source_query=source_query,
                 source_ref=source_ref,
                 last_seen_at=captured_at,
                 is_available=True,
@@ -945,6 +947,9 @@ class SqlStoreProductRepository:
                 sp.description = description
             if source_category is not None:
                 sp.source_category = source_category
+            # `source_query` NO se refresca a propósito: registra QUIÉN DESCUBRIÓ el producto, y eso
+            # pasó una sola vez. Pisarlo en cada re-observación lo convertiría en "la última query
+            # que lo volvió a ver", que es otra cosa y arruina la medición contra el rubro curado.
             if source_ref is not None:  # §15.3: se refresca el localizador de detalle cuando llega
                 sp.source_ref = source_ref
             if ean is not None:
@@ -1834,6 +1839,64 @@ class SqlCategoryIndexRepository:
                 TaxonomyNodeMarketModel.active.is_(True),
                 TaxonomyNodeModel.level == 1,
                 TaxonomyNodeMarketModel.classification_terms.is_(None),
+            )
+            .limit(limit)
+        ).all()
+        return [(str(r[0]), r[1], r[2]) for r in rows]
+
+    def leaf_keys_without_terms(self, market_id: str, limit: int) -> list[tuple[str, str]]:
+        """(node_id, key) de las hojas nivel-1 sin términos. Para el bootstrap CURADO, que se
+        llavea por la KEY del nodo y no por su etiqueta: el nombre es mutable (renombrar una hoja
+        actualiza el nodo, no lo recrea), así que buscar los términos por nombre los descolgaba en
+        silencio en cada rename. Fuera del port a propósito — lo usa el seed, no el dominio."""
+        return self._nodes_at_level(
+            market_id, 1, TaxonomyNodeMarketModel.classification_terms, limit
+        )
+
+    def _nodes_at_level(
+        self, market_id: str, level: int, column, limit: int
+    ) -> list[tuple[str, str]]:
+        rows = self._s.execute(
+            select(TaxonomyNodeModel.id, TaxonomyNodeModel.key)
+            .join(
+                TaxonomyNodeMarketModel,
+                TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
+            )
+            .where(
+                TaxonomyNodeMarketModel.market_id == market_id,
+                TaxonomyNodeMarketModel.active.is_(True),
+                TaxonomyNodeModel.level == level,
+                TaxonomyNodeModel.key.is_not(None),
+                column.is_(None),
+            )
+            .limit(limit)
+        ).all()
+        return [(str(r[0]), r[1]) for r in rows]
+
+    def root_keys_without_terms(self, market_id: str, limit: int) -> list[tuple[str, str]]:
+        """(node_id, key) de las RAÍCES (level 0) sin términos. El clasificador NO las lee — sus
+        consultas filtran `level == 1`. Existe para poder poblar la descripción del pasillo."""
+        return self._nodes_at_level(
+            market_id, 0, TaxonomyNodeMarketModel.classification_terms, limit
+        )
+
+    def roots_without_embedding(self, market_id: str, limit: int) -> list[tuple[str, str, str]]:
+        """(node_id, name, terms) de las raíces sin embedding. Raíz = sin padre en la receta."""
+        rows = self._s.execute(
+            select(
+                TaxonomyNodeModel.id,
+                TaxonomyNodeModel.name,
+                TaxonomyNodeMarketModel.classification_terms,
+            )
+            .join(
+                TaxonomyNodeMarketModel,
+                TaxonomyNodeMarketModel.node_id == TaxonomyNodeModel.id,
+            )
+            .where(
+                TaxonomyNodeMarketModel.market_id == market_id,
+                TaxonomyNodeMarketModel.active.is_(True),
+                TaxonomyNodeModel.level == 0,
+                TaxonomyNodeMarketModel.embedding.is_(None),
             )
             .limit(limit)
         ).all()

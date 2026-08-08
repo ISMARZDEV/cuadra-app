@@ -9,7 +9,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-METRO_PORT=8082
+# DEBE coincidir con dev-up.sh: si no, se mata un puerto vacío y el Metro trabado sobrevive.
+METRO_PORT=8087
 
 echo "▶ Reset de caché de Metro (la DB queda intacta)."
 echo "▶ Cerrando Metro previo (:${METRO_PORT})…"

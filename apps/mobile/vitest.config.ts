@@ -27,6 +27,14 @@ export default defineConfig({
       // expo-haptics → stub: su build web llama a `window.matchMedia` en el import y jsdom no lo
       // tiene, así que el módulo revienta antes de que corra un solo test.
       { find: "expo-haptics", replacement: path.resolve(__dirname, "src/test/haptics-stub.ts") },
+      // react-native-safe-area-context → stub: su package.json declara `"react-native":
+      // "src/index.tsx"`, así que el resolver agarra el FUENTE TS y su `typeof` de tipos rompe el
+      // transform. Lo destapó el primer test de una PANTALLA (los de componentes no montan
+      // SafeAreaView).
+      {
+        find: "react-native-safe-area-context",
+        replacement: path.resolve(__dirname, "src/test/safe-area-stub.tsx"),
+      },
       // reanimated → stub: its source can't pass vitest's SSR transform and needs Metro-only
       // globals; the stub exposes Animated.* + inert hooks/helpers so components still render.
       { find: "react-native-reanimated", replacement: path.resolve(__dirname, "src/test/reanimated-stub.tsx") },

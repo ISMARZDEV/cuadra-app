@@ -155,6 +155,20 @@ class BrandModel(Base):
     __tablename__ = "brand"
     __table_args__ = (
         UniqueConstraint("market_id", "name", name="uq_brand_market_name"),
+        # Índice por EXPRESIÓN: deduplica marcas ignorando mayúsculas y acentos («Nestlé» = «NESTLE»).
+        # Lo creó la migración `d7c4b2e91f58` y la expresión está congelada desde `brand_key`
+        # (`domain/canonical_import.py`). Se declara acá — aunque el ORM no lo use para consultar —
+        # porque si el modelo no lo conoce, `alembic check` propone DROPEARLO en cada autogenerate:
+        # el chequeo queda rojo para siempre y deja de servir para detectar drift real.
+        Index(
+            "uq_brand_market_key",
+            "market_id",
+            text(
+                "translate(upper(btrim(name)), "
+                "'ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ', 'AAAAAEEEEIIIIOOOOOUUUUNC')"
+            ),
+            unique=True,
+        ),
         {"schema": _SCHEMA},
     )
 
@@ -169,7 +183,17 @@ class ProviderModel(Base):
     """Tienda/proveedor. `base_url` alimenta el adapter de ingesta."""
 
     __tablename__ = "provider"
-    __table_args__ = {"schema": _SCHEMA}
+    __table_args__ = (
+        # Índice PARCIAL sobre los providers vivos (soft-delete por `archived_at`), creado por la
+        # migración `b2e4f7a91c3d`. Mismo motivo que el de `brand` para declararlo: sin esto el
+        # autogenerate no lo ve y propone dropearlo en cada corrida.
+        Index(
+            "ix_provider_market_active",
+            "market_id",
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+        {"schema": _SCHEMA},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
@@ -250,6 +274,14 @@ class CanonicalProductModel(Base):
     __table_args__ = (
         Index("ix_canonical_product_market", "market_id"),
         Index("ix_canonical_product_origin_run", "origin_run_id"),
+        # Las dos FKs por las que SE CONSULTA esta tabla, y que estaban sin índice: el listado por
+        # categoría del sitio público y los filtros del admin entran por `taxonomy_node_id` (10
+        # sitios de consulta), y el detalle/listado por marca por `brand_id` (13). Sin índice, cada
+        # página de categoría es un scan secuencial del catálogo entero: irrelevante con 287
+        # productos, caro con los ~100k a los que apunta Save con 5 cadenas.
+        # `ix_canonical_product_market` no salva: en una base de un solo mercado selecciona todo.
+        Index("ix_canonical_product_taxonomy_node", "taxonomy_node_id"),
+        Index("ix_canonical_product_brand", "brand_id"),
         # Parcial: el 99% de las lecturas pide sólo los activos (migración 1b48d0f4dc93). Se
         # declara acá para que autogenerate no proponga borrarlo en cada revisión.
         Index(
@@ -385,6 +417,17 @@ class StoreProductModel(Base):
     # Etapa B (save-category-classification): categoría CRUDA de la fuente (path del adapter, ej.
     # "Despensa > Arroz y Granos"). Segunda señal — la cascada la cruza con el nombre para clasificar.
     source_category: Mapped[str | None] = mapped_column(Text)
+    # PROCEDENCIA: la query de `basket_query` que DESCUBRIÓ este producto. NULL cuando no hubo una
+    # detrás — el browse REST de Bravo itera SECCIONES y Loop B re-pide por `external_id`. No es
+    # dato de la tienda como `source_category`, es dato NUESTRO: de qué búsqueda salió.
+    #
+    # Se persiste (y no se pasa en memoria) porque los consumidores corren FUERA del bucle de
+    # descubrimiento: cruzar la hoja que asignó el clasificador contra el rubro CURADO de la query
+    # (`basket_query.category_label`) es la única forma de medir su acierto sin etiquetar a mano, y
+    # esa medición se hace después, sobre la tabla. Sin FK a `basket_query`: la query se puede
+    # borrar o renombrar desde la consola y la procedencia histórica del producto no debe morir con
+    # ella (es un HECHO de la corrida, no una relación viva).
+    source_query: Mapped[str | None] = mapped_column(Text)
     # Descripción publicada por la TIENDA (F5, tarea 9). Es dato crudo de la tienda, igual que
     # `name`/`brand`: el canónico tiene la suya propia (`canonical_product.description`), curada.
     description: Mapped[str | None] = mapped_column(Text)
@@ -536,6 +579,9 @@ class ProductMatchModel(Base):
     __tablename__ = "product_match"
     __table_args__ = (
         UniqueConstraint("store_product_id", name="uq_product_match_store_product"),
+        # Lookup puntual «todos los matches de ESTE canónico» (`repositories.py:2683`), que alimenta
+        # la evidencia del detalle canónico. Sin índice es un scan de toda la tabla de matches.
+        Index("ix_product_match_canonical", "canonical_product_id"),
         # Deep-link corrida→cola: `/admin/review-queue?run_id=` filtra por (corrida, estado).
         # Compuesto porque la consulta SIEMPRE lleva las dos: "lo que ESTA corrida dejó pendiente".
         Index("ix_product_match_run_status", "run_id", "status"),

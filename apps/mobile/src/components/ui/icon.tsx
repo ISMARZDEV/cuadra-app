@@ -11,6 +11,9 @@ type IconProps = {
   size?: number;
   color?: string;
   strokeWidth?: number;
+  // Relleno del glifo. Lucide dibuja contornos por defecto; `fill` es lo que distingue un ícono
+  // "activo" de uno normal (la estrella llena del hub) sin cambiar de ícono.
+  fill?: string;
 };
 
 export function Icon({ as: LucideCmp, size = 24, color, strokeWidth = 2 }: IconProps) {

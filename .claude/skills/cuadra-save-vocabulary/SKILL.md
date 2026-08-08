@@ -3,7 +3,7 @@ name: cuadra-save-vocabulary
 description: >
   The METHOD for diagnosing and changing Save's classification VOCABULARY — the token→leaf lexicon
   index that decides most categories in production. Owns the diagnosis (the lexicon derives
-  token→leaf from 133 short leaf NAMES and so confuses "unique in the taxonomy" with "identifies
+  token→leaf from 134 short leaf NAMES and so confuses "unique in the taxonomy" with "identifies
   this class"), the measurement (P(root|token) is a TRAP with a skewed corpus — use LIFT), the
   three distinct failure modes that all look identical in the numbers (broken token vs taxonomy gap
   vs normal polysemy), and above all the NON-NEGOTIABLE rule: simulate any index change against the
@@ -18,7 +18,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: aispace
-  version: "1.0"
+  version: "1.1"
 ---
 
 > **Your role:** a data/ML engineer with 15+ years in weak supervision and text classification who
@@ -43,9 +43,10 @@ metadata:
 
 ## The diagnosis (why this keeps happening)
 
-`build_lexicon_index` derives `token → leaf` from a corpus of **133 short strings** — the leaf
-names — and declares any token appearing in exactly one leaf an identifier of that leaf. That
-conflates **unique in the taxonomy** with **identifies this class**.
+`build_lexicon_index` derives `token → leaf` from a corpus of **134 short strings** (133 when the
+2562-product measurement below was run) — the leaf names — and declares any token appearing in
+exactly one leaf an identifier of that leaf. That conflates **unique in the taxonomy** with
+**identifies this class**.
 
 The information needed lives in the **product corpus**, which the index never sees:
 
@@ -56,7 +57,7 @@ The information needed lives in the **product corpus**, which the index never se
 | `polvo` | unique (Bebidas En Polvo) | 88 uses, ~60 are laundry detergent |
 | `arroz` | unique | 128 uses, wrong for `Tortilla De Arroz`, `Morcilla De Arroz` |
 
-Second structural gap: **the lexicon does not read `classification_terms`.** Those 133 curated
+Second structural gap: **the lexicon does not read `classification_terms`.** Those 134 curated
 vocabularies (measured top-1 43%→77%) feed ONLY the vector stage. The stage that decides most cases
 in production is the one blind to the curated vocabulary.
 
@@ -128,8 +129,21 @@ Evidence from this repo: a hand-added `_ATTRIBUTE_TOKENS` entry caused a regress
   `alimento`. Three leaves were exposed as never having owned a token.
 - Renaming a leaf changes the lexicon input but does **not** invalidate its embedding
   (`save_taxonomy_seed.py`). Only `set_terms` does. A rename leaves the vector index stale.
-- `CATEGORY_TERMS` (`seeds/category_terms_data.py`) is keyed by leaf **NAME** while the tree is keyed
-  by `key` — a rename silently desyncs the curated bootstrap.
+- ~~`CATEGORY_TERMS` is keyed by leaf **NAME** while the tree is keyed by `key` — a rename silently
+  desyncs the curated bootstrap.~~ **FIXED 2026-08-04** — and this skill called it before it bit.
+  It had already cost **9 leaves** by then (`Frutas`→`Frutas Frescas`, `Arena Para Gato`→`Arena
+  Sanitaria`, `Lavado De Ropa`→`Detergentes & Suavizantes`, …); the LLM CLI had backfilled the holes
+  with weaker terms, so nothing looked wrong. `CATEGORY_TERMS` is now keyed by `key`, guarded by
+  `test_renaming_a_leaf_keeps_its_curated_terms` +
+  `test_every_leaf_has_curated_terms`/`test_no_orphan_terms_keys`.
+  **The lesson generalises past this file: if a row can be renamed, never key anything to its name.**
+- **The tree is TWO levels** — 17 roots + 134 leaves. The `level ≥ 2` nodes that used to exist
+  (`Arroz`, `Granos`, `Legumbres`, …) were demo scaffolding created by `save_seed.py`, never present
+  in the markdown; they are gone and a guard test keeps them out. `level == 1` IS the leaf set.
+- **STILL OPEN:** renaming a leaf changes the lexicon input and the embedding recipe input, but
+  `save_taxonomy_seed` does not NULL the embedding — only `set_terms` does. **A rename therefore
+  leaves the vector index stale**, describing the old label. Re-embed by hand after a rename until
+  this is closed.
 
 ## Code Examples
 

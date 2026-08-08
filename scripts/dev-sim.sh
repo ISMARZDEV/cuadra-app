@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dev-sim.sh — Levanta Cuadra igual que dev-up.sh (Postgres + migrate + API + Metro :8082) pero
+# dev-sim.sh — Levanta Cuadra igual que dev-up.sh (Postgres + migrate + API + Metro :8087) pero
 # ABRIENDO la app en el SIMULADOR iOS con el dev-client (--ios), en vez de esperar un device físico
 # por QR. Fidelidad nativa COMPLETA (liquid glass real) + backend/datos reales.
 #

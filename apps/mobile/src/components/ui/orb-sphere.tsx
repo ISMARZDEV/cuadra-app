@@ -183,14 +183,24 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   // Drive the wave paths from the Skia clock on every frame. We intentionally avoid
   // Reanimated's useDerivedValue with Skia's clock because Reanimated v4 can crash with
   // "animation.onStart is not a function" when mixing the two value systems.
-  useFrameCallback(() => {
+  // `autostart: false` — el arranque lo decide `visible` (ver el efecto de abajo).
+  const frame = useFrameCallback(() => {
     "worklet";
     const time = clock.value / 1000;
     p0.value = buildWave(COLORS[0], time, level.value, w, h);
     p1.value = buildWave(COLORS[1], time, level.value, w, h);
     p2.value = buildWave(COLORS[2], time, level.value, w, h);
     p3.value = buildWave(COLORS[3], time, level.value, w, h);
-  });
+  }, false);
+
+  // Sin esta guarda el callback corre SIEMPRE: cuatro paths por frame (~240/s) cuyo resultado no
+  // se ve. `visible` solo anima opacidad/escala/translateY —oculta el orb, no detiene el trabajo—
+  // y OrbSphere vive en la tab bar, así que el coste se pagaba en TODAS las pantallas.
+  // `frame` es estable (useRef interno) y reanimated re-aplica `isActive` al re-registrar el
+  // callback, así que este setActive sobrevive a los re-renders.
+  useEffect(() => {
+    frame.setActive(visible);
+  }, [visible, frame]);
 
   // Tap → swell the wave then settle (water-style: quick rise, slow ease back).
   const pulse = useOrbStore((s) => s.pulse);
