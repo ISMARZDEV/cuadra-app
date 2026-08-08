@@ -393,17 +393,20 @@ es barato; bajarlo cuando ya lo usan tres es un refactor.
 **Referencia oficial:** mockup del hub (fondo claro, header con menú · logo «Save» · campana con
 punto rojo, y cards apilados de borde a borde).
 
-### 6.0 ⚠️ El diseño tiene CUATRO cards, no cinco
+### 6.0 Son CUATRO verticales: Promotions es una capa transversal
 
 Medido en Figma: el hub trae **Supermarket · Credit Cards · Loans & Insurance · Investments**.
-**`Promotions` no está**, aunque sí figura en la tabla de agentes de §1.2.
+`Promotions` no tiene card, aunque sí figura en la tabla de agentes de §1.2.
 
-No lo resuelvo por mi cuenta, porque las dos lecturas son razonables: o Promotions es una vertical que
-todavía no se dibujó, o se decidió que las promociones **no** son una vertical sino una capa
-transversal (ofertas del súper, cashback de la tarjeta…) y por eso no tiene card.
+**Decidido (2026-08-03): Promotions NO es una vertical.** Las promociones no tienen catálogo propio;
+son un **atributo de los otros** — la oferta del súper, el cashback de la tarjeta, la tasa
+promocional del préstamo. Viven como badge y filtro **dentro** de cada vertical.
 
-**Mientras tanto el registro (§5.3) es data**, así que Promotions es *una fila* el día que se decida.
-El hub renderiza lo que haya en el array; no hay JSX que tocar.
+Eso explica algo que ya estaba a la vista: **el badge `-15` vive en la tarjeta de producto**, no en
+una pantalla de promociones. El diseño ya lo había resuelto; no dibujar el card era la respuesta.
+
+> Consecuencia para §1.2: el `PromotionsAgent` de la tabla sigue teniendo sentido como agente
+> («qué ofertas hay»), pero **transversal a las verticales**, no dueño de una.
 
 ### 6.1 Anatomía del card
 
@@ -456,7 +459,7 @@ categoría montados sobre el borde curvo, «Mejores ofertas de hoy», «Producto
 |---|---|---|
 | **Header** (verde, borde inferior curvo) | menú · buscador «Buscar por un producto…» · carrito con contador | local (el contador sale del store) |
 | **Ubicación** | «Current location · Santo Domingo, RD» | `market` — hoy fijo `DO` |
-| **Círculos de categoría** | 4-5 categorías tope, montadas sobre la curva | `GET /categories` |
+| **Círculos de categoría** | las **4 del diseño al frente**, y el renglón scrollea hasta las **17** | `GET /categories` |
 | **Mejores ofertas de hoy** + «Ver todas» | carrusel horizontal de tarjetas | `GET /deals` |
 | **Productos** + «Ver todas» | carrusel/grilla | `GET /featured` |
 
@@ -632,10 +635,25 @@ es un bug del endpoint: es que «lo más barato por unidad» y «lo que tiene fo
 disjuntos en este catálogo.
 
 **Esto NO se arregla sembrando imágenes** — inventar la foto de un producto es exactamente lo que
-este producto no puede hacer. Las salidas reales son tres, y hay que elegir en la Fase 5:
-1. la tarjeta degrada con su placeholder (ya existe) y el rail se ve pobre pero honesto;
-2. `featured` prioriza los que tienen foto — sesga la vitrina, no el precio;
-3. ese rail sale de una **colección curada** (`/collections`) en vez de `featured`.
+este producto no puede hacer.
+
+**Decidido (2026-08-03): la tarjeta degrada con su placeholder.** El `ImageOff` ya existe en la
+tarjeta del chat. Cero sesgo en la vitrina y cero trabajo de backend; el costo aceptado es que el
+rail se vea pobre hasta que la ingesta traiga más fotos.
+
+> Las otras dos salidas quedan anotadas por si el vacío molesta en uso real: que `featured` ordene
+> primero los que tienen foto (sesga la **vitrina**, nunca el precio), o que ese rail salga de una
+> **colección curada**. Ninguna se implementa ahora.
+
+### 3.3.1 Decisión de categorías
+
+**Los 4 círculos del diseño van al frente** (Frutas & Verduras · Panadería & Tortillería · Despensa &
+Abarrotes · Carnes & Pescados, que son los que tienen ilustración), y **el renglón scrollea hasta las
+17**, con ícono Lucide de fallback para las que no tienen arte.
+
+> Consecuencia asumida: **el renglón mezcla dos calidades visuales** — ilustración en las cuatro
+> primeras, ícono en el resto. Es la deuda que se paga por no dejar 13 categorías inalcanzables desde
+> la home.
 
 ---
 

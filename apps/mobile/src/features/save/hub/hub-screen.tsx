@@ -10,7 +10,9 @@ import { palette } from "@/theme";
 import { t, useLang } from "@/i18n";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
-import { VERTICALS, type Vertical } from "./verticals";
+import type { Vertical } from "../interfaces";
+import { VerticalCard } from "./components/vertical-card";
+import { VERTICALS } from "./verticals";
 
 // El hub de Save: los pilares del comparador. NO trae datos — es navegación pura, y por eso no
 // depende de ningún endpoint.
@@ -54,28 +56,9 @@ export function HubScreen() {
           </Pressable>
         </View>
 
-        <View className="gap-3">
+        <View className="gap-[19px]">
           {VERTICALS.map((vertical) => (
-            <Pressable
-              key={vertical.id}
-              accessibilityRole="button"
-              onPress={() => open(vertical)}
-              className="rounded-2xl bg-card px-4 py-5"
-              style={{ borderCurve: "continuous" }}
-            >
-              <Text
-                className="text-xl text-primary"
-                style={{ fontFamily: KANTUMRUY_SEMIBOLD }}
-              >
-                {vertical.title}
-              </Text>
-              <Text
-                className="mt-1 text-sm text-text/60"
-                style={{ fontFamily: KANTUMRUY_MEDIUM }}
-              >
-                {t(vertical.blurbKey)}
-              </Text>
-            </Pressable>
+            <VerticalCard key={vertical.id} vertical={vertical} onPress={open} />
           ))}
         </View>
 

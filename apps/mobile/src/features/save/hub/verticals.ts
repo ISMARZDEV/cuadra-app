@@ -1,29 +1,14 @@
 import type { Href } from "expo-router";
 
-import type { TranslationKey } from "@/i18n";
+import type { Vertical } from "../interfaces";
 
-// Las verticales de Save. Es un REGISTRO, no cinco JSX: el hub renderiza este array, así que
+// Las verticales de Save. Es un REGISTRO, no cuatro JSX: el hub renderiza este array, así que
 // agregar una vertical el día que tenga datos es una fila y un asset, no una pantalla nueva.
 //
-// `Promotions` NO está, y no es un olvido: las promociones no tienen catálogo propio — son un
-// atributo de las otras (la oferta del súper, el cashback de la tarjeta, la tasa promocional del
-// préstamo). Viven como badge y filtro DENTRO de cada vertical. El diseño ya lo decía al no
-// dibujarle un card, y por eso el badge de descuento vive en la tarjeta de producto.
-
-// `live` = tiene catálogo y navega · `soon` = existe como promesa, abre su hoja de estado.
-// No es decoración: es lo que decide si el card lleva a algún lado.
-export type VerticalStatus = "live" | "soon";
-
-export interface Vertical {
-  id: "supermarket" | "cards" | "loans" | "investments";
-  // El título es de MARCA y va igual en los tres idiomas (así está en el diseño). Lo que sí se
-  // traduce es la promesa de la hoja de «en construcción» — ver `blurbKey`.
-  title: string;
-  blurbKey: TranslationKey;
-  status: VerticalStatus;
-  href?: Href; // solo cuando status === "live"
-}
-
+// `Promotions` NO está, y no es un olvido — ver el porqué en `../types.ts`.
+//
+// `art` falta a propósito en Loans e Investments: el diseño todavía no les dibujó ilustración, y
+// el panel se sostiene solo con su trazo. Un placeholder inventado se vería peor que el vacío.
 export const VERTICALS: readonly Vertical[] = [
   {
     id: "supermarket",
@@ -31,12 +16,15 @@ export const VERTICALS: readonly Vertical[] = [
     blurbKey: "save.hub.supermarket.blurb",
     status: "live",
     href: "/save/supermarket" as Href,
+    art: require("../../../assets/save/verticals/supermarket.png"),
+    featured: true,
   },
   {
     id: "cards",
     title: "Credit Cards",
     blurbKey: "save.hub.cards.blurb",
     status: "soon",
+    art: require("../../../assets/save/verticals/cards.png"),
   },
   {
     id: "loans",
