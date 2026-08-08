@@ -1,7 +1,7 @@
 import type { ReactNode, RefObject } from "react";
 import type { TextInput } from "react-native";
 
-import type { ChatRole } from "./enums";
+import type { ChatRole, ChatStatus } from "./enums";
 import type { ChatStreamEvent, DockOptionKind, DockOptionVariant } from "./types";
 
 // AISpace chat interfaces (feature-local; structure §3 → features/{…, interfaces}). Kept apart from
@@ -110,6 +110,15 @@ export interface ChatInteractionEvent {
   type: "interaction";
   interaction: DockInteraction;
 }
+// What the agent is DOING while the user waits — emitted when it starts calling a tool, so the
+// status line can say "Buscando" instead of a generic "Pensando" (backend: orchestration/sse.py +
+// orchestration/status.py). `value` is typed as a plain string, NOT as ChatStatus: it arrives off
+// the network, and a backend that adds a fourth status must not break this client — use-chat maps
+// it defensively and ignores anything it doesn't know.
+export interface ChatStatusEvent {
+  type: "status";
+  value: string;
+}
 // A deep link the flow emitted (e.g. "Ver en Insight" → insights). Rendered as a tappable message.
 export interface ChatLinkEvent {
   type: "link";
@@ -212,4 +221,32 @@ export interface ChatDockProps {
   open: boolean;
   onToggle: () => void;
   children: ReactNode;
+}
+
+export interface MessageActionsProps {
+  /** El texto que se copia o se comparte — la respuesta ya terminada, tal cual se lee. */
+  text: string;
+}
+
+// ── Status line (shimmering "Pensando / Buscando / Razonando") ───────────────
+export interface ShimmerTextProps {
+  text: string;
+  fontSize?: number;
+  /** Dim colour of the resting glyphs. */
+  baseColor: string;
+  /** Bright colour carried by the moving highlight band. */
+  highlightColor: string;
+  /** One full left-to-right sweep, in milliseconds. */
+  periodMs?: number;
+}
+
+export interface TypingIndicatorProps {
+  visible: boolean;
+  /**
+   * What the agent is doing, as ANNOUNCED BY THE BACKEND. It seeds a sequence rather than being
+   * rendered directly — see `use-status-sequence.ts`. Defaults to `ChatStatus.Thinking`.
+   */
+  status?: ChatStatus;
+  /** Injectable RNG so tests can pin which of the two idle words comes first. */
+  random?: () => number;
 }

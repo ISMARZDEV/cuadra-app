@@ -2,13 +2,15 @@ import { Linking, Pressable, Text, View } from "react-native";
 import { type Href, useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
 
+import { CHAT_BODY, CHAT_STRONG } from "../chat-typography";
+import { MessageActions } from "./message-actions";
 import { StreamingText } from "./streaming-text";
 
 // Render **bold** spans inside a line.
 function inlineBold(line: string) {
   return line.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith("**") && part.endsWith("**") ? (
-      <Text key={i} className="font-sans-semibold">
+      <Text key={i} style={CHAT_STRONG}>
         {part.slice(2, -2)}
       </Text>
     ) : (
@@ -51,8 +53,8 @@ function RichText({ text }: { text: string }) {
             <Text
               key={i}
               selectable
-              className="mb-1 font-sans-semibold text-text"
-              style={{ fontSize: 24, lineHeight: 30 }}
+              className="mb-1 text-text"
+              style={[CHAT_STRONG, { fontSize: 24, lineHeight: 30 }]}
             >
               {trimmed.slice(2, -2)}
             </Text>
@@ -65,8 +67,8 @@ function RichText({ text }: { text: string }) {
             <Text
               key={i}
               selectable
-              className="mb-0.5 mt-3 font-sans-semibold text-text"
-              style={{ fontSize: 17, lineHeight: 22 }}
+              className="mb-0.5 mt-3 text-text"
+              style={[CHAT_STRONG, { fontSize: 17, lineHeight: 22 }]}
             >
               {section[1]}
             </Text>
@@ -78,10 +80,10 @@ function RichText({ text }: { text: string }) {
           return (
             // Sangría colgante: la 2ª línea de una viñeta larga alinea con el texto, no con el punto.
             <View key={i} className="flex-row pr-2">
-              <Text className="font-sans-medium text-lg leading-6 text-text" style={{ width: 16 }}>
+              <Text className="text-lg leading-6 text-text" style={[CHAT_BODY, { width: 16 }]}>
                 {"•"}
               </Text>
-              <Text selectable className="flex-1 font-sans-medium text-lg leading-6 text-text">
+              <Text selectable className="flex-1 text-lg leading-6 text-text" style={CHAT_BODY}>
                 {inlineBold(bullet[1])}
               </Text>
             </View>
@@ -89,7 +91,7 @@ function RichText({ text }: { text: string }) {
         }
 
         return (
-          <Text key={i} selectable className="font-sans-medium text-lg leading-6 text-text">
+          <Text key={i} selectable className="text-lg leading-6 text-text" style={CHAT_BODY}>
             {inlineBold(line)}
           </Text>
         );
@@ -102,7 +104,15 @@ function RichText({ text }: { text: string }) {
 // tokens stream (Cleo "writing" feel). A reply with markdown (the finance coach reaction) renders
 // rich: bold heading opener + normal coaching text. An `href` makes it a tappable deep link
 // (underlined lime → Insights, Img 11).
-export function AgentMessage({ text, href }: { text: string; href?: string }) {
+export function AgentMessage({
+  text,
+  href,
+  showActions = false,
+}: {
+  text: string;
+  href?: string;
+  showActions?: boolean;
+}) {
   const router = useRouter();
   const { colorScheme } = useColorScheme();
 
@@ -118,7 +128,7 @@ export function AgentMessage({ text, href }: { text: string; href?: string }) {
     return (
       <View className="w-full px-3 py-2">
         <Pressable accessibilityRole="link" onPress={open}>
-          <Text className="font-sans-semibold text-lg leading-6 underline" style={{ color: linkColor }}>
+          <Text className="text-lg leading-6 underline" style={[CHAT_STRONG, { color: linkColor }]}>
             {text}
           </Text>
         </Pressable>
@@ -133,6 +143,9 @@ export function AgentMessage({ text, href }: { text: string; href?: string }) {
       ) : (
         <StreamingText text={text} textClassName="text-lg leading-6 text-text" />
       )}
+      {/* Sólo cuando el turno TERMINÓ: una fila de acciones asomando mientras el texto todavía
+          crece empujaría el layout en cada token, y además ofrecería copiar media respuesta. */}
+      {showActions ? <MessageActions text={text} /> : null}
     </View>
   );
 }

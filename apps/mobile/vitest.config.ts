@@ -38,6 +38,17 @@ export default defineConfig({
       // reanimated → stub: its source can't pass vitest's SSR transform and needs Metro-only
       // globals; the stub exposes Animated.* + inert hooks/helpers so components still render.
       { find: "react-native-reanimated", replacement: path.resolve(__dirname, "src/test/reanimated-stub.tsx") },
+      // skia → stub: the real entry loads a native module (WASM on web) that jsdom can't; the stub
+      // renders <Text> as a plain text node so the shimmering status label stays assertable.
+      {
+        find: "@shopify/react-native-skia",
+        replacement: path.resolve(__dirname, "src/test/skia-stub.tsx"),
+      },
+      // @expo-google-fonts/* → stub: the package `require()`s .ttf assets (Metro-only resolver).
+      {
+        find: /^@expo-google-fonts\/.*$/,
+        replacement: path.resolve(__dirname, "src/test/google-fonts-stub.ts"),
+      },
       // Static image `require("@/public/img/x.png")` — Metro's asset resolver (numeric asset ID
       // at build time) doesn't exist under Vite/esbuild here; stub any .png/.jpg/.jpeg import.
       { find: /\.(png|jpe?g)$/, replacement: path.resolve(__dirname, "src/test/image-stub.ts") },

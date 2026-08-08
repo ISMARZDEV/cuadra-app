@@ -12,7 +12,7 @@ vi.mock("./chat-stream", () => ({
 }));
 vi.mock("@/i18n", () => ({ getLanguage: () => "es" }));
 
-import { ChatRole } from "./enums";
+import { ChatRole, ChatStatus } from "./enums";
 import { useChat } from "./use-chat";
 
 const pill = (value: string, label: string, variant: "primary" | "secondary"): DockOption => ({
@@ -169,5 +169,73 @@ describe("useChat — multi-step HITL", () => {
     const card = result.current.messages.find((m) => m.product);
     expect(card?.product?.name).toBe("Arroz Pimco Premium 10 Lbs");
     expect(card?.product?.stores[0].price).toBe("RD$525.00");
+  });
+});
+
+describe("useChat — status signal", () => {
+  // NOTE on timing: assertions read `result.current` AFTER the turn settles, never inside the
+  // `onEvent` callback. React hasn't re-rendered yet at that point, so a mid-flight read returns
+  // the PREVIOUS render's value — it measures the wrong instant, not the hook's behaviour. Nothing
+  // resets the status when a turn ends (the indicator is already hidden by `isThinking`), so what
+  // survives the turn is exactly what was last announced.
+  const stream = (events: unknown[]) => {
+    streamChat.mockImplementation(async ({ onEvent }: { onEvent: (e: unknown) => void }) => {
+      for (const e of events) onEvent(e);
+      onEvent({ type: "done", thread_id: "t1" });
+    });
+  };
+
+  test("adopts the status the backend announces while a tool runs", async () => {
+    const { result } = renderHook(() => useChat());
+    stream([{ type: "status", value: "searching" }]);
+
+    await act(async () => {
+      await result.current.send("arroz");
+    });
+
+    expect(result.current.status).toBe(ChatStatus.Searching);
+  });
+
+  test("keeps the LAST status when the agent chains tools", async () => {
+    const { result } = renderHook(() => useChat());
+    stream([
+      { type: "status", value: "searching" },
+      { type: "status", value: "reasoning" },
+    ]);
+
+    await act(async () => {
+      await result.current.send("canasta de 5000");
+    });
+
+    expect(result.current.status).toBe(ChatStatus.Reasoning);
+  });
+
+  test("ignores an unknown status instead of rendering garbage", async () => {
+    // A backend that grows a fourth state must not break this client: the generic (and always
+    // true) "thinking" is the safe degradation.
+    const { result } = renderHook(() => useChat());
+    stream([{ type: "status", value: "teletransportando" }]);
+
+    await act(async () => {
+      await result.current.send("hola");
+    });
+
+    expect(result.current.status).toBe(ChatStatus.Thinking);
+  });
+
+  test("starts every turn back at thinking", async () => {
+    const { result } = renderHook(() => useChat());
+    stream([{ type: "status", value: "reasoning" }]);
+    await act(async () => {
+      await result.current.send("canasta de 5000");
+    });
+
+    // A turn that calls no tool must not inherit the previous turn's "Razonando".
+    stream([]);
+    await act(async () => {
+      await result.current.send("gracias");
+    });
+
+    expect(result.current.status).toBe(ChatStatus.Thinking);
   });
 });

@@ -19,7 +19,7 @@ import { Icon } from "@/components/ui/icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { t, useLang } from "@/i18n";
 import { sounds } from "@/lib/sounds";
-import { KANTUMRUY_BOLD, KANTUMRUY_MEDIUM } from "@/theme/fonts";
+import { CHAT_BODY } from "../chat-typography";
 
 // Dos artes distintos, uno por tema: el icono trae sus colores DENTRO del SVG, así que no se
 // recolorea con una prop — se elige el archivo.
@@ -284,7 +284,8 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
             paddingHorizontal: TEXT_PAD_X,
             paddingTop: 0,
             paddingBottom: 0,
-            fontFamily: KANTUMRUY_MEDIUM,
+            // Fuente del SISTEMA (ver chat-typography): se escribe en el mismo tipo en que se lee.
+            ...CHAT_BODY,
           }}
           placeholder={t("chat.inputPlaceholder")}
           placeholderTextColor={placeholderColor}

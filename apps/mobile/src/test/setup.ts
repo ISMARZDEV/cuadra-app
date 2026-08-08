@@ -9,11 +9,45 @@ afterEach(() => cleanup());
 // time (e.g. lib/api/client.ts) crash without it — provide it (false = quiet dev warnings).
 (globalThis as { __DEV__?: boolean }).__DEV__ ??= false;
 
-// react-native-web's onLayout uses ResizeObserver, absent in jsdom — provide a no-op.
+// ── Layout falso, porque jsdom no hace layout ────────────────────────────────
+// jsdom no calcula geometría: `getBoundingClientRect` devuelve todo en cero y react-native-web
+// (que mide con ResizeObserver + getBoundingClientRect) reporta `onLayout` con tamaño 0.
+//
+// Para casi todo daba igual — hasta que el chat pasó a una lista VIRTUALIZADA (`LegendList`): una
+// lista que cree que su viewport mide 0 no renderiza NINGUNA fila, así que ningún test podía volver
+// a afirmar nada sobre los mensajes. Sin esto, migrar a virtualización equivale a perder la
+// cobertura de la pantalla entera.
+//
+// Se declara un viewport de teléfono y se dispara el observer al observar. No es geometría real
+// —nada acá mide de verdad— pero es COHERENTE, que es lo que la virtualización necesita para
+// decidir cuántas filas montar.
+const VIEWPORT = { width: 390, height: 800 };
+
 globalThis.ResizeObserver ??= class {
-  observe() {}
+  private readonly cb: ResizeObserverCallback;
+  constructor(cb: ResizeObserverCallback) {
+    this.cb = cb;
+  }
+  observe(target: Element) {
+    const rect = target.getBoundingClientRect();
+    this.cb([{ target, contentRect: rect } as unknown as ResizeObserverEntry], this as never);
+  }
   unobserve() {}
   disconnect() {}
+};
+
+Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+  return {
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    width: VIEWPORT.width,
+    height: VIEWPORT.height,
+    right: VIEWPORT.width,
+    bottom: VIEWPORT.height,
+    toJSON: () => ({}),
+  } as DOMRect;
 };
 
 // NativeWind runtime needs Metro/babel; under jsdom we stub the hooks it exposes so

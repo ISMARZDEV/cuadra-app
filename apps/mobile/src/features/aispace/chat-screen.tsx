@@ -2,17 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
   type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   PanResponder,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
+// El paquete no declara `main`: sólo expone subpaths. `react-native` es el build de RN (hay otros
+// para react-dom, reanimated y la variante consciente del teclado).
+import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -51,6 +51,7 @@ import { QuickActions } from "./components/quick-actions";
 import { TypingIndicator } from "./components/typing-indicator";
 import { UserBubble } from "./components/user-bubble";
 import { ChatRole } from "./enums";
+import type { ChatMessage } from "./interfaces";
 import { useChat } from "./use-chat";
 
 // SVG gradient overlay — Figma "Siri AI" card: dark 85% at top → 18% at bottom.
@@ -78,17 +79,19 @@ function CardGradient({ isDark }: { isDark: boolean }) {
 // wash behind it), so text scrolling up under the header FADES OUT instead of hard-clipping the
 // instant it crosses the ScrollView's top edge. Opaque (matches the card bg) right at the header,
 // transparent by the bottom of the band. pointerEvents none — purely visual, never blocks touches.
+const TOP_SCROLL_FADE_HEIGHT = 4;
+
 function TopScrollFade({ isDark, top }: { isDark: boolean; top: number }) {
   const color = isDark ? "#000000" : "#ffffff";
   return (
     <Svg
-      style={{ position: "absolute", top, left: 0, right: 0, height: 36 }}
+      style={{ position: "absolute", top, left: 0, right: 0, height: TOP_SCROLL_FADE_HEIGHT }}
       preserveAspectRatio="none"
       pointerEvents="none"
     >
       <Defs>
         <LinearGradient id="topScrollFade" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={color} stopOpacity="0.95" />
+          <Stop offset="0" stopColor={color} stopOpacity="0.1" />
           <Stop offset="1" stopColor={color} stopOpacity="0" />
         </LinearGradient>
       </Defs>
@@ -121,7 +124,7 @@ export function ChatScreen() {
   // read well, see git log; this is just "the card gets taller", not "the card becomes the screen").
   const expanded = useChatExpandStore((s) => s.expanded);
   const setExpanded = useChatExpandStore((s) => s.setExpanded);
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<LegendListRef>(null);
 
   // Live chat — streams turns from the agent (SSE) and stages HITL writes (§7.4).
   const chat = useChat();
@@ -245,35 +248,61 @@ export function ChatScreen() {
     expandLift.value = withTiming(expanded ? 1 : 0, { duration: 300, easing: EASE_OUT });
   }, [expanded, expandLift]);
 
-  // Keep the latest message pinned to the bottom (WhatsApp/ChatGPT behaviour). Called on every
-  // content/viewport change AND when the keyboard finishes animating, so the freshest messages
-  // are never hidden behind the input as the scroll viewport shrinks.
+  // Keep the latest message pinned to the bottom (WhatsApp/ChatGPT behaviour). Called when the
+  // keyboard finishes animating and when the orb resizes the card, so the freshest messages are
+  // never hidden behind the input as the scroll viewport shrinks.
+  //
+  // El seguimiento de CONTENIDO nuevo ya no se hace acá: lo hace `maintainScrollAtEnd` de
+  // LegendList, que además respeta al usuario que subió a leer historial — que era exactamente lo
+  // que hacía a mano el par `nearBottomRef` + `followIfAtBottom` que esto reemplazó.
   const scrollToBottom = useCallback((animated = false) => {
-    scrollRef.current?.scrollToEnd({ animated });
+    void listRef.current?.scrollToEnd({ animated });
   }, []);
-
-  // Track whether the user is at (or near) the bottom. Auto-scroll only follows new content when
-  // they're already down there — so scrolling UP to read history isn't yanked back down (ChatGPT).
-  const nearBottomRef = useRef(true);
-  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
-    nearBottomRef.current = distanceFromBottom < 80;
-  }, []);
-  const followIfAtBottom = useCallback(() => {
-    if (nearBottomRef.current) scrollToBottom(false);
-  }, [scrollToBottom]);
 
   // Scroll viewport's own height (not content) — feeds ChatEmptyState's center→top dock entrance
-  // (it needs to know the available space to compute where "centered" is). Piggybacks on the
-  // ScrollView's existing onLayout (same event already used for followIfAtBottom).
+  // (it needs to know the available space to compute where "centered" is).
   const [scrollViewportH, setScrollViewportH] = useState(0);
-  const onScrollViewLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      setScrollViewportH(e.nativeEvent.layout.height);
-      followIfAtBottom();
+  const onScrollViewLayout = useCallback((e: LayoutChangeEvent) => {
+    setScrollViewportH(e.nativeEvent.layout.height);
+  }, []);
+
+  // ── Anclaje tipo ChatGPT: PENDIENTE, y no por olvido ───────────────────────
+  // «El mensaje enviado sube al tope y la respuesta fluye debajo» lo produce el prop
+  // `anchoredEndSpace`, que mete espacio en blanco bajo el mensaje anclado cuando el contenido no
+  // llena el viewport (sin ese espacio no hay a dónde scrollear para subirlo del todo).
+  //
+  // Ese prop NO existe en este `LegendList`: los tipos lo omiten explícitamente y sólo lo acepta
+  // `KeyboardAwareLegendList` (`@legendapp/list/keyboard`), que importa
+  // `react-native-keyboard-controller` — módulo NATIVO. O sea: llega con la Fase 3, no antes.
+  //
+  // Se decidió NO aproximarlo con `scrollToIndex`: sin el espacio de cola sólo funcionaría cuando
+  // ya hay contenido suficiente debajo, así que el mismo gesto se comportaría distinto según el
+  // largo de la conversación. Un anclaje inconsistente se siente peor que no tenerlo.
+
+  // Un turno = una fila. Cada rama es la MISMA que tenía el ScrollView; lo único que cambia es que
+  // ahora la lista las pide de a una en vez de recibirlas todas montadas.
+  const isStreaming = chat.isStreaming;
+  const lastIndex = chat.messages.length - 1;
+  const renderMessage = useCallback(
+    ({ item, index }: { item: ChatMessage; index: number }) => {
+      if (item.role === ChatRole.User) return <UserBubble text={item.text} />;
+      // Canasta por presupuesto: accordion por proveedor + carrusel de productos.
+      if (item.basket) return <BasketCard data={item.basket} />;
+      // Resultados de búsqueda de productos: carrusel por proveedor, sin totales.
+      if (item.provider_products) return <ProviderProductsCard data={item.provider_products} />;
+      // La comparación de Save se pinta acá dentro, no manda al navegador.
+      if (item.product) return <ProductCard data={item.product} />;
+      return (
+        // La fila de acciones sólo bajo una respuesta TERMINADA: cualquier mensaje que ya no es el
+        // último lo está, y el último sólo cuando paró el stream.
+        <AgentMessage
+          text={item.text}
+          href={item.href}
+          showActions={index < lastIndex || !isStreaming}
+        />
+      );
     },
-    [followIfAtBottom],
+    [lastIndex, isStreaming],
   );
 
   useEffect(() => {
@@ -392,21 +421,48 @@ export function ChatScreen() {
             <View onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
               <ChatHeader />
             </View>
-            <ScrollView
-              ref={scrollRef}
+            <LegendList
+              ref={listRef}
               className="flex-1"
+              data={chat.messages}
+              keyExtractor={(m) => m.id}
+              renderItem={renderMessage}
+              // Reemplaza el auto-follow manual: sigue el contenido nuevo SOLO si el usuario ya
+              // estaba abajo, así subir a leer historial no lo devuelve de un tirón.
+              maintainScrollAtEnd
+              // El umbral por defecto es demasiado estrecho para un stream rápido y corta el
+              // seguimiento a la primera (lo documenta el propio demo de referencia).
+              maintainScrollAtEndThreshold={1}
+              // OBLIGATORIO, y lo destapó el test de la pantalla: una lista virtualizada MEMOIZA
+              // sus filas, así que un cambio que sólo vive en el closure de `renderItem` —acá
+              // `isStreaming`, que decide si la última respuesta muestra la fila de acciones— no
+              // llega solo. Sin esto, al terminar el stream los botones no aparecían hasta que
+              // algo más forzara un re-render. Con el ScrollView el problema no existía porque
+              // todas las filas se remontaban en cada render.
+              extraData={isStreaming}
+              ListEmptyComponent={
+                <ChatEmptyState onSelect={chat.send} viewportHeight={scrollViewportH} />
+              }
+              ListFooterComponent={
+                /* Status line while a turn is in flight (no token/pending yet) — the label shimmers
+                   and says WHAT the agent is doing, which the backend announces when it starts a
+                   tool. Fades out and hands off to the first agent word. */
+                <TypingIndicator visible={chat.isThinking} status={chat.status} />
+              }
               showsVerticalScrollIndicator={false}
               // Side gutter for the whole conversation — THE single knob for how far the text sits
               // from the card edges (each row adds its own px-3 = 12px on top, so total ≈ 22px).
               // paddingBottom reserves the overlaid bottom zone so the last message clears the glass.
-              // paddingTop clears TopScrollFade's 36px band (below): without it, the very FIRST
-              // message sits right under the header with barely any gap, so the fade — meant to mask
-              // text scrolling OUT of view — visibly darkens it too, even though nothing has
-              // scrolled yet. Top-aligned always (messages AND the empty state) — same as a normal
-              // chat, no centering. flexGrow keeps the container at least viewport-tall (a no-op
-              // once there's enough content to scroll).
+              // paddingTop clears TopScrollFade's band (TOP_SCROLL_FADE_HEIGHT, above) with a small
+              // buffer on top: without it, the very FIRST message sits right under the header with
+              // barely any gap, so the fade — meant to mask text scrolling OUT of view — visibly
+              // darkens it too, even though nothing has scrolled yet. Kept close to the fade height
+              // (not much bigger) so the first message sits high, per feedback on the first version
+              // of this padding (used to be a much taller 40px gap). Top-aligned always (messages
+              // AND the empty state) — same as a normal chat, no centering. flexGrow keeps the
+              // container at least viewport-tall (a no-op once there's enough content to scroll).
               contentContainerStyle={{
-                paddingTop: 40,
+                paddingTop: TOP_SCROLL_FADE_HEIGHT,
                 paddingBottom: 8 + bottomZoneH,
                 paddingHorizontal: 6,
                 flexGrow: 1,
@@ -424,38 +480,8 @@ export function ChatScreen() {
               bounces
               overScrollMode="always"
               scrollEventThrottle={16}
-              onScroll={onScroll}
-              // Follow new content only when already at the bottom — never yank the user down while
-              // they've scrolled up to read history.
               onLayout={onScrollViewLayout}
-              onContentSizeChange={followIfAtBottom}
-            >
-              {chat.messages.length === 0 ? (
-                <ChatEmptyState onSelect={chat.send} viewportHeight={scrollViewportH} />
-              ) : (
-                <>
-                  {chat.messages.map((m) =>
-                    m.role === ChatRole.User ? (
-                      <UserBubble key={m.id} text={m.text} />
-                    ) : m.basket ? (
-                      // Canasta por presupuesto: accordion por proveedor + carrusel de productos.
-                      <BasketCard key={m.id} data={m.basket} />
-                    ) : m.provider_products ? (
-                      // Resultados de búsqueda de productos: carrusel por proveedor, sin totales.
-                      <ProviderProductsCard key={m.id} data={m.provider_products} />
-                    ) : m.product ? (
-                      // La comparación de Save se pinta acá dentro, no manda al navegador.
-                      <ProductCard key={m.id} data={m.product} />
-                    ) : (
-                      <AgentMessage key={m.id} text={m.text} href={m.href} />
-                    ),
-                  )}
-                  {/* Loading wave — three dots while a turn is in flight (no token/pending yet).
-                      Fades out and hands off to the first agent word as soon as output arrives. */}
-                  <TypingIndicator visible={chat.isThinking} />
-                </>
-              )}
-            </ScrollView>
+            />
 
             {/* AFTER the ScrollView in render order → draws IN FRONT of it, so scrolled text fades
                 into this instead of hard-clipping the instant it crosses the scroll viewport's top

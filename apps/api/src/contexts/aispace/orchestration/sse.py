@@ -10,6 +10,7 @@ expenses, only interrupts + ui_actions):
 
 Frame/field types:
   token        {type, content}          assistant text chunk
+  status       {type, value}            what the agent is DOING (thinking|searching|reasoning)
   interaction  {type, interaction}      the graph paused at interrupt() → {prompt, options[]}
   link         {type, text, href}       a ui_actions deep link (e.g. "Ver en Insight" → insights)
   product      {type, name, stores[]}    Save's in-chat comparison card (see `ui_action_frames`)
@@ -22,8 +23,26 @@ from collections.abc import Iterator
 
 from langchain_core.messages import AIMessageChunk
 
+from .status import status_for_tool
+
 
 _AGENT_NODE = "agent_run"
+
+
+def _called_tool(chunk) -> str | None:  # type: ignore[no-untyped-def]
+    """El nombre de la tool que este chunk anuncia, si anuncia alguna.
+
+    Una tool-call llega FRAGMENTADA: sólo el primer trozo trae `name`, los siguientes van sumando
+    los argumentos con `name=None`. Además su `content` es vacío — por eso el filtro de tokens de
+    abajo los descartaba enteros y esta señal existía en el stream sin que nadie la leyera.
+
+    Con llamadas en paralelo gana la primera: el usuario ve UNA línea, no una por tool.
+    """
+    for call in getattr(chunk, "tool_call_chunks", None) or ():
+        name = call.get("name")
+        if name:
+            return name
+    return None
 
 
 def _is_user_facing(namespace: tuple, meta: dict) -> bool:  # type: ignore[type-arg]
@@ -95,6 +114,10 @@ def chat_result(snapshot, thread_id: str) -> dict:  # type: ignore[no-untyped-de
 def stream_events(graph, inputs: dict, cfg: dict, thread_id: str) -> Iterator[str]:  # type: ignore[no-untyped-def]
     """Drive the graph and translate it into SSE frames (see module docstring)."""
     emitted = False
+    # El último estado ANUNCIADO. Se compara para no repetir: una tool-call llega en varios trozos,
+    # y dos tools seguidas del mismo tipo (buscar y volver a buscar) son un solo estado para quien
+    # mira la pantalla.
+    announced_status: str | None = None
     # `subgraphs=True` is REQUIRED, not an optimization. A ReAct agent (`create_agent`) runs a
     # NESTED graph, and without this flag its tokens emit **zero** chunks here — the chat stays
     # mute and then prints the whole reply at once. Measured 2026-08-02 on the real graph:
@@ -109,7 +132,17 @@ def stream_events(graph, inputs: dict, cfg: dict, thread_id: str) -> Iterator[st
         # the ROOT namespace under their own node.
         if not _is_user_facing(namespace, meta):
             continue
-        if isinstance(chunk, AIMessageChunk) and chunk.content:
+        if not isinstance(chunk, AIMessageChunk):
+            continue
+        # ANTES del token, siempre: si llegara después el cliente ya ocultó el indicador (lo baja
+        # con el primer token) y la señal no serviría para nada.
+        tool = _called_tool(chunk)
+        if tool:
+            status = status_for_tool(tool)
+            if status != announced_status:
+                announced_status = status
+                yield sse_frame({"type": "status", "value": status})
+        if chunk.content:
             emitted = True
             yield sse_frame({"type": "token", "content": chunk.content})
 

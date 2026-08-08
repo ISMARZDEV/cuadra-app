@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
+import { CHAT_BODY } from "../chat-typography";
+
 interface StreamingTextProps {
   text: string;
   textClassName?: string;
@@ -39,7 +41,7 @@ function FadingWord({
           that reliably fires here), so native selection is scoped to ONE word per gesture — dragging
           across word boundaries doesn't extend the selection. Good enough to grab a specific word or
           amount; not a full-paragraph drag-select. */}
-      <Text selectable className={`font-sans-medium ${textClassName ?? ""}`}>{word}{" "}</Text>
+      <Text selectable className={textClassName ?? ""} style={CHAT_BODY}>{word}{" "}</Text>
     </Animated.View>
   );
 }

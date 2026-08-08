@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { getLanguage } from "@/i18n";
 
 import { resumeChat, streamChat } from "./chat-stream";
-import { ChatRole } from "./enums";
+import { ChatRole, ChatStatus } from "./enums";
 import type {
   BasketCardData,
   ChatMessage,
@@ -15,6 +15,15 @@ import type {
 
 let _seq = 0;
 const uid = () => `m${++_seq}`;
+
+// The wire carries a plain string; only the values we can actually render become a status. An
+// unknown one (a backend that grew a fourth state) is IGNORED rather than shown — the generic
+// "Pensando" is always true, so degrading to it never lies to the user.
+const KNOWN_STATUSES: Record<string, ChatStatus> = {
+  [ChatStatus.Thinking]: ChatStatus.Thinking,
+  [ChatStatus.Searching]: ChatStatus.Searching,
+  [ChatStatus.Reasoning]: ChatStatus.Reasoning,
+};
 
 // Chat state machine over the SSE transport. Owns the message list, the live thread_id and the
 // current HITL step (`interaction`). `send` streams a turn (tokens append to one agent bubble);
@@ -30,6 +39,10 @@ export function useChat() {
   // `isThinking` = a turn is in flight but the agent hasn't produced anything yet. Drives the
   // typing-dots; cleared the moment the first output arrives.
   const [isThinking, setIsThinking] = useState(false);
+  // WHAT it's doing while `isThinking` — the backend announces it when the agent starts a tool
+  // (frame `{type:"status"}`). Always starts at Thinking: a turn that calls no tool never says
+  // anything more specific, and that is the honest default.
+  const [status, setStatus] = useState<ChatStatus>(ChatStatus.Thinking);
   const threadRef = useRef<string | null>(null);
   const streamingRef = useRef(false); // re-entry guard (read synchronously, unlike state)
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -64,6 +77,7 @@ export function useChat() {
       streamingRef.current = true;
       setIsStreaming(true);
       setIsThinking(true);
+      setStatus(ChatStatus.Thinking); // every turn starts generic; a tool may narrow it
       setMessages((m) => [...m, { id: uid(), role: ChatRole.User, text: trimmed }]);
 
       let agentId: string | null = null;
@@ -72,7 +86,10 @@ export function useChat() {
         threadId: threadRef.current,
         locale: getLanguage(), // the APP's chosen language (i18n), not the device locale (cuadra-mobile §5)
         onEvent: (e) => {
-          if (e.type === "token") {
+          if (e.type === "status") {
+            const known = KNOWN_STATUSES[e.value];
+            if (known) setStatus(known);
+          } else if (e.type === "token") {
             setIsThinking(false);
             setMessages((m) => {
               if (!agentId) {
@@ -163,5 +180,5 @@ export function useChat() {
     [appendAgent, appendBasket, appendProduct, appendProviderProducts],
   );
 
-  return { messages, interaction, isStreaming, isThinking, threadId, send, select };
+  return { messages, interaction, isStreaming, isThinking, status, threadId, send, select };
 }

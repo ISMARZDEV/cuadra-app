@@ -250,3 +250,127 @@ def test_a_non_react_agent_in_the_node_itself_still_streams() -> None:
     )
 
     assert _tokens(stream_events(graph, {}, {}, "t")) == ["¡Hola!"]
+
+
+# ── Señal de ESTADO: qué está haciendo el agente mientras el usuario espera ──────────────
+#
+# El chat mostraba «Pensando» y nada más, porque el protocolo no tenía forma de decir otra cosa:
+# los frames eran token/interaction/ui_action/done/error. Una tool que tarda 4s en consultar el
+# catálogo se veía igual que el modelo escribiendo — el usuario no sabía si lo estaban buscando.
+#
+# La señal se saca del MISMO stream que ya se consume: cuando el modelo decide llamar una tool,
+# su chunk trae `tool_call_chunks` con el NOMBRE (y el contenido vacío, por eso hoy se descarta).
+
+def _statuses(frames) -> list[str]:  # type: ignore[no-untyped-def]
+    return [e["value"] for e in _events(list(frames)) if e["type"] == "status"]
+
+
+def _tool_chunk(name: str | None, args: str = ""):  # type: ignore[no-untyped-def]
+    from langchain_core.messages import AIMessageChunk
+
+    return AIMessageChunk(
+        content="",
+        tool_call_chunks=[{"name": name, "args": args, "id": "call_1", "index": 0}],
+    )
+
+
+def test_a_catalog_tool_announces_that_it_is_SEARCHING() -> None:
+    graph = _FakeGraph(
+        [(("agent_run:abc",), (_tool_chunk("search_groceries"), {"langgraph_node": "model"}))]
+    )
+
+    assert _statuses(stream_events(graph, {}, {}, "t")) == ["searching"]
+
+
+def test_the_SLOWEST_tool_also_gets_the_progress_sequence() -> None:
+    """`basket_for_budget` es la pregunta insignia y la que más tarda: es DONDE más rinde.
+
+    Estuvo mapeada a `reasoning` (el eje era «busca vs computa») y se cambió: el eje real es qué
+    ve el usuario mientras espera. `BudgetBasket.execute` hace exactamente las tres fases que el
+    cliente nombra — busca las ofertas por rubro, valida qué entra en el presupuesto, y ordena y
+    compara entre tiendas.
+    """
+    graph = _FakeGraph(
+        [(("agent_run:abc",), (_tool_chunk("basket_for_budget"), {"langgraph_node": "model"}))]
+    )
+
+    assert _statuses(stream_events(graph, {}, {}, "t")) == ["searching"]
+
+
+def test_an_UNMAPPED_tool_falls_back_to_thinking_instead_of_breaking() -> None:
+    """Una tool nueva NO tiene que tocar el mapa para que el chat siga funcionando.
+
+    Es la diferencia con el canal de `ui_actions`: allá un `type` desconocido rompía el switch del
+    cliente, acá lo peor que pasa es que se muestre el estado genérico y verdadero.
+    """
+    graph = _FakeGraph(
+        [(("agent_run:abc",), (_tool_chunk("una_tool_del_futuro"), {"langgraph_node": "model"}))]
+    )
+
+    assert _statuses(stream_events(graph, {}, {}, "t")) == ["thinking"]
+
+
+def test_the_argument_fragments_of_ONE_call_do_not_spam_the_client() -> None:
+    """Sólo el PRIMER fragmento de una tool-call trae el nombre; los demás llevan los args."""
+    graph = _FakeGraph(
+        [
+            (("agent_run:abc",), (_tool_chunk("search_groceries"), {"langgraph_node": "model"})),
+            (("agent_run:abc",), (_tool_chunk(None, '{"query":'), {"langgraph_node": "model"})),
+            (("agent_run:abc",), (_tool_chunk(None, '"arroz"}'), {"langgraph_node": "model"})),
+        ]
+    )
+
+    assert _statuses(stream_events(graph, {}, {}, "t")) == ["searching"]
+
+
+def test_two_consecutive_tools_with_the_SAME_status_announce_it_once() -> None:
+    graph = _FakeGraph(
+        [
+            (("agent_run:abc",), (_tool_chunk("search_groceries"), {"langgraph_node": "model"})),
+            (("agent_run:abc",), (_tool_chunk("compare_prices"), {"langgraph_node": "model"})),
+        ]
+    )
+
+    assert _statuses(stream_events(graph, {}, {}, "t")) == ["searching"]
+
+
+def test_a_change_of_status_IS_announced() -> None:
+    """Deduplicar no puede tragarse un cambio real.
+
+    El par elegido dice algo del diseño: hoy TODA tool de datos resuelve a `searching`, así que la
+    única transición posible es hacia una tool sin mapear (una de staging, o una futura), que cae
+    al genérico `thinking`.
+    """
+    graph = _FakeGraph(
+        [
+            (("agent_run:abc",), (_tool_chunk("search_groceries"), {"langgraph_node": "model"})),
+            (("agent_run:abc",), (_tool_chunk("register_transaction"), {"langgraph_node": "model"})),
+        ]
+    )
+
+    assert _statuses(stream_events(graph, {}, {}, "t")) == ["searching", "thinking"]
+
+
+def test_the_status_arrives_BEFORE_the_text_it_explains() -> None:
+    """Si llegara después del primer token no serviría de nada: el cliente ya ocultó el indicador."""
+    from langchain_core.messages import AIMessageChunk
+
+    graph = _FakeGraph(
+        [
+            (("agent_run:abc",), (_tool_chunk("search_groceries"), {"langgraph_node": "model"})),
+            (("agent_run:abc",), (AIMessageChunk(content="El arroz "), {"langgraph_node": "model"})),
+        ]
+    )
+
+    kinds = [e["type"] for e in _events(list(stream_events(graph, {}, {}, "t")))]
+
+    assert kinds.index("status") < kinds.index("token")
+
+
+def test_the_classifiers_own_tool_calls_never_leak_as_a_status() -> None:
+    """Misma allowlist por namespace que los tokens: la maquinaria interna se calla."""
+    graph = _FakeGraph(
+        [((), (_tool_chunk("search_groceries"), {"langgraph_node": "classify_intent"}))]
+    )
+
+    assert _statuses(stream_events(graph, {}, {}, "t")) == []
