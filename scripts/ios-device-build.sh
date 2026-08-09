@@ -31,6 +31,34 @@ if [[ -z "${UDID}" ]]; then
 fi
 echo "▶ Device: ${UDID}"
 
+# ── Proyecto nativo al día ─────────────────────────────────────────────────────
+# `xcodebuild` compila lo que HAY en ios/. Si alguien instaló una dependencia nativa y no
+# regeneró el proyecto, esto compila y firma feliz un binario SIN ese módulo: la app corre y el
+# componente renderiza vacío, sin crash ni error. Se prebuildea acá para que no pase.
+#
+# ⚠ `EXPO_FREE_SIGNING=1` va TAMBIÉN en el prebuild, no sólo en el build. El plugin escribe el
+# `.entitlements`, y ese archivo se genera EN EL PREBUILD: si `ios/` ya existe, un `run:ios`
+# posterior no vuelve a correr los mods y la variable llega tarde → xcodebuild muere con
+# error 65 («Personal development teams do not support Sign In with Apple / Push Notifications»).
+# Medido el 2026-08-09; ver plugins/with-free-signing.js.
+if [[ ! -d "${ROOT}/apps/mobile/ios" ]]; then
+  echo "▶ No existe ios/ — generando el proyecto nativo…"
+  ( cd "${ROOT}/apps/mobile" && EXPO_FREE_SIGNING=1 npx expo prebuild --clean )
+elif ! "${ROOT}/scripts/check-native-build.sh" --quiet; then
+  echo "▶ Regenerando el proyecto nativo (hay deps nativas sin compilar)…"
+  ( cd "${ROOT}/apps/mobile" && EXPO_FREE_SIGNING=1 npx expo prebuild --clean )
+fi
+
+# Guarda de último momento: si las entitlements de pago sobrevivieron, `xcodebuild` moriría con un
+# error 65 ilegible. Mejor decirlo acá, con el arreglo exacto.
+ENTITLEMENTS="${ROOT}/apps/mobile/ios/${SCHEME}/${SCHEME}.entitlements"
+if [[ -f "${ENTITLEMENTS}" ]] && grep -qE "aps-environment|applesignin" "${ENTITLEMENTS}"; then
+  echo "✖ Las entitlements traen capabilities que un Apple ID GRATUITO no puede provisionar." >&2
+  echo "  El prebuild corrió SIN EXPO_FREE_SIGNING=1. Rehacelo así:" >&2
+  echo "    cd ${ROOT}/apps/mobile && EXPO_FREE_SIGNING=1 npx expo prebuild --clean" >&2
+  exit 1
+fi
+
 # ── Asegurar firma automática + team en el proyecto (se pierde tras `expo prebuild`) ──
 PBX="${ROOT}/apps/mobile/ios/Cuadra.xcodeproj/project.pbxproj"
 if ! grep -q "DEVELOPMENT_TEAM = ${TEAM_ID};" "${PBX}"; then
