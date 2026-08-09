@@ -14,6 +14,7 @@ import { useColorScheme } from "nativewind";
 import { Icon } from "@/components/ui/icon";
 import { t, type TranslationKey, useLang } from "@/i18n";
 
+import { CHAT_FONT_SIZE } from "../chat-typography";
 import { ChatStatus } from "../enums";
 import type { TypingIndicatorProps } from "../interfaces";
 import { useStatusSequence } from "../use-status-sequence";
@@ -23,8 +24,10 @@ import { ShimmerText } from "./shimmer-text";
 // entrance (user-bubble.tsx, spring). Only the RISING edge waits; hiding stays instant (below).
 const ENTER_DELAY_MS = 450;
 
-const LABEL_SIZE = 18; // matches the chat's `text-lg`, so the status reads as part of the thread
+const LABEL_SIZE = CHAT_FONT_SIZE; // el mismo cuerpo del chat: la línea de estado es parte del hilo
 const ICON_SIZE = 17;
+// Aire vertical de la fila, para reservar su alto antes de que el contenido aparezca.
+const ROW_PADDING = 6;
 
 // Each status owns its icon and label. Sparkles is FILLED — it's the "the model itself is working"
 // state, and a solid glyph reads as active next to the outline icons (which stand for work on
@@ -110,23 +113,29 @@ export function TypingIndicator({
     transform: [{ scale: 0.9 + enter.value * 0.1 }],
   }));
 
-  if (!rendered) return null;
+  if (!visible && !rendered) return null;
 
   return (
-    <View className="w-full px-3 py-2">
-      <Animated.View
-        accessibilityLabel={t("chat.a11y.loading")}
-        className="flex-row items-center"
-        style={[{ gap: 6 }, containerStyle]}
-      >
-        <Icon as={icon} size={ICON_SIZE} color={baseColor} fill={filled ? baseColor : undefined} />
-        <ShimmerText
-          text={t(labelKey)}
-          fontSize={LABEL_SIZE}
-          baseColor={baseColor}
-          highlightColor={highlightColor}
-        />
-      </Animated.View>
+    // La altura se RESERVA desde el instante del envío, aunque el contenido tarde 450ms en
+    // aparecer. Esta fila es el pie de la lista, así que si creciera de 0 a su alto a mitad de
+    // camino, el mensaje anclado arriba se reacomodaría — un salto visible justo cuando el usuario
+    // está mirando. Lo que se retrasa es la APARICIÓN, no el espacio que ocupa.
+    <View className="w-full px-3 py-2" style={{ minHeight: LABEL_SIZE + ROW_PADDING }}>
+      {rendered ? (
+        <Animated.View
+          accessibilityLabel={t("chat.a11y.loading")}
+          className="flex-row items-center"
+          style={[{ gap: 6 }, containerStyle]}
+        >
+          <Icon as={icon} size={ICON_SIZE} color={baseColor} fill={filled ? baseColor : undefined} />
+          <ShimmerText
+            text={t(labelKey)}
+            fontSize={LABEL_SIZE}
+            baseColor={baseColor}
+            highlightColor={highlightColor}
+          />
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

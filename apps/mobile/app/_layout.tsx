@@ -14,6 +14,7 @@ import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { CLERK_ENABLED, CLERK_PUBLISHABLE_KEY } from "@/features/auth/clerk";
 import { ClerkAuthBridge } from "@/features/auth/clerk-auth-bridge";
@@ -93,8 +94,13 @@ function AppGate() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
+    // KeyboardProvider es requisito de react-native-keyboard-controller: sus hooks y componentes
+    // leen del contexto que monta acá. Va lo más ARRIBA posible (envuelve toda la navegación) para
+    // que cualquier pantalla pueda usarlo. Hoy sólo lo consume la lista del chat, que necesita su
+    // `KeyboardAwareLegendList` para el anclaje.
+    <KeyboardProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
         {!ready ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator color={palette.primary} />
@@ -115,8 +121,9 @@ function AppGate() {
               <Stack.Screen name="ui-preview" />
             </Stack>
           </DrawerProvider>
-        )}
-      </ThemeProvider>
-    </QueryClientProvider>
+          )}
+        </ThemeProvider>
+      </QueryClientProvider>
+    </KeyboardProvider>
   );
 }

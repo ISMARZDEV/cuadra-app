@@ -7,7 +7,14 @@ import { DrawerProvider } from "@/store/drawer-store";
 import { ChatRole } from "./enums";
 import type { ChatMessage } from "./interfaces";
 
-vi.mock("expo-router", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("expo-router", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  // La pantalla suelta el ancla en el cleanup del foco; en test se ejecuta como un efecto normal.
+  useFocusEffect: (cb: () => void | (() => void)) => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    return require("react").useEffect(cb, [cb]);
+  },
+}));
 // `lib/sounds` arranca `expo-audio` al importarse, y su runtime no existe en jsdom (mismo mock que
 // chat-input-bar.test.tsx).
 vi.mock("@/lib/sounds", () => ({ sounds: { send: vi.fn(), dock: vi.fn() } }));

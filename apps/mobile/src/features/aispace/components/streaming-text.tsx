@@ -1,6 +1,11 @@
 import { useEffect } from "react";
 import { Text, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 import { CHAT_BODY } from "../chat-typography";
 
@@ -26,12 +31,17 @@ function FadingWord({
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withTiming(1, { duration });
+    // `Easing.out`: la palabra aparece de inmediato y ASIENTA suave. La curva por defecto es
+    // in-out, que arranca lenta — con los tokens llegando encima, eso dejaba muchas palabras a
+    // medio camino a la vez y el párrafo se veía turbio en vez de escribiéndose.
+    progress.value = withTiming(1, { duration, easing: Easing.out(Easing.quad) });
   }, [progress, duration]);
 
   const style = useAnimatedStyle(() => ({
     opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 6 }], // subtle rise into place
+    // Un desplazamiento MÍNIMO. Con 6px y varias palabras animando a la vez, la línea entera
+    // parecía temblar; a 2px se percibe como que el texto se asienta, no como que salta.
+    transform: [{ translateY: (1 - progress.value) * 2 }],
   }));
 
   return (
@@ -49,7 +59,10 @@ function FadingWord({
 // Streamed agent text with a soft per-WORD fade-in. As SSE tokens arrive the text grows; only the
 // newly-added words mount (React reuses earlier words by key) → only they run their fade. Words are
 // wrapping inline views so each can animate independently.
-export function StreamingText({ text, textClassName, duration = 600 }: StreamingTextProps) {
+// 600ms era DEMASIADO para un stream: los tokens llegan cada pocas decenas de ms, así que había
+// permanentemente una docena de palabras a medio fundir y el resultado se leía borroso. A 300 cada
+// palabra termina antes de que lleguen las siguientes y se percibe una tras otra — escribiendo.
+export function StreamingText({ text, textClassName, duration = 300 }: StreamingTextProps) {
   const lines = text.split("\n");
   return (
     <View>

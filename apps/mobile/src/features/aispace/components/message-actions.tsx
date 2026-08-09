@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Share, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import { Check, Copy, Share2 } from "lucide-react-native";
+import { Check, Copy, Ellipsis, Share2 } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 
 import { Icon } from "@/components/ui/icon";
@@ -10,16 +10,21 @@ import { t, useLang } from "@/i18n";
 
 import type { MessageActionsProps } from "../interfaces";
 
-const ICON_SIZE = 18;
+const ICON_SIZE = 16;
+/** Separación entre acciones. Ajustado a pedido tuyo: la fila se lee como UN grupo, no como
+ *  botones sueltos. El `hitSlop` de cada Pressable mantiene el área táctil por encima del mínimo
+ *  de 44pt aunque el dibujo quede más junto — apretar el gap NO achica el blanco del dedo. */
+const ACTION_GAP = 14;
 /** Cuánto dura la confirmación de copiado. Exportado para que el test no duplique el número. */
 export const COPIED_MS = 1600; // lo justo para verse; más tiempo y parece que se trabó
 
 // Fila de acciones bajo una respuesta TERMINADA del agente.
 //
-// Sólo COPIAR y COMPARTIR. Las otras cuatro del diseño (leer en voz alta, pulgar arriba/abajo,
-// regenerar) no entran todavía: los pulgares necesitan un endpoint de feedback que no existe,
-// regenerar necesita rebobinar el checkpoint del grafo, y el TTS es una decisión de producto
-// pendiente. Un botón que no hace nada es peor que no mostrarlo (§7.3 del plan).
+// COPIAR y COMPARTIR (funcionan) + una ELIPSIS de sitio (todavía inerte, ver abajo). Las otras
+// cuatro del diseño (leer en voz alta, pulgar arriba/abajo, regenerar) no entran todavía: los
+// pulgares necesitan un endpoint de feedback que no existe, regenerar necesita rebobinar el
+// checkpoint del grafo, y el TTS es una decisión de producto pendiente. Un botón que PROMETE una
+// acción y no la hace es peor que no mostrarlo (§7.3 del plan).
 //
 // Peso visual: el diseño de referencia los tiene finos, discretos y apagados. Van en el MISMO gris
 // que la línea de estado, nunca en verde de marca — seis (o dos) iconos con color compiten con el
@@ -52,7 +57,7 @@ export function MessageActions({ text }: MessageActionsProps) {
   };
 
   return (
-    <View className="flex-row items-center pt-2" style={{ gap: 18 }}>
+    <View className="flex-row items-center pt-2" style={{ gap: ACTION_GAP }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={copied ? t("chat.a11y.copied") : t("chat.a11y.copy")}
@@ -71,6 +76,15 @@ export function MessageActions({ text }: MessageActionsProps) {
         onPress={handleShare}
       >
         <Icon as={Share2} size={ICON_SIZE} color={tint} strokeWidth={1.8} />
+      </Pressable>
+
+      {/* Elipsis = «hay más», y por ahora NO abre nada: pedido explícito tuyo. Es la única excepción
+          a la regla de arriba («un botón que no hace nada es peor que no mostrarlo»), y se sostiene
+          porque una elipsis no PROMETE una acción concreta —como sí lo haría un pulgar o un play—,
+          sólo insinúa un menú. Cuando exista el menú, cuelga de acá sin mover el resto de la fila.
+          Sin `disabled`: apagarlo visualmente lo delataría como inerte. */}
+      <Pressable accessibilityRole="button" accessibilityLabel={t("chat.a11y.more")} hitSlop={8}>
+        <Icon as={Ellipsis} size={ICON_SIZE} color={tint} strokeWidth={1.8} />
       </Pressable>
     </View>
   );

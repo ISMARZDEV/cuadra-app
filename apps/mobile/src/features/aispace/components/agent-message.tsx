@@ -1,10 +1,18 @@
 import { Linking, Pressable, Text, View } from "react-native";
 import { type Href, useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
+import { EnrichedMarkdownText } from "react-native-enriched-markdown";
 
+import { chatMarkdownStyle, escapeMarkdownText } from "../chat-markdown";
 import { CHAT_BODY, CHAT_STRONG } from "../chat-typography";
 import { MessageActions } from "./message-actions";
 import { StreamingText } from "./streaming-text";
+
+// El menú nativo de selección trae "Copy as Markdown" de fábrica — tiene sentido en un editor de
+// markdown, no acá: este chat nunca le muestra al usuario la sintaxis cruda (es justo lo que
+// `hasRichMarkup`/`RichText` evitan), así que ofrecer "copiar como markdown" sería exponer un
+// concepto que el resto de la pantalla se esfuerza en ocultar.
+const SELECTION_MENU = { copyAsMarkdown: { enabled: false }, copyImageUrl: { enabled: false } };
 
 // Render **bold** spans inside a line.
 function inlineBold(line: string) {
@@ -68,7 +76,7 @@ function RichText({ text }: { text: string }) {
               key={i}
               selectable
               className="mb-0.5 mt-3 text-text"
-              style={[CHAT_STRONG, { fontSize: 17, lineHeight: 22 }]}
+              style={[CHAT_STRONG, { fontSize: 18, lineHeight: 24 }]}
             >
               {section[1]}
             </Text>
@@ -80,10 +88,10 @@ function RichText({ text }: { text: string }) {
           return (
             // Sangría colgante: la 2ª línea de una viñeta larga alinea con el texto, no con el punto.
             <View key={i} className="flex-row pr-2">
-              <Text className="text-lg leading-6 text-text" style={[CHAT_BODY, { width: 16 }]}>
+              <Text className="text-text" style={[CHAT_BODY, { width: 16 }]}>
                 {"•"}
               </Text>
-              <Text selectable className="flex-1 text-lg leading-6 text-text" style={CHAT_BODY}>
+              <Text selectable className="flex-1 text-text" style={CHAT_BODY}>
                 {inlineBold(bullet[1])}
               </Text>
             </View>
@@ -91,7 +99,7 @@ function RichText({ text }: { text: string }) {
         }
 
         return (
-          <Text key={i} selectable className="text-lg leading-6 text-text" style={CHAT_BODY}>
+          <Text key={i} selectable className="text-text" style={CHAT_BODY}>
             {inlineBold(line)}
           </Text>
         );
@@ -128,7 +136,7 @@ export function AgentMessage({
     return (
       <View className="w-full px-3 py-2">
         <Pressable accessibilityRole="link" onPress={open}>
-          <Text className="text-lg leading-6 underline" style={[CHAT_STRONG, { color: linkColor }]}>
+          <Text className="underline" style={[CHAT_STRONG, { color: linkColor }]}>
             {text}
           </Text>
         </Pressable>
@@ -140,8 +148,26 @@ export function AgentMessage({
     <View className="w-full px-3 py-2">
       {hasRichMarkup(text) ? (
         <RichText text={text} />
+      ) : showActions ? (
+        // Terminó el streaming (misma señal que destapa la fila de acciones): pasar de las
+        // palabras sueltas de StreamingText a `EnrichedMarkdownText`. Cada palabra en su propio
+        // <Text> es lo que hace posible el fade, pero el `<Text selectable>` de RN —con una
+        // palabra por nodo o con el párrafo entero en uno solo, da igual— vive sobre `UILabel`
+        // en iOS, que SÓLO sabe "seleccionar todo": no hay arrastre para armar una frase (RN
+        // #22458/#13938/#54686). `EnrichedMarkdownText` reemplaza ese motor por `UITextView`, que
+        // sí lo soporta — confirmado contra su fuente (`EnrichedMarkdownText.mm` conforma
+        // `UITextViewDelegate`) y contra el demo de referencia funcionando en el device.
+        // `escapeMarkdownText`: este texto YA se decidió plano (`hasRichMarkup` dio false), pero
+        // un parser de CommonMark de verdad no lo sabe — sin escapar, un "1. algo" se volvería
+        // lista numerada y un "$10_000" ganaría cursiva. Escapado, se ve IDÉNTICO a como se veía
+        // con el `<Text>` que reemplaza.
+        <EnrichedMarkdownText
+          markdown={escapeMarkdownText(text)}
+          markdownStyle={chatMarkdownStyle(colorScheme === "dark")}
+          selectionMenuConfig={SELECTION_MENU}
+        />
       ) : (
-        <StreamingText text={text} textClassName="text-lg leading-6 text-text" />
+        <StreamingText text={text} textClassName="text-text" />
       )}
       {/* Sólo cuando el turno TERMINÓ: una fila de acciones asomando mientras el texto todavía
           crece empujaría el layout en cada token, y además ofrecería copiar media respuesta. */}

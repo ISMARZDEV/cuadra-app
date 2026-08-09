@@ -22,6 +22,15 @@ describe("AgentMessage", () => {
     expect(screen.getByText("registrado")).toBeInTheDocument();
   });
 
+  test("once the reply is done (showActions), plain text is ONE selectable node, not per-word", () => {
+    // Live streaming needs the per-word split for the fade; a finished reply doesn't, and
+    // splitting there was the reason drag-to-select a phrase never worked — selection can't cross
+    // from one <Text> node into the next. If this still rendered per-word, the full sentence
+    // wouldn't exist as a single text match — only its individual words would.
+    render(<AgentMessage text="gasto registrado con éxito" showActions />);
+    expect(screen.getByText("gasto registrado con éxito")).toBeInTheDocument();
+  });
+
   test("a markdown reply renders the **opener** as a heading + normal coaching, no ** markers", () => {
     render(<AgentMessage text={"**Wow!!! 🫣**\nEso es mucho dinero Ismael"} />);
     expect(screen.getByText("Wow!!! 🫣")).toBeInTheDocument();

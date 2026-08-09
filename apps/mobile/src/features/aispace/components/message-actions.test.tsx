@@ -15,13 +15,15 @@ describe("MessageActions", () => {
     setString.mockReset();
   });
 
-  test("offers exactly the two actions that WORK today", () => {
+  test("offers the two actions that WORK, plus the ellipsis placeholder", () => {
     // Los pulgares y regenerar necesitan backend que no existe (§8 del plan), y leer en voz alta
-    // una decisión de producto. Un botón que no hace nada es peor que no mostrarlo.
+    // una decisión de producto: siguen FUERA porque prometerían una acción concreta que no hay.
+    // La elipsis es la excepción deliberada — insinúa «hay más», no promete nada en particular.
     render(<MessageActions text="El arroz está en Bravo." />);
 
     expect(screen.getByLabelText("Copiar respuesta")).toBeInTheDocument();
     expect(screen.getByLabelText("Compartir respuesta")).toBeInTheDocument();
+    expect(screen.getByLabelText("Más opciones")).toBeInTheDocument();
     expect(screen.queryByLabelText(/gusta/i)).toBeNull();
     expect(screen.queryByLabelText(/generar/i)).toBeNull();
   });

@@ -19,10 +19,31 @@ import type { TextStyle } from "react-native";
  * Alcance (el que fija el plan): burbuja del usuario, texto del agente, el campo del composer y la
  * línea de estado. NO los botones, la píldora, las tarjetas ni el resto de la UI.
  */
-export const CHAT_BODY: TextStyle = { fontWeight: "500" };
+/**
+ * Tamaño del cuerpo del chat. **Una sola fuente de verdad**: lo comparten las burbujas, el texto
+ * del agente, el campo del composer (y su placeholder) y la línea de estado. Antes cada superficie
+ * traía el suyo (18 por clase de Tailwind, 17 en el input) y "la tipografía del chat" no era UNA.
+ *
+ * 16/22 son los valores de la implementación de referencia (`markdownTokens` del demo).
+ *
+ * ⚠️ ALCANCE: sólo MENSAJES + COMPOSER. Las tarjetas (producto, canasta, quick-actions, dock,
+ * estado vacío) quedan FUERA por decisión explícita — tienen su propia escala y su Kantumruy.
+ */
+export const CHAT_FONT_SIZE = 16;
+export const CHAT_LINE_HEIGHT = 22;
 
-/** Énfasis dentro del chat: **negritas**, titulares y nombres de sección. */
-export const CHAT_STRONG: TextStyle = { fontWeight: "600" };
+export const CHAT_BODY: TextStyle = {
+  fontSize: CHAT_FONT_SIZE,
+  lineHeight: CHAT_LINE_HEIGHT,
+  fontWeight: "500",
+};
+
+/** Énfasis dentro del chat: **negritas** y nombres de sección. Mismo cuerpo, más peso. */
+export const CHAT_STRONG: TextStyle = {
+  fontSize: CHAT_FONT_SIZE,
+  lineHeight: CHAT_LINE_HEIGHT,
+  fontWeight: "600",
+};
 
 /** El mismo peso del cuerpo, para quien necesita el número suelto (Skia lo pide así). */
 export const CHAT_BODY_WEIGHT = "500" as const;

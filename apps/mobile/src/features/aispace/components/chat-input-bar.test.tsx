@@ -51,6 +51,23 @@ describe("ChatInputBar", () => {
     expect(screen.queryByLabelText("Enviar")).not.toBeInTheDocument();
   });
 
+  test("the echo is swallowed even when autocorrect added an ACCENT, not just a capital", () => {
+    // Caso real en device (2026-08-09): se envió "Super" y el campo quedó con "Súper". El guard
+    // original sólo normalizaba MAYÚSCULAS, así que "súper" ≠ "super" y el eco pasaba de largo.
+    // En español el autocorrector acentúa más seguido de lo que cambia mayúsculas.
+    const onSend = vi.fn();
+    render(<ChatInputBar onSend={onSend} />);
+    const input = screen.getByPlaceholderText(/.+/);
+
+    fireEvent.change(input, { target: { value: "Super" } });
+    fireEvent.click(screen.getByLabelText("Enviar"));
+    fireEvent.change(input, { target: { value: "Súper" } });
+
+    expect(onSend).toHaveBeenCalledWith("Super");
+    expect(input).toHaveValue("");
+    expect(screen.queryByLabelText("Enviar")).not.toBeInTheDocument();
+  });
+
   test("typing a genuinely new message right after Send is NOT swallowed", () => {
     const onSend = vi.fn();
     render(<ChatInputBar onSend={onSend} />);

@@ -10,9 +10,11 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-// El paquete no declara `main`: sólo expone subpaths. `react-native` es el build de RN (hay otros
-// para react-dom, reanimated y la variante consciente del teclado).
-import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
+// El paquete no declara `main`: sólo expone subpaths. `anchoredEndSpace` —el prop que produce el
+// anclaje— NO existe en el `LegendList` de `/react-native` (los tipos lo omiten): sólo lo acepta
+// `KeyboardAwareLegendList`, que vive en `/keyboard` y arrastra react-native-keyboard-controller.
+import type { LegendListRef } from "@legendapp/list/react-native";
+import { KeyboardAwareLegendList, useKeyboardScrollToEnd } from "@legendapp/list/keyboard";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -23,9 +25,11 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import MaskedView from "@react-native-masked-view/masked-view";
+import { BlurView } from "expo-blur";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useColorScheme } from "nativewind";
-import { type Href, useRouter } from "expo-router";
+import { type Href, useFocusEffect, useRouter } from "expo-router";
 
 import { GlassSurface } from "@/components/ui/glass-surface";
 import {
@@ -50,6 +54,7 @@ import { DockInteractionView } from "./components/dock-interaction-view";
 import { QuickActions } from "./components/quick-actions";
 import { TypingIndicator } from "./components/typing-indicator";
 import { UserBubble } from "./components/user-bubble";
+import { CHAT_LINE_HEIGHT } from "./chat-typography";
 import { ChatRole } from "./enums";
 import type { ChatMessage } from "./interfaces";
 import { useChat } from "./use-chat";
@@ -75,30 +80,66 @@ function CardGradient({ isDark }: { isDark: boolean }) {
   );
 }
 
-// Scroll fade mask — sits IN FRONT of the ScrollView (unlike CardGradient, which is a background
-// wash behind it), so text scrolling up under the header FADES OUT instead of hard-clipping the
-// instant it crosses the ScrollView's top edge. Opaque (matches the card bg) right at the header,
-// transparent by the bottom of the band. pointerEvents none — purely visual, never blocks touches.
-const TOP_SCROLL_FADE_HEIGHT = 4;
+// Banda superior del scroll — va DELANTE de la lista (a diferencia de CardGradient, que es un lavado
+// de fondo por detrás), así el texto que sube se DESVANECE en vez de cortarse a ras del borde.
+//
+// No es sólo un degradado: es un **desenfoque con degradado**. El texto que asciende se difumina y
+// se apaga, y eso es lo que produce la sensación de que ARRIBA HAY MÁS conversación — un corte
+// limpio comunica «acá se acaba», un difuminado comunica «esto sigue». Es lo que hace ChatGPT.
+//
+// Receta: `MaskedView` cuyo mask es un degradado vertical (opaco arriba → transparente abajo), y
+// dentro un `BlurView` más un lavado del color de la tarjeta. El mask hace que TANTO el desenfoque
+// COMO el lavado se desvanezcan juntos; si sólo se pusiera el blur, su borde inferior se vería como
+// una línea recta.
+//
+// El degradado del mask se dibuja con `react-native-svg`, NO con `expo-linear-gradient`: su vista
+// nativa no se enlaza de forma fiable en el dev build (mismo motivo documentado en glass-button).
+// `pointerEvents="none"`: es puramente visual, jamás bloquea toques.
+// Aire entre el borde inferior del header y el primer mensaje EN REPOSO.
+const TOP_CONTENT_GAP = 10;
 
-function TopScrollFade({ isDark, top }: { isDark: boolean; top: number }) {
+function TopScrollFade({ isDark, height }: { isDark: boolean; height: number }) {
   const color = isDark ? "#000000" : "#ffffff";
   return (
-    <Svg
-      style={{ position: "absolute", top, left: 0, right: 0, height: TOP_SCROLL_FADE_HEIGHT }}
-      preserveAspectRatio="none"
+    <MaskedView
+      style={{ position: "absolute", top: 0, left: 0, right: 0, height }}
       pointerEvents="none"
+      maskElement={
+        <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none">
+          <Defs>
+            <LinearGradient id="topScrollFade" x1="0" y1="0" x2="0" y2="1">
+              {/* Totalmente opaco en el borde superior y ya transparente al 70%: el último tramo
+                  se deja limpio para que el texto entre en foco ANTES de terminar la banda. */}
+              <Stop offset="0" stopColor="#000000" stopOpacity="1" />
+              <Stop offset="0.7" stopColor="#000000" stopOpacity="0.35" />
+              <Stop offset="1" stopColor="#000000" stopOpacity="0" />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#topScrollFade)" />
+        </Svg>
+      }
     >
-      <Defs>
-        <LinearGradient id="topScrollFade" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={color} stopOpacity="0.1" />
-          <Stop offset="1" stopColor={color} stopOpacity="0" />
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill="url(#topScrollFade)" />
-    </Svg>
+      <BlurView
+        intensity={26}
+        tint={isDark ? "dark" : "light"}
+        style={StyleSheet.absoluteFill}
+      />
+      {/* El lavado del color de la tarjeta: el blur solo difumina, no APAGA. Sin esto el texto se
+          vería borroso pero igual de brillante, y no leería como que se está yendo. */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: 0.65 }]} />
+    </MaskedView>
   );
 }
+
+// ── Geometría del anclaje ────────────────────────────────────────────────────
+// A cuánto del borde superior de la lista se apoya el mensaje recién enviado. Pegado al borde se
+// lee como si se estuviera escapando hacia arriba; con este respiro queda claramente A LA VISTA.
+const ANCHOR_TOP_GAP = 12;
+// Techo de la altura del mensaje ANCLADO que se posiciona en el offset: dos líneas más el aire de
+// la burbuja. Un mensaje más largo se recorta por arriba en vez de empujar todo hacia abajo — es
+// el criterio de la implementación de referencia. Se deriva del interlineado del chat para no
+// quedar desincronizado cuando cambie la tipografía (ya pasó al bajar de 24 a 22).
+const ANCHOR_MAX_SIZE = 2 * CHAT_LINE_HEIGHT + 32;
 
 // Keyboard events — WillShow/Hide on iOS for smooth sync, Did on Android.
 const KB_SHOW = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -255,8 +296,38 @@ export function ChatScreen() {
   // El seguimiento de CONTENIDO nuevo ya no se hace acá: lo hace `maintainScrollAtEnd` de
   // LegendList, que además respeta al usuario que subió a leer historial — que era exactamente lo
   // que hacía a mano el par `nearBottomRef` + `followIfAtBottom` que esto reemplazó.
+  // NO es `scrollToEnd()`, y la diferencia es el bug entero.
+  //
+  // `KeyboardAwareLegendList` SIEMPRE suma relleno de teclado al rango scrolleable — su doc dice
+  // que `keyboardLiftBehavior` sólo decide si el contenido SE LEVANTA, mientras que «the scrollable
+  // range is ALWAYS extended via contentInset». Ese relleno es `max(blankSpace, alturaTeclado)`, y
+  // `blankSpace` sale ÚNICAMENTE del `anchoredEndSpace` (keyboard.mjs:76-95): sin ancla viva vale 0
+  // y queda el teclado entero. Medido en device: el contenido saltó de 399.9 a 734.9 con un teclado
+  // de 335 — exactamente +335.
+  //
+  // Pero nuestra TARJETA ya sube sola con el teclado (el `marginBottom` animado, hecho a mano para
+  // que DESLICE en vez de aplastarse), así que ese relleno es el teclado contado DOS VECES.
+  // `scrollToEnd()` apuntaba al final del relleno: 291.9pt dentro de un vacío, llevándose la
+  // conversación por encima del borde superior. Sólo se notaba con conversaciones CORTAS, porque
+  // ahí el contenido real ni siquiera llena el viewport y se iba TODO.
+  //
+  // Descontar el fantasma da el final REAL. Si el contenido entra en el viewport el resultado es
+  // negativo y se corta en 0 — que es justo «no te muevas».
   const scrollToBottom = useCallback((animated = false) => {
-    void listRef.current?.scrollToEnd({ animated });
+    const s = listRef.current?.getState();
+    if (!s) return;
+    // Ya NO se descuenta el alto del teclado: con `kbFreeze` la librería no añade su relleno, así
+    // que `contentLength` es contenido de verdad. Restarlo ahora dejaría el scroll CORTO — los
+    // últimos mensajes tapados por el input. (Compensar el fantasma fue el arreglo anterior;
+    // eliminarlo es el bueno, porque un arrastre MANUAL no se puede compensar.)
+    const target = Math.max(0, s.contentLength - s.scrollLength);
+    if (__DEV__) {
+      console.log(
+        `[kb] scroll → target=${target.toFixed(1)} (content=${s.contentLength.toFixed(1)} ` +
+          `− viewport=${s.scrollLength.toFixed(1)})`,
+      );
+    }
+    void listRef.current?.scrollToOffset({ offset: target, animated });
   }, []);
 
   // Scroll viewport's own height (not content) — feeds ChatEmptyState's center→top dock entrance
@@ -266,18 +337,125 @@ export function ChatScreen() {
     setScrollViewportH(e.nativeEvent.layout.height);
   }, []);
 
-  // ── Anclaje tipo ChatGPT: PENDIENTE, y no por olvido ───────────────────────
-  // «El mensaje enviado sube al tope y la respuesta fluye debajo» lo produce el prop
+  // ── Anclaje tipo ChatGPT ───────────────────────────────────────────────────
+  // Al enviar, el mensaje propio SUBE AL TOPE y la respuesta fluye por debajo. Lo produce
   // `anchoredEndSpace`, que mete espacio en blanco bajo el mensaje anclado cuando el contenido no
-  // llena el viewport (sin ese espacio no hay a dónde scrollear para subirlo del todo).
+  // llena el viewport — sin ese espacio no hay a dónde scrollear para subirlo del todo. Cuando el
+  // espacio llega a cero (la respuesta ya desbordó), la lista vuelve sola a "sigue-el-final".
   //
-  // Ese prop NO existe en este `LegendList`: los tipos lo omiten explícitamente y sólo lo acepta
-  // `KeyboardAwareLegendList` (`@legendapp/list/keyboard`), que importa
-  // `react-native-keyboard-controller` — módulo NATIVO. O sea: llega con la Fase 3, no antes.
+  // El índice se fija ANTES de agregar: el mensaje que se va a crear ocupará `messages.length`.
+  const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
+  // Arranca en FALSE: mientras el ancla manda, seguir el final pelearía con ella y arrastraría el
+  // mensaje fuera de vista. Sólo se enciende cuando la respuesta ya desbordó (abajo).
+  const [following, setFollowing] = useState(false);
+  // Guard de UNA SOLA VEZ por turno. Sin él, `onSizeChanged` dispara con tamaño 0 apenas monta
+  // —antes de que haya layout— y enciende el seguimiento del final: la lista scrollea hasta
+  // después de todo el espacio de cola y el mensaje recién enviado queda ARRIBA del viewport.
+  // Ese fue exactamente el «sube demasiado» que se vio en el device.
+  const hasOverflowedRef = useRef(false);
+  // ¿La lista llegó a reportar un espacio de cola POSITIVO en este turno? Es la prueba de que ya
+  // midió de verdad; hasta entonces cualquier 0 es ruido de los primeros frames, no un desborde.
+  const sawAnchorSpaceRef = useRef(false);
+  // ¿El ancla está SOSTENIENDO ahora mismo un mensaje arriba? Sólo entre el envío y el momento en
+  // que la respuesta desborda. Fuera de esa ventana el chat es un chat normal: pegado abajo.
+  const anchorHolding = anchorIndex !== null && !following;
+  // Leído por el listener de teclado (más abajo) sin volver a suscribirlo en cada envío: si
+  // `anchorHolding` estuviera en el arreglo de dependencias del efecto, cada turno desuscribiría
+  // y resuscribiría el listener de `Keyboard` — y si un evento cae justo en esa ventana, se pierde.
+  const anchorHoldingRef = useRef(anchorHolding);
+  anchorHoldingRef.current = anchorHolding;
+
+  // SOLTAR EL ANCLA AL SALIR de la pantalla. Si queda puesta, al volver la lista re-mide el espacio
+  // de cola que reserva bajo el mensaje anclado y, con el seguimiento del final encendido, scrollea
+  // hasta el fondo de ESE espacio: la conversación entera se va hacia arriba y desaparece. Ese era
+  // el «al abrir el chat los mensajes suben».
   //
-  // Se decidió NO aproximarlo con `scrollToIndex`: sin el espacio de cola sólo funcionaría cuando
-  // ya hay contenido suficiente debajo, así que el mismo gesto se comportaría distinto según el
-  // largo de la conversación. Un anclaje inconsistente se siente peor que no tenerlo.
+  // Va en el CLEANUP del efecto de foco (al salir), no al entrar: al entrar ya no hay ancla, y
+  // limpiarla ahí no evitaría el salto de este mismo montaje.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setAnchorIndex(null);
+        setFollowing(false);
+        hasOverflowedRef.current = false;
+        sawAnchorSpaceRef.current = false;
+      };
+    }, []),
+  );
+
+  // EL ANCLA NO TIENE UN «SEGUNDO FINAL». Hubo aquí un efecto que la soltaba al terminar el turno
+  // y era un ERROR: cuando la respuesta es CORTA el espacio de cola nunca llega a cero, y ese
+  // espacio es exactamente lo que sostiene el mensaje enviado arriba. Soltarlo lo dejaba caer y
+  // se perdía el anclaje entero — el efecto que se quería.
+  //
+  // El espacio en blanco sobrante NO es basura pendiente de limpiar: es la mitad de la función.
+  // La implementación de referencia nunca borra `anchorIndex`; sólo enciende el seguimiento de la
+  // cola cuando el espacio llega a cero, y si nunca llega, el mensaje se queda arriba. Punto.
+  //
+  // (Se había añadido creyendo que causaba el «se va todo al abrir el teclado». No era eso: era el
+  // relleno fantasma del teclado, ver `scrollToBottom`. Un síntoma, dos arreglos — sobraba uno.)
+
+  // Un arrastre MANUAL pausa el seguimiento de la cola, para poder subir a leer mientras la
+  // respuesta sigue llegando sin que te devuelva de un tirón.
+  //
+  // Acá estaba `Keyboard.dismiss`, heredado del ScrollView, y causaba DOS síntomas con una sola
+  // causa: cerraba el teclado apenas tocabas para scrollear, y ese cambio de layout interrumpía
+  // el gesto a la mitad — se sentía como que el scroll estaba bloqueado. El teclado se sigue
+  // pudiendo cerrar arrastrando hacia abajo (`keyboardDismissMode="interactive"`, intacto).
+  const onScrollBeginDrag = useCallback(() => {
+    if (hasOverflowedRef.current) setFollowing(false);
+  }, []);
+  // `anchoredEndSpace` sólo RESERVA el espacio de cola: no mueve la lista. El scroll que sube el
+  // mensaje al tope es esta llamada. Sin ella el primer mensaje parecía funcionar —no había nada
+  // que scrollear— y del segundo en adelante el ancla quedaba puesta pero nadie la subía.
+  // CONGELADO SIEMPRE, y es la pieza que hace que el teclado no se cuente dos veces.
+  //
+  // `freeze` congela TODOS los cambios de layout que el teclado provoca en la lista: relleno,
+  // inset y posición. Es exactamente lo que corresponde acá, porque de la subida con el teclado se
+  // encarga NUESTRA tarjeta (el `marginBottom` animado). Sin congelar, la librería añade un
+  // contentInset del alto del teclado — 335pt medidos en device — y eso es lo que dejaba arrastrar
+  // el último mensaje hasta sacarlo de la pantalla: había 291.9pt de vacío que agarrar, aunque el
+  // contenido real (399.9) cabía entero en el viewport (443).
+  //
+  // `keyboardLiftBehavior="never"` NO alcanza: sólo apaga el auto-scroll, no el relleno (su doc:
+  // «the scrollable range is ALWAYS extended via contentInset»).
+  const kbFreeze = useSharedValue(true);
+  const { scrollMessageToEnd } = useKeyboardScrollToEnd({ listRef, freeze: kbFreeze });
+  const sendAndAnchor = useCallback(
+    (text: string) => {
+      hasOverflowedRef.current = false;
+      sawAnchorSpaceRef.current = false;
+      setFollowing(false);
+      const idx = chat.messages.length;
+      if (__DEV__) console.log(`[anchor] send → anchorIndex=${idx}`);
+      setAnchorIndex(idx);
+      chat.send(text);
+      // OJO: el scroll NO se dispara acá. Va en el efecto de abajo, atado a `anchorIndex`.
+    },
+    [chat],
+  );
+
+  // El scroll que sube el mensaje, DESPUÉS de que el ancla nueva ya está aplicada.
+  //
+  // Llamarlo dentro de `sendAndAnchor` —en la misma línea que `setAnchorIndex`— era el «rebote»:
+  // React todavía no había re-renderizado, así que la lista scrolleaba con la configuración de
+  // ancla ANTERIOR y el `anchorOffset` nuevo (el que reserva el alto del header) no existía aún.
+  // El mensaje aterrizaba pegado al header y sólo se acomodaba cuando llegaba la respuesta y la
+  // geometría se recalculaba. Atado al efecto, la lista ya conoce el ancla cuando scrollea.
+  //
+  // `closeKeyboard: true` es parte del anclaje, no cosmético: con el teclado abierto la tarjeta se
+  // encoge y el scroll aterriza fuera de la zona visible (el mensaje sólo aparecía AL CERRARLO).
+  // Sin animar el PRIMERO: no hay recorrido que mostrar y animar desde cero se ve como un tirón.
+  useEffect(() => {
+    if (anchorIndex === null) return;
+    // `scrollMessageToEnd` descongela al terminar (pone `freeze` en false), así que hay que volver
+    // a congelar: si no, a partir del primer envío la librería recupera su relleno de teclado y
+    // vuelve el vacío arrastrable. El scroll SÍ funciona congelado — el propio hook congela
+    // ANTES de scrollear, así está diseñado.
+    void scrollMessageToEnd({ animated: anchorIndex > 0, closeKeyboard: true }).then(() => {
+      kbFreeze.value = true;
+    });
+  }, [anchorIndex, scrollMessageToEnd, kbFreeze]);
 
   // Un turno = una fila. Cada rama es la MISMA que tenía el ScrollView; lo único que cambia es que
   // ahora la lista las pide de a una en vez de recibirlas todas montadas.
@@ -314,9 +492,27 @@ export function ChatScreen() {
         duration: dur,
         easing: EASE_OUT,
       });
+      // Sólo perseguir el fondo si YA estabas ahí (o el ancla lo sostiene arriba, que se resuelve
+      // solo). Sin este guard, tocar el input para escribir mientras leías historial arriba te
+      // arrastraba al final igual — perdías el lugar por el solo hecho de abrir el teclado.
+      // Se lee ANTES de que la animación arranque (evento `Will`), así que refleja dónde estabas
+      // parado justo antes de tocar el input, no después de que el viewport ya se encogió.
+      if (__DEV__) {
+        const s = listRef.current?.getState();
+        console.log(
+          `[kb] SHOW anchorHolding=${anchorHoldingRef.current} isNearEnd=${s?.isNearEnd} ` +
+            `scroll=${s?.scroll?.toFixed(1)} content=${s?.contentLength?.toFixed(1)} ` +
+            `viewport=${s?.scrollLength?.toFixed(1)} kbH=${e.endCoordinates.height}`,
+        );
+      }
+      if (anchorHoldingRef.current) return;
+      const wasNearEnd = listRef.current?.getState()?.isNearEnd ?? true;
+      if (!wasNearEnd) return;
       // Pin to the bottom RIGHT AFTER the viewport finishes shrinking (a single early scroll fires
       // before there's any scroll range and ends up a no-op, leaving recent messages hidden).
       // onLayout/onContentSizeChange handle the in-between frames; this settles the final position.
+      // `scrollToBottom` apunta al final REAL del contenido, descontando el relleno fantasma que la
+      // librería añade por el teclado — ver su definición, ahí está la medición y el porqué.
       setTimeout(() => scrollToBottom(true), dur + 20);
     });
     const onHide = Keyboard.addListener(KB_HIDE, (e) => {
@@ -418,21 +614,94 @@ export function ChatScreen() {
             {/* Gradient overlay — sits above blur, below content. */}
             <CardGradient isDark={isDark} />
 
-            <View onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
-              <ChatHeader />
-            </View>
-            <LegendList
+            {/* La lista va PRIMERA y ocupa la tarjeta entera: el header la SOBREVUELA (abajo), no le
+                quita alto. Esa es la diferencia estructural con ChatGPT que hacía que el texto se
+                cortara a ras en vez de pasar por detrás de los botones — ningún degradado podía
+                arreglarlo mientras el header fuera un hermano que ocupa espacio. */}
+            <KeyboardAwareLegendList
               ref={listRef}
               className="flex-1"
               data={chat.messages}
-              keyExtractor={(m) => m.id}
+              keyExtractor={(m: ChatMessage) => m.id}
               renderItem={renderMessage}
-              // Reemplaza el auto-follow manual: sigue el contenido nuevo SOLO si el usuario ya
-              // estaba abajo, así subir a leer historial no lo devuelve de un tirón.
-              maintainScrollAtEnd
+              // EL ANCLAJE. Sin ancla (primer render, conversación restaurada) la lista se comporta
+              // como siempre. `onSizeChanged` avisa cuando el espacio de cola se consumió: ahí la
+              // respuesta ya desbordó el viewport y toca volver a seguir el final.
+              anchoredEndSpace={
+                anchorIndex === null
+                  ? undefined
+                  : {
+                      anchorIndex,
+                      // Se mide desde el borde superior del VIEWPORT, y ahí ahora está el header
+                      // sobrevolando: sin sumarlo, el mensaje anclado quedaría detrás de los
+                      // botones. Es el mismo cálculo que hace la referencia (`insets.top + 56`).
+                      anchorOffset: headerH + ANCHOR_TOP_GAP,
+                      // Techo al espacio de cola. Sin él la lista reserva tanto blanco como haga
+                      // falta y el mensaje se despega demasiado del resto de la conversación.
+                      anchorMaxSize: ANCHOR_MAX_SIZE,
+                      onSizeChanged: (size: number) => {
+                        // El espacio de cola tuvo que ser POSITIVO al menos una vez antes de que un
+                        // 0 cuente como desbordado. Sin esta condición, un 0 transitorio de los
+                        // primeros frames —cuando todavía no hay layout— suelta el ancla al
+                        // instante: la lista se pega al final y, con una respuesta corta, el
+                        // mensaje enviado queda a media pantalla en vez de arriba. Es el mismo
+                        // 0-prematuro que ya nos había mordido; el guard de una-sola-vez impedía
+                        // que se repitiera, pero no que ocurriera DEMASIADO PRONTO.
+                        if (__DEV__) {
+                          console.log(
+                            `[anchor] onSizeChanged size=${size} sawSpace=${sawAnchorSpaceRef.current} overflowed=${hasOverflowedRef.current}`,
+                          );
+                        }
+                        if (size > 0) {
+                          sawAnchorSpaceRef.current = true;
+                          return;
+                        }
+                        if (!sawAnchorSpaceRef.current || hasOverflowedRef.current) return;
+                        hasOverflowedRef.current = true;
+                        if (__DEV__) console.log("[anchor] → desbordó: sigo la cola");
+                        // SÓLO se enciende el seguimiento. `anchorIndex` NO se limpia — igual que
+                        // la implementación de referencia, que nunca lo borra.
+                        //
+                        // Borrarlo fue un error propio: si la respuesta es CORTA y el espacio de
+                        // cola nunca llega a cero, ese espacio es justo lo que sostiene el mensaje
+                        // enviado arriba. Quitarlo lo dejaba caer. El espacio en blanco no es un
+                        // residuo a limpiar: ES la función.
+                        //
+                        // (Lo borré creyendo que causaba el «se va todo al abrir el teclado». No
+                        // era eso: era el relleno fantasma del teclado — ver `scrollToBottom`.)
+                        setFollowing(true);
+                      },
+                    }
+              }
+              // La tarjeta del chat YA sube sola con el teclado (el marginBottom animado de arriba,
+              // hecho a mano para que SLIDE en vez de aplastarse). Si además levantara la lista,
+              // el gesto se haría dos veces. Acá sólo se quiere el anclaje.
+              keyboardLiftBehavior="never"
+              // RN 0.81+ deja de acertar los toques sobre el área del contentInset / espacio de
+              // cola (facebook/react-native#54123); la librería trae la solución detrás de bandera.
+              applyWorkaroundForContentInsetHitTestBug
+              // Congela los reajustes por teclado mientras dura el scroll del anclaje, para que no
+              // compitan (viene del mismo hook que hace ese scroll).
+              freeze={kbFreeze}
+              // El seguimiento de la cola está ENCENDIDO por defecto —un chat vive pegado abajo— y
+              // sólo se SUSPENDE mientras el ancla sostiene un mensaje arriba.
+              //
+              // Atarlo a `following` a secas fue un error: al ABRIR el chat no hay ancla y
+              // `following` arranca en false, así que la lista se quedaba arriba del todo y la
+              // conversación parecía «irse para arriba» sola. Sólo debe subir cuando VOS enviás.
+              maintainScrollAtEnd={
+                anchorHolding ? undefined : { on: { dataChange: true, itemLayout: true } }
+              }
               // El umbral por defecto es demasiado estrecho para un stream rápido y corta el
               // seguimiento a la primera (lo documenta el propio demo de referencia).
               maintainScrollAtEndThreshold={1}
+              // `false` EXPLÍCITO, no por descuido (la librería avisa en runtime si no se declara).
+              // Reciclar filas mejora el rendimiento, pero acá ROMPERÍA las animaciones: la entrada
+              // de la burbuja del usuario, el fade por palabra de `streaming-text` y la del
+              // indicador se disparan TODAS en un `useEffect` de montaje. Una fila reciclada no se
+              // remonta —se reusa con props nuevas— así que un mensaje nuevo entraría sin animar.
+              // Si alguien intenta "optimizar" esto poniéndolo en true, se apagan las Fases 1 y 2.
+              recycleItems={false}
               // OBLIGATORIO, y lo destapó el test de la pantalla: una lista virtualizada MEMOIZA
               // sus filas, así que un cambio que sólo vive en el closure de `renderItem` —acá
               // `isStreaming`, que decide si la última respuesta muestra la fila de acciones— no
@@ -441,7 +710,7 @@ export function ChatScreen() {
               // todas las filas se remontaban en cada render.
               extraData={isStreaming}
               ListEmptyComponent={
-                <ChatEmptyState onSelect={chat.send} viewportHeight={scrollViewportH} />
+                <ChatEmptyState onSelect={sendAndAnchor} viewportHeight={scrollViewportH} />
               }
               ListFooterComponent={
                 /* Status line while a turn is in flight (no token/pending yet) — the label shimmers
@@ -453,16 +722,13 @@ export function ChatScreen() {
               // Side gutter for the whole conversation — THE single knob for how far the text sits
               // from the card edges (each row adds its own px-3 = 12px on top, so total ≈ 22px).
               // paddingBottom reserves the overlaid bottom zone so the last message clears the glass.
-              // paddingTop clears TopScrollFade's band (TOP_SCROLL_FADE_HEIGHT, above) with a small
-              // buffer on top: without it, the very FIRST message sits right under the header with
-              // barely any gap, so the fade — meant to mask text scrolling OUT of view — visibly
-              // darkens it too, even though nothing has scrolled yet. Kept close to the fade height
-              // (not much bigger) so the first message sits high, per feedback on the first version
-              // of this padding (used to be a much taller 40px gap). Top-aligned always (messages
-              // AND the empty state) — same as a normal chat, no centering. flexGrow keeps the
-              // container at least viewport-tall (a no-op once there's enough content to scroll).
+              // El header SOBREVUELA la lista, así que el contenido tiene que empezar por debajo de
+              // él: sin este padding el primer mensaje nacería tapado por los botones. Al scrollear,
+              // en cambio, el texto SÍ pasa por detrás — que es justo el efecto buscado.
+              // Top-aligned siempre (mensajes Y estado vacío); `flexGrow` mantiene el contenedor de
+              // al menos un viewport de alto (no hace nada cuando ya hay con qué scrollear).
               contentContainerStyle={{
-                paddingTop: TOP_SCROLL_FADE_HEIGHT,
+                paddingTop: headerH + TOP_CONTENT_GAP,
                 paddingBottom: 8 + bottomZoneH,
                 paddingHorizontal: 6,
                 flexGrow: 1,
@@ -474,7 +740,7 @@ export function ChatScreen() {
               // Pressable wrapper, removed there — not this prop.
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
-              onScrollBeginDrag={Keyboard.dismiss}
+              onScrollBeginDrag={onScrollBeginDrag}
               // Elastic rubber-band at top AND bottom even when the content fits (ChatGPT/iMessage).
               alwaysBounceVertical
               bounces
@@ -483,10 +749,19 @@ export function ChatScreen() {
               onLayout={onScrollViewLayout}
             />
 
-            {/* AFTER the ScrollView in render order → draws IN FRONT of it, so scrolled text fades
-                into this instead of hard-clipping the instant it crosses the scroll viewport's top
-                edge (which sits right where the header ends). */}
-            <TopScrollFade isDark={isDark} top={headerH} />
+            {/* DESPUÉS de la lista → se dibuja DELANTE de ella. Arranca en 0 (el borde de la
+                tarjeta), no bajo el header: la banda tiene que cubrir la franja por la que el texto
+                pasa DETRÁS de los botones. */}
+            <TopScrollFade isDark={isDark} height={headerH + TOP_CONTENT_GAP} />
+
+            {/* El header, AL FINAL y en absoluto: por encima de la lista y de la banda, así los
+                botones quedan nítidos mientras el texto se difumina detrás de ellos. */}
+            <View
+              style={{ position: "absolute", top: 0, left: 0, right: 0 }}
+              onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+            >
+              <ChatHeader />
+            </View>
 
             {/* Bottom zone — OVERLAYS the scroll (absolute, on top in z-order) so the chat shows
                 through its translucent glass (Figma bleed-through). Its measured height feeds the
@@ -560,14 +835,14 @@ export function ChatScreen() {
                 ) : manualOpen ? (
                   <QuickActions
                     onSelect={(prompt) => {
-                      chat.send(prompt);
+                      sendAndAnchor(prompt);
                       setManualOpen(false);
                     }}
                   />
                 ) : null}
               </ChatDock>
 
-              <ChatInputBar inputRef={chatInputRef} onSend={chat.send} />
+              <ChatInputBar inputRef={chatInputRef} onSend={sendAndAnchor} />
             </View>
 
             {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}
