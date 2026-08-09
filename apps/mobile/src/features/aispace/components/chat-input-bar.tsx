@@ -19,7 +19,7 @@ import { Icon } from "@/components/ui/icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { t, useLang } from "@/i18n";
 import { sounds } from "@/lib/sounds";
-import { KANTUMRUY_BOLD, KANTUMRUY_MEDIUM } from "@/theme/fonts";
+import { CHAT_BODY, CHAT_FONT_SIZE, CHAT_LINE_HEIGHT } from "../chat-typography";
 
 // Dos artes distintos, uno por tema: el icono trae sus colores DENTRO del SVG, así que no se
 // recolorea con una prop — se elige el archivo.
@@ -35,8 +35,10 @@ import type { ChatInputBarProps } from "../interfaces";
 const FIELD_RADIUS = 23;
 // Figma da 15.648 para el placeholder; se sube un punto a pedido explícito — se lee mejor en
 // pantalla real que en el lienzo. La línea acompaña para que el campo siga creciendo por múltiplos.
-const FONT_INPUT = 17;
-const LINE_H = 21;
+// Lo que se ESCRIBE tiene que medir igual que lo que se LEE: el composer toma el mismo cuerpo que
+// los mensajes (chat-typography) en vez de traer su propio 17/21. El placeholder hereda del campo.
+const FONT_INPUT = CHAT_FONT_SIZE;
+const LINE_H = CHAT_LINE_HEIGHT;
 const FIELD_PAD_X = 8.5; // padding de la fila de botones dentro del campo
 const TEXT_PAD_X = 12; // el texto va 3.5pt más adentro que la fila
 const TEXT_PAD_TOP = 16; // Figma da 10.88; se sube a pedido — el campo respira mejor en pantalla
@@ -148,6 +150,22 @@ function ProButton() {
   );
 }
 
+// Huella para reconocer el ECO del autocorrector (ver `handleChangeText`). Ignora EXACTAMENTE lo
+// que iOS puede cambiar al confirmar su candidato —mayúsculas y TILDES— y nada más:
+//   "amazon" → "Amazon"   (mayúscula)
+//   "Super"  → "Súper"    (tilde; caso real en device, 2026-08-09)
+// `NFD` separa cada letra de su tilde en dos code points, y el rango U+0300–U+036F (marcas
+// diacríticas combinantes) borra la segunda. Escrito con ESCAPES, no con los caracteres literales:
+// son glifos invisibles que cualquier formateador o copy-paste puede comerse en silencio. Y por
+// rango en vez de `\p{Diacritic}`: las property escapes de Unicode exigen soporte del motor, y
+// esto tiene que correr igual en Hermes.
+//
+// La comparación es CONSERVADORA a propósito: normalizar de más (quitar puntuación, espacios,
+// comparar por parecido) haría que un mensaje nuevo y parecido al anterior se coma solo. Perder
+// texto que el usuario SÍ escribió es peor que dejar un eco en el campo.
+const echoFingerprint = (s: string) =>
+  s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
 // `inputRef` is optional — the screen passes one in so it can dismiss/restore the keyboard around
 // the sessions drawer (hide on open, refocus on close). `onSend` receives the trimmed message when
 // the user taps send (the screen streams it to the chat); without it the bar just clears.
@@ -184,18 +202,19 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     sounds.send();
     onSend?.(trimmed);
-    lastSentRef.current = trimmed.toLowerCase();
+    lastSentRef.current = echoFingerprint(trimmed);
     setValue(""); // clear the field (and revert the button back to the orb)
     inputRef.current?.clear();
   };
 
   // iOS can commit a pending autocorrect/predictive-text candidate on a NATIVE event that fires
   // AFTER handleSend already ran — a plain setValue("")/.clear() in handleSend loses that race, so
-  // the corrected text (e.g. "amazon" → "Amazon") reappears in the field right after sending. If
-  // the incoming text is (case-insensitively) the message we JUST sent, it's that late echo, not
-  // new typing — swallow it. Any OTHER change clears the guard so real typing is never eaten.
+  // the corrected text (e.g. "amazon" → "Amazon", "Super" → "Súper") reappears in the field right
+  // after sending. If the incoming text has the same fingerprint as the message we JUST sent, it's
+  // that late echo, not new typing — swallow it. Any OTHER change clears the guard so real typing
+  // is never eaten.
   const handleChangeText = (text: string) => {
-    if (lastSentRef.current !== null && text.trim().toLowerCase() === lastSentRef.current) {
+    if (lastSentRef.current !== null && echoFingerprint(text) === lastSentRef.current) {
       lastSentRef.current = null;
       setValue("");
       inputRef.current?.clear();
@@ -284,7 +303,8 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
             paddingHorizontal: TEXT_PAD_X,
             paddingTop: 0,
             paddingBottom: 0,
-            fontFamily: KANTUMRUY_MEDIUM,
+            // Fuente del SISTEMA (ver chat-typography): se escribe en el mismo tipo en que se lee.
+            ...CHAT_BODY,
           }}
           placeholder={t("chat.inputPlaceholder")}
           placeholderTextColor={placeholderColor}

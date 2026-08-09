@@ -20,14 +20,14 @@
       ]
     },
     "plugins": [
+      "./plugins/with-free-signing",
       "expo-router",
       "expo-secure-store",
       "expo-audio",
       "expo-font",
       "expo-notifications",
       "@clerk/expo",
-      "expo-web-browser",
-      "./plugins/with-free-signing"
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

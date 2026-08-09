@@ -6,6 +6,7 @@ import type {
   ChatLinkEvent,
   ChatProductEvent,
   ChatProviderProductsEvent,
+  ChatStatusEvent,
   ChatTokenEvent,
 } from "./interfaces";
 
@@ -15,6 +16,7 @@ import type {
 // Discriminated union of the SSE frames (members are interfaces in ./interfaces).
 export type ChatStreamEvent =
   | ChatTokenEvent
+  | ChatStatusEvent
   | ChatInteractionEvent
   | ChatLinkEvent
   | ChatProductEvent

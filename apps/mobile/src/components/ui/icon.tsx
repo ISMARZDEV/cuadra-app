@@ -16,8 +16,12 @@ type IconProps = {
   fill?: string;
 };
 
-export function Icon({ as: LucideCmp, size = 24, color, strokeWidth = 2 }: IconProps) {
+export function Icon({ as: LucideCmp, size = 24, color, strokeWidth = 2, fill }: IconProps) {
   const { colorScheme } = useColorScheme();
   const fallback = theme[colorScheme === "dark" ? "dark" : "light"].text;
-  return <LucideCmp size={size} color={color ?? fallback} strokeWidth={strokeWidth} />;
+  // `fill` was declared in IconProps but never forwarded — passing it did nothing, silently. Lucide
+  // takes it as an SVG prop, so it has to reach the component to fill the glyph.
+  return (
+    <LucideCmp size={size} color={color ?? fallback} strokeWidth={strokeWidth} fill={fill ?? "none"} />
+  );
 }

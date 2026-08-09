@@ -38,6 +38,35 @@ export default defineConfig({
       // reanimated → stub: its source can't pass vitest's SSR transform and needs Metro-only
       // globals; the stub exposes Animated.* + inert hooks/helpers so components still render.
       { find: "react-native-reanimated", replacement: path.resolve(__dirname, "src/test/reanimated-stub.tsx") },
+      // @legendapp/list/keyboard → stub: su build importa react-native-keyboard-controller (nativo)
+      // y reanimated por rutas internas. El stub reexporta el LegendList normal, así la lista SIGUE
+      // renderizando filas. DEBE ir antes del alias de reanimated y ser más específico que
+      // "@legendapp/list" para que sólo capture este subpath.
+      {
+        find: "@legendapp/list/keyboard",
+        replacement: path.resolve(__dirname, "src/test/legend-list-keyboard-stub.tsx"),
+      },
+      {
+        find: "react-native-keyboard-controller",
+        replacement: path.resolve(__dirname, "src/test/keyboard-controller-stub.tsx"),
+      },
+      // react-native-enriched-markdown → stub: `main` re-exporta directo su componente Fabric
+      // nativo (código generado, no parseable acá). Ver el propio stub para el porqué del unescape.
+      {
+        find: "react-native-enriched-markdown",
+        replacement: path.resolve(__dirname, "src/test/enriched-markdown-stub.tsx"),
+      },
+      // skia → stub: the real entry loads a native module (WASM on web) that jsdom can't; the stub
+      // renders <Text> as a plain text node so the shimmering status label stays assertable.
+      {
+        find: "@shopify/react-native-skia",
+        replacement: path.resolve(__dirname, "src/test/skia-stub.tsx"),
+      },
+      // @expo-google-fonts/* → stub: the package `require()`s .ttf assets (Metro-only resolver).
+      {
+        find: /^@expo-google-fonts\/.*$/,
+        replacement: path.resolve(__dirname, "src/test/google-fonts-stub.ts"),
+      },
       // Static image `require("@/public/img/x.png")` — Metro's asset resolver (numeric asset ID
       // at build time) doesn't exist under Vite/esbuild here; stub any .png/.jpg/.jpeg import.
       { find: /\.(png|jpe?g)$/, replacement: path.resolve(__dirname, "src/test/image-stub.ts") },

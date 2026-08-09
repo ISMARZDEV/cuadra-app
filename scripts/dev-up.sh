@@ -116,7 +116,15 @@ for _ in $(seq 1 30); do
   echo -n "."; sleep 1
 done
 
-# ── 6. Metro apuntando a la IP de la Mac (EXPO_PUBLIC_* se inyecta en el bundle) ─
+# ── 6. ¿El binario del device tiene los módulos nativos que el JS va a pedir? ──
+# Metro sirve el JS al instante, pero un módulo NATIVO sólo existe si se compiló DENTRO de la app.
+# Si falta, el componente renderiza vacío: sin crash, sin error, sin pista. Avisar acá convierte
+# una sesión de depuración en una línea de consola. NO aborta — se puede estar trabajando sólo en
+# web o en el simulador, y Metro tiene que arrancar igual.
+"${ROOT}/scripts/check-native-build.sh" --quiet || true
+echo
+
+# ── 7. Metro apuntando a la IP de la Mac (EXPO_PUBLIC_* se inyecta en el bundle) ─
 echo "▶ Metro en :${METRO_PORT} → API http://${IP}:${API_PORT}"
 echo "  En el dev-client del device: conectá a  ${IP}:${METRO_PORT}  y logueá con cualquier email."
 echo
