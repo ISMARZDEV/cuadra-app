@@ -22,6 +22,32 @@ METRO_PORT=8087
 # acá para que el script sea idempotente sin importar el estado de la terminal.
 unset CORS_ORIGINS
 
+# ── 0. ¿Ya hay un entorno VIVO? ────────────────────────────────────────────────
+# Distinguir «puerto ocupado por un zombi» de «puerto ocupado por un entorno SANO» es la
+# diferencia entre auto-repararse y destrozarle el trabajo a otra instancia. Un puerto ocupado no
+# dice cuál de los dos es: hay que PREGUNTARLE al proceso si está sirviendo.
+#
+# Nace de un incidente real (2026-08-09): se lanzó un segundo dev-up con Metro ya ocupado; expo
+# pidió confirmación, en modo no interactivo abortó, y el `trap cleanup` —que mataba POR PUERTO—
+# se llevó puestos la API y el Web del PRIMER entorno, que estaban perfectamente sanos.
+alive() { # $1 = puerto · $2 = URL de sonda
+  lsof -nP -tiTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1 && curl -fsS -m 2 "$2" >/dev/null 2>&1
+}
+LIVE=()
+alive "${API_PORT}"   "http://localhost:${API_PORT}/v1/health" && LIVE+=("API :${API_PORT}")
+alive "${WEB_PORT}"   "http://localhost:${WEB_PORT}/"          && LIVE+=("Web :${WEB_PORT}")
+# Metro no tiene /health, pero sí el endpoint clásico del packager.
+alive "${METRO_PORT}" "http://localhost:${METRO_PORT}/status"  && LIVE+=("Metro :${METRO_PORT}")
+
+if (( ${#LIVE[@]} > 0 )); then
+  echo "▶ Ya hay un entorno de Cuadra CORRIENDO y respondiendo:"
+  for s in "${LIVE[@]}"; do echo "    · ${s}"; done
+  echo
+  echo "  No toco nada: matar esto arruinaría la sesión que ya está en marcha."
+  echo "  Si querés arrancar de cero:  ./scripts/dev-down.sh  y volvé a correr este script."
+  exit 0
+fi
+
 # ── 1. IP LAN de la Mac (el iPhone/iPad NO puede usar localhost) ───────────────
 # Usamos la interfaz de la RUTA POR DEFECTO (la misma que elige Metro) para que la URL de
 # la API coincida con la del dev server, aun si hay varias interfaces (en0/en9/VPN/etc.).
@@ -48,11 +74,11 @@ echo "▶ Migraciones (alembic upgrade head)…"
 make -C "${ROOT}" migrate >/dev/null
 
 # ── 4. API atada a 0.0.0.0 (alcanzable desde la LAN) ───────────────────────────
-# Libera el puerto PRIMERO: un API viejo zombi en :${API_PORT} haría fallar el bind del nuevo
-# ("address already in use") Y respondería el health de abajo, dejándonos servir desde el proceso
-# viejo sin enterarnos (p. ej. con observabilidad apagada).
+# Si llegamos acá, el paso 0 ya descartó que haya un entorno SANO: lo que ocupe este puerto es un
+# zombi (escucha pero no responde el health), y hay que sacarlo o el bind del nuevo falla con
+# "address already in use".
 if lsof -nP -tiTCP:"${API_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "▶ Liberando el puerto ${API_PORT} (había un proceso previo)…"
+  echo "▶ Liberando el puerto ${API_PORT} (proceso zombi: escuchaba pero no respondía)…"
   lsof -nP -tiTCP:"${API_PORT}" -sTCP:LISTEN | xargs kill 2>/dev/null || true
   sleep 1
 fi
@@ -65,17 +91,20 @@ echo "▶ API en http://${IP}:${API_PORT}  (logs: ${API_LOG})  [auto-reload en s
 # --reload-dir src: acota la vigilancia a src/ (evita .venv, __pycache__, seeds → recargas
 # innecesarias y arranque lento). El worker que spawnea el reloader es nieto del script, pero
 # el cleanup de abajo mata POR PUERTO, así que igual queda libre al salir.
+# `set -m` (job control) hace que cada trabajo en segundo plano nazca en su PROPIO grupo de
+# procesos, con PGID = PID del líder. Eso es lo que permite matar al árbol ENTERO —incluidos los
+# nietos que spawnean uv/uvicorn/vite y que sobreviven a un kill del PID directo— sin recurrir a
+# «matá lo que tenga el puerto», que es indiscriminado: no distingue TUS procesos de los de otra
+# instancia. Ver el incidente documentado en el paso 0.
+set -m
 ( cd "${ROOT}/apps/api" && uv run uvicorn src.main:app --host 0.0.0.0 --port "${API_PORT}" --reload --reload-dir src ) >"${API_LOG}" 2>&1 &
 API_PID=$!
-# Al salir, mata el árbol y libera el puerto (kill al PID del subshell NO basta: uv/uvicorn son
-# nietos y sobreviven → de ahí los zombis). Limpiar por puerto garantiza que quede libre.
+# Mata SÓLO lo que este script levantó: `kill -- -PGID` (el signo menos = grupo entero).
+# Nunca por puerto — ese fue exactamente el bug.
 cleanup() {
   echo; echo "▶ Cerrando API y Web…"
-  kill "${API_PID}" 2>/dev/null || true
-  kill "${WEB_PID:-}" 2>/dev/null || true
-  # Limpiar por puerto: uvicorn/vite spawnean nietos que sobreviven al kill del PID directo.
-  lsof -nP -tiTCP:"${API_PORT}" -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
-  lsof -nP -tiTCP:"${WEB_PORT}" -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
+  kill -- -"${API_PID}" 2>/dev/null || true
+  [[ -n "${WEB_PID:-}" ]] && kill -- -"${WEB_PID}" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -94,9 +123,9 @@ for _ in $(seq 1 30); do
 done
 
 # ── 5. Web (Vite/Vike) en :${WEB_PORT} — navegador de la Mac (localhost → API :${API_PORT}) ──
-# Libera el puerto primero (un vite viejo zombi haría fallar el bind del nuevo).
+# Igual que con la API: el paso 0 ya descartó un Web sano, así que esto es un vite zombi.
 if lsof -nP -tiTCP:"${WEB_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "▶ Liberando el puerto ${WEB_PORT} (había un proceso previo)…"
+  echo "▶ Liberando el puerto ${WEB_PORT} (proceso zombi: escuchaba pero no respondía)…"
   lsof -nP -tiTCP:"${WEB_PORT}" -sTCP:LISTEN | xargs kill 2>/dev/null || true
   sleep 1
 fi
