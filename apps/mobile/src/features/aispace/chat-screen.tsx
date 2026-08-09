@@ -321,12 +321,6 @@ export function ChatScreen() {
     // últimos mensajes tapados por el input. (Compensar el fantasma fue el arreglo anterior;
     // eliminarlo es el bueno, porque un arrastre MANUAL no se puede compensar.)
     const target = Math.max(0, s.contentLength - s.scrollLength);
-    if (__DEV__) {
-      console.log(
-        `[kb] scroll → target=${target.toFixed(1)} (content=${s.contentLength.toFixed(1)} ` +
-          `− viewport=${s.scrollLength.toFixed(1)})`,
-      );
-    }
     void listRef.current?.scrollToOffset({ offset: target, animated });
   }, []);
 
@@ -427,7 +421,6 @@ export function ChatScreen() {
       sawAnchorSpaceRef.current = false;
       setFollowing(false);
       const idx = chat.messages.length;
-      if (__DEV__) console.log(`[anchor] send → anchorIndex=${idx}`);
       setAnchorIndex(idx);
       chat.send(text);
       // OJO: el scroll NO se dispara acá. Va en el efecto de abajo, atado a `anchorIndex`.
@@ -497,14 +490,6 @@ export function ChatScreen() {
       // arrastraba al final igual — perdías el lugar por el solo hecho de abrir el teclado.
       // Se lee ANTES de que la animación arranque (evento `Will`), así que refleja dónde estabas
       // parado justo antes de tocar el input, no después de que el viewport ya se encogió.
-      if (__DEV__) {
-        const s = listRef.current?.getState();
-        console.log(
-          `[kb] SHOW anchorHolding=${anchorHoldingRef.current} isNearEnd=${s?.isNearEnd} ` +
-            `scroll=${s?.scroll?.toFixed(1)} content=${s?.contentLength?.toFixed(1)} ` +
-            `viewport=${s?.scrollLength?.toFixed(1)} kbH=${e.endCoordinates.height}`,
-        );
-      }
       if (anchorHoldingRef.current) return;
       const wasNearEnd = listRef.current?.getState()?.isNearEnd ?? true;
       if (!wasNearEnd) return;
@@ -647,18 +632,12 @@ export function ChatScreen() {
                         // mensaje enviado queda a media pantalla en vez de arriba. Es el mismo
                         // 0-prematuro que ya nos había mordido; el guard de una-sola-vez impedía
                         // que se repitiera, pero no que ocurriera DEMASIADO PRONTO.
-                        if (__DEV__) {
-                          console.log(
-                            `[anchor] onSizeChanged size=${size} sawSpace=${sawAnchorSpaceRef.current} overflowed=${hasOverflowedRef.current}`,
-                          );
-                        }
                         if (size > 0) {
                           sawAnchorSpaceRef.current = true;
                           return;
                         }
                         if (!sawAnchorSpaceRef.current || hasOverflowedRef.current) return;
                         hasOverflowedRef.current = true;
-                        if (__DEV__) console.log("[anchor] → desbordó: sigo la cola");
                         // SÓLO se enciende el seguimiento. `anchorIndex` NO se limpia — igual que
                         // la implementación de referencia, que nunca lo borra.
                         //
