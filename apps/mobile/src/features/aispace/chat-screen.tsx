@@ -141,6 +141,22 @@ const ANCHOR_TOP_GAP = 12;
 // quedar desincronizado cuando cambie la tipografía (ya pasó al bajar de 24 a 22).
 const ANCHOR_MAX_SIZE = 2 * CHAT_LINE_HEIGHT + 32;
 
+// Alto típico de una fila, MEDIDO en device (n=12, iPhone 12, 2026-08-09):
+//   min 58.9 · p25 60.0 · mediana 60.0 · media 70.5 · p75 81.0 · max 103.0
+//
+// El default de la librería es 100 — un 67% por encima de la mediana real. Con esa estimación
+// calcula que caben menos filas en pantalla, reserva un pool corto de contenedores y después
+// tiene que crear uno al vuelo: es el warning «No unused container available».
+//
+// Se elige la MEDIANA (que aquí coincide con el p25 y queda a 1.1pt del mínimo observado), no la
+// media: el reparto está sesgado por unas pocas respuestas largas, y para dimensionar el pool
+// manda la fila CORTA — la que hace que quepan muchas a la vez.
+//
+// Quedarse por debajo es el lado barato del error: sólo reserva algún contenedor de más.
+// Pasarse es lo que produce el warning. Las tarjetas (producto, canasta) son mucho más altas y no
+// preocupan: filas más altas significan que caben MENOS en pantalla, así que el pool sobra.
+const ESTIMATED_ITEM_SIZE = 60;
+
 // Keyboard events — WillShow/Hide on iOS for smooth sync, Did on Android.
 const KB_SHOW = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
 const KB_HIDE = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
@@ -680,6 +696,7 @@ export function ChatScreen() {
               // indicador se disparan TODAS en un `useEffect` de montaje. Una fila reciclada no se
               // remonta —se reusa con props nuevas— así que un mensaje nuevo entraría sin animar.
               // Si alguien intenta "optimizar" esto poniéndolo en true, se apagan las Fases 1 y 2.
+              estimatedItemSize={ESTIMATED_ITEM_SIZE}
               recycleItems={false}
               // OBLIGATORIO, y lo destapó el test de la pantalla: una lista virtualizada MEMOIZA
               // sus filas, así que un cambio que sólo vive en el closure de `renderItem` —acá
