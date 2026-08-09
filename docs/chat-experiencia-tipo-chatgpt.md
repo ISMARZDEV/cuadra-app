@@ -251,12 +251,23 @@ lo reenviaba** al icono de lucide — pasarlo no hacía nada, en silencio. Sin a
 sparkles relleno era imposible. Ningún call site lo pasaba hoy, así que el arreglo no cambia nada
 existente.
 
-### Fase 3 — Teclado con `react-native-keyboard-controller` (riesgo medio)
+### Fase 3 — Teclado con `react-native-keyboard-controller` (riesgo medio) — ✅ cerrada: instalada sólo para el anclaje, sistema manual se queda
 
-Primera dependencia nativa → `prebuild` + rebuild del dev-client.
+Primera dependencia nativa → `prebuild --clean` + rebuild del dev-client. **Hecho**: el paquete está
+instalado, `KeyboardProvider` monta en `app/_layout.tsx` (lo más arriba posible), y el
+`prebuild --clean` corrió con `pod install` limpio — el gotcha de Clerk no apareció, precisamente
+por usar `--clean`.
 
-`KeyboardStickyView` para el composer. **Ojo:** el input ya vive en una zona absoluta sobre el
-scroll, con el dock y el orbe; hay que comprobar que no se pelee con el anclaje actual.
+**Pero el manejo de teclado del chat sigue siendo el MANUAL**, y a propósito: hoy la dependencia
+entró para desbloquear el anclaje (`KeyboardAwareLegendList`), no para reemplazar el sistema que ya
+funciona. Sustituir el `marginBottom` animado por `KeyboardStickyView` es un cambio aparte, con su
+propio riesgo: el input vive en una zona absoluta junto al dock y el orbe, todo afinado a mano.
+
+**Decisión (2026-08-09): NO migrar.** El sistema manual ya funciona y está verificado en dispositivo
+físico — desliza en vez de aplastarse, y está entrelazado a mano con el dock y el orbe en una zona
+absoluta. `KeyboardStickyView` no resuelve ninguna brecha funcional; migrarlo sería tocar algo que
+funciona por un beneficio que no está identificado. La dependencia queda instalada exclusivamente
+para lo que la trajo: el anclaje vía `KeyboardAwareLegendList`.
 
 **Verificación:** abrir/cerrar teclado en dispositivo FÍSICO. El simulador miente con el teclado.
 
@@ -267,13 +278,20 @@ scroll, con el dock y el orbe; hay que comprobar que no se pelee con el anclaje 
 - ✅ **La lista está migrada** a `LegendList` y funciona **sin recompilar nada** (`@legendapp/list`
   es JS puro). Virtualiza, y `maintainScrollAtEnd` + `maintainScrollAtEndThreshold={1}` reemplazan
   el auto-follow manual (`nearBottomRef` + `followIfAtBottom`), que se borró.
-- ⏳ **El anclaje NO está**, y no por olvido. Lo produce el prop `anchoredEndSpace`, y los tipos lo
-  **omiten explícitamente** del `LegendList` normal: sólo lo acepta `KeyboardAwareLegendList`
-  (`@legendapp/list/keyboard`), que importa `react-native-keyboard-controller` — nativo. **Llega con
-  la Fase 3.** (Corrige una afirmación anterior de este documento: era cierto que el paquete es JS
-  puro, pero NO que el anclaje viniera gratis con él.)
-- Se decidió **no aproximarlo** con `scrollToIndex`: sin el espacio de cola sólo funcionaría cuando
-  ya hay contenido debajo, así que el mismo gesto se comportaría distinto según el largo de la
+- ✅ **El anclaje ENTRÓ** junto con la dependencia nativa. Lo produce el prop `anchoredEndSpace`, que
+  los tipos **omiten explícitamente** del `LegendList` normal: sólo lo acepta
+  `KeyboardAwareLegendList` (`@legendapp/list/keyboard`), que importa
+  `react-native-keyboard-controller`. (Corrige una afirmación anterior de este documento: era cierto
+  que el paquete es JS puro, pero NO que el anclaje viniera gratis con él.)
+- **`keyboardLiftBehavior="never"`, y es la decisión importante de esta fase.** La tarjeta del chat
+  YA sube sola con el teclado — el `marginBottom` animado a mano que existe justamente para que
+  DESLICE en vez de aplastarse. Si además la librería levantara la lista, el gesto se haría dos
+  veces. De `KeyboardAwareLegendList` acá se quiere **sólo** el anclaje.
+- `onSizeChanged` del ancla devuelve el seguimiento del final cuando el espacio de cola se consume
+  (la respuesta ya desbordó el viewport): mientras el ancla manda, `maintainScrollAtEnd` pelearía
+  con ella.
+- Se descartó **aproximarlo** con `scrollToIndex`: sin el espacio de cola sólo funcionaría cuando ya
+  hay contenido debajo, así que el mismo gesto se comportaría distinto según el largo de la
   conversación. Un anclaje inconsistente se siente peor que no tenerlo.
 
 **Lo que la migración destapó — dos cosas que ningún typecheck iba a decir:**
@@ -324,8 +342,17 @@ contrato de qué estados se muestran y cómo se etiquetan».
 **Ese contrato se cerró en la Fase 2** (frame `status` + `orchestration/status.py`): la fila con
 icono + etiqueta existe, se enciende sola cuando el agente llama una tool, y dice cuál de las tres
 cosas está haciendo. Lo que queda de esta fase es **solo la versión expandible** (el bottom-sheet),
-que sigue siendo opcional y depende de §2.3 — y §2.3 hoy **no tiene de dónde sacar los datos**, ver
-§8.
+que sigue siendo opcional y depende de §2.3.
+
+**Decisión (2026-08-09): §2.3 se DIFIERE.** Verificado que el "rastro de tools" (nombre + argumentos
++ resultado) SÍ es barato de datos — 10 tools, todas devuelven strings cortos ya legibles — pero hoy
+no viaja a ningún lado: hace falta un frame SSE nuevo de punta a punta (backend: acumular
+`tool_call_chunks`, capturar el `ToolMessage`; móvil: parsear + guardar por turno) más, si se hace
+con hoja modal, la **4ª dependencia nativa** (`@lodev09/react-native-true-sheet`), la de peor encaje
+de compatibilidad de las cuatro (arrastra `@react-navigation/core >=7` y dos paquetes de Radix que
+hoy no están). Nadie pidió esto todavía — es la pieza más cara del backlog para un problema que no
+está confirmado. Si en el futuro hace falta, la vía es una sección plegable EN LÍNEA bajo la
+respuesta (sin hoja, sin dependencia nueva), no la hoja modal.
 
 ### Fase 6 — Markdown nativo (opcional, ver §2.1)
 
@@ -378,10 +405,17 @@ Dos cosas que el plan no anticipaba:
 > grep, las cuatro superficies de texto ya llevaban `selectable` — `user-bubble`, los cuatro nodos
 > de `agent-message` y cada palabra de `streaming-text`.
 
-Queda **una** limitación real, documentada en el propio `streaming-text.tsx`: como cada palabra es
-su propio `<Text>` (lo exige el fade por palabra), la selección nativa se limita a UNA palabra por
-gesto — no se puede arrastrar para seleccionar un párrafo. Eso sí sigue abierto, y no se arregla
-sin renunciar al fade o sin el markdown nativo de la Fase 6.
+**Cerrada del todo (2026-08-09).** Quedaba una limitación real, documentada en el propio
+`streaming-text.tsx`: como cada palabra es su propio `<Text>` (lo exige el fade por palabra), la
+selección nativa se limitaba a UNA palabra por gesto — arrastrar para armar una frase no extendía
+la selección de un nodo al siguiente.
+
+Arreglada **sin la Fase 6** (que quedó descartada) y **sin renunciar al fade**: `agent-message.tsx`
+ahora elige el renderer según la MISMA señal que ya destapaba la fila de acciones (`showActions`,
+"el streaming de este mensaje terminó"). Mientras el mensaje está llegando, sigue el fade por
+palabra de `StreamingText`. En cuanto termina, cambia a un solo nodo `<Text selectable>` con el
+párrafo completo — ahí sí se puede arrastrar y copiar una frase, no sólo una palabra. Nadie necesita
+el fade en un mensaje que ya dejó de escribirse, así que no se pierde nada.
 
 ⚠️ **Comprobar la interacción con el scroll y con los gestos del dock**: un texto seleccionable
 captura el long-press, y este chat ya tiene gestos encima (el swipe del orbe, el dock). Es
