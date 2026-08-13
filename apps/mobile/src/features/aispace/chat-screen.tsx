@@ -197,6 +197,10 @@ export function ChatScreen() {
   // flow transition — between steps the interaction is swapped, never nulled, so it stays open.
   const [manualOpen, setManualOpen] = useState(false);
   const dockOpen = !!chat.interaction || manualOpen;
+  // Lo que el usuario está escribiendo, publicado por el input. Vive acá y no dentro de
+  // `ChatInputBar` porque su consumidor es el DOCK, que es hermano del input, no su hijo: las
+  // sugerencias del carrusel se derivan de este texto (`use-live-suggestions`).
+  const [draft, setDraft] = useState("");
   useEffect(() => {
     if (chat.interaction) setManualOpen(false); // a flow took over the dock → drop the manual menu
   }, [chat.interaction]);
@@ -501,6 +505,11 @@ export function ChatScreen() {
         duration: dur,
         easing: EASE_OUT,
       });
+      // El teclado NO cierra el dock, a propósito: las sugerencias acompañan al usuario mientras
+      // escribe (son una superficie viva, no un menú). Hubo una versión que los excluía
+      // mutuamente para arreglar el anclaje — ver el comentario de `sendAndAnchor`: la geometría
+      // que sobraba era el COLAPSO DEL DOCK, no el teclado.
+      //
       // Sólo perseguir el fondo si YA estabas ahí (o el ancla lo sostiene arriba, que se resuelve
       // solo). Sin este guard, tocar el input para escribir mientras leías historial arriba te
       // arrastraba al final igual — perdías el lugar por el solo hecho de abrir el teclado.
@@ -812,7 +821,9 @@ export function ChatScreen() {
               <ChatDock
                 open={dockOpen}
                 onToggle={() => {
-                  if (!chat.interaction) setManualOpen((o) => !o); // chevron toggles the manual menu
+                  // El handle es el ÚNICO que abre y cierra el dock manual. Ni el teclado ni un
+                  // envío lo tocan; sólo un flujo HITL se lo apropia (efecto de arriba).
+                  if (!chat.interaction) setManualOpen((o) => !o);
                 }}
               >
                 {chat.interaction ? (
@@ -829,16 +840,29 @@ export function ChatScreen() {
                     }}
                   />
                 ) : manualOpen ? (
-                  <QuickActions
-                    onSelect={(prompt) => {
-                      sendAndAnchor(prompt);
-                      setManualOpen(false);
-                    }}
-                  />
+                  // EL DOCK NO SE CIERRA AL ENVIAR, y ES EL ARREGLO DE UN BUG — no una preferencia.
+                  //
+                  // `scrollMessageToEnd` no scrollea al mensaje: hace `scrollToEnd` y confía en que
+                  // `anchoredEndSpace` haya reservado el blanco justo para que el final del
+                  // contenido deje el mensaje anclado a `anchorOffset` del tope. Esa reserva se
+                  // calcula contra el alto del viewport Y el `paddingBottom` (8 + bottomZoneH).
+                  //
+                  // Cerrando el dock acá, TRES geometrías se movían durante el mismo scroll: el
+                  // teclado cerrándose (la tarjeta crece ~235pt), el dock colapsando (`bottomZoneH`
+                  // cae ~60pt DE GOLPE — ChatDock anima opacity/transform, no height, así que el
+                  // alto sólo baja cuando el cuerpo se desmonta al asentar el resorte) y el scroll
+                  // en sí. El mensaje aterrizaba muy por encima de `anchorOffset`, detrás del
+                  // header. Enviando desde el input, esa segunda geometría no existe — y por eso
+                  // el input siempre funcionó.
+                  //
+                  // Dejando el dock abierto, enviar desde una sugerencia tiene el MISMO perfil
+                  // geométrico que enviar desde el input. Además es lo que la feature quiere: las
+                  // sugerencias se recalculan y siguen ahí.
+                  <QuickActions draft={draft} onSelect={sendAndAnchor} />
                 ) : null}
               </ChatDock>
 
-              <ChatInputBar inputRef={chatInputRef} onSend={sendAndAnchor} />
+              <ChatInputBar inputRef={chatInputRef} onSend={sendAndAnchor} onChangeText={setDraft} />
             </View>
 
             {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}

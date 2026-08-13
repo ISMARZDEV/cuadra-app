@@ -80,4 +80,44 @@ describe("ChatInputBar", () => {
     expect(input).toHaveValue("otro mensaje");
     expect(screen.getByLabelText("Enviar")).toBeInTheDocument();
   });
+
+  // El borrador se publica hacia arriba para alimentar las sugerencias en vivo. Lo que importa es
+  // DÓNDE se engancha: después del guard de eco, no en el evento crudo del TextInput.
+  describe("draft reporting (live suggestions)", () => {
+    test("reports the text as it is typed", () => {
+      const onChangeText = vi.fn();
+      render(<ChatInputBar onChangeText={onChangeText} />);
+
+      fireEvent.change(screen.getByPlaceholderText(/.+/), { target: { value: "guan" } });
+
+      expect(onChangeText).toHaveBeenLastCalledWith("guan");
+    });
+
+    test("reports the field emptying on Send, so the suggestions reset with it", () => {
+      const onChangeText = vi.fn();
+      render(<ChatInputBar onSend={vi.fn()} onChangeText={onChangeText} />);
+      const input = screen.getByPlaceholderText(/.+/);
+
+      fireEvent.change(input, { target: { value: "guandules" } });
+      fireEvent.click(screen.getByLabelText("Enviar"));
+
+      expect(onChangeText).toHaveBeenLastCalledWith("");
+    });
+
+    // EL CASO QUE JUSTIFICA EL ENGANCHE: iOS commitea una autocorrección DESPUÉS del envío. El
+    // guard de eco se la traga, pero un observador colgado del evento crudo del TextInput vería
+    // ese fantasma y buscaría sugerencias para un texto que el usuario ya mandó.
+    test("never leaks the late autocorrect echo upward", () => {
+      const onChangeText = vi.fn();
+      render(<ChatInputBar onSend={vi.fn()} onChangeText={onChangeText} />);
+      const input = screen.getByPlaceholderText(/.+/);
+
+      fireEvent.change(input, { target: { value: "Super" } });
+      fireEvent.click(screen.getByLabelText("Enviar"));
+      fireEvent.change(input, { target: { value: "Súper" } }); // el eco
+
+      expect(onChangeText).not.toHaveBeenCalledWith("Súper");
+      expect(onChangeText).toHaveBeenLastCalledWith("");
+    });
+  });
 });

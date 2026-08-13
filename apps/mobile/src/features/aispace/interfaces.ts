@@ -168,6 +168,10 @@ export interface StreamChatArgs {
 export interface ChatInputBarProps {
   inputRef?: RefObject<TextInput | null>;
   onSend?: (text: string) => void;
+  /** El borrador, publicado hacia arriba para alimentar las sugerencias en vivo. Se emite DESPUÉS
+   *  del guard de eco de autocorrección, nunca desde el evento crudo del TextInput — ver
+   *  `commitValue` en chat-input-bar.tsx. También se emite `""` al enviar. */
+  onChangeText?: (text: string) => void;
 }
 
 // ── Glass dock (collapsible panel above the input) ──────────────────────────
@@ -197,6 +201,9 @@ export interface DockInteraction {
 export interface QuickActionsProps {
   // Tapping a suggestion chip sends that prompt to the chat.
   onSelect: (prompt: string) => void;
+  /** Lo que el usuario está escribiendo AHORA. Alimenta el typeahead: si el catálogo reconoce la
+   *  palabra, las píldoras pasan a hablar de ese producto. Vacío ⇒ catálogo estático. */
+  draft?: string;
 }
 
 export interface ChatEmptyStateProps {
@@ -232,6 +239,10 @@ export interface MessageActionsProps {
 export interface ShimmerTextProps {
   text: string;
   fontSize?: number;
+  /** Peso de la fuente del sistema. Default: el del cuerpo del chat, que es lo que quiere la línea
+   *  de estado. Se abre porque un ENCABEZADO (el producto reconocido sobre el carrusel de
+   *  sugerencias) necesita más peso que un renglón de estado para leerse como título. */
+  fontWeight?: "400" | "500" | "600" | "700";
   /** Dim colour of the resting glyphs. */
   baseColor: string;
   /** Bright colour carried by the moving highlight band. */
