@@ -23,7 +23,10 @@ export const KeyboardAwareLegendList = ({
 
 export const useKeyboardScrollToEnd = () => ({
   freeze: { value: false },
-  scrollMessageToEnd: () => {},
+  // DEVUELVE UNA PROMESA, como la real (`keyboard.js:67` es un `async` que espera al scroll y al
+  // dismiss del teclado). El call site encadena un `.then()` para volver a congelar, así que un
+  // stub que devolviera `undefined` reventaba en cuanto un test llegaba a enviar un mensaje.
+  scrollMessageToEnd: async () => {},
 });
 
 export const useKeyboardChatComposerInset = () => ({ contentInsetEndAdjustment: { value: 0 } });

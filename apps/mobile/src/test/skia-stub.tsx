@@ -32,6 +32,10 @@ const nullComponent = () => null;
 export const LinearGradient = nullComponent;
 export const RadialGradient = nullComponent;
 export const Rect = nullComponent;
+// Las píldoras fantasma del carrusel de sugerencias (suggestion-skeleton.tsx). Devuelve `null`
+// como el resto de las formas: lo que se testea es que el esqueleto SUSTITUYA a las píldoras
+// reales, no cómo se dibuja — el barrido es un visual, se verifica en device.
+export const RoundedRect = nullComponent;
 export const Path = nullComponent;
 export const Fill = nullComponent;
 export const Blur = nullComponent;
