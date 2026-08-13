@@ -116,6 +116,15 @@ less than a solid button.
 - **The edge is a gradient**, so it cannot be a `borderColor` (RN only takes one flat colour) — it
   is drawn with `react-native-svg`, never `expo-linear-gradient` (its native view is not reliably
   linked into the dev build; same reason as `glass-button.tsx`).
+- **The press feedback lives INSIDE the component** (spring + haptic), gated on `onPress` existing —
+  a decorative pill (the free-messages counter has no action) must not sink or vibrate. Wrapping it
+  in your own `Pressable` does NOT work: this one renders its own, and it captures the touch first.
+
+> ⚠️ **This section covers the pill's FORM only.** Everything the suggestions carousel added —
+> the `brand`/`surface` **variants**, `fillOpacity`, `maxWidth`/`maxLines` truncation, and the
+> `onHoldReveal`/`onHoldRelease` callbacks — belongs to **`cuadra-chat-suggestions`**, which owns
+> the geometry rules that go with them (the height is DERIVED from the allowed line count; the
+> width cap goes on the container, not the text). Read that skill before touching those props.
 
 ## Measurements — the trap
 

@@ -25,6 +25,7 @@ import { queryClient } from "@/lib/api/query-client";
 import { startLocalAlertNotifications } from "@/lib/notifications/local-alerts";
 import { sounds } from "@/lib/sounds";
 import { ThemeProvider } from "@/lib/theme/theme-provider";
+import { useSuggestionUsageStore } from "@/store/suggestion-usage-store";
 import { DrawerProvider } from "@/store/drawer-store";
 import { palette } from "@/theme";
 import UiPreview from "./ui-preview";
@@ -54,6 +55,7 @@ function AppGate() {
   const restore = useAuthStore((s) => s.restore);
   const restoreLanguage = useLanguageStore((s) => s.restore);
   const languageRestored = useLanguageStore((s) => s.restored);
+  const restoreSuggestionUsage = useSuggestionUsageStore((s) => s.restore);
   // Kantumruy Pro — the entire app's typeface (chat, money figures, headers, body text).
   const [fontsLoaded] = useFonts({
     KantumruyPro_400Regular,
@@ -66,7 +68,12 @@ function AppGate() {
     // dev-login: restore the persisted JWT. In Clerk mode, Clerk restores its own session (tokenCache).
     if (!CLERK_ENABLED) restore();
     restoreLanguage(); // apply the persisted language choice (or follow the device when auto)
-  }, [restore, restoreLanguage]);
+    // Historial de sugerencias del chat. A diferencia del idioma, esto NO bloquea el `ready` de
+    // abajo: sin historial el carrusel sale en orden aleatorio y se reordena solo cuando el
+    // contador llega. Hacer esperar el arranque de la app por un dato cosmético sería un mal
+    // negocio.
+    void restoreSuggestionUsage();
+  }, [restore, restoreLanguage, restoreSuggestionUsage]);
 
   useEffect(() => {
     sounds.startup(); // app-launch sound (once per app open)

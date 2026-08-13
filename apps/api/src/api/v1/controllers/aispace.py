@@ -26,6 +26,7 @@ from src.contexts.aispace.preferences.currency_options import (
 )
 from src.contexts.aispace.preferences.enums import Personality
 from src.contexts.aispace.preferences.ports import PreferenceRepository
+from src.contexts.aispace.suggestions import suggest_prompts
 from src.contexts.identity.domain.ports import UserRepository
 from src.shared.ids import new_id
 from src.shared.lang import client_language, resolve_language
@@ -44,6 +45,15 @@ class ResumeRequest(BaseModel):
     thread_id: str
     value: str | None = None    # opción elegida en un paso HITL ("confirm"/"yes"/"music"/"none"…)
     approved: bool | None = None  # DEPRECATED — legacy sí/no (mapea a value para back-compat)
+
+
+class SuggestRequest(BaseModel):
+    draft: str = Field(max_length=200)  # lo que el usuario lleva escrito; un tope acota el prompt
+    locale: str | None = None           # locale del cliente — NUNCA se detecta sobre el borrador
+
+
+class SuggestResponse(BaseModel):
+    suggestions: list[str]  # hasta 3; vacío es una respuesta válida, no un error
 
 
 class PersonalityResponse(BaseModel):
@@ -181,6 +191,31 @@ def resume(
     resume_value = body.value if body.value is not None else ("sí" if body.approved else "no")
     graph.invoke(Command(resume=resume_value), cfg)
     return _respond(body.thread_id, graph, cfg)
+
+
+@router.post(
+    "/suggest",
+    response_model=SuggestResponse,
+    summary="Completar lo que el usuario está escribiendo (T2 del carrusel de sugerencias)",
+    responses={401: {"model": ProblemDetailDto, "description": "Token ausente o inválido"}},
+)
+def post_suggest(
+    body: SuggestRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> SuggestResponse:
+    """Último nivel de la cascada del carrusel: sólo lo que el catálogo de Save no puede resolver.
+
+    AUTENTICADO a propósito, aunque no lea nada del usuario: cada llamada gasta tokens, y un
+    endpoint de LLM abierto es una canilla de dinero para cualquiera que lo encuentre.
+
+    El idioma sale del LOCALE QUE ELIGIÓ el usuario, no de detectarlo sobre el borrador — un
+    fragmento a medio escribir es pésima evidencia para un detector, y estas píldoras se leen junto
+    al chrome ya localizado (mismo criterio que `ui_language` en el chat).
+
+    Sin caché de servidor: el cliente ya cachea por prefijo (TanStack) y sólo pregunta tras una
+    pausa de escritura, así que un segundo caché sería complejidad sin llamadas que ahorrar.
+    """
+    return SuggestResponse(suggestions=suggest_prompts(body.draft, client_language(body.locale)))
 
 
 @router.get(

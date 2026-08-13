@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { Keyboard } from "react-native";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { setLanguage } from "@/i18n";
 import { DrawerProvider } from "@/store/drawer-store";
+import { QueryWrapper } from "@/test/query-wrapper";
 
 import { ChatRole } from "./enums";
 import type { ChatMessage } from "./interfaces";
@@ -38,6 +40,14 @@ const chatState = {
 };
 vi.mock("./use-chat", () => ({ useChat: () => chatState }));
 
+// El typeahead del carrusel pega contra el catálogo de Save. Acá se falsea para poder ejercitar el
+// cable completo (input → pantalla → dock) sin red.
+const { useProductTypeahead, useDraftCompletions } = vi.hoisted(() => ({
+  useProductTypeahead: vi.fn(),
+  useDraftCompletions: vi.fn(() => ({ data: [], isFetching: false })),
+}));
+vi.mock("./api", () => ({ useProductTypeahead, useDraftCompletions }));
+
 import { ChatScreen } from "./chat-screen";
 
 const agent = (id: string, text: string): ChatMessage => ({ id, role: ChatRole.Agent, text });
@@ -46,9 +56,11 @@ const user = (id: string, text: string): ChatMessage => ({ id, role: ChatRole.Us
 // El drawer vive en un contexto, no en un módulo: se monta de verdad en vez de mockearse, así el
 // test ejercita el store real (que es parte de lo que la Fase 4 puede desestabilizar).
 const screenTree = () => (
-  <DrawerProvider>
-    <ChatScreen />
-  </DrawerProvider>
+  <QueryWrapper>
+    <DrawerProvider>
+      <ChatScreen />
+    </DrawerProvider>
+  </QueryWrapper>
 );
 
 /**
@@ -65,7 +77,12 @@ describe("ChatScreen", () => {
     chatState.messages = [];
     chatState.isStreaming = false;
     chatState.isThinking = false;
+    // `chatState.send` es un `vi.fn()` de módulo: sin esto acumularía llamadas entre tests.
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    useProductTypeahead.mockReturnValue({ data: [], isFetching: false });
   });
+  afterEach(() => vi.useRealTimers());
 
   test("shows the empty state when there is no conversation yet", () => {
     render(screenTree());
@@ -120,5 +137,48 @@ describe("ChatScreen", () => {
     render(screenTree());
 
     expect(screen.queryByLabelText("Cargando respuesta…")).toBeNull();
+  });
+
+  // El dock de sugerencias es una superficie VIVA: acompaña al usuario mientras escribe. Ni el
+  // teclado ni un envío lo cierran — sólo el handle.
+  //
+  // Que no se cierre al enviar es además el ARREGLO de un bug de anclaje: su colapso hacía caer
+  // `bottomZoneH` ~60pt de golpe en mitad del `scrollToEnd`, y el mensaje aterrizaba detrás del
+  // header. Ver el comentario largo en chat-screen.tsx, sobre <QuickActions>.
+  test("the suggestions dock survives sending one of them", () => {
+    const dismiss = vi.spyOn(Keyboard, "dismiss");
+    render(screenTree());
+    fireEvent.click(screen.getByLabelText("Mostrar sugerencias"));
+
+    // Abrir el carrusel NO cierra el teclado: se puede seguir escribiendo con las sugerencias a la
+    // vista (hubo una versión que sí lo cerraba, y este test la mantiene enterrada).
+    expect(dismiss).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("¿Cuánto gasté este mes 📅?"));
+
+    expect(chatState.send).toHaveBeenCalledWith("¿Cuánto gasté este mes 📅?");
+    expect(screen.getByText("Compara precios de un producto 🔍🏷️")).toBeInTheDocument();
+  });
+
+  // EL CABLE COMPLETO: el input publica el borrador → la pantalla lo baja al dock → el carrusel
+  // pregunta al catálogo. Cada tramo se prueba por separado, pero sólo este test ve la unión: sin
+  // él, borrar el `draft={draft}` de <QuickActions> deja TODA la suite en verde (comprobado).
+  test("what you type reaches the suggestions", () => {
+    vi.useFakeTimers();
+    useProductTypeahead.mockReturnValue({
+      data: [{ id: "1", slug: "g", name: "Guandules Verdes Goya", brand: "Goya" }],
+      isFetching: false,
+    });
+    render(screenTree());
+    fireEvent.click(screen.getByLabelText("Mostrar sugerencias"));
+
+    fireEvent.change(screen.getByPlaceholderText(/.+/), {
+      target: { value: "Donde estan los guan" },
+    });
+    act(() => vi.advanceTimersByTime(300)); // el debounce
+
+    expect(
+      screen.getByText("¿Dónde está el mejor precio de Guandules Verdes Goya?"),
+    ).toBeInTheDocument();
   });
 });

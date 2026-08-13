@@ -169,7 +169,7 @@ const echoFingerprint = (s: string) =>
 // `inputRef` is optional — the screen passes one in so it can dismiss/restore the keyboard around
 // the sessions drawer (hide on open, refocus on close). `onSend` receives the trimmed message when
 // the user taps send (the screen streams it to the chat); without it the bar just clears.
-export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProps) {
+export function ChatInputBar({ inputRef: externalRef, onSend, onChangeText }: ChatInputBarProps) {
   useLang(); // re-render on a language change — t() alone reads a module var, invisible to React
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -196,6 +196,15 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
   const placeholderColor = isDark ? "#6A6A6A" : "#BEC2C0";
   const cursorColor = isDark ? "#DEFFB7" : "#034842";
 
+  // TODO cambio del valor pasa por acá — es el único punto que publica el borrador hacia arriba.
+  // Un `setValue` suelto en cualquiera de los tres caminos (escribir, enviar, tragarse el eco)
+  // dejaría al padre con un borrador viejo, y las sugerencias en vivo se quedarían buscando algo
+  // que el usuario ya borró o ya mandó.
+  const commitValue = (text: string) => {
+    setValue(text);
+    onChangeText?.(text);
+  };
+
   const handleSend = () => {
     if (!hasText) return;
     const trimmed = value.trim();
@@ -203,7 +212,7 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
     sounds.send();
     onSend?.(trimmed);
     lastSentRef.current = echoFingerprint(trimmed);
-    setValue(""); // clear the field (and revert the button back to the orb)
+    commitValue(""); // clear the field (and revert the button back to the orb)
     inputRef.current?.clear();
   };
 
@@ -216,12 +225,12 @@ export function ChatInputBar({ inputRef: externalRef, onSend }: ChatInputBarProp
   const handleChangeText = (text: string) => {
     if (lastSentRef.current !== null && echoFingerprint(text) === lastSentRef.current) {
       lastSentRef.current = null;
-      setValue("");
+      commitValue("");
       inputRef.current?.clear();
       return;
     }
     lastSentRef.current = null;
-    setValue(text);
+    commitValue(text);
   };
 
   return (

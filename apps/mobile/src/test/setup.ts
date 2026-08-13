@@ -1,9 +1,21 @@
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 afterEach(() => cleanup());
+
+// Las consultas por TEXTO ignoran lo que está fuera del árbol de accesibilidad, igual que ya lo
+// ignoran `script`/`style` (el default de la librería). Un elemento `aria-hidden` no existe para
+// quien usa la app —ni a la vista ni para un lector de pantalla—, así que tampoco debería existir
+// para un test que dice buscar "el texto que se ve".
+//
+// Lo destapó el texto-fantasma de `use-is-truncated.tsx`, que mide el ancho natural de una etiqueta
+// renderizándola aparte: sin esto, cada etiqueta aparecía DOS veces y `getByText` fallaba con
+// "Found multiple elements". La respuesta correcta no era parchear los tests que la buscaban, sino
+// marcar el fantasma como invisible para accesibilidad (que era un bug real: se leía dos veces) y
+// enseñarle al harness a respetarlo.
+configure({ defaultIgnore: 'script, style, [aria-hidden="true"]' });
 
 // Metro defines `__DEV__` globally in the app; jsdom doesn't. Modules that read it at import
 // time (e.g. lib/api/client.ts) crash without it — provide it (false = quiet dev warnings).
