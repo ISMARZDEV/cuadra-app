@@ -16,6 +16,8 @@ es un agente: una función, salida estructurada, y **degradación silenciosa**. 
 """
 from __future__ import annotations
 
+from typing import cast
+
 from pydantic import BaseModel, Field
 
 from src.shared.llm import get_chat_model
@@ -63,7 +65,12 @@ def suggest_prompts(draft: str, lang: str) -> list[str]:
     language = _LANG.get(lang[:2].lower(), "Spanish")
     try:
         model = get_chat_model("fast").with_structured_output(_Prompts)
-        result = model.invoke(_PROMPT.format(draft=text, max=_MAX, language=language))
+        # `with_structured_output` está tipado como `dict | BaseModel` porque acepta cualquier
+        # esquema; el cast recupera el que ACABAMOS de pasarle dos líneas arriba. No es aflojar el
+        # tipo: es afirmar lo único que ese Runnable puede devolver. (El precedente,
+        # `flows/expense/categories.py`, resolvió esto quedándose en el backlog de mypy — sumar un
+        # archivo nuevo ahí sería empeorar el trinquete que ese backlog existe para frenar.)
+        result = cast(_Prompts, model.invoke(_PROMPT.format(draft=text, max=_MAX, language=language)))
     except Exception:  # noqa: BLE001 — ver el docstring: degradar en silencio es el contrato
         return []
 
