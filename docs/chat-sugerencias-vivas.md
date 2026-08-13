@@ -434,8 +434,8 @@ descubrirlo con el diff más chico posible sobre la mesa.
 
 ## §8 · Truncar + popover al mantener oprimido
 
-> **Estado:** implementado, 239 tests verdes + typecheck limpio. **Falta `expo prebuild` +
-> `expo run:ios` (los corre el usuario) y toda la verificación en device.**
+> **Estado:** implementado y **mergeado a `developer` en el PR #50 (`ef8ef4e`)**. iOS compilado y
+> verificado. **Lo único pendiente de esta sección es ANDROID** — ver §8.4.
 > Referencia pedida por el usuario: `rit3zh/expo-ios-popover`, clonado en
 > `/Users/ismartz/Desktop/DEV/expo-ios-popover`.
 
@@ -567,16 +567,32 @@ para leer el resto. Falla silenciosa, ahora con test.
 > lo tapaba. Con el ancho equivocado entra una línea de más y el `…` aparece tarde. Se agregó
 > `"measures truncation against the width left to the TEXT"`, verificado por mutación.
 
-### 8.4 · Verificación en device (pendiente, del usuario)
+### 8.4 · Verificación en device
 
-```bash
-npx expo prebuild        # ios/ y android/ están gitignoreados (CNG): se regeneran, no se versionan
-npx expo run:ios         # módulo nativo nuevo → Expo Go NO sirve
-```
+**iOS: HECHO.** Los puntos 1, 2, 3 y 5 de la lista, más los ajustes visuales de §8.3c (envolver a
+dos líneas antes de cortar, el ancho abrazando el contenido, textos centrados, el encabezado con
+shimmer, ambos temas) los dio por verificados el usuario. No queda nada de iOS abierto acá.
 
-1. **El experimento que valida el riesgo de §8.1**: mantener oprimido abre el popover **y** un tap
-   corto sigue enviando el mensaje. Si (b) falla → probar el anidamiento de la referencia.
-2. Una píldora larga se corta con `…`; una corta **no** ofrece el gesto.
-3. iOS: el popover aparece arriba, con flecha, en ambos temas.
-4. **Android**: el popover JS — es el camino que ningún trabajo previo ejercitó.
-5. Soltar cierra el popover **sin** enviar el mensaje.
+1. ~~**El experimento que valida el riesgo de §8.1**: mantener oprimido abre el popover **y** un tap
+   corto sigue enviando el mensaje.~~ ✅
+2. ~~Una píldora larga se corta con `…`; una corta **no** ofrece el gesto.~~ ✅
+3. ~~iOS: el popover aparece arriba, con flecha, en ambos temas.~~ ✅
+4. **Android — ÚNICO PENDIENTE**: el popover JS, el camino que ningún trabajo previo ejercitó.
+5. ~~Soltar cierra el popover **sin** enviar el mensaje.~~ ✅
+
+#### Lo que hay que saber ANTES de lanzar el tramo de Android
+
+Averiguado el 13-ago, sin compilar nada — para que la próxima sesión no vuelva a investigarlo:
+
+| Hecho | Consecuencia |
+|---|---|
+| `ios/Podfile.lock` (9-ago) YA trae `ExpoiOSPopoverModule 0.1.5`, y lo único que entró en `package.json` desde ese build es ese mismo paquete | el binario de iOS está al día: **iOS no necesita rebuild**, Metro + recarga alcanza. `pod-install` y `--port 8087` son trampas del build de **Android** |
+| `android/` se generó el 8-ago pero **no existe `android/app/build`** | nunca se compiló: es un primer build completo de Gradle, 10-20 min |
+| `expo-ios-popover` declara `"platforms": ["apple"]` y no trae carpeta `android/` | el autolinking lo salta y `resolveHoldStrategy` cae a `"js"` **por construcción**. Correcto en el papel; jamás ejecutado |
+| `EXPO_PUBLIC_API_URL=http://localhost:8005`, y en el emulador `localhost` es el emulador | `adb reverse tcp:8005 tcp:8005` — resuelve sin tocar `.env`. AVD disponible: `Pixel_9_Pro_XL` |
+| `glass-surface.tsx` ya guarda con `isLiquidGlassAvailable()` (`expo-glass-effect` es iOS) | Android toma una rama de respaldo que **tampoco vio nadie**: el input se verá distinto, y eso no es de por sí un bug |
+
+> **Un modo de fallo que se ve en iOS y no grita:** si el binario instalado fuera anterior al 9-ago,
+> el guard de §8.3b hace que iOS caiga **en silencio** al popover JS — nada parece roto, pero el
+> camino nativo no se está ejercitando. Se distingue mirando el popover: el nativo trae el cromo de
+> UIKit (flecha + blur del sistema); el JS es nuestro bubble.
