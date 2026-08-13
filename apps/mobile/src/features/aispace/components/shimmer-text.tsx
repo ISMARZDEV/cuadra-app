@@ -31,6 +31,7 @@ import type { ShimmerTextProps } from "../interfaces";
 export function ShimmerText({
   text,
   fontSize = 18,
+  fontWeight = CHAT_BODY_WEIGHT,
   baseColor,
   highlightColor,
   periodMs = 1500,
@@ -40,8 +41,8 @@ export function ShimmerText({
   // resuelve a la cara nativa (SF Pro / Roboto) — el mismo gesto que en RN, del otro lado.
   // `matchFont` NO es un hook y nunca devuelve null, pero crea un objeto de fuente: se memoiza.
   const font = useMemo(
-    () => matchFont({ fontSize, fontWeight: CHAT_BODY_WEIGHT }),
-    [fontSize],
+    () => matchFont({ fontSize, fontWeight }),
+    [fontSize, fontWeight],
   );
   const clock = useClock();
 
