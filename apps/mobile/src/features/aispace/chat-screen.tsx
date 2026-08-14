@@ -493,9 +493,22 @@ export function ChatScreen() {
       const dur = e.duration > 0 ? e.duration : 250;
       keyboardH.value = withTiming(0, { duration: dur, easing: EASE_OUT });
     });
+    // RED DE SEGURIDAD, y no es defensa paranoica: iOS NO garantiza `keyboardWillHide`. Cuando el
+    // teclado se cierra ARRASTRANDO (`keyboardDismissMode="interactive"`, que esta lista usa) el
+    // sistema puede saltarse el `will` y emitir sólo el `did`. Si eso pasa, `keyboardH` se queda
+    // clavado en el alto del teclado y la tarjeta NUNCA vuelve a crecer: queda encogida con un
+    // hueco muerto debajo, y no se recupera sola — hay que salir de la pantalla.
+    //
+    // `didHide` SIEMPRE llega. Si el `will` ya hizo su trabajo esto vale 0 sobre 0 y no se ve nada;
+    // si se perdió, esto la devuelve a su sitio. Es idempotente a propósito: la corrección no puede
+    // depender de adivinar CUÁL de los dos eventos llegó.
+    const onDidHide = Keyboard.addListener("keyboardDidHide", () => {
+      keyboardH.value = withTiming(0, { duration: 120, easing: EASE_OUT });
+    });
     return () => {
       onShow.remove();
       onHide.remove();
+      onDidHide.remove();
     };
   }, [keyboardH, scrollToBottom]);
 
