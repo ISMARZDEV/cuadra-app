@@ -1,8 +1,15 @@
 import { Bell, Cog } from "lucide-react-native";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type Href, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useColorScheme } from "nativewind";
 
 import { AppBackground } from "@/components/ui/app-background";
@@ -14,8 +21,11 @@ import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import SaveLogoDark from "../../../assets/save/save-logo-dark.svg";
 import SaveLogoLight from "../../../assets/save/save-logo-light.svg";
+import { useAlertsReadStore, unreadCount } from "../alerts-read";
+import { useAlertNotifications } from "../api";
 import type { Vertical } from "../interfaces";
 import { VerticalCard } from "./components/vertical-card";
+import { HUB_GAP_Y, HUB_GUTTER_X } from "./layout";
 import { VERTICALS } from "./verticals";
 
 // El hub se sale del gradiente de la app en tema CLARO: el diseño lo pide gris plano, y sobre él
@@ -23,11 +33,12 @@ import { VERTICALS } from "./verticals";
 // gris claro debajo de la barra de tabs oscura partiría la app en dos.
 const HUB_BG_LIGHT = "#F4F4F4";
 
-// Figma da 19 para AMBOS (márgenes laterales y paso vertical de 172 sobre un card de 153). El aire
-// vertical se respeta; el lateral se apretó a pedido, para que el card gane ancho — y ese ancho va
-// entero al blanco del título, que es el lado que se queda corto (el panel de arte es fijo).
-const HUB_GUTTER_X = 14;
-const HUB_GAP_Y = 19;
+// La hoja abre y cierra con la MISMA curva y duración con que el chat sigue al teclado de iOS
+// (`chat-screen`: 250ms + `Easing.out(Easing.cubic)`). Sin resorte a propósito: un panel que rebota
+// llama la atención sobre sí mismo, y esta hoja es un aviso, no un evento. Que dos superficies que
+// suben desde el mismo canto se muevan distinto es lo que hace que una app se sienta cosida a mano.
+const SHEET_MS = 250;
+const SHEET_EASE = Easing.out(Easing.cubic);
 
 // El logo va a su TAMAÑO NATURAL (134×67, el del SVG). Medido sobre el mockup da lo mismo, así que
 // no hay nada que escalar — y escalar un logotipo «para que entre» es cómo se deforma una marca.
@@ -67,7 +78,27 @@ export function HubScreen() {
   // El logotipo tiene dos versiones dibujadas, no una recoloreada: la palabra cambia de color pero
   // el símbolo del medio no. Por eso se elige el ASSET, no un `fill`.
   const SaveLogo = isDark ? SaveLogoDark : SaveLogoLight;
+  // La campana es lo ÚNICO del hub que mira datos; el resto sigue siendo navegación pura. El punto
+  // rojo tiene que ser VERDADERO: uno pintado siempre entrena al usuario a ignorarlo, y a la
+  // tercera vez que abre y no hay nada, la campana deja de significar algo.
+  const notifications = useAlertNotifications();
+  const readIds = useAlertsReadStore((s) => s.readIds);
+  const hydrateRead = useAlertsReadStore((s) => s.hydrate);
+  useEffect(() => {
+    void hydrateRead();
+  }, [hydrateRead]);
+  const unread = unreadCount(
+    (notifications.data ?? []).map((n) => n.id),
+    readIds,
+  );
+
   const [pending, setPending] = useState<Vertical | null>(null);
+  // El `Modal` se monta y desmonta APARTE del contenido, y por eso son dos estados y no uno: al
+  // cerrar, `pending` se va enseguida —lo que dispara el `exiting` del panel y del velo— pero el
+  // Modal tiene que seguir montado hasta que esa salida termine. Con un solo estado, el Modal se
+  // llevaría por delante a sus hijos en el primer frame y no se vería salida ninguna.
+  const [sheetMounted, setSheetMounted] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const open = (vertical: Vertical) => {
     // Una vertical sin datos NO navega: mandarla a una pantalla vacía es prometer algo que no
@@ -76,8 +107,23 @@ export function HubScreen() {
       router.push(vertical.href);
       return;
     }
+    if (closeTimer.current) clearTimeout(closeTimer.current);
     setPending(vertical);
+    setSheetMounted(true);
   };
+
+  const closeSheet = () => {
+    setPending(null);
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setSheetMounted(false), SHEET_MS);
+  };
+
+  useEffect(
+    () => () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    },
+    [],
+  );
 
   return (
     <View className="flex-1">
@@ -128,13 +174,19 @@ export function HubScreen() {
           </View>
 
           {/* La campana es el ÚNICO acceso al feed de alertas desde que dejó de ser la pantalla de
-              Save. Le falta todavía el punto rojo del diseño. */}
+              Save. El punto rojo cuenta lo que no has MIRADO (ver `alerts-read`), y la cuenta va
+              también en la etiqueta: un punto de color no existe para un lector de pantalla. */}
           <View className="absolute right-0">
             <GlassButton
               icon={Bell}
-              label={t("save.alerts.title")}
+              label={
+                unread > 0
+                  ? `${t("save.alerts.title")}, ${t("save.alerts.unread", { count: String(unread) })}`
+                  : t("save.alerts.title")
+              }
               size={48}
               iconSize={HEADER_ICON}
+              badge={unread > 0}
               onPress={() => router.push("/save/alerts" as Href)}
             />
           </View>
@@ -146,31 +198,86 @@ export function HubScreen() {
           ))}
         </View>
 
-        {/* Estado «en construcción»: dice QUÉ va a responder esa vertical. Un «próximamente» vacío
-            no le sirve a nadie; esto convierte una ausencia en una promesa concreta. */}
-        {pending ? (
-          <View className="mt-6 rounded-2xl bg-card px-4 py-5" style={{ borderCurve: "continuous" }}>
-            <Text className="text-base text-text" style={{ fontFamily: KANTUMRUY_SEMIBOLD }}>
-              {t("save.hub.soon.title", { vertical: pending.title })}
-            </Text>
-            <Text
-              className="mt-1 text-sm text-text/60"
-              style={{ fontFamily: KANTUMRUY_MEDIUM }}
-            >
-              {t(pending.blurbKey)}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setPending(null)}
-              className="mt-3 self-start rounded-full bg-primary/15 px-4 py-2"
-            >
-              <Text className="text-sm text-primary" style={{ fontFamily: KANTUMRUY_SEMIBOLD }}>
-                {t("save.hub.soon.close")}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
       </ScrollView>
+
+      {/* Estado «en construcción»: dice QUÉ va a responder esa vertical. Un «próximamente» vacío no
+          le sirve a nadie; esto convierte una ausencia en una promesa concreta.
+          Vive en un `Modal` y NO dentro del `ScrollView`. Antes se renderizaba inline detrás de los
+          cuatro cards: tocar una vertical de abajo abría la hoja a ~300pt del pliegue, o sea fuera
+          de pantalla — el toque no respondía nada. Misma pieza que `InfoTooltip`, por la misma
+          razón: lo que tiene que FLOTAR no puede viajar con el contenido que lo abrió. */}
+      {/* `animationType="none"`: la entrada y la salida las animan el velo y el panel, igual que
+          `InfoTooltip`. No es capricho — con `"fade"`/`"slide"` el modal de react-native-web sólo se
+          desmonta cuando TERMINA su animación de salida, y en jsdom esa animación no corre nunca:
+          el contenido queda montado para siempre y ningún test puede afirmar que la hoja se cerró.
+          Animándolo por dentro, además, el velo se FUNDE mientras el panel DESLIZA: con el
+          `"slide"` nativo el velo oscuro subiría junto con el panel, que se lee como una mancha
+          negra trepando desde el canto. */}
+      <Modal transparent visible={sheetMounted} animationType="none" onRequestClose={closeSheet}>
+        {/* El velo es tocable y cierra: es la salida que un usuario prueba ANTES de buscar el
+            botón. Lleva etiqueta accesible porque no tiene texto que lo nombre, pero NO
+            `accessibilityRole="button"`: anidar un botón —«Entendido»— dentro de otro es HTML
+            inválido, y para un lector de pantalla un botón a pantalla completa es ruido. La salida
+            que se anuncia es la explícita. */}
+        {pending ? (
+          <Animated.View
+            entering={FadeIn.duration(SHEET_MS).easing(SHEET_EASE)}
+            exiting={FadeOut.duration(SHEET_MS).easing(SHEET_EASE)}
+            style={StyleSheet.absoluteFill}
+          >
+            <Pressable
+              accessibilityLabel={t("save.hub.soon.dismiss")}
+              onPress={closeSheet}
+              style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" }}
+            >
+              {/* Anclada ABAJO, al alcance del pulgar: la abre un toque en un card que puede estar
+                  al pie de la lista, así que centrarla mandaría la vista al otro extremo de la
+                  pantalla. Sube deslizando desde el canto — de donde viene es de donde entra.
+                  Es `Pressable` y no `View` para TRAGARSE el toque — sobre una vista pelada, tocar
+                  el panel caería en el velo de atrás y lo cerraría en la cara del usuario. */}
+              <Animated.View
+                entering={SlideInDown.duration(SHEET_MS).easing(SHEET_EASE)}
+                exiting={SlideOutDown.duration(SHEET_MS).easing(SHEET_EASE)}
+              >
+                <Pressable
+                  onPress={() => {}}
+                  // `bg-surface`, NO `bg-card`: ese token NO EXISTE en `tailwind.config.js` y venía
+                  // heredado del panel inline anterior, donde la falta no se veía —se apoyaba
+                  // directamente sobre el fondo de la pantalla—. Sobre el velo sí se ve: el texto
+                  // quedaba flotando encima de los cards.
+                  className="rounded-t-3xl bg-surface px-5 pt-5"
+                  style={{
+                    borderCurve: "continuous",
+                    paddingBottom: Math.max(insets.bottom, 20),
+                  }}
+                >
+                  <Text className="text-base text-text" style={{ fontFamily: KANTUMRUY_SEMIBOLD }}>
+                    {t("save.hub.soon.title", { vertical: pending.title })}
+                  </Text>
+                  <Text
+                    className="mt-1 text-sm text-text/60"
+                    style={{ fontFamily: KANTUMRUY_MEDIUM }}
+                  >
+                    {t(pending.blurbKey)}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={closeSheet}
+                    className="mt-4 self-start rounded-full bg-primary/15 px-4 py-2"
+                  >
+                    <Text
+                      className="text-sm text-primary"
+                      style={{ fontFamily: KANTUMRUY_SEMIBOLD }}
+                    >
+                      {t("save.hub.soon.close")}
+                    </Text>
+                  </Pressable>
+                </Pressable>
+              </Animated.View>
+            </Pressable>
+          </Animated.View>
+        ) : null}
+      </Modal>
 
       {/* La banda de desvanecido va POR DELANTE del scroll y es lo ÚNICO fijo de la pantalla: todo
           —cards y header— se difumina al subir en vez de cortarse a ras del borde. Misma pieza que

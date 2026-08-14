@@ -38,6 +38,8 @@ export const ZoomIn = chainable;
 export const ZoomOut = chainable;
 export const FadeIn = chainable;
 export const FadeOut = chainable;
+export const SlideInDown = chainable;
+export const SlideOutDown = chainable;
 // Scroll-driven animations (insights-carousel.tsx) — inert here too: the worklet callback body
 // (which reads native scroll-event fields like `.contentOffset.x`, absent on a DOM ScrollEvent)
 // is never invoked, same "asserted at the hook level, not via worklets" policy as the rest of

@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useId } from "react";
-import { Pressable, StyleSheet } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -25,7 +25,19 @@ type GlassButtonProps = {
   size?: number;
   iconSize?: number;
   accent?: boolean;
+  /**
+   * Dibuja el punto de aviso arriba a la derecha. Es SÓLO la marca visual: quien lo enciende debe
+   * además decirlo en `label`, porque un punto de color no existe para un lector de pantalla.
+   */
+  badge?: boolean;
 };
+
+// El punto de aviso. Rojo señal —no el lima de marca— porque no es decoración del botón sino una
+// interrupción: tiene que despegarse del vidrio en los dos temas. El aro del color del fondo lo
+// separa del glifo cuando cae encima de una zona clara del vidrio.
+const BADGE_DOT = 10;
+const BADGE_RING = 2;
+const BADGE_COLOR = "#FF3B30";
 
 // Colorless depth gradient (shadow/highlight at top → transparent at bottom), same recipe as the
 // chat card's CardGradient. Drawn with react-native-svg — NOT expo-linear-gradient, whose native
@@ -57,6 +69,7 @@ export function GlassButton({
   size = 44,
   iconSize = 22,
   accent = false,
+  badge = false,
 }: GlassButtonProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -102,6 +115,30 @@ export function GlassButton({
         <ButtonDepthGradient color={gradientColor} size={size} />
         <Icon as={icon} size={iconSize} color={iconColor} />
       </GlassSurface>
+
+      {/* Fuera del `GlassSurface`, no dentro: el vidrio nativo TIÑE lo que tiene encima, y un punto
+          rojo pasado por el tinte lima deja de leerse como aviso. Va como hermano, por delante.
+          Se monta después del vidrio en vez de con `zIndex` porque un `GlassView` nativo no
+          respeta el apilado de sus hermanos de forma fiable en Fabric — el orden del árbol sí. */}
+      {badge ? (
+        <View
+          testID="glass-button-badge"
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: BADGE_DOT + BADGE_RING * 2,
+            height: BADGE_DOT + BADGE_RING * 2,
+            borderRadius: (BADGE_DOT + BADGE_RING * 2) / 2,
+            backgroundColor: BADGE_COLOR,
+            borderWidth: BADGE_RING,
+            // El aro toma el color del FONDO de la pantalla, no del botón: es el recorte que
+            // despega el punto del vidrio, igual que el contorno de un icono sobre una foto.
+            borderColor: isDark ? "#0B0B0B" : "#F4F4F4",
+          }}
+        />
+      ) : null}
     </AnimatedPressable>
   );
 }

@@ -45,11 +45,14 @@ export const VERTICALS: readonly Vertical[] = [
   {
     id: "investments",
     title: "Investments",
-    // ⚠️ PARTIDA A OJO, pendiente del diseñador. Es una sola palabra, así que no hay corte natural
-    // — pero medido en simulador, «Investments» a 30pt necesita ~196pt y en el blanco del card
-    // quedan 145: en una línea sale truncada con «…», que es peor. En el diseño no aparece el
-    // problema porque Asap Condensed es bastante más angosta que Kantumruy.
-    titleLines: ["Invest", "ments"],
+    // La ÚNICA que se parte por dentro de una palabra: «Investments» a 30pt necesita ~196pt y en el
+    // blanco del card quedan 145, así que en una línea sale truncada con «…». En el diseño el
+    // problema no aparece porque Asap Condensed es bastante más angosta que Kantumruy.
+    //
+    // El corte va donde lo pide la sílaba (In·vest·ments) y LLEVA GUION. Antes era «Invest/ments»
+    // pelado, que no se lee como una palabra partida sino como dos palabras rotas — el guion es
+    // justamente la señal de «esto sigue abajo». Es tipografía, no adorno.
+    titleLines: ["Invest-", "ments"],
     blurbKey: "save.hub.investments.blurb",
     status: "soon",
     art: CHECK_EMBLEM,

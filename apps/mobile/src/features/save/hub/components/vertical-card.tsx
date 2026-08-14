@@ -1,4 +1,4 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -8,6 +8,8 @@ import { useColorScheme } from "nativewind";
 import * as Haptics from "expo-haptics";
 
 import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
+
+import { HUB_GUTTER_X } from "../layout";
 
 import BackdropSwirl from "../../../../assets/save/backdrop-swirl.svg";
 import OffertSeal from "../../../../assets/save/offert-botton-dark.svg";
@@ -62,16 +64,44 @@ const TITLE_COLOR_LIGHT = "#6ac400";
 const TITLE_COLOR_DARK = "#FFFFFF";
 const TITLE_SIZE = 30;
 const TITLE_LINE_HEIGHT = 34;
-// El diseño indenta el título bastante más (~50pt), pero eso sólo cierra con Asap Condensed, que la
-// app no carga: con Kantumruy, «Insurance» a 30pt no entra en el blanco que queda y el card
-// terminaría encogiendo la tipografía de UNA vertical sí y de las otras no.
+const TITLE_RIGHT = 8;
+
+// La sangría del título se CALCULA, no se fija. Fijarla fue el error anterior: el blanco que queda
+// a la izquierda depende del ancho de la pantalla (el panel de arte mide 187 SIEMPRE), así que un
+// mismo número es holgado en un Pro Max y truncante en un SE. Con 12 fijo, «Insurance» salía
+// cortada con «…» en cualquier pantalla de 375pt.
+//
+// La regla: al título se le da todo el aire que sobre después de que quepa la línea más ancha,
+// hasta el tope que pide el diseño. Así el Pro Max SÍ llega a los 50 de Figma y el SE degrada a
+// pegarse al canto — que es feo, pero se lee entero. Truncar no se lee.
 //
 // Es su PROPIA constante, no `BADGE_INSET_X`: los sellos se pegan al canto para despegarse del
 // emblema, y el título no tiene por qué seguirlos hasta ahí — atados, apretar uno corría el otro.
-const TITLE_LEFT = 12;
+const TITLE_LEFT_DESIGN = 50;
+
+// El ancho de la línea más ancha de todo el registro: «Insurance», 142.2pt a 30pt en Kantumruy Pro
+// SemiBold. NO está medido a ojo ni en el simulador — sale de sumar los avances de glifo del propio
+// .ttf (tabla `hmtx`), así que es exacto salvo kerning, que sólo puede RESTAR ancho. Se redondea
+// hacia arriba.
+//
+// ⚠️ Si algún día entra una vertical con una línea más larga que «Insurance», este número hay que
+// volver a medirlo — el test `ninguna línea de título pasa del ancho medido` lo pesca.
+const WIDEST_TITLE_PT = 143;
 // El aire bajo la última línea. Sale más grande de lo que dice el número: el `lineHeight` de 34
 // sobre una letra de 30 ya deja ~4pt de interlínea por debajo de la base, y eso se suma acá.
 const TITLE_BOTTOM = 12;
+
+// La sangría del título para un ancho de pantalla dado. Función PURA y exportada para poder
+// afirmarla en los tres tamaños que importan sin montar la pantalla — el defecto que arregla
+// (truncar en 375pt) no se ve en el simulador que uno tiene abierto, justamente.
+export function titleIndentFor(screenWidth: number): number {
+  const cardInner = screenWidth - HUB_GUTTER_X * 2 - CARD_BORDER * 2;
+  const titleColumn = cardInner - PANEL_WIDTH;
+  const spare = titleColumn - TITLE_RIGHT - WIDEST_TITLE_PT;
+  // Al piso: la sangría nunca es negativa. Si ni pegado al canto entra, ya no hay nada que ceder
+  // por este lado — lo que sobra es problema de la tipografía, no del margen.
+  return Math.max(0, Math.min(TITLE_LEFT_DESIGN, Math.floor(spare)));
+}
 
 // Mismos resortes que `glass-button` y la tarjeta del chat: el tacto de la app es UNO.
 const PRESS_IN = { damping: 15, stiffness: 320, mass: 0.6 };
@@ -79,6 +109,8 @@ const PRESS_OUT = { damping: 11, stiffness: 220, mass: 0.7 };
 
 export function VerticalCard({ vertical, onPress }: VerticalCardProps) {
   const { colorScheme } = useColorScheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const titleLeft = titleIndentFor(screenWidth);
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
@@ -180,8 +212,8 @@ export function VerticalCard({ vertical, onPress }: VerticalCardProps) {
           // el título ancla abajo, así el blanco del medio queda de una pieza en vez de partido en
           // dos huecos. Un título de una línea y otro de dos comparten la misma línea de base.
           justifyContent: "flex-end",
-          paddingLeft: TITLE_LEFT,
-          paddingRight: 8,
+          paddingLeft: titleLeft,
+          paddingRight: TITLE_RIGHT,
           paddingBottom: TITLE_BOTTOM,
         }}
       >
