@@ -210,6 +210,55 @@ cost both degrade. **One agent per vertical.** The router already knows how to s
 > selection accuracy drops under 90%, revisit and add semantic tool routing. Every new tool must
 > justify why it isn't a parameter of an existing one.
 
+## Rendimiento de la pantalla del chat (medido en device 2026-08-14: JS 45 fps / UI 36 fps escribiendo)
+
+`chat-screen.tsx` son ~860 líneas **con la lista de mensajes dentro**. Cualquier estado que viva ahí
+y cambie seguido re-renderiza TODO — y el coste crece con el largo de la conversación.
+
+1. **Nada que cambie por TECLA puede vivir en el estado de `chat-screen`.** El borrador estaba en un
+   `useState` de la pantalla y se publicaba con `onChangeText`: cada carácter re-renderizaba la
+   pantalla entera, cuando el ÚNICO consumidor era `QuickActions`. Ahora vive en
+   `store/chat-draft-store.ts` — el input escribe, `QuickActions` lee, la pantalla ni se entera.
+   ⚠️ Leerlo SIEMPRE con selector (`useChatDraftStore((s) => s.draft)`); desestructurar el store
+   entero resuscribe a todo cambio y deshace el arreglo.
+2. **Toda fila de la lista va `memo()`.** `AgentMessage`, `UserBubble`, `ProductCard`,
+   `ProviderProductsCard` y `BasketCard` estaban SIN memoizar, así que cada re-render de la pantalla
+   arrastraba todas las filas. Es el multiplicador del punto 1: sin memo, un re-render cuesta O(n)
+   mensajes.
+3. **Verificá el arreglo MUTANDO el cable, no sólo corriendo los tests.** El acoplamiento
+   pantalla→sugerencias ya tuvo un hueco silencioso antes (borrar `draft={draft}` dejaba la suite
+   verde). Tras mover el borrador al store se re-mutó (`const draft = ""`) y caen 2 tests: el cable
+   sigue protegido.
+4. **Un SVG a pantalla completa que CAMBIA DE CAJA se re-rasteriza en cada frame.** `CardGradient`
+   era `absoluteFill` dentro de la tarjeta, y la tarjeta cambia de alto en cada frame del teclado:
+   un degradado de pantalla entera redibujándose 60 veces por segundo en el hilo de UI. Arreglo:
+   **alto FIJO anclado arriba** (`height={windowH}`), y que lo recorte `cardClip` — el trozo que se
+   pierde es la cola transparente del degradado, detrás del dock. Midió **UI 40 → 45 fps**.
+   > Regla general: dentro de un contenedor cuyo tamaño se anima, ningún hijo debe depender de ese
+   > tamaño si puede evitarse. Vale para SVG, blur y máscaras.
+
+5. **El `marginBottom` animado de la tarjeta (`shadowStyle`) anima LAYOUT, no transform** — Yoga
+   re-maqueta todo el subárbol de la tarjeta en cada frame. Es el techo actual: **~45 fps de UI**
+   durante los ~250 ms que dura la subida.
+   **DECIDIDO (2026-08-14): se queda así.** Llevarlo a 60 exige que la tarjeta deje de encogerse y
+   pase a `translateY`, y eso saca su borde superior de pantalla mientras se escribe — rompe la
+   decisión de diseño explícita de este archivo (*«SLIDES UP intact rather than being squished»*,
+   *«sit flush on the keyboard»*). Cambiar el diseño por 15 fps en un cuarto de segundo es mal
+   negocio. **No lo "arregles" por reflejo.**
+
+### Lo que YA se descartó midiendo (no repitas el diagnóstico)
+
+| Sospechoso | Veredicto | Cómo se probó |
+|---|---|---|
+| El vidrio líquido (`GlassSurface`) redimensionándose | **INOCENTE** | flag temporal que lo cambia por una `View` opaca: los fps no se movieron |
+| Las filas de la lista re-maquetando | **INOCENTE** | con el chat VACÍO marcaba lo mismo |
+| `CardGradient` (SVG full-screen) | **CULPABLE (parcial)** | alto fijo → UI 40 → 45 |
+| El `marginBottom` animado | **CULPABLE (el resto)** | por descarte de los tres anteriores |
+
+**Método**: una variable por vez, con un flag temporal que se BORRA al tener la respuesta (no queda
+como feature flag). Y ojo con comparar capturas de escenarios distintos: «JS 38» con el agente
+respondiendo NO es comparable con «JS 60» escribiendo en un chat vacío — son cargas distintas.
+
 ## Do / Don't
 
 | ✅ Do | ❌ Don't |

@@ -100,6 +100,62 @@ const { chromium } = require('/Users/<you>/.npm/_npx/<hash>/node_modules/playwri
 })();
 ```
 
+### Mobile (simulador iOS) recipes (aprendido 2026-08-13/14)
+
+El agente puede verificar el móvil SOLO, sin pedirle nada al usuario. Todo esto se midió en una
+sesión entera de UI; cada punto costó tiempo real.
+
+**Navegar y recargar SIN tocar la GUI** — el simulador se maneja por deep link:
+
+```bash
+# Relanzar el dev-client contra Metro (recarga COMPLETA, no Fast Refresh)
+xcrun simctl openurl booted "cuadra://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8087"
+# Navegar a una ruta concreta (el scheme es `cuadra`, de app.json)
+xcrun simctl openurl booted "cuadra:///save/supermarket"
+```
+
+- ⛔ **Cmd+R por AppleScript NO funciona.** `tell application "Simulator" to activate` no gana el
+  foco de forma fiable y el keystroke se lo come el editor del usuario (pasó: se lo mandé a Cursor).
+  Usá el deep link de arriba.
+- **Una pantalla en blanco tras editar suele ser Fast Refresh, no un bug.** Cambios ESTRUCTURALES
+  en caliente (cambiar `SafeAreaView` por un hook, agregar una prop requerida) dejan el árbol roto.
+  **Relanzá el dev-client ANTES de diagnosticar** — dos veces di por roto código que estaba bien.
+
+**Ver el estado de una consulta cuando no hay consola**: pintar un `TEMP-DIAG` temporal en la
+pantalla con `status`/`fetchStatus`/`error`/`base URL`, sacar el screenshot, y BORRARLO
+(`grep -rn "TEMP-DIAG" src` antes de cerrar). Fue lo que destapó que el `.env` apuntaba a una IP
+muerta — el síntoma en pantalla era sólo un spinner eterno.
+
+**Detalle fino: recortar y ampliar.** Un PNG de pantalla completa no alcanza para juzgar un canto
+o un degradado. `sips` ya está en el Mac, no hace falta instalar nada:
+
+```bash
+sips -c <alto> <ancho> --cropOffset <top> <left> shot.png --out crop.png   # recorta
+sips -Z 700 crop.png --out zoom.png                                        # amplía
+```
+Así se comprobó que `borderCurve:"continuous"` NO se estaba aplicando: el canto era un arco de
+círculo y a tamaño normal se veía idéntico.
+
+**Temas**: `xcrun simctl ui booted appearance dark|light`. **Tarda un render en propagarse** — una
+foto inmediata muestra el tema viejo y hace creer que la app no sigue al sistema. Esperá y repetí.
+
+**Lo que el agente NO puede verificar y hay que DECIR**: `simctl` no hace scroll ni gestos. Un
+desvanecido de scroll, un long-press o un carrusel al deslizar **no se pueden ejercitar** — se
+verifica la geometría y se le pide al usuario el resto, diciéndolo explícitamente.
+
+**Antes de culpar al código, mirar el entorno** (en este orden — los tres fallaron en una sesión):
+
+| Síntoma | Causa real que ya pasó |
+|---|---|
+| Consulta colgada en `pending/fetching`, sin error | `.env` apuntando a una IP LAN vieja (hotspot del iPhone). El TCP espera sin fallar |
+| «Could not connect to the server» | La API se murió. `lsof -nP -iTCP:8005 -sTCP:LISTEN` → vacío |
+| Cambiar `.env` no surte efecto | **`EXPO_PUBLIC_*` se HORNEA en el bundle**: hay que reiniciar Metro (`--clear`), no recargar la app |
+| «Unable to resolve module ../../App» | Metro arrancado desde la RAÍZ del repo. Tiene que ser desde `apps/mobile`: `pnpm --filter @cuadra/mobile exec expo start --dev-client --port 8087` |
+
+**Una corrida de tests lentísima puede ser contención de máquina, no una regresión.** Una suite que
+normalmente tarda 12s tardó 966s con el simulador y Metro compilando a la vez. **Medí de nuevo en
+reposo antes de acusar al código.**
+
 ## Definition of Done (visual work)
 
 - [ ] Screenshot of the real render captured and READ

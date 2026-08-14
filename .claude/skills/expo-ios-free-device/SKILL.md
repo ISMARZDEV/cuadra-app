@@ -7,7 +7,8 @@ description: >
   from the device. Trigger: when asked to run/install/test an Expo or RN app on a real iPhone or
   iPad, when "Expo Go" rejects the SDK or a native module, when signing fails ("no code signing
   certificates", "No Account for Team", "No profiles"), when a device build won't compile/load in
-  Xcode, or when the app can't reach a `localhost` backend from the phone.
+  Xcode, when the app can't reach a `localhost` backend from the phone, o cuando **«se me venció /
+  caducó la app en el iPhone»** (los 7 días del perfil gratuito — es un rebuild, ver patrón 6).
 license: Apache-2.0
 metadata:
   author: aispace
@@ -84,6 +85,29 @@ exists (the first device worked), you do NOT need the Xcode GUI — register + i
 (e.g. iPad) fully by CLI via **`xcodebuild` directly with BOTH flags**, then `devicectl install` (see
 Commands). Free certs/profiles **expire in 7 days** → rebuild to renew.
 
+**6. RENOVAR los 7 días es un REBUILD, no volver a empezar** (hecho 2026-08-14, ~4 min).
+El certificado dura **un año**; lo que caduca a los 7 días es el **perfil de aprovisionamiento**.
+Cuando el usuario dice «se me venció la app en el iPhone»:
+
+- ⛔ **NO repitas el truco del proyecto señuelo.** Comprobá primero:
+  `security find-identity -v -p codesigning` → si hay una identidad válida, el cert está vivo y
+  sólo hay que volver a firmar. El señuelo es de una vez por Mac/Apple ID.
+- **`xctrace` MIENTE sobre el estado del dispositivo.** Con el iPhone conectado y desbloqueado,
+  `xcrun xctrace list devices` lo seguía listando bajo `== Devices Offline ==`, mientras
+  `xcrun devicectl list devices` lo daba `available (paired)`. **Confiá en `devicectl`** —
+  `xctrace` sólo sirve para leer el UDID de hardware.
+- **Las entitlements DERIVAN a las de pago.** Un `prebuild` corrido sin `EXPO_FREE_SIGNING=1`
+  devuelve `aps-environment` + `applesignin` al plist, y el rebuild muere con error 65. Revisá
+  `ios/<App>/<App>.entitlements` ANTES de compilar; si tienen esas claves y no vas a re-prebuildear,
+  dejá el plist en `<dict/>` a mano (alcanza para este build, se pierde al próximo prebuild).
+- **Verificá la renovación en el ARTEFACTO, no en el «BUILD SUCCEEDED»** — la fecha nueva sale del
+  perfil embebido en el bundle firmado:
+
+```bash
+security cms -D -i "<App>.app/embedded.mobileprovision" | plutil -extract ExpirationDate raw -
+codesign -d --entitlements - --xml "<App>.app" | plutil -p -   # debe salir SIN las de pago
+```
+
 ## Commands
 
 ```bash
@@ -92,6 +116,10 @@ xcodebuild -version && swift --version
 xcrun xctrace list devices                       # device UDIDs (hardware UDID, not the coredevice UUID)
 security find-identity -v -p codesigning         # 0 = no usable identity yet (do the dummy trick)
 xcodebuild -downloadPlatform iOS                 # install missing iOS platform
+
+# RENOVAR los 7 días (cert ya existe): estos DOS comandos y nada más. UDID = hardware udid.
+#   1) revisar entitlements (ver patrón 6) · 2) build · 3) install · 4) verificar ExpirationDate
+xcrun devicectl list devices                     # estado REAL del device (xctrace miente)
 
 # Build + free-sign + REGISTER + install to a device (works for a NEW device; UDID = hardware udid).
 # EXPO_FREE_SIGNING=1 first only matters if you re-prebuild; xcodebuild uses the already-stripped entitlements.

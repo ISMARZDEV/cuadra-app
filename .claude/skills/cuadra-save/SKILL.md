@@ -159,6 +159,29 @@ Core `/save/*` endpoints: `search · compare (by slug) · featured · categories
 collections · collection/{slug} · deals · providers · store/{id} · history · products (sitemap) ·
 alerts (subscribe/list/notifications/run-matching)`. Public catalog needs no auth (price data).
 
+**Antes de proponer un endpoint nuevo, MIRÁ los que hay.** Para los dos rails de la home de
+Supermarket iba a extender el backend y resultó que `featured` (`?sort=popular|unit_price|price`) y
+`deals` ya devolvían `ProductCardDto[]` — cero backend. Y ⚠️ **`/save/products` NO es browse: es el
+que alimenta el `sitemap.xml`** (devuelve hasta 1000 `ProductSearchDto`, sólo id/slug/name/brand).
+Convertirlo en cards haría que un trabajo de SEO pague por precios e imágenes que no usa.
+
+**`ProductCardDto` — el badge y el precio tachado son UNA sola cosa.** `discount_bps` y
+`previous_price_minor` salen ambos de la MISMA bajada (`PriceChange.previous`, la misma que ya
+alimentaba el badge) y viajan atados en un valor único (`_Discount` + `_keep_biggest()` en
+`application/listing.py`). Con dos mapas sueltos, el badge se queda con la bajada MAYOR y el tachado
+podía quedarse con otra: el card diría «−25%» tachando un precio que no da −25%, y nadie lo nota
+hasta verlo en pantalla. **Nunca reconstruyas el precio anterior dividiendo por el descuento** —
+devuelve un número redondeado que nunca existió.
+- Al pintarlo: `price_minor` es el mínimo ENTRE TIENDAS y `previous_price_minor` es de la tienda que
+  bajó, así que no tienen por qué dar el porcentaje exacto entre sí.
+
+**Sembrar ofertas en la base de DEV** (para ver el rail de deals sin re-correr la ingesta): el
+detector empareja capturas consecutivas por `store_product` con un `LAG` sobre `captured_at`, así
+que bastan **2 filas por producto** en `save.price` — una vieja con precio alto y una reciente con el
+precio actual. La tabla es **append-only**: NO toques `store_product.current_price_minor`. `source`
+es NOT NULL → usá **`'seed-dev'`**, nunca imites una fuente real (`vtex`/`magento`/`bravova`), o los
+datos a mano quedan indistinguibles de una ingesta de verdad.
+
 ### 6. The agent (PurchasesAgent / CoachAgent)
 
 Router → `PurchasesAgent` (Save node). **Prices come from FIXED deterministic tools, NEVER

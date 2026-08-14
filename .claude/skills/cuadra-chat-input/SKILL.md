@@ -61,11 +61,19 @@ None of them is the radius or the colour. Measured against the Claude iOS app an
   that bitmap: it over-saturates and goes grainy (gotcha 6). **To make a glass card grow, animate
   `width` / `height` / `borderRadius` as real layout values** with `useAnimatedStyle` on an
   `Animated.createAnimatedComponent(GlassView)`, which is exactly what the reference repo does.
-- **`react-native-squircle-view` CANNOT RENDER.** Its `index.js` (v1.0.2, line 14) does
-  `wrappedStyle = {}` without declaring the variable → ReferenceError under Hermes. iOS-only, too.
-  For smoothed corners use **`borderCurve: "continuous"`**, native to React Native.
-  ⚠️ Unconfirmed whether it reaches the inner layers of the `UIVisualEffectView` — if smoothing is
-  not visible, that is the suspect, not the radius value.
+- **`react-native-squircle-view` CANNOT RENDER — por DOS motivos, no uno.** (1) Su `index.js`
+  (v1.0.2, línea 15) hace `wrappedStyle = {}` sin declarar la variable → ReferenceError bajo Hermes.
+  (2) Re-verificado 2026-08-14: **tampoco está en `ios/Podfile.lock`**, o sea su vista nativa ni
+  siquiera está enlazada en el binario — usarlo daría «Unimplemented component» sin un `prebuild` +
+  `pod-install` + `run:ios`. Está en `package.json` y su único uso vive en la rama de fallback de
+  `glass-surface.tsx` que en iOS 26 nunca corre, por eso nadie lo había notado.
+  Para esquinas suavizadas usá **`borderCurve: "continuous"`**, nativo de React Native.
+  ⚠️ `borderCurve` **NO se aplica si la vista pide radios DISTINTOS por esquina**: iOS abandona
+  `cornerCurve` y recorta con una máscara de arcos de círculo. Si necesitás redondear sólo dos
+  esquinas, que recorte un contenedor con radio UNIFORME. (Medido con lupa sobre el render real; a
+  tamaño normal los dos cantos se ven idénticos.)
+  ⚠️ Sin confirmar si llega a las capas internas del `UIVisualEffectView` — si el suavizado no se
+  ve, ése es el sospechoso, no el valor del radio.
 
 ## The chat input — structure and why
 
@@ -119,9 +127,22 @@ less than a solid button.
 - **The press feedback lives INSIDE the component** (spring + haptic), gated on `onPress` existing —
   a decorative pill (the free-messages counter has no action) must not sink or vibrate. Wrapping it
   in your own `Pressable` does NOT work: this one renders its own, and it captures the touch first.
+- **`label` is OPTIONAL — sin él la píldora es SÓLO icono** (el «ver todos» de los rails de Save).
+  Dos cosas que van con eso: el `Text` se OMITE del árbol en vez de pintarse vacío (una caja de
+  ancho cero sigue aportando el `gap` de la fila y descentra el icono), y `accessibilityLabel` deja
+  de ser opcional en la práctica — es lo único que le queda al botón para anunciarse.
+- **La rampa del canto es SOMBRA en los extremos y casi nada en el centro** (en claro). Al revés la
+  píldora se lee plana y con un cinturón oscuro cruzándola por la mitad. Vale para las tres
+  variantes; si agregás una, copiá el sentido, no lo inventes.
+
+**Variante `discount`** — el sello «−45» de las tarjetas de producto de Save. Rojo con letra blanca,
+y **NO sigue al tema**: el rojo de rebaja es el mismo en claro y en oscuro, porque atenuarlo en un
+tema lo convertiría en «una etiqueta más» justo donde tiene que gritar. Se usa como sello decorativo
+(sin `onPress`), montado sobre el canto superior del card — el contenedor tiene que reservarle ese
+aire o lo recorta (ver `cuadra-mobile`, promoción a `components/ui`).
 
 > ⚠️ **This section covers the pill's FORM only.** Everything the suggestions carousel added —
-> the `brand`/`surface` **variants**, `fillOpacity`, `maxWidth`/`maxLines` truncation, and the
+> the `brand`/`surface`/`discount` **variants**, `fillOpacity`, `maxWidth`/`maxLines` truncation, and the
 > `onHoldReveal`/`onHoldRelease` callbacks — belongs to **`cuadra-chat-suggestions`**, which owns
 > the geometry rules that go with them (the height is DERIVED from the allowed line count; the
 > width cap goes on the container, not the text). Read that skill before touching those props.

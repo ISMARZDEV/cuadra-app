@@ -159,6 +159,46 @@ metadata:
   the 4 Config sub-screens that need it) — visually identical at rest, but each screen is now
   self-contained during the slide so nothing bleeds through.
 
+**Promover un componente a `components/ui` — el checklist** (hecho 2026-08-14 con
+`basket-product-card`, que pasó del chat a la home de Supermarket):
+
+1. **`git mv`**, no copiar. Un componente duplicado diverge al primer retoque.
+2. **El TIPO de sus props/datos se muda CON él.** Un componente de `ui` que importa tipos de una
+   feature invierte la dependencia — `ui` no puede saber que existe `aispace`. Mové la `interface`
+   al propio componente y dejá un **reexport** en la feature (`export type { X } from "@/components/ui/…"`)
+   para no romper a quien ya lo importaba de ahí.
+3. **Adaptalo por PROPS CON DEFAULT, nunca con un `mode` nuevo.** Cada pantalla pasa lo suyo
+   (`badge`, `discountBps`, `onBookmark`) y quien no las pasa ve exactamente lo de antes. Así el
+   consumidor original no cambia ni un pixel y no hay que re-verificarlo entero.
+4. **Toda medida que el CONTENEDOR necesita, se EXPORTA.** `CARD_WIDTH` para el `getItemLayout`, y
+   `CARD_DISCOUNT_OVERHANG` porque el sello monta sobre el canto y la lista tiene que reservarle ese
+   aire. Con el número copiado a mano, tocarlo en el componente rompe al contenedor **en silencio**.
+5. **Ojo con lo que el import arrastra.** Importar un hook desde un módulo pesado se lleva TODO ese
+   módulo al grafo del consumidor — un hook de geometría que vivía en `cuadra-tab-bar.tsx` arrastraba
+   la barra entera y con ella `require()` de PNG que vitest no resuelve, y rompió tests que no
+   tenían nada que ver. Un hook que sólo necesita números va en su PROPIO archivo.
+
+**Carruseles horizontales — la sangría va DENTRO del rail, no en el padre.**
+Si la pantalla padea su `ScrollView`, la lista horizontal hereda ese margen, termina antes del borde
+y la última tarjeta se ve cortada contra un vacío en vez de sangrar fuera de pantalla. El rail se
+dibuja a ancho completo y aplica la sangría él mismo: `paddingHorizontal` en el encabezado y en
+`contentContainerStyle` de la lista (y el mismo valor en el `offset` del `getItemLayout`). Pasalo
+como prop (`gutter`) para que sea un contrato explícito y no algo que alguien "arregla" devolviendo
+el padding al contenedor.
+
+**Filas condicionales = tarjetas desalineadas.** Un bloque que aparece sólo en algunas tarjetas
+(el precio tachado de una oferta) hace que cada una termine a distinta altura y las barras de acción
+queden escalonadas. **Reservá el hueco SIEMPRE** con un alto fijo, aunque esté vacío.
+
+**Estados de una pantalla con datos: `loading` / `error` / `empty` / `content`, y la decisión en una
+función PURA aparte.** Es lo único de la pantalla que se puede probar bajo jsdom, y equivocarla se
+paga caro: una pantalla en blanco no dice si la red falló, si no hay datos o si sigue cargando —
+nos costó media hora de diagnóstico real. Dos reglas que salieron de mutar el test:
+- Si **alguna** consulta trae datos → `content`. Media pantalla útil es mejor que una disculpa.
+- `error` si falló **CUALQUIERA** (`||`, no `&&`). Con una caída y la otra devolviendo cero, decir
+  «no hay productos» es MENTIR: no lo sabemos, parte del dato no cargó. Sólo se afirma vacío cuando
+  se pudo mirar el catálogo entero.
+
 ## Code Examples
 
 ```tsx
@@ -179,7 +219,19 @@ export const useSendMessage = () =>
 make openapi                          # regenerate @cuadra/api-client after backend changes
 pnpm --filter @cuadra/mobile typecheck   # tsc --noEmit (run after edits — cannot run simulator headlessly)
 pnpm --filter @cuadra/mobile start       # expo start (the USER runs this to see the app)
+
+# ⚠️ Metro DEBE arrancar desde apps/mobile. Desde la raíz del repo falla con
+#    "Unable to resolve module ../../App from node_modules/expo/AppEntry.js".
+pnpm --filter @cuadra/mobile exec expo start --dev-client --port 8087 --clear
+
+# ⚠️ `EXPO_PUBLIC_*` se HORNEA en el bundle al transformar: cambiar `.env` NO basta,
+#    hay que REINICIAR Metro (con --clear). Recargar la app no sirve.
+# ⚠️ Para un DISPOSITIVO FÍSICO usá ./scripts/dev-up.sh (inyecta la IP de la LAN):
+#    con `localhost` el teléfono se apunta a sí mismo y toda llamada al backend falla.
 ```
+
+> El agente PUEDE verificar el móvil solo (deep links + `simctl io screenshot` + `sips` para
+> ampliar): las recetas están en la skill **`cuadra-ui-verify`**, sección «Mobile».
 
 ## Resources
 
