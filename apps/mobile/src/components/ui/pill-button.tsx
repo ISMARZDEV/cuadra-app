@@ -70,7 +70,7 @@ export const PILL_LABEL_STYLE = {
   textAlign: "center",
 } as const;
 
-export type PillVariant = "brand" | "surface";
+export type PillVariant = "brand" | "surface" | "discount";
 
 /** `#RRGGBB` → `rgba(r,g,b,a)`. RN no admite alfa en la notación hex de 6 dígitos. */
 function withAlpha(hex: string, alpha: number) {
@@ -89,6 +89,22 @@ function withAlpha(hex: string, alpha: number) {
 // El degradado va de OSCURO ARRIBA a CLARO ABAJO: la píldora se lee como una superficie curvada que
 // recoge el rebote de la luz en su borde inferior, no como una tarjeta iluminada de frente.
 function palette(variant: PillVariant, isDark: boolean, fillOpacity: number) {
+  if (variant === "discount") {
+    // El sello de oferta. NO sigue al tema: el rojo de rebaja es el mismo en claro y en oscuro —
+    // atenuarlo en un tema lo convertiría en «una etiqueta más» justo donde tiene que gritar.
+    // Su canto es un rojo más profundo, así que la píldora se lee redonda en vez de plana.
+    const fill = ["#C41217", "#E4262B"] as [string, string];
+    return {
+      base: withAlpha(fill[0], fillOpacity),
+      fill,
+      fillOpacity,
+      text: "#FFFFFF",
+      // Misma rampa que `brand` y `surface` en claro: SOMBRA en los extremos y casi nada en el
+      // centro. Al revés (luz en los extremos) la píldora se lee plana y con un cinturón oscuro
+      // cruzándola por la mitad.
+      edge: ["#A3060B", "#F2555A"] as [string, string],
+    };
+  }
   if (variant === "surface") {
     const fill = (isDark ? ["#0A0A0C", "#1F1F22"] : ["#F1F1F3", "#FFFFFF"]) as [string, string];
     return {
@@ -117,7 +133,10 @@ type PillButtonProps = {
   /** Se renderiza tal cual a la izquierda. Va como nodo, no como nombre de icono, para que cada
    *  llamada elija su fuente: lucide, un SVG por tema, una imagen… */
   icon?: React.ReactNode;
-  label: string;
+  /** El texto de la píldora. OPCIONAL: sin él la píldora es SÓLO icono — y entonces
+   *  `accessibilityLabel` deja de ser opcional en la práctica, porque es lo único que le queda
+   *  para anunciarse. Un botón que un lector de pantalla no sabe nombrar no es un botón. */
+  label?: string;
   onPress?: () => void;
   /** Etiqueta accesible; si falta se usa `label`, que casi siempre es la correcta. */
   accessibilityLabel?: string;
@@ -294,16 +313,20 @@ export function PillButton({
         </Svg>
       ) : null}
       {icon ? <View>{icon}</View> : null}
-      <Text
-        numberOfLines={maxLines}
-        ellipsizeMode={maxLines ? "tail" : undefined}
-        // `flexShrink` es lo que deja que el texto CEDA cuando la píldora toca su tope y entonces
-        // envuelva. Sin esto un texto largo empujaría el contenedor más allá del máximo en vez de
-        // partirse en dos líneas.
-        style={{ ...PILL_LABEL_STYLE, color: textColor, flexShrink: 1 }}
-      >
-        {label}
-      </Text>
+      {/* Sin texto no se pinta el `Text`, en vez de pintarlo vacío: una caja de texto de ancho cero
+          sigue aportando el `gap` de la fila, y la píldora de sólo icono saldría descentrada. */}
+      {label ? (
+        <Text
+          numberOfLines={maxLines}
+          ellipsizeMode={maxLines ? "tail" : undefined}
+          // `flexShrink` es lo que deja que el texto CEDA cuando la píldora toca su tope y entonces
+          // envuelva. Sin esto un texto largo empujaría el contenedor más allá del máximo en vez de
+          // partirse en dos líneas.
+          style={{ ...PILL_LABEL_STYLE, color: textColor, flexShrink: 1 }}
+        >
+          {label}
+        </Text>
+      ) : null}
     </AnimatedPressable>
   );
 }

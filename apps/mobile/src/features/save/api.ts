@@ -1,7 +1,9 @@
 import {
   alertNotifications,
+  featuredProducts,
   listAlerts,
   subscribeAlert,
+  todaysDeals,
   unsubscribeAlert,
 } from "@cuadra/api-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,6 +45,32 @@ export function useUnsubscribeAlert() {
 // Seguir un producto DESDE LA APP ("Avísame cuando baje"). El backend es el mismo endpoint
 // autenticado que usa la web → las alertas se comparten por user_id. Listo para cablear al botón
 // cuando exista la pantalla de producto en el móvil (marketplace Save móvil, pendiente).
+// ── Rails de la home de Supermarket ────────────────────────────────────────────────────────────
+// Los dos endpoints YA existían y devuelven `ProductCardDto[]`; no hizo falta inventar ninguno.
+// No llevan `refetchInterval`: un catálogo no cambia cada 30s como el feed de alertas, y encima
+// son las dos consultas más caras de la pantalla.
+
+const RAIL_LIMIT = 12;
+
+export const TODAYS_DEALS_KEY = ["save", "todaysDeals"] as const;
+/** «Mejores ofertas de hoy»: productos con bajada reciente, mayor % primero. */
+export function useTodaysDeals(limit: number = RAIL_LIMIT) {
+  return useQuery({
+    queryKey: [...TODAYS_DEALS_KEY, limit],
+    queryFn: () => todaysDeals({ query: { limit } }).then((r) => r.data ?? []),
+  });
+}
+
+export const FEATURED_PRODUCTS_KEY = ["save", "featured"] as const;
+/** «Productos»: el rail general de la home. `popular` = disponible en más tiendas, que para un
+ *  comparador es el proxy honesto de relevancia — no hay señal de ventas. */
+export function useFeaturedProducts(sort = "popular", limit: number = RAIL_LIMIT) {
+  return useQuery({
+    queryKey: [...FEATURED_PRODUCTS_KEY, sort, limit],
+    queryFn: () => featuredProducts({ query: { sort, limit } }).then((r) => r.data ?? []),
+  });
+}
+
 export function useSubscribeAlert() {
   const queryClient = useQueryClient();
   return useMutation({

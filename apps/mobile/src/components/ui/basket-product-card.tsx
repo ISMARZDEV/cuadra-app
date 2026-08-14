@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { Image, Linking, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
-import { CircleMinus, CirclePlus, Eye, ImageOff, Plus } from "lucide-react-native";
+import { Bookmark, CircleMinus, CirclePlus, Eye, ImageOff, Plus } from "lucide-react-native";
 import Svg, { Path } from "react-native-svg";
 import Animated, {
   useAnimatedStyle,
@@ -11,10 +11,26 @@ import Animated, {
 import { memo, useRef, useState } from "react";
 
 import { Icon } from "@/components/ui/icon";
+import { PillButton } from "@/components/ui/pill-button";
 import { t } from "@/i18n";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
-import type { ProductListItemData } from "../interfaces";
+/**
+ * Lo que la tarjeta necesita para pintarse. Vive ACÁ y no en la feature del chat: el componente
+ * subió a `components/ui` al usarlo una segunda pantalla, y un componente compartido que importa
+ * tipos de una feature invierte la dependencia — `ui` no puede saber que existe `aispace`.
+ * `features/aispace/interfaces.ts` lo reexporta para no romper a quien ya lo importaba de ahí.
+ */
+export interface ProductListItemData {
+  index: number;
+  canonical_product_id: string;
+  name: string;
+  brand?: string | null;
+  size?: string | null;
+  image_url?: string | null;
+  url?: string | null;
+  unit_price: string;
+}
 
 // Product card inside the basket carousel — mobile adaptation of the web ProductPreviewCard
 // (Figma node 708:25970 / 508:14893 / 834:13200). Keeps the scalloped white shell, index badge,
@@ -67,6 +83,17 @@ const BAR_WIDTH = CARD_WIDTH - CARD_PAD_X * 2;
 // viewBox) y a los lados sube más que en el centro: con el card rondando los 280px son ~11px de
 // curva. Este es el PISO — por debajo de ~s(12) la barra empieza a morder el borde del card.
 const BAR_BOTTOM = s(10);
+// Alto RESERVADO para el precio tachado, haya oferta o no. Es el `lineHeight` de esa línea: la
+// reserva es lo que mantiene las barras de una fila mixta a la misma altura.
+const PREV_PRICE_H = s(15);
+// El sello de oferta MONTA sobre el canto superior del card en vez de vivir dentro. Este es cuánto
+// sobresale: media altura del sello lo dejaría partido justo por el borde, así que sube un poco
+// menos y se apoya en el canto.
+const DISCOUNT_H = s(30);
+// EXPORTADO: quien monte estas tarjetas en una lista tiene que reservar este aire arriba, o el
+// contenedor recorta el sello y se ve partido por la mitad. Con el número copiado a mano, tocarlo
+// acá dejaría el recorte de vuelta sin que nada avise.
+export const CARD_DISCOUNT_OVERHANG = s(10);
 
 // Contorno de la cáscara. Se usa DOS veces —el blanco y el resaltado del toque— así que vive en una
 // constante: dos copias del mismo path es garantía de que un día una se actualice y la otra no.
@@ -279,6 +306,18 @@ interface BasketProductCardProps {
   mode?: "basket" | "picker";
   onSelect?: (item: ProductListItemData) => void;
   onView?: (item: ProductListItemData) => void;
+  /** Qué número va en el círculo. Por defecto la POSICIÓN (`item.index`), que es lo que significa
+   *  en la canasta del chat; la home de Supermarket le pasa en cuántas tiendas está el producto. */
+  badge?: number;
+  /** Bajada reciente en puntos básicos → el sello rojo «−15». Sin esto no hay sello. */
+  discountBps?: number | null;
+  /** Lo que costaba antes, ya formateado. Se pinta TACHADO sobre el precio actual.
+   *  Ojo: viene de la tienda que bajó y el precio grande es el mínimo entre tiendas, así que los
+   *  dos no tienen por qué dar exactamente el porcentaje del sello. */
+  previousPrice?: string | null;
+  /** Seguir el precio del producto. Cuando llega, el marcador REEMPLAZA al ojo de la esquina. */
+  onBookmark?: () => void;
+  bookmarked?: boolean;
 }
 
 function BasketProductCard({
@@ -287,12 +326,21 @@ function BasketProductCard({
   mode = "basket",
   onSelect,
   onView,
+  badge,
+  discountBps,
+  previousPrice,
+  onBookmark,
+  bookmarked = false,
 }: BasketProductCardProps) {
   // Local quantity starts at 0: the card is a product picker, not a committed basket line.
   const [quantity, setQuantity] = useState(0);
   const { whole, cents } = formatPriceParts(item.unit_price);
   const unitLabel = buildUnitLabelParts(item.unit_price, item.size);
   const isAdded = quantity > 0;
+  // bps → porcentaje entero para el sello. Se descartan el 0 y los negativos: «−0%» no es una
+  // oferta, y una SUBIDA de precio no se anuncia con el sello de descuento.
+  const discountPercent =
+    discountBps != null && discountBps > 0 ? Math.round(discountBps / 100) : null;
 
   // Rebote de tecla de TODO el card.
   const cardScale = useSharedValue(1);
@@ -364,10 +412,22 @@ function BasketProductCard({
               className="text-[#3BA198]"
               style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: s(17), lineHeight: s(17) }}
             >
-              {item.index}
+              {badge ?? item.index}
             </Text>
           </View>
-          {mode === "basket" && item.url ? (
+          {/* El marcador MANDA sobre el ojo: si la pantalla ofrece seguir el precio, ése es el
+              gesto de la esquina. Dos acciones en el mismo lugar sería elegir por el usuario. */}
+          {onBookmark ? (
+            <PressFx label={t("save.product.follow")} onPress={onBookmark}>
+              <Icon
+                as={Bookmark}
+                size={s(24)}
+                color="#93D555"
+                fill={bookmarked ? "#93D555" : "transparent"}
+                strokeWidth={2}
+              />
+            </PressFx>
+          ) : mode === "basket" && item.url ? (
             <PressFx
               role="link"
               label={t("chat.basket.viewProduct")}
@@ -440,6 +500,27 @@ function BasketProductCard({
 
         {/* Unit price with superscript cents */}
         <View className="mt-1 flex flex-col items-center">
+          {/* Lo que costaba. Va ARRIBA del precio actual y tachado: el ojo compara de arriba hacia
+              abajo, y ver primero el número viejo es lo que hace que el nuevo se lea como rebaja.
+              El hueco se RESERVA siempre, tenga o no oferta el producto: si sólo apareciera cuando
+              hay rebaja, en una fila mixta cada tarjeta terminaría a distinta altura y las barras
+              de abajo quedarían escalonadas. Con la reserva, la barra cae siempre en el mismo
+              sitio y el precio grande queda alineado entre vecinas. */}
+          <View style={{ height: PREV_PRICE_H, justifyContent: "center" }}>
+            {previousPrice ? (
+              <Text
+                className="text-[#A62B2B]"
+                style={{
+                  fontFamily: KANTUMRUY_SEMIBOLD,
+                  fontSize: s(13),
+                  lineHeight: s(15),
+                  textDecorationLine: "line-through",
+                }}
+              >
+                {previousPrice}
+              </Text>
+            ) : null}
+          </View>
           <View className="flex flex-row items-start justify-center">
             <Text
               className="text-[#034842]"
@@ -542,6 +623,34 @@ function BasketProductCard({
           </View>
         ) : null}
       </View>
+
+      {/* Sello de descuento — el `PillButton` compartido en su variante `discount`, no una píldora
+          dibujada acá: así hereda el canto en degradado y el radio del sistema, y el día que la
+          píldora cambie de forma esta cambia con ella.
+
+          Va ÚLTIMO en el árbol para pintarse por encima de todo, y MONTA sobre el canto superior
+          del card (`top` negativo). Que sobresalga es el efecto buscado: una etiqueta pegada
+          ENCIMA se lee como algo añadido al producto, mientras que dentro del recorte sería un
+          elemento más de la composición. El card no recorta, así que el desborde se ve — pero
+          quien lo ponga en una lista tiene que reservarle ese aire arriba (`DISCOUNT_OVERHANG`) o
+          el contenedor se lo come. */}
+      {discountPercent !== null ? (
+        <View
+          pointerEvents="none"
+          style={{ position: "absolute", top: -CARD_DISCOUNT_OVERHANG, alignSelf: "center" }}
+        >
+          <PillButton
+            variant="discount"
+            label={`−${discountPercent}`}
+            // El texto visible omite el «%» por espacio, pero leído en voz alta «menos 35» no
+            // significa nada. La etiqueta accesible lo dice completo.
+            accessibilityLabel={`−${discountPercent}%`}
+            height={DISCOUNT_H}
+            radius={DISCOUNT_H / 2}
+            paddingHorizontal={s(10)}
+          />
+        </View>
+      ) : null}
     </AnimatedPressable>
   );
 }

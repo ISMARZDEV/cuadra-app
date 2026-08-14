@@ -46,16 +46,11 @@ export interface ProductCardData {
 
 // ── Product list (shared basket/grocery UI item) ─────────────────────────────
 // One product shown in a provider carousel. Money strings are already formatted by the backend.
-export interface ProductListItemData {
-  index: number;
-  canonical_product_id: string;
-  name: string;
-  brand?: string | null;
-  size?: string | null;
-  image_url?: string | null;
-  url?: string | null;
-  unit_price: string;
-}
+// El tipo del ítem vive con la TARJETA (`components/ui/basket-product-card`), que subió a `ui` al
+// usarla también la home de Supermarket. Se reexporta desde acá para no romper a quien ya lo
+// importaba de esta feature.
+export type { ProductListItemData } from "@/components/ui/basket-product-card";
+import type { ProductListItemData } from "@/components/ui/basket-product-card";
 
 // One item inside a provider's basket. Basket-specific fields extend the shared item.
 export interface BasketItemData extends ProductListItemData {
@@ -201,9 +196,6 @@ export interface DockInteraction {
 export interface QuickActionsProps {
   // Tapping a suggestion chip sends that prompt to the chat.
   onSelect: (prompt: string) => void;
-  /** Lo que el usuario está escribiendo AHORA. Alimenta el typeahead: si el catálogo reconoce la
-   *  palabra, las píldoras pasan a hablar de ese producto. Vacío ⇒ catálogo estático. */
-  draft?: string;
 }
 
 export interface ChatEmptyStateProps {

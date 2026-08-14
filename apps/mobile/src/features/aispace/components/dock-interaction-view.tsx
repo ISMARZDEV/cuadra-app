@@ -5,7 +5,7 @@ import { useColorScheme } from "nativewind";
 import { sounds } from "@/lib/sounds";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
-import BasketProductCard, { CARD_WIDTH } from "./basket-product-card";
+import BasketProductCard, { CARD_WIDTH } from "@/components/ui/basket-product-card";
 import type { DockInteractionViewProps, DockOption } from "../interfaces";
 
 // One HITL step rendered inside the glass dock (register-expense flow, Img 8-11): a centered prompt
