@@ -13,6 +13,7 @@ const mockTypeahead = (result: TypeaheadResult) => useProductTypeahead.mockRetur
 vi.mock("../api", () => ({ useProductTypeahead, useDraftCompletions }));
 
 import { setLanguage } from "@/i18n";
+import { useChatDraftStore } from "@/store/chat-draft-store";
 import { useSuggestionUsageStore } from "@/store/suggestion-usage-store";
 import { QueryWrapper } from "@/test/query-wrapper";
 
@@ -36,6 +37,9 @@ describe("QuickActions", () => {
   beforeEach(() => {
     setLanguage("es");
     useSuggestionUsageStore.setState({ usage: {}, restored: true });
+    // El borrador vive en un STORE (no en props): sin resetearlo, el de un test se filtra al
+    // siguiente y las píldoras aparecen habladas de un producto que ese test nunca escribió.
+    useChatDraftStore.setState({ draft: "" });
     mockTypeahead({ data: [], isFetching: false });
   });
   afterEach(() => vi.useRealTimers());
@@ -105,7 +109,7 @@ describe("QuickActions", () => {
 
   // La costura entre el borrador y el carrusel. La lógica de la cascada se prueba en detalle en
   // use-live-suggestions.test.ts; lo que ESTE test cubre es lo único que aquel no puede ver: que
-  // el `draft` que baja por props llegue de verdad al hook (olvidarse de pasarlo compila igual).
+  // el `draft` del STORE llegue de verdad al hook (olvidarse de leerlo compila igual).
   test("swaps the pills for the product being typed", () => {
     vi.useFakeTimers();
     mockTypeahead({
@@ -113,7 +117,8 @@ describe("QuickActions", () => {
       isFetching: false,
     });
 
-    render(<QuickActions onSelect={vi.fn()} draft="Donde estan los guan" />, {
+    useChatDraftStore.setState({ draft: "Donde estan los guan" });
+    render(<QuickActions onSelect={vi.fn()} />, {
       wrapper: QueryWrapper,
     });
     act(() => vi.advanceTimersByTime(300)); // el debounce
@@ -131,7 +136,8 @@ describe("QuickActions", () => {
     vi.useFakeTimers();
     mockTypeahead({ data: undefined, isFetching: true });
 
-    render(<QuickActions onSelect={vi.fn()} draft="guandules" />, { wrapper: QueryWrapper });
+    useChatDraftStore.setState({ draft: "guandules" });
+    render(<QuickActions onSelect={vi.fn()} />, { wrapper: QueryWrapper });
     act(() => vi.advanceTimersByTime(300));
 
     expect(screen.queryByRole("button")).toBeNull();

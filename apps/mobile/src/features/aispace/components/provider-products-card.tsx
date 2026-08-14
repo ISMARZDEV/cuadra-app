@@ -1,14 +1,17 @@
+import { memo } from "react";
 import { FlatList, View } from "react-native";
 import { type Href, useRouter } from "expo-router";
 
 import type { ProviderProductsData } from "../interfaces";
-import BasketProductCard, { CARD_WIDTH } from "./basket-product-card";
+import BasketProductCard, { CARD_WIDTH } from "@/components/ui/basket-product-card";
 import { ProviderLogo } from "./provider-logo";
 
 // Provider product list: a twin of BasketCard for search results.
 // The agent explains context in plain text above; this card just renders each provider's
 // products in the same carousel used inside a budget basket.
-export function ProviderProductsCard({ data }: { data: ProviderProductsData }) {
+// MEMOIZADO: es una fila de la lista del chat. Sin esto, cualquier re-render de `chat-screen`
+// re-renderiza TODAS las filas de la conversación — el coste crece con el largo del historial.
+function ProviderProductsCardBase({ data }: { data: ProviderProductsData }) {
   // La navegación vive acá y no dentro del card: el card sabe dibujarse, no a dónde lleva un toque.
   // Mismo patrón que agent-message.tsx.
   const router = useRouter();
@@ -53,3 +56,4 @@ export function ProviderProductsCard({ data }: { data: ProviderProductsData }) {
     </View>
   );
 }
+export const ProviderProductsCard = memo(ProviderProductsCardBase);

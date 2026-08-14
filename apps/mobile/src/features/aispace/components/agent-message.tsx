@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { type Href, useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
@@ -112,7 +113,9 @@ function RichText({ text }: { text: string }) {
 // tokens stream (Cleo "writing" feel). A reply with markdown (the finance coach reaction) renders
 // rich: bold heading opener + normal coaching text. An `href` makes it a tappable deep link
 // (underlined lime → Insights, Img 11).
-export function AgentMessage({
+// MEMOIZADO: es una fila de la lista del chat. Sin esto, cualquier re-render de `chat-screen`
+// re-renderiza TODAS las filas de la conversación — el coste crece con el largo del historial.
+function AgentMessageBase({
   text,
   href,
   showActions = false,
@@ -175,3 +178,4 @@ export function AgentMessage({
     </View>
   );
 }
+export const AgentMessage = memo(AgentMessageBase);

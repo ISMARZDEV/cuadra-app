@@ -59,11 +59,20 @@ import type { ChatMessage } from "./interfaces";
 import { useChat } from "./use-chat";
 
 // SVG gradient overlay — Figma "Siri AI" card: dark 85% at top → 18% at bottom.
-function CardGradient({ isDark }: { isDark: boolean }) {
+function CardGradient({ isDark, height }: { isDark: boolean; height: number }) {
   const color = isDark ? "#000000" : "#ffffff";
   return (
+    // ⚠️ ALTO FIJO, no `absoluteFill`. Este SVG ocupa toda la tarjeta, y la tarjeta CAMBIA DE ALTO
+    // en cada frame mientras el teclado sube (el `marginBottom` animado). Un `react-native-svg`
+    // que cambia de caja se RE-RASTERIZA: un degradado a pantalla completa, 60 veces por segundo,
+    // en el hilo de UI. Medido en device: la animación del teclado bajaba a ~40 fps INCLUSO con el
+    // chat vacío y con el vidrio desactivado — o sea no eran ni las filas ni el blur.
+    //
+    // Anclado ARRIBA y con el alto máximo de la tarjeta: cuando ésta se encoge, el SVG no se
+    // redimensiona, sólo lo recorta `cardClip`. Lo que queda fuera es la cola del degradado, que ya
+    // es transparente (`stopOpacity` 0) y encima vive detrás del dock.
     <Svg
-      style={StyleSheet.absoluteFill}
+      style={{ position: "absolute", top: 0, left: 0, right: 0, height }}
       preserveAspectRatio="none"
       pointerEvents="none"
     >
@@ -125,7 +134,7 @@ const KB_HIDE = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 // card SLIDES UP intact rather than being squished from the bottom.
 export function ChatScreen() {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height: windowH } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const orbActive = useOrbStore((s) => s.active);
@@ -153,7 +162,9 @@ export function ChatScreen() {
   // Lo que el usuario está escribiendo, publicado por el input. Vive acá y no dentro de
   // `ChatInputBar` porque su consumidor es el DOCK, que es hermano del input, no su hijo: las
   // sugerencias del carrusel se derivan de este texto (`use-live-suggestions`).
-  const [draft, setDraft] = useState("");
+  // El borrador NO vive acá: cambia en cada tecla y esta pantalla es enorme. Está en
+  // `chat-draft-store` para que sólo `QuickActions` se re-renderice al escribir — ver el porqué
+  // medido en ese archivo. La pantalla ni siquiera se suscribe.
   useEffect(() => {
     if (chat.interaction) setManualOpen(false); // a flow took over the dock → drop the manual menu
   }, [chat.interaction]);
@@ -575,7 +586,9 @@ export function ChatScreen() {
           {/* Clips children to the 48px card radius. */}
           <View style={styles.cardClip}>
             {/* Gradient overlay — sits above blur, below content. */}
-            <CardGradient isDark={isDark} />
+            {/* El alto MÁXIMO que puede tener la tarjeta (teclado cerrado, dock recogido). Se pasa
+                como número fijo para que el SVG no se re-rasterice al encogerse la tarjeta. */}
+            <CardGradient isDark={isDark} height={windowH} />
 
             {/* La lista va PRIMERA y ocupa la tarjeta entera: el header la SOBREVUELA (abajo), no le
                 quita alto. Esa es la diferencia estructural con ChatGPT que hacía que el texto se
@@ -811,11 +824,15 @@ export function ChatScreen() {
                   // Dejando el dock abierto, enviar desde una sugerencia tiene el MISMO perfil
                   // geométrico que enviar desde el input. Además es lo que la feature quiere: las
                   // sugerencias se recalculan y siguen ahí.
-                  <QuickActions draft={draft} onSelect={sendAndAnchor} />
+                  //
+                  // `draft` ya no baja por prop: `QuickActions` lo lee del store. Pasándolo desde
+                  // acá, la pantalla tendría que suscribirse y volveríamos al re-render por tecla
+                  // que este cambio elimina.
+                  <QuickActions onSelect={sendAndAnchor} />
                 ) : null}
               </ChatDock>
 
-              <ChatInputBar inputRef={chatInputRef} onSend={sendAndAnchor} onChangeText={setDraft} />
+              <ChatInputBar inputRef={chatInputRef} onSend={sendAndAnchor} />
             </View>
 
             {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}

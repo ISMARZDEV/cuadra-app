@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { useColorScheme } from "nativewind";
@@ -22,7 +22,9 @@ const ENTER_SPRING = { damping: 16, stiffness: 170, mass: 0.6 };
 const ENTER_RISE_PX = 36;
 
 // User message — right-aligned liquid glass bubble.
-export function UserBubble({ text }: { text: string }) {
+// MEMOIZADO: es una fila de la lista del chat. Sin esto, cualquier re-render de `chat-screen`
+// re-renderiza TODAS las filas de la conversación — el coste crece con el largo del historial.
+function UserBubbleBase({ text }: { text: string }) {
   const progress = useSharedValue(0);
   const { colorScheme } = useColorScheme();
 
@@ -52,3 +54,4 @@ export function UserBubble({ text }: { text: string }) {
     </Animated.View>
   );
 }
+export const UserBubble = memo(UserBubbleBase);
