@@ -184,7 +184,20 @@ def _sort_key(sort: str):
     return lambda p: (p.min_price.amount_minor, p.name)  # "price" (default)
 
 
-def _to_card(p: _Aggregated, discount_bps: int | None = None) -> ProductCardDto:
+@dataclass(frozen=True)
+class _Discount:
+    """El badge «−X%» y el precio TACHADO, atados.
+
+    Van juntos en un solo valor a propósito: son las dos caras de UNA bajada. Con dos mapas
+    sueltos, el badge podía quedarse con la bajada mayor y el tachado con otra, y el card mostraría
+    un porcentaje que no cuadra con el precio que tacha. Acá eso no se puede escribir.
+    """
+
+    bps: int
+    previous_minor: int
+
+
+def _to_card(p: _Aggregated, discount: _Discount | None = None) -> ProductCardDto:
     return ProductCardDto(
         id=p.product_id,
         slug=p.slug,
@@ -198,21 +211,27 @@ def _to_card(p: _Aggregated, discount_bps: int | None = None) -> ProductCardDto:
         unit_price_minor=p.unit_price_minor,
         unit_measure=p.quantity.measure.value if p.quantity else None,
         store_count=len(p.providers),
-        discount_bps=discount_bps,
+        discount_bps=discount.bps if discount else None,
+        previous_price_minor=discount.previous_minor if discount else None,
     )
 
 
 _DISCOUNT_WINDOW_DAYS = 30  # ventana para el badge "−X%" (bajada reciente = producto "en oferta")
 
 
-def _discount_map(store_repo: StoreProductRepository, market_id: str) -> dict[str, int]:
-    """canonical_id → mayor % de bajada reciente (bps). Reusa la detección G4 (detect_drops)."""
+def _keep_biggest(out: dict[str, _Discount], cid: str, drop) -> None:  # noqa: ANN001
+    """Se queda con la bajada MAYOR de ese producto, arrastrando su precio anterior."""
+    current = out.get(cid)
+    if current is None or drop.drop_bps > current.bps:
+        out[cid] = _Discount(drop.drop_bps, drop.change.previous.amount_minor)
+
+
+def _discount_map(store_repo: StoreProductRepository, market_id: str) -> dict[str, _Discount]:
+    """canonical_id → mayor bajada reciente. Reusa la detección G4 (detect_drops)."""
     since = datetime.now(timezone.utc) - timedelta(days=_DISCOUNT_WINDOW_DAYS)
-    out: dict[str, int] = {}
+    out: dict[str, _Discount] = {}
     for drop in detect_drops(store_repo.list_price_changes(market_id, since)):
-        cid = drop.change.canonical_product_id
-        if drop.drop_bps > out.get(cid, 0):
-            out[cid] = drop.drop_bps
+        _keep_biggest(out, drop.change.canonical_product_id, drop)
     return out
 
 
@@ -342,13 +361,12 @@ class ListTodaysDeals:
         drops = detect_drops(changes)  # ya viene ordenado por drop_bps desc
 
         ordered_ids: list[str] = []
-        disc: dict[str, int] = {}
+        disc: dict[str, _Discount] = {}
         for drop in drops:
             pid = drop.change.canonical_product_id
             if pid not in disc:
                 ordered_ids.append(pid)  # primera aparición = mayor bajada (drops viene ordenado)
-            if drop.drop_bps > disc.get(pid, 0):
-                disc[pid] = drop.drop_bps
+            _keep_biggest(disc, pid, drop)
 
         products = _aggregate(self._store.list_market_offerings(market_id))
         cards = [_to_card(products[pid], disc.get(pid)) for pid in ordered_ids if pid in products]

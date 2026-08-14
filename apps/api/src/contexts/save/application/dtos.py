@@ -276,6 +276,14 @@ class ProductCardDto(BaseModel):
     unit_measure: str | None  # mass|volume|count; None si no declara cantidad
     store_count: int          # "N tiendas" (B4)
     discount_bps: int | None = None  # % de bajada reciente (badge −X%), None si no está en oferta
+    # Precio TACHADO: lo que costaba antes de la bajada que produjo `discount_bps`. Viaja el precio
+    # REAL de esa bajada, no una reconstrucción a partir del porcentaje — dividir el precio actual
+    # por el descuento devuelve un número redondeado que nunca existió.
+    #
+    # Va en pareja con `discount_bps`: los dos son `None` juntos, y los dos salen de la MISMA
+    # bajada. OJO con leerlo contra `price_minor`: aquél es el mínimo ENTRE TIENDAS y éste es de la
+    # tienda que bajó, así que no tienen por qué dar el porcentaje exacto entre sí.
+    previous_price_minor: int | None = None
 
 
 class CollectionDto(BaseModel):

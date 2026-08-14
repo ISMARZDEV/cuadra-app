@@ -195,6 +195,35 @@ def test_cards_carry_discount_bps_from_recent_drop() -> None:
     assert bisono.discount_bps is None  # sin bajada → sin badge
 
 
+def test_cards_carry_previous_price_from_the_same_drop_as_the_badge() -> None:
+    """El precio tachado sale de la MISMA bajada que da el badge, no de un cálculo aparte.
+
+    Reconstruirlo dividiendo el precio actual por el descuento daría un número redondeado que
+    NUNCA existió; acá `previous` es el precio que la tienda tenía de verdad.
+    """
+    changes = [
+        PriceChange(
+            canonical_product_id="garza",
+            product_name="Arroz Garza",
+            provider_id="p1",
+            provider_name="Merca",
+            previous=Money(47500, DOP),
+            current=Money(45000, DOP),
+            captured_at=datetime(2026, 7, 4, tzinfo=timezone.utc),
+            price_type=PriceType.ONLINE,
+        )
+    ]
+    uc = ListCategoryProducts(
+        FakeTaxonomyRepo(TREE, DESCENDANTS), FakeStoreRepo(ROWS, changes=changes)
+    )
+    res = uc.execute("DO", "arroz")
+    garza = next(c for c in res.products if c.id == "garza")
+    bisono = next(c for c in res.products if c.id == "bisono")
+    assert garza.previous_price_minor == 47500
+    # Sin bajada NO hay precio anterior: `None` es «no hay dato», y 0 sería «costaba cero».
+    assert bisono.previous_price_minor is None
+
+
 def test_filter_by_store_keeps_products_carried_by_it() -> None:
     res = _uc().execute("DO", "arroz", stores=("p3",))  # solo Sirena → solo Garza
     assert [c.id for c in res.products] == ["garza"]
@@ -355,6 +384,30 @@ def test_deals_respects_limit() -> None:
 def test_deals_empty_when_no_drops() -> None:
     uc = ListTodaysDeals(FakeDealsRepo([], MARKET_ROWS))
     assert uc.execute("DO", now=NOW) == []
+
+
+def test_deals_card_carries_the_previous_price_of_its_drop() -> None:
+    changes = [_drop_change("garza", 47500, 45000)]
+    uc = ListTodaysDeals(FakeDealsRepo(changes, MARKET_ROWS))
+    card = uc.execute("DO", now=NOW)[0]
+    assert card.previous_price_minor == 47500
+
+
+def test_deals_previous_price_comes_from_the_drop_that_won_the_badge() -> None:
+    """Con dos bajadas del mismo producto, el badge y el tachado tienen que salir de la MISMA.
+
+    Es el hueco silencioso de tener dos mapas sueltos: el badge se queda con la bajada mayor y el
+    tachado podría quedarse con la última que pasó. Ahí el card diría «−25%» tachando un precio
+    que no da −25% contra el actual, y nadie lo notaría hasta verlo en pantalla.
+    """
+    changes = [
+        _drop_change("garza", 47500, 45000),  # 526 bps
+        _drop_change("garza", 40000, 30000),  # 2500 bps — ésta gana el badge
+    ]
+    uc = ListTodaysDeals(FakeDealsRepo(changes, MARKET_ROWS))
+    card = uc.execute("DO", now=NOW)[0]
+    assert card.discount_bps == 2500
+    assert card.previous_price_minor == 40000  # la pareja de la bajada mayor, no la otra
 
 
 # ── ListProviderProducts (A9: catálogo de un supermercado) ──
