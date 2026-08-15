@@ -8,6 +8,13 @@ import { useLocalSearchParams } from "expo-router";
 import { SupermarketBrowseScreen } from "@/features/save/supermarket/browse-screen";
 
 export default function SupermarketBrowseRoute() {
-  const { origin } = useLocalSearchParams<{ origin?: string }>();
-  return <SupermarketBrowseScreen origin={origin === "deals" ? "deals" : "featured"} />;
+  const { origin, category } = useLocalSearchParams<{ origin?: string; category?: string }>();
+  return (
+    <SupermarketBrowseScreen
+      origin={origin === "deals" ? "deals" : "featured"}
+      // `category` gana sobre `origin` cuando viene: llega de tocar un círculo del carrusel del
+      // header, y ahí el usuario pidió UNA categoría concreta, no una de las listas transversales.
+      category={category}
+    />
+  );
 }

@@ -66,10 +66,10 @@ export function ProductRail({
         style={{ paddingHorizontal: gutter }}
       >
         <View className="flex-1 pr-3">
-          <Text className="text-[22px] text-[#034842]" style={{ fontFamily: KANTUMRUY_SEMIBOLD }}>
+          <Text className="text-[18px] text-[#034842]" style={{ fontFamily: KANTUMRUY_SEMIBOLD }}>
             {title}
           </Text>
-          <Text className="text-[15px] text-[#7CB342]" style={{ fontFamily: KANTUMRUY_MEDIUM }}>
+          <Text className="text-[14px] text-[#7CB342]" style={{ fontFamily: KANTUMRUY_MEDIUM }}>
             {subtitle}
           </Text>
         </View>
