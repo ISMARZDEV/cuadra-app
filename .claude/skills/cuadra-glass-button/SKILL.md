@@ -182,3 +182,43 @@ pnpm mobile:sim                          # run in the iOS simulator (Expo Go) to
 - **Working component**: `apps/mobile/src/features/aispace/components/glass-button.tsx`
 - **Glass surface + tint prop**: `apps/mobile/src/components/ui/glass-surface.tsx`
 - **Same gradient recipe (card)**: `CardGradient` in `apps/mobile/src/features/aispace/chat-screen.tsx`
+
+## Gotcha #6 — un ancestro del `GlassView` no puede ESCALAR **ni** cambiar de OPACIDAD
+
+El vidrio nativo de iOS **muestrea lo que tiene detrás**. Dos transformaciones en un ancestro lo
+rompen, y son DOS reglas distintas — arreglar sólo una deja el defecto vivo (pasó: costó dos rondas):
+
+| En el ancestro | Qué le hace al vidrio | Qué se ve |
+|---|---|---|
+| `scale` animado | Estira el vidrio ya rasterizado | Tinte lavado, textura distorsionada |
+| `opacity` animada | Lo aísla en una **capa de composición**, y ahí ya no hay «detrás» que muestrear | **El icono sí, el cristal NO** — parece transparente |
+
+```tsx
+// ❌ los dos rompen el vidrio
+const style = useAnimatedStyle(() => ({
+  opacity: interpolate(p, [0.5, 1], [0, 1]),
+  transform: [{ scale: interpolate(p, [0.5, 1], [0.8, 1]) }],
+}));
+
+// ✅ trasladar es seguro; para aparecer/desaparecer, MONTAR y DESMONTAR
+const style = useAnimatedStyle(() => ({
+  transform: [{ translateY: interpolate(p, [0.5, 1], [20, 0]) }],
+}));
+return visible ? <Animated.View style={style}><GlassButton …/></Animated.View> : null;
+```
+
+Regla práctica: **si un botón de vidrio tiene que aparecer, se monta; no se funde.** Un desvanecido
+sobre vidrio nativo no es un desvanecido, es un vidrio roto.
+
+> Si aun así se ve translúcido, el siguiente sospechoso es un `zIndex` alto en el contenedor, que
+> también puede forzar capa propia.
+
+## `badge`: punto **o** contador
+
+`GlassButton` acepta `badge?: boolean | number` — `true` pinta un punto a secas, un número pinta un
+contador, y `false`/`0`/ausente no pintan nada (un cero en un contador es ruido: la ausencia ya dice
+«no llevas nada»). Con número la píldora **crece a lo ancho conservando el alto**; dos cifras dentro
+de un círculo fijo saldrían apretadas.
+
+Es SÓLO la marca visual: quien lo encienda debe decirlo también en `label`, porque ni un punto ni un
+número de color existen para un lector de pantalla.

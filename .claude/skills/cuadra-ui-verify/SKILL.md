@@ -167,3 +167,42 @@ reposo antes de acusar al código.**
 - [ ] i18n switch verified (if strings changed)
 - [ ] Admin route smoke-tested authenticated (if under /admin)
 - [ ] Only THEN report done — with the screenshot/computed-value evidence in the reply
+
+## INSTRUMENTAR ANTES DE TEORIZAR (2026-08-15 — la lección más cara de la sesión)
+
+Ante un síntoma visual que NO se explica solo —«sale en blanco», «se ve transparente», «parpadea»—
+**pintar los números en pantalla ANTES de proponer una causa**. No después de dos intentos: antes
+del primero.
+
+Lo que pasó: «la rejilla entra en blanco». Gasté **tres hipótesis razonadas y todas falsas**, y una
+de mis «correcciones» **introdujo** el fallo que luego perseguí. Un `TEMP-DIAG` de cuatro números lo
+resolvió al primer intento: `vpH=76` cuando debía ser 874.
+
+```tsx
+// TEMP-DIAG — se BORRA al tener la respuesta (`grep -rn "TEMP-DIAG" src`)
+const [diag, setDiag] = useState("");
+useEffect(() => {
+  const id = setInterval(() => {
+    setDiag(`rowH=${rowHeight.value.toFixed(0)} vpH=${viewportH.value.toFixed(0)} n=${items.length}`);
+  }, 400);
+  return () => clearInterval(id);
+});
+// ...y en el render, en un sitio que NO tape el header:
+<Text style={{ backgroundColor: "#FFEB99", fontSize: 12 }}>{diag}</Text>
+```
+
+Detalles que costaron una vuelta extra cada uno:
+- **Colocar el panel donde se VEA.** El primero quedó bajo la curva del header y la línea que
+  importaba (`base=`) salió tapada.
+- **Los valores animados hay que refrescarlos**: leer un `useSharedValue` en el render da su valor
+  de ese instante y no se re-renderiza solo. Un `setInterval` corto basta.
+- **Aislar con UNA variable.** Si dudas entre «es la animación» o «son los datos», apaga la
+  animación (`enabled={false}`) y mira. Una variable por vez.
+
+### Corolario: el estado por defecto es VISIBLE
+
+Cualquier efecto que dependa de una MEDIDA (alto de fila, alto de viewport, posición) debe dibujar
+**normal** mientras falte cualquiera de ellas. Un fallo de medición tiene que dejar el contenido a
+la vista, nunca una pantalla vacía — y hay que comprobar **todas** las medidas, no la primera que
+se te ocurra: el `onLayout` del ÍTEM dispara ANTES que el de su lista, así que existe una ventana
+real con una medida lista y la otra en cero.

@@ -240,3 +240,78 @@ pnpm --filter @cuadra/mobile exec expo start --dev-client --port 8087 --clear
 - **Auth unblock (dev)**: `POST /v1/identity/dev-login` (backend, dev-only).
 - **Stack**: Expo Router · NativeWind · react-native-reusables · lucide-react-native (icons) · TanStack Query · zustand.
 - **Design refs (Mobbin)**: Duolingo (gamification) · Uber Eats / Walmart (Save marketplace).
+
+## Listas: aparición al scroll y ocultar cromo (2026-08-15)
+
+### `entering` de Reanimated es una TRAMPA dentro de `FlatList`
+
+Parece la herramienta obvia para «que las tarjetas aparezcan» y no lo es. Tres razones, dos medidas
+y una documentada aquí mismo:
+
+1. **`FlatList` DESMONTA las filas lejanas y las remonta al volver** → con `entering`, cada
+   elemento se re-anima cada vez que reaparece. Un parpadeo perpetuo, no un efecto.
+2. Con `numColumns > 1` los retardos por ítem funcionan en iOS y **disparan todo a la vez en
+   Android** (bug abierto de la librería).
+3. `streaming-text.tsx` ya dejó anotado que `entering` **no dispara de forma fiable** en la New
+   Architecture de este proyecto.
+
+**En su lugar: efecto LIGADO AL SCROLL**, es decir una FUNCIÓN PURA de la posición. Reciclar una
+fila no reinicia nada porque no hay nada que reiniciar — se recalcula. Sólo se animan `opacity` y
+`transform`, las dos únicas propiedades que no obligan a recalcular layout.
+
+```tsx
+const entered = scrollY.value + viewportH.value - rowTop;   // rowTop = contentTop + fila * altoFila
+const p = interpolate(entered, [0, altoFila * REVEAL_ROWS], [0, 1], Extrapolation.CLAMP);
+const eased = 1 - (1 - p) ** 3;                              // entra rápido, ASIENTA despacio
+```
+
+- **`REVEAL_ROWS` se deriva del alto de fila, no es un número de píxeles.** El número *es* cuántas
+  filas están en vuelo a la vez: por debajo de 1 sólo anima la que entra y se ve «de una en una, a
+  saltos»; a 3.5 se mueven la última, la penúltima y la antepenúltima → una OLA continua, y cada una
+  más despacio (así que subirlo también SUAVIZA, no sólo alarga).
+- **La opacidad termina antes que el movimiento** (~45% del recorrido): el contenido se lee mientras
+  todavía se asienta, en vez de pasar media entrada en penumbra.
+- **Respetar «Reducir movimiento»** (`AccessibilityInfo.isReduceMotionEnabled` + el listener
+  `reduceMotionChanged`). Una rejilla que sube y se acerca es exactamente lo que esa preferencia
+  existe para evitar.
+- Ver la regla del **estado por defecto VISIBLE** en `cuadra-ui-verify`.
+
+### `onLayout` de una `FlatList` MIENTE
+
+Reporta medidas intermedias (medido: **76px** para un viewport de 874) y pisa el buen valor. Toda
+fila salía con progreso 0 → **pantalla en blanco** hasta tocar.
+
+- Inicializar el alto de viewport con el de la **ventana** (`useWindowDimensions`), que es buena
+  aproximación desde el frame uno.
+- Refinarlo **sólo** con `e.layoutMeasurement.height` del evento de scroll, y **sólo si es
+  plausible** (`> 200`). Nunca empeorar una aproximación buena.
+
+### Ocultar el navbar al desplazarse: cuatro guardas
+
+Con menos, la barra «no sabe qué hacer» — se esconde y reaparece sola. Todas hacen falta:
+
+1. **¿COMPENSA?** No basta con «se puede scrollear»: sólo si queda **≥1 pantalla** por recorrer
+   (proporción del viewport, no píxeles). Con 2-3 filas se escondía y volvía un segundo después.
+2. **Sólo mientras el DEDO ARRASTRA** (`onBeginDrag`/`onEndDrag`). La inercia y el asentamiento
+   también emiten eventos, y al final de la lista generan deltas en los dos sentidos → oscilación.
+   Esconder navegación responde a una INTENCIÓN; el impulso es física.
+3. **El REBOTE no es recorrido.** Fuera de `[0, maxY]` congelar el estado.
+4. **HISTÉRESIS**: acumular ~28pt en la misma dirección antes de conmutar. Con el delta de un solo
+   frame, el temblor del dedo hace parpadear el header.
+
+Y **una sola constante de tiempo** (`NAV_HIDE_MS` en `cuadra-tab-bar`) para los tres disparadores
+—drawer del chat, chat expandido, scroll de una rejilla—: si cada uno pone el suyo, el mismo gesto
+se siente distinto según de dónde venga. A 240ms el desvanecido se comía la bajada y la barra
+parecía *esfumarse* en vez de *irse*; a 300 se lee el recorrido.
+
+## La URL de la API se DEDUCE en desarrollo
+
+`EXPO_PUBLIC_API_URL` se **hornea en el bundle** y la IP LAN del Mac la cambia el DHCP: lo que era
+bueno al arrancar Metro caduca sin avisar, y el síntoma («no pudimos cargar») parece un bug de
+código. `src/lib/api/base-url.ts` deduce el host de **quien sirve el bundle**
+(`Constants.expoConfig.hostUri`) — esa máquina es, por definición, alcanzable desde el dispositivo.
+
+- **Ni el host ni el PUERTO del `.env` participan**: el puerto es invariante del repo (8005). Un
+  `.env` con `localhost:3000` costó media sesión.
+- Una URL **remota** puesta a propósito (staging, túnel) se respeta: sólo se deduce cuando el
+  objetivo configurado es local o de rango privado.

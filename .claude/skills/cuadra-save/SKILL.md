@@ -388,3 +388,45 @@ cd apps/api && DAGSTER_HOME=$HOME/.cuadra-dagster SAVE_MATCHING_CASCADE_ENABLED=
 - **App skills:** `cuadra-web` · `cuadra-mobile` · `cuadra-mobile-forms` · `cuadra-agent-prompts`.
 - **Pending:** `docs/pending/save-web-f1-pendientes.md` · `docs/pending/save-alerts-remote-push.md`.
 ```
+
+## Pantalla «Categorías» (el «ver más» de Supermarket) — 2026-08-15
+
+Destino de la flecha de los rails de la home: `app/(tabs)/save/supermarket/browse.tsx` →
+`features/save/supermarket/browse-screen.tsx`. Rejilla de 3 columnas con header verde de canto
+CURVO que colapsa al desplazarse, pestañas, buscador fijo y canasta de comparación.
+
+**Arranca en la lista de ORIGEN** (`?origin=deals|featured`): pediste ver más de ESO. Las dos listas
+transversales van SIEMPRE como pestañas por delante del árbol de categorías — así se salta de una a
+otra sin volver atrás, y el título deja de repetir a la primera pestaña.
+
+### La canasta es de COMPARACIÓN, no un carrito
+
+**Save compara precios, NO vende.** No hay dónde añadir ni con qué pagar, así que el «+» de la
+tarjeta es un INTERRUPTOR que mete el producto en `features/save/compare-basket.ts` (zustand, tope
+20, en memoria). Copiar el carrito de una app de compra sería prometer una acción que no llega.
+
+### Geometría derivada, nunca fija
+
+`BasketProductCard` acepta `scale`; la rejilla la calcula con `gridScaleFor(anchoDeColumna)` a
+partir del ancho REAL de pantalla. Los cuatro consumidores de carrusel (chat, canasta, proveedor,
+rails) siguen con `RAIL_SCALE` y su `CARD_WIDTH` exportado — que NO se movió. Misma lección que la
+sangría del hub: un número fijo es holgado en un Pro Max y desborda en un SE.
+
+### El buscador busca en el SERVIDOR
+
+Filtrar en memoria dejó de ser honesto en cuanto la rejilla empezó a paginar: sólo veía el bloque
+descargado, así que en un catálogo grande enseñaba cuatro resultados como si fueran todos — y con
+tan pocos no quedaba scroll, luego `onEndReached` no disparaba y no había forma de ver el resto.
+
+`/save/search/cards` es un endpoint **NUEVO**, no una reforma de `/save/search`: aquél devuelve
+`ProductSearchDto` (id/slug/nombre/marca) y lo consumen la web **y el typeahead del chat**, que
+justamente NO quiere precios. Los dos comparten el MISMO ranking híbrido (`SearchProducts.rank()`,
+extraído para no duplicar la cascada léxica+semántica y que un día dejaran de coincidir).
+
+En el móvil manda a partir de **2 letras**; con 1 sigue el filtro local, que no cuesta consulta.
+
+### Paginación
+
+`/deals`, `/featured` y `/category/{slug}/products` aceptan `offset`. Los tres devuelven el TOTAL
+— ver `cuadra-api` para el porqué. El cliente calcula el siguiente offset como **cuántos lleva**,
+nunca `página × tamaño`: con una página corta, multiplicar saltaría productos en silencio.

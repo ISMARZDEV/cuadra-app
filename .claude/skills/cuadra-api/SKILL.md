@@ -224,3 +224,34 @@ make openapi                           # (repo root) dump OpenAPI + regen api-cl
   (the aispace orchestrator).
 - **Enforcement:** `.importlinter` (context boundaries) · `.github/workflows/ci.yml` (ruff · lint-imports · pytest).
 ```
+
+## Paginar: el DTO de página SIEMPRE lleva `total` (2026-08-15)
+
+`ProductCardPageDto { items, total }` (`contexts/save/application/dtos.py`). El total **no es un
+adorno**: sin él el cliente no sabe cuándo dejar de pedir.
+
+- Una página **llena** no significa que haya más.
+- Una página **corta** no significa que se acabó — y esto no es teórico: `ListTodaysDeals` y
+  `SearchProductCards` DESCARTAN en silencio los resultados cuyo producto ya no está en la oferta
+  vigente. Ahí una página corta miente, y el cliente que se guiara por ella pararía antes de tiempo.
+
+Contar en el SERVIDOR, que es quien tiene la lista entera, elimina las dos suposiciones. Y el total
+se cuenta **sobre los que SOBREVIVEN al filtro**, no sobre los candidatos crudos: con los crudos el
+cliente pediría páginas que no existen. Los dos casos tienen test dedicado.
+
+Patrón de implementación: construir la lista COMPLETA, cortarla al final.
+
+```python
+cards = [_to_card(products[pid]) for pid in ranked_ids if pid in products]
+return ProductCardPageDto(items=cards[offset : offset + limit], total=len(cards))
+```
+
+### Antes de reformar un endpoint: mirar QUIÉN lo consume
+
+`/save/search` parecía el sitio natural para devolver tarjetas con precio. No lo era: lo comparten
+la web y el typeahead del chat, y **el typeahead no quiere precios** — reformarlo habría encarecido
+su consulta para beneficiar a otra pantalla. La respuesta fue un endpoint HERMANO
+(`/save/search/cards`) compartiendo el ranking, no un cambio de forma del existente.
+
+Un `grep` de consumidores antes de tocar la forma de una respuesta cuesta un minuto y decide el
+diseño.
