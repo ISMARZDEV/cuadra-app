@@ -1,4 +1,7 @@
 import { client } from "@cuadra/api-client";
+import Constants from "expo-constants";
+
+import { resolveApiBaseUrl } from "./base-url";
 
 // Configures the generated SDK's singleton client ONCE (cuadra-mobile skill).
 // Base URL from env; the Bearer token is injected per-request via an interceptor that pulls a
@@ -30,9 +33,29 @@ export async function getApiAuthToken(): Promise<string | null> {
   return tokenGetter ? await tokenGetter() : null;
 }
 
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+// Host de quien sirve el bundle (Metro). `hostUri` viene como "10.0.0.89:8087" — nos quedamos con
+// la máquina y descartamos su puerto, que es el de Metro y no el de la API.
+// `expoGoConfig.debuggerHost` es el nombre viejo del mismo dato; se mira de segundo por si algún
+// entorno todavía lo reporta ahí. Fuera de Metro (build de release) no hay ninguno de los dos.
+function metroHost(): string | null {
+  const hostUri = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost;
+  const host = typeof hostUri === "string" ? hostUri.split(":")[0] : null;
+  return host ? host : null;
+}
+
+// En DESARROLLO la IP se DEDUCE en vez de leerse del `.env`. Ver `base-url.ts` para el porqué: la
+// que se hornea en el bundle caduca cuando el DHCP cambia la IP del Mac, y el fallo se disfraza de
+// error del código.
+export const API_BASE_URL = resolveApiBaseUrl({
+  configured: process.env.EXPO_PUBLIC_API_URL,
+  metroHost: metroHost(),
+  isDev: __DEV__,
+});
 if (!API_BASE_URL && __DEV__) {
-  console.warn("[api] EXPO_PUBLIC_API_URL is not set — requests will fail.");
+  console.warn("[api] Sin URL de API: ni EXPO_PUBLIC_API_URL ni host de Metro. Las peticiones van a fallar.");
+}
+if (__DEV__) {
+  console.log(`[api] baseUrl = ${API_BASE_URL}`);
 }
 
 client.setConfig({ baseUrl: API_BASE_URL });
