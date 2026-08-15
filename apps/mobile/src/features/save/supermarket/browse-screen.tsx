@@ -26,7 +26,7 @@ import BasketProductCard, {
   discountOverhangAt,
   gridScaleFor,
 } from "@/components/ui/basket-product-card";
-import { AppBackground } from "@/components/ui/app-background";
+import { AppBackground, appBgColorAt } from "@/components/ui/app-background";
 import { GlassButton } from "@/components/ui/glass-button";
 import { useTabBarClearance } from "@/components/navigation/use-tab-bar-clearance";
 import { PillButton } from "@/components/ui/pill-button";
@@ -108,7 +108,14 @@ const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<never>);
 
 export type BrowseOrigin = "deals" | "featured";
 
-export function SupermarketBrowseScreen({ origin }: { origin: BrowseOrigin }) {
+export function SupermarketBrowseScreen({
+  origin,
+  category,
+}: {
+  origin: BrowseOrigin;
+  /** Slug de la categoría con la que arrancar, si se llegó tocando un círculo del header. */
+  category?: string;
+}) {
   useLang();
   const router = useRouter();
   const { colorScheme } = useColorScheme();
@@ -119,7 +126,7 @@ export function SupermarketBrowseScreen({ origin }: { origin: BrowseOrigin }) {
 
   // Arranca en la pestaña de la que vino el usuario: pediste ver más de ESO. Las dos listas
   // transversales están siempre, así que desde aquí se salta a la otra sin volver atrás.
-  const [activeTab, setActiveTab] = useState<TabId>(origin);
+  const [activeTab, setActiveTab] = useState<TabId>(category ?? origin);
   const [query, setQuery] = useState("");
 
   const deals = useTodaysDealsPaged();
@@ -331,6 +338,25 @@ export function SupermarketBrowseScreen({ origin }: { origin: BrowseOrigin }) {
   // sube al plegarse sumándolo abajo, o la lista se quedaría corta al final.
   const chromeTop = HEADER_BULGE + HEADER_CLEARANCE + SEARCH_H + SEARCH_GAP;
 
+  // EL COLOR DE LA BANDA SE LE PREGUNTA AL FONDO, no se elige.
+  //
+  // En claro esta pantalla se pinta su propio fondo PLANO (`BG_LIGHT`), así que la banda es ese
+  // mismo color y no hay nada que calcular. En oscuro el fondo es el DEGRADADO de la app, y ahí un
+  // color a ojo se ve: el `#0B0B0B` que había antes es gris neutro, y el fondo a esa altura vale
+  // `#010606` —tirando a teal—. Se leía como un rectángulo más claro detrás del buscador.
+  //
+  // Basta un color PLANO por superficie —el de su punto medio— y no una réplica del degradado:
+  // medido sobre el alto de la ventana, la banda entera abarca ~11% del recorrido del degradado,
+  // que son menos de 2/255 de diferencia entre su borde de arriba y el de abajo. Por debajo de lo
+  // que la pantalla puede enseñar; replicar el degradado sería precisión que nadie ve.
+  const bandTopY = insets.top + HEADER_ROW + HEADER_TABS;
+  const bandH = HEADER_BULGE + HEADER_CLEARANCE + SEARCH_H;
+  const bandColor = isDark ? appBgColorAt("dark", (bandTopY + bandH / 2) / windowH) : BG_LIGHT;
+  // El degradado que disuelve la banda arranca donde ella acaba, así que pregunta por SU altura.
+  const fadeColor = isDark
+    ? appBgColorAt("dark", (bandTopY + bandH + FADE_TAIL / 2) / windowH)
+    : BG_LIGHT;
+
   return (
     <View className="flex-1">
       {isDark ? (
@@ -399,7 +425,7 @@ export function SupermarketBrowseScreen({ origin }: { origin: BrowseOrigin }) {
             left: 0,
             right: 0,
             height: HEADER_BULGE + HEADER_CLEARANCE + SEARCH_H,
-            backgroundColor: isDark ? "#0B0B0B" : BG_LIGHT,
+            backgroundColor: bandColor,
           }}
         />
         <Svg
@@ -416,8 +442,8 @@ export function SupermarketBrowseScreen({ origin }: { origin: BrowseOrigin }) {
         >
           <Defs>
             <LinearGradient id="searchFade" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={isDark ? "#0B0B0B" : BG_LIGHT} stopOpacity="1" />
-              <Stop offset="1" stopColor={isDark ? "#0B0B0B" : BG_LIGHT} stopOpacity="0" />
+              <Stop offset="0" stopColor={fadeColor} stopOpacity="1" />
+              <Stop offset="1" stopColor={fadeColor} stopOpacity="0" />
             </LinearGradient>
           </Defs>
           <Rect x="0" y="0" width="100%" height="100%" fill="url(#searchFade)" />

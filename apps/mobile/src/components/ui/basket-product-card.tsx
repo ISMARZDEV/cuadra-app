@@ -10,6 +10,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { memo, useRef, useState } from "react";
 
+import { useColorScheme } from "nativewind";
+
 import { Icon } from "@/components/ui/icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { t } from "@/i18n";
@@ -55,6 +57,52 @@ const s = (n: number) => Math.round(n * RAIL_SCALE);
 
 /** Cuánto mide la tarjeta a una escala dada. Para reservar ancho sin instanciarla. */
 export const cardWidthAt = (scale: number) => Math.round(DESIGN_WIDTH * scale);
+
+/**
+ * TODOS los colores de la tarjeta, por tema y en un solo sitio.
+ *
+ * Estaban sueltos por el marcado —veinte literales repartidos en seiscientas líneas—, y así el tema
+ * oscuro no era auditable: no había forma de ver de un golpe qué color tenía pareja y cuál se había
+ * quedado sin ella. Reunidos acá, la tabla ES la especificación.
+ *
+ * DOS decisiones que parecen descuidos y no lo son:
+ *
+ * · LA PLACA DE LA FOTO SIGUE BLANCA EN OSCURO. Las fotos vienen del CDN de VTEX como JPEG, que no
+ *   tiene canal alfa, y su fondo es `#FFFFFF` puro (verificado descargando una: 1000×1000,
+ *   `hasAlpha: no`). Sobre una placa oscura cada producto dibujaría su propio recuadro blanco. Lo
+ *   que sí cambia es que en oscuro la placa se REDONDEA: el blanco es inevitable, pero pasa de
+ *   parecer un recorte a leerse como una placa puesta a propósito.
+ *
+ * · LA BARRA DE ACCIÓN SIGUE EN LIMA PÁLIDA. Es el CTA de la tarjeta —agregar a la canasta de
+ *   comparación—, y sobre la cáscara oscura ese lima destaca más que en claro. Eso es lo que se
+ *   quiere de un CTA, así que se deja.
+ */
+export function cardPalette(scheme: "light" | "dark") {
+  const dark = scheme === "dark";
+  return {
+    /** La cáscara festoneada. En oscuro, el MISMO `#151515` de la píldora del buscador y del card
+     *  del hub: una superficie oscura más de la app, no un gris nuevo. */
+    shell: dark ? "#151515" : "#FFFFFF",
+    /** El canto. En claro es un pelo MÁS OSCURO que la cáscara; en oscuro, un pelo más CLARO —
+     *  el contorno separa del fondo, y para eso tiene que ir en el sentido contrario al relleno. */
+    shellStroke: dark ? "#242424" : "#F4F4F4",
+    /** Ver la nota de arriba: blanca en los dos temas, a propósito. */
+    photoPlate: "#FFFFFF",
+    /** En claro la placa se funde con la cáscara y un radio no diría nada; en oscuro es lo que
+     *  convierte un recuadro en una placa.
+     *  En unidades de DISEÑO —lo escala el componente con SU `s()`—: la tarjeta se dibuja a dos
+     *  tamaños y un radio fijo se vería el doble de redondo en la rejilla que en los carruseles. */
+    photoRadius: dark ? 10 : 0,
+    name: dark ? "#F7FAF7" : "#131313",
+    /** Marca y tamaño. El gris de claro es demasiado oscuro sobre `#151515`. */
+    meta: dark ? "#9CA3AF" : "#898989",
+    /** El precio, que es lo que la tarjeta existe para decir. Sigue el par de marca que
+     *  `insights-wheel` ya tenía establecido: verde profundo en claro ↔ lima en oscuro. */
+    price: dark ? "#C2FB7E" : "#034842",
+    /** Lo que costaba, tachado. `#A62B2B` sobre `#151515` son dos oscuros: no se lee. */
+    previousPrice: dark ? "#FF9A9A" : "#A62B2B",
+  } as const;
+}
 
 /**
  * La escala que hace que la tarjeta quepa EXACTA en una columna de `columnWidth`.
@@ -367,6 +415,9 @@ function BasketProductCard({
   //
   // eslint-disable-next-line @typescript-eslint/no-shadow
   const s = (n: number) => Math.round(n * scale);
+  // Los colores viven en `cardPalette` y no acá: ver la tabla, que ES la especificación del tema.
+  const { colorScheme } = useColorScheme();
+  const c = cardPalette(colorScheme === "dark" ? "dark" : "light");
   const CARD_WIDTH = cardWidthAt(scale);
   const CARD_PAD_X = s(10);
   const BAR_H = s(42);
@@ -439,7 +490,7 @@ function BasketProductCard({
         viewBox={`0 0 ${CARD_VB_W} ${CARD_VB_H}`}
         preserveAspectRatio="none"
       >
-        <Path d={SHELL_PATH} fill="white" stroke="#F4F4F4" strokeWidth={2} />
+        <Path d={SHELL_PATH} fill={c.shell} stroke={c.shellStroke} strokeWidth={2} />
       </Svg>
 
       {/* Content */}
@@ -490,8 +541,15 @@ function BasketProductCard({
         {/* Product image — vuelve a su alto de diseño: con el card fit ya no hay que robarle
             espacio para que la barra entre. */}
         <View
-          className="mb-1 items-center justify-center bg-white px-1 py-1"
-          style={{ height: s(110), width: s(110) }}
+          className="mb-1 items-center justify-center px-1 py-1"
+          style={{
+            height: s(110),
+            width: s(110),
+            // Blanca SIEMPRE — las fotos son JPEG sin alfa sobre blanco puro. Ver `cardPalette`.
+            backgroundColor: c.photoPlate,
+            borderRadius: s(c.photoRadius),
+            borderCurve: "continuous",
+          }}
         >
           {item.image_url ? (
             <Image
@@ -507,8 +565,13 @@ function BasketProductCard({
         {/* Name: reserve two lines so shorter names don’t collapse the price row. */}
         <View className="justify-start px-1" style={{ height: s(30) }}>
           <Text
-            className="text-center text-[#131313]"
-            style={{ fontFamily: KANTUMRUY_MEDIUM, fontSize: s(14), lineHeight: s(12) * 1.2 }}
+            className="text-center"
+            style={{
+              color: c.name,
+              fontFamily: KANTUMRUY_MEDIUM,
+              fontSize: s(14),
+              lineHeight: s(12) * 1.2,
+            }}
             numberOfLines={2}
           >
             {item.name}
@@ -526,8 +589,12 @@ function BasketProductCard({
           <View className="h-[4px] w-[4px] rounded-full bg-[#B7F0F8]" />
           {item.brand ? (
             <Text
-              className="text-[#898989]"
-              style={{ fontFamily: KANTUMRUY_MEDIUM, fontSize: s(10), maxWidth: s(50) }}
+              style={{
+                color: c.meta,
+                fontFamily: KANTUMRUY_MEDIUM,
+                fontSize: s(10),
+                maxWidth: s(50),
+              }}
               numberOfLines={1}
             >
               {item.brand}
@@ -538,8 +605,12 @@ function BasketProductCard({
           ) : null}
           {item.size ? (
             <Text
-              className="text-[#898989]"
-              style={{ fontFamily: KANTUMRUY_MEDIUM, fontSize: s(10), maxWidth: s(50) }}
+              style={{
+                color: c.meta,
+                fontFamily: KANTUMRUY_MEDIUM,
+                fontSize: s(10),
+                maxWidth: s(50),
+              }}
               numberOfLines={1}
             >
               {item.size}
@@ -558,8 +629,8 @@ function BasketProductCard({
           <View style={{ height: PREV_PRICE_H, justifyContent: "center" }}>
             {previousPrice ? (
               <Text
-                className="text-[#A62B2B]"
                 style={{
+                  color: c.previousPrice,
                   fontFamily: KANTUMRUY_SEMIBOLD,
                   fontSize: s(13),
                   lineHeight: s(15),
@@ -572,14 +643,18 @@ function BasketProductCard({
           </View>
           <View className="flex flex-row items-start justify-center">
             <Text
-              className="text-[#034842]"
-              style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: s(22), lineHeight: s(22) }}
+              style={{
+                color: c.price,
+                fontFamily: KANTUMRUY_SEMIBOLD,
+                fontSize: s(22),
+                lineHeight: s(22),
+              }}
             >
               {whole}
             </Text>
             <Text
-              className="text-[#034842]"
               style={{
+                color: c.price,
                 fontFamily: KANTUMRUY_SEMIBOLD,
                 fontSize: s(13),
                 lineHeight: s(13),
