@@ -46,8 +46,29 @@ export interface ProductListItemData {
 // necesitan para `getItemLayout`. Con el número copiado a mano, cambiarlo acá descalibraba el scroll
 // de los otros tres en silencio.
 const DESIGN_WIDTH = 164;
-const SCALE = 0.9;
-const s = (n: number) => Math.round(n * SCALE);
+
+// La escala de los CARRUSELES — la de siempre. Es el valor por defecto de la prop `scale`, así que
+// los cuatro consumidores que ya existían (dock, canasta, resultados por proveedor, rails de Save)
+// dibujan exactamente lo mismo que antes sin tocar una línea.
+export const RAIL_SCALE = 0.9;
+const s = (n: number) => Math.round(n * RAIL_SCALE);
+
+/** Cuánto mide la tarjeta a una escala dada. Para reservar ancho sin instanciarla. */
+export const cardWidthAt = (scale: number) => Math.round(DESIGN_WIDTH * scale);
+
+/**
+ * La escala que hace que la tarjeta quepa EXACTA en una columna de `columnWidth`.
+ *
+ * La rejilla del «ver más» NO usa una escala fija, y es la misma lección que la sangría del hub: un
+ * número fijo es holgado en un Pro Max y desborda en un SE. Se deriva del ancho que de verdad hay.
+ * `Math.floor` sobre el ancho final para no pasarse por el redondeo — tres tarjetas que se pasan un
+ * píxel cada una son tres píxeles que empujan la última fuera de la columna.
+ */
+export const gridScaleFor = (columnWidth: number) => Math.floor(columnWidth) / DESIGN_WIDTH;
+
+/** Cuánto asoma el sello de oferta por encima del canto, a una escala dada. Quien monte estas
+ *  tarjetas debe reservar este aire arriba o el contenedor recorta el sello por la mitad. */
+export const discountOverhangAt = (scale: number) => Math.round(10 * scale);
 
 export const CARD_WIDTH = s(DESIGN_WIDTH);
 const CARD_VB_W = 143.74;
@@ -318,6 +339,10 @@ interface BasketProductCardProps {
   /** Seguir el precio del producto. Cuando llega, el marcador REEMPLAZA al ojo de la esquina. */
   onBookmark?: () => void;
   bookmarked?: boolean;
+  /** Escala de dibujo. Por defecto la de los carruseles; la rejilla del «ver más» pasa la suya
+   *  (`gridScaleFor`). Se escala TODO junto —no sólo la caja— porque el contenido a tamaño original
+   *  dentro de una cáscara más chica revienta el recorte. */
+  scale?: number;
 }
 
 function BasketProductCard({
@@ -331,7 +356,31 @@ function BasketProductCard({
   previousPrice,
   onBookmark,
   bookmarked = false,
+  scale = RAIL_SCALE,
 }: BasketProductCardProps) {
+  // ⚠️ ESTAS CONSTANTES SOMBREAN A PROPÓSITO A LAS DEL MÓDULO, y el nombre repetido es la
+  // herramienta, no un descuido: el render tiene ~35 llamadas a `s()` y ocho medidas derivadas.
+  // Redefiniéndolas acá con la escala de la instancia, TODO el cuerpo del componente sigue igual y
+  // el tamaño pasa a ser un dato en vez de una constante. Las del módulo siguen existiendo para
+  // `CARD_WIDTH`/`CARD_DISCOUNT_OVERHANG`, que son lo que los carruseles importan para su
+  // `getItemLayout` y que NO pueden depender de una instancia.
+  //
+  // eslint-disable-next-line @typescript-eslint/no-shadow
+  const s = (n: number) => Math.round(n * scale);
+  const CARD_WIDTH = cardWidthAt(scale);
+  const CARD_PAD_X = s(10);
+  const BAR_H = s(42);
+  const BAR_GAP = s(5);
+  const BAR_WIDTH = CARD_WIDTH - CARD_PAD_X * 2;
+  const BAR_BOTTOM = s(10);
+  const PREV_PRICE_H = s(15);
+  const DISCOUNT_H = s(30);
+  // Los dos empujones ópticos de la barra NO son medidas de diseño sino correcciones a ojo sobre la
+  // asimetría de la guirnalda (ver las constantes del módulo). Se reescalan en proporción para que
+  // la corrección siga valiendo lo mismo RELATIVO a la barra al cambiar de tamaño.
+  const k = scale / RAIL_SCALE;
+  const BAR_ICON_DY = 3.5 * k;
+  const BAR_SIDE_ICON_DY = -5.5 * k;
   // Local quantity starts at 0: the card is a product picker, not a committed basket line.
   const [quantity, setQuantity] = useState(0);
   const { whole, cents } = formatPriceParts(item.unit_price);

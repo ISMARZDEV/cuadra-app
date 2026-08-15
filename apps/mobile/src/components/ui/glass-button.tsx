@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useId } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -11,6 +11,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
+import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -26,13 +27,16 @@ type GlassButtonProps = {
   iconSize?: number;
   accent?: boolean;
   /**
-   * Dibuja el punto de aviso arriba a la derecha. Es SÓLO la marca visual: quien lo enciende debe
-   * además decirlo en `label`, porque un punto de color no existe para un lector de pantalla.
+   * Aviso arriba a la derecha: `true` = punto a secas · un NÚMERO = contador. `false`, `0` o
+   * ausente no dibujan nada — un cero en un contador es ruido, la ausencia ya dice «no llevas nada».
+   *
+   * Es SÓLO la marca visual: quien lo enciende debe además decirlo en `label`, porque ni un punto
+   * ni un número de color existen para un lector de pantalla.
    */
-  badge?: boolean;
+  badge?: boolean | number;
 };
 
-// El punto de aviso. Rojo señal —no el lima de marca— porque no es decoración del botón sino una
+// El aviso. Rojo señal —no el lima de marca— porque no es decoración del botón sino una
 // interrupción: tiene que despegarse del vidrio en los dos temas. El aro del color del fondo lo
 // separa del glifo cuando cae encima de una zona clara del vidrio.
 const BADGE_DOT = 10;
@@ -71,6 +75,9 @@ export function GlassButton({
   accent = false,
   badge = false,
 }: GlassButtonProps) {
+  // `true` = punto · número > 0 = contador · lo demás = nada.
+  const badgeCount = typeof badge === "number" ? badge : null;
+  const showBadge = badgeCount != null ? badgeCount > 0 : badge;
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const shape = { width: size, height: size, borderRadius: size / 2 } as const;
@@ -120,7 +127,7 @@ export function GlassButton({
           rojo pasado por el tinte lima deja de leerse como aviso. Va como hermano, por delante.
           Se monta después del vidrio en vez de con `zIndex` porque un `GlassView` nativo no
           respeta el apilado de sus hermanos de forma fiable en Fabric — el orden del árbol sí. */}
-      {badge ? (
+      {showBadge ? (
         <View
           testID="glass-button-badge"
           pointerEvents="none"
@@ -128,16 +135,27 @@ export function GlassButton({
             position: "absolute",
             top: 0,
             right: 0,
-            width: BADGE_DOT + BADGE_RING * 2,
+            // Con número, la píldora CRECE a lo ancho pero conserva su alto: un contador de dos
+            // cifras dentro de un círculo fijo saldría apretado o recortado.
+            minWidth: BADGE_DOT + BADGE_RING * 2,
             height: BADGE_DOT + BADGE_RING * 2,
+            paddingHorizontal: badgeCount != null ? 4 : 0,
             borderRadius: (BADGE_DOT + BADGE_RING * 2) / 2,
             backgroundColor: BADGE_COLOR,
             borderWidth: BADGE_RING,
+            alignItems: "center",
+            justifyContent: "center",
             // El aro toma el color del FONDO de la pantalla, no del botón: es el recorte que
-            // despega el punto del vidrio, igual que el contorno de un icono sobre una foto.
+            // despega el aviso del vidrio, igual que el contorno de un icono sobre una foto.
             borderColor: isDark ? "#0B0B0B" : "#F4F4F4",
           }}
-        />
+        >
+          {badgeCount != null ? (
+            <Text style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: 10, color: "#FFFFFF" }}>
+              {badgeCount}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
     </AnimatedPressable>
   );

@@ -30,6 +30,7 @@ import { OrbSphere } from "@/components/ui/orb-sphere";
 import { t, type TranslationKey } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { useChatExpandStore } from "@/store/chat-expand-store";
+import { useNavHideStore } from "@/store/nav-hide-store";
 import { useDrawer } from "@/store/drawer-store";
 import { useOrbStore } from "@/store/orb-store";
 
@@ -87,6 +88,11 @@ function AnimatedTabIcon({
     </Animated.View>
   );
 }
+
+// Cuánto tarda la barra en irse hacia abajo. UNA constante para los tres disparadores (drawer del
+// chat, chat expandido, scroll de una rejilla): si cada uno pusiera el suyo, el mismo gesto se
+// sentiría distinto según de dónde viniera.
+const NAV_HIDE_MS = 300;
 
 // Cuadra tab bar — exact Figma silhouette: one smooth wave with a central dip concentric to the
 // raised "iM" logo (AISpace). Geometry scales from the design viewBox so the curve stays faithful.
@@ -247,10 +253,22 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const chatExpanded = useChatExpandStore((s) => s.expanded);
   const expandProgress = useSharedValue(chatExpanded ? 1 : 0);
   useEffect(() => {
-    expandProgress.value = withTiming(chatExpanded ? 1 : 0, { duration: 300 });
+    expandProgress.value = withTiming(chatExpanded ? 1 : 0, { duration: NAV_HIDE_MS });
   }, [chatExpanded, expandProgress]);
+  // TERCER disparador: una pantalla que se está desplazando hacia abajo pide la barra fuera para
+  // devolverle esa franja al contenido (la rejilla del «ver más»).
+  //
+  // EXACTAMENTE la misma animación que expandir el chat: los tres disparadores comparten el
+  // `translateY` de abajo, así que compartir también la duración es lo que hace que la barra se
+  // VAYA HACIA ABAJO en vez de esfumarse. A 240ms el desvanecido se comía la bajada antes de que
+  // se leyera — se percibía como que desaparece, no como que se va.
+  const navHidden = useNavHideStore((s) => s.hidden);
+  const scrollProgress = useSharedValue(navHidden ? 1 : 0);
+  useEffect(() => {
+    scrollProgress.value = withTiming(navHidden ? 1 : 0, { duration: NAV_HIDE_MS });
+  }, [navHidden, scrollProgress]);
   const drawerHideStyle = useAnimatedStyle(() => {
-    const p = Math.max(drawerProgress.value, expandProgress.value);
+    const p = Math.max(drawerProgress.value, expandProgress.value, scrollProgress.value);
     return {
       transform: [{ translateY: p * (navHeight + (insets.bottom || 0) + 40) }],
       opacity: 1 - p,

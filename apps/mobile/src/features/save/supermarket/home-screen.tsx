@@ -1,5 +1,6 @@
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { type Href, useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
 
 import { AppBackground } from "@/components/ui/app-background";
@@ -25,6 +26,7 @@ const RAIL_GAP = 28;
 
 export function SupermarketHomeScreen() {
   useLang();
+  const router = useRouter();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const insets = useSafeAreaInsets();
@@ -37,6 +39,11 @@ export function SupermarketHomeScreen() {
   // Seguir el precio desde la tarjeta. El endpoint es el MISMO que usa la web, así que la alerta
   // aparece en el feed de la campana sin nada más que hacer.
   const follow = (productId: string) => subscribe.mutate({ productId });
+
+  // La flecha del rail abre la rejilla ARRANCANDO en esta misma lista: pediste ver más de ESTO, así
+  // que eso es lo primero que aparece. Las categorías quedan de pestañas al lado.
+  const seeAll = (origin: "deals" | "featured") =>
+    router.push(`/save/supermarket/browse?origin=${origin}` as Href);
 
   const state = resolveHomeState(
     { isLoading: deals.isLoading, isError: deals.isError, count: deals.data?.length ?? 0 },
@@ -109,6 +116,7 @@ export function SupermarketHomeScreen() {
               products={deals.data ?? []}
               gutter={GUTTER_X}
               onFollow={follow}
+              onSeeAll={() => seeAll("deals")}
             />
             <ProductRail
               title={t("save.supermarket.products.title")}
@@ -116,6 +124,7 @@ export function SupermarketHomeScreen() {
               products={featured.data ?? []}
               gutter={GUTTER_X}
               onFollow={follow}
+              onSeeAll={() => seeAll("featured")}
             />
           </>
         )}
