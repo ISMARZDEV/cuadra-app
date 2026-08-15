@@ -28,6 +28,7 @@ from .dtos import (
     FacetValueDto,
     PriceBucketDto,
     PriceFacetDto,
+    ProductCardPageDto,
     ProductCardDto,
 )
 from .errors import CategoryNotFoundError
@@ -302,14 +303,20 @@ class ListFeaturedProducts:
         self._store = store_repo
 
     def execute(
-        self, market_id: str, *, sort: str = "unit_price", limit: int = 12
-    ) -> list[ProductCardDto]:
+        self, market_id: str, *, sort: str = "unit_price", limit: int = 12, offset: int = 0
+    ) -> ProductCardPageDto:
         rows = self._store.list_market_offerings(market_id)
         products = _aggregate(rows)
         disc = _discount_map(self._store, market_id)
         sort = sort if sort in _SORTS else "unit_price"
         ordered = sorted(products.values(), key=_sort_key(sort))
-        return [_to_card(p, disc.get(p.product_id)) for p in ordered[:limit]]
+        # El total sale de la lista ENTERA, antes de cortar: es lo que le dice al cliente si queda
+        # algo más que pedir.
+        page = ordered[offset : offset + limit]
+        return ProductCardPageDto(
+            items=[_to_card(p, disc.get(p.product_id)) for p in page],
+            total=len(ordered),
+        )
 
 
 class ListBrandProducts:
@@ -354,8 +361,9 @@ class ListTodaysDeals:
         *,
         days: int = 7,
         limit: int = 12,
+        offset: int = 0,
         now: datetime | None = None,
-    ) -> list[ProductCardDto]:
+    ) -> ProductCardPageDto:
         since = (now or datetime.now(timezone.utc)) - timedelta(days=days)
         changes = self._store.list_price_changes(market_id, since)
         drops = detect_drops(changes)  # ya viene ordenado por drop_bps desc
@@ -369,8 +377,12 @@ class ListTodaysDeals:
             _keep_biggest(disc, pid, drop)
 
         products = _aggregate(self._store.list_market_offerings(market_id))
+        # Se arma la lista COMPLETA antes de cortar, y a propósito: el filtro `if pid in products`
+        # descarta bajadas cuyo producto ya no está en la oferta vigente, así que el total honesto
+        # es el de las que SOBREVIVEN. Contar las bajadas crudas mandaría al cliente a pedir
+        # páginas que no existen.
         cards = [_to_card(products[pid], disc.get(pid)) for pid in ordered_ids if pid in products]
-        return cards[:limit]
+        return ProductCardPageDto(items=cards[offset : offset + limit], total=len(cards))
 
 
 class ListProviderProducts:

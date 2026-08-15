@@ -26,10 +26,12 @@ export async function data(pageContext: PageContextServer) {
   ]);
   return {
     categories: cats.data?.categories ?? [],
-    deals: deals.data ?? [],
-    popular: popular.data ?? [],
+    // `.items`: estos endpoints ahora devuelven una PÁGINA (items + total) para que la rejilla del
+    // móvil pueda paginar. Los rails de aquí siguen pidiendo 12 y usando sólo la primera página.
+    deals: deals.data?.items ?? [],
+    popular: popular.data?.items ?? [],
     providers: providers.data ?? [],
-    bestValue: bestValue.data ?? [],
+    bestValue: bestValue.data?.items ?? [],
     collections: collections.data ?? [],
   };
 }

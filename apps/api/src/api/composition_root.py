@@ -103,6 +103,7 @@ from src.contexts.save.application.promote_store_product import PromoteStoreProd
 from src.contexts.save.application.relink_store_product import RelinkStoreProduct
 from src.contexts.save.application.unlink_store_product import UnlinkStoreProduct
 from src.contexts.save.application.search import SearchProducts
+from src.contexts.save.application.search_cards import SearchProductCards
 from src.contexts.save.application.store_registry import (
     CreateSource,
     ListSourcesHealth,
@@ -407,6 +408,16 @@ def get_aispace_graph(checkpointer: object = Depends(get_aispace_checkpointer)):
 
 
 # ── Save (catálogo de precios) ──
+def get_search_product_cards(session: Session = Depends(get_session)) -> SearchProductCards:
+    """Búsqueda con TARJETAS: reutiliza el MISMO ranking híbrido que `/save/search` y lo cruza con
+    la oferta vigente. Compartir el ranking es lo que garantiza que las dos búsquedas no diverjan.
+    """
+    return SearchProductCards(
+        get_search_products(session),
+        SqlStoreProductRepository(session),
+    )
+
+
 def get_search_products(session: Session = Depends(get_session)) -> SearchProducts:
     # Búsqueda HÍBRIDA (§6): léxica + semántica fusionadas por RRF. Sin embedder resuelto,
     # `SearchProducts` omite la etapa semántica y degrada a léxica — nunca inventa un vector.

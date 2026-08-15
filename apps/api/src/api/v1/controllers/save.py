@@ -30,6 +30,7 @@ from src.api.composition_root import (
     get_price_history,
     get_register_push_token,
     get_run_alert_matching,
+    get_search_product_cards,
     get_search_products,
     get_subscribe_alert,
     get_unsubscribe_alert,
@@ -60,6 +61,7 @@ from src.contexts.save.application.dtos import (
     PriceDropDto,
     PriceHistoryDto,
     ProductCardDto,
+    ProductCardPageDto,
     ProductSearchDto,
     ProviderPageDto,
     ProviderRefDto,
@@ -83,6 +85,7 @@ from src.contexts.save.infrastructure.catalog_sources.ssrf_guard import (
     guarded_image_get,
 )
 from src.contexts.save.application.search import SearchProducts
+from src.contexts.save.application.search_cards import SearchProductCards
 
 router = APIRouter(prefix="/save", tags=["save"])
 
@@ -94,6 +97,22 @@ def search_products(
     use_case: SearchProducts = Depends(get_search_products),
 ) -> list[ProductSearchDto]:
     return use_case.execute(q, market)
+
+
+@router.get("/search/cards")
+def search_product_cards(
+    q: str = Query(..., min_length=1, description="Texto de búsqueda"),
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    limit: int = Query(24, ge=1, le=200),
+    offset: int = Query(0, ge=0, description="Desde qué resultado (paginación)"),
+    use_case: SearchProductCards = Depends(get_search_product_cards),
+) -> ProductCardPageDto:
+    """Buscar devolviendo TARJETAS (precio, imagen, N tiendas), no sólo nombres.
+
+    Hermano de `/search`, no su sustituto: aquél devuelve `ProductSearchDto` y lo consumen la web y
+    el typeahead del chat, que NO quiere precios. Los dos comparten el mismo ranking híbrido.
+    """
+    return use_case.execute(q, market, limit=limit, offset=offset)
 
 
 @router.get("/compare")
@@ -113,9 +132,10 @@ def featured_products(
     market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
     sort: str = Query("unit_price", description="unit_price|popular|price"),
     limit: int = Query(12, ge=1, le=50),
+    offset: int = Query(0, ge=0, description="Desde qué producto (paginación)"),
     use_case: ListFeaturedProducts = Depends(get_list_featured_products),
-) -> list[ProductCardDto]:
-    return use_case.execute(market, sort=sort, limit=limit)
+) -> ProductCardPageDto:
+    return use_case.execute(market, sort=sort, limit=limit, offset=offset)
 
 
 @router.get("/collections")
@@ -237,9 +257,10 @@ def todays_deals(
     market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
     days: int = Query(7, ge=1, le=3650, description="Ventana de detección en días"),
     limit: int = Query(12, ge=1, le=50),
+    offset: int = Query(0, ge=0, description="Desde qué oferta (paginación)"),
     use_case: ListTodaysDeals = Depends(get_list_todays_deals),
-) -> list[ProductCardDto]:
-    return use_case.execute(market, days=days, limit=limit)
+) -> ProductCardPageDto:
+    return use_case.execute(market, days=days, limit=limit, offset=offset)
 
 
 @router.get("/drops")

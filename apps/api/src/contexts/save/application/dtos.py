@@ -260,6 +260,19 @@ class CategoryPageDto(BaseModel):
     products: list[ProductSearchDto]
 
 
+class ProductCardPageDto(BaseModel):
+    """Una página de cards + CUÁNTAS hay en total.
+
+    El total no es un adorno: sin él el cliente no sabe cuándo dejar de pedir. Una página llena no
+    significa que haya más, y —en `ListTodaysDeals`, que descarta en silencio las bajadas cuyo
+    producto ya no está en la oferta vigente— una página CORTA tampoco significa que se acabó.
+    Contar en el servidor, que es quien tiene la lista entera, evita las dos suposiciones.
+    """
+
+    items: list["ProductCardDto"]
+    total: int
+
+
 class ProductCardDto(BaseModel):
     """Card de producto en el listado (Imagen #5): precio mínimo, precio/unidad, N tiendas."""
 
