@@ -11,6 +11,15 @@ import type { ImageSourcePropType } from "react-native";
 // encuentra nada. Escritas a mano, además, una ruta mal puesta revienta al empaquetar —fuerte y
 // temprano— en vez de dejar un hueco en la pantalla.
 //
+// ⚠️ LOS PNG SE GUARDAN A 180×180, Y ESE NÚMERO NO ES ARBITRARIO: el círculo se dibuja a 60pt, y
+// 60 × 3 = 180 es todo lo que puede enseñar la pantalla más densa que existe. Diseño los exportó a
+// 435, o sea casi SEIS VECES los píxeles que se ven — y eso se pagaba en el arranque: 2.1 MB de
+// assets y ~10 MB de mapas de bits al decodificarlos, con las categorías apareciendo de una en una.
+// A 180 la carpeta baja a 520 KB sin perder NADA visible (no se puede enseñar más resolución de la
+// que cabe). Verificado por captura: idénticas.
+//   · Al re-exportar desde Figma: `sips -Z 180 *.png`.
+//   · Los originales a 435 siguen en el historial de git si alguna vez hacen falta más grandes.
+//
 // ⚠️ LOS ARCHIVOS SE RENOMBRARON AL SLUG, y hubo que hacerlo: como salieron de diseño llevaban
 // acentos, ampersands y hasta espacios DOBLES, y Metro no los resuelve. `Alcohol.png` entraba y
 // `Bebés.png` reventaba el empaquetado — macOS guarda la `é` DESCOMPUESTA (NFD, `e` + tilde
