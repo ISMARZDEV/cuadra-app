@@ -2,7 +2,6 @@ import { ArrowLeft, ShoppingBasket } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   FlatList,
   Text,
   useWindowDimensions,
@@ -32,7 +31,6 @@ import { useTabBarClearance } from "@/components/navigation/use-tab-bar-clearanc
 import { PillButton } from "@/components/ui/pill-button";
 import { t, useLang } from "@/i18n";
 import { useNavHideStore } from "@/store/nav-hide-store";
-import { palette } from "@/theme";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import {
@@ -54,6 +52,7 @@ import {
 } from "./components/curved-header";
 import { RevealCard } from "./components/reveal-card";
 import { SearchBar } from "./components/search-bar";
+import { GridSkeleton } from "./components/supermarket-skeletons";
 import { toCardItemView } from "./to-card-item";
 
 // El «ver más» de los rails de Supermarket: la rejilla de 3 columnas con pestañas de categoría.
@@ -478,9 +477,18 @@ export function SupermarketBrowseScreen({
           key={`${activeTab}|${searching ? query.trim() : ""}`}
           ListEmptyComponent={
             loading ? (
-              <View className="pt-16">
-                <ActivityIndicator color={palette.primary} />
-              </View>
+              /* El HUECO de la rejilla, con su luz recorriéndolo — no una ruedecita. Ocupa el sitio
+                 EXACTO de las tarjetas que van a llegar (`skeleton-layout`), así que al llegar no
+                 hay salto. Va dentro de la lista vacía, así que el chrome de arriba —header,
+                 pestañas y buscador— ya está puesto y no aparece después. */
+              <GridSkeleton
+                width={width - GUTTER_X * 2}
+                gutter={0}
+                cardWidth={cardWidth}
+                columnGap={GRID_GAP}
+                rowGap={ROW_GAP}
+                rows={4}
+              />
             ) : failed ? (
               // Un FALLO no se dibuja como «no hay productos»: son cosas distintas y confundirlas
               // deja al usuario creyendo que el súper está vacío cuando lo que se cayó fue la red.
@@ -520,8 +528,20 @@ export function SupermarketBrowseScreen({
           onEndReachedThreshold={0.5}
           ListFooterComponent={
             active.isFetchingNextPage ? (
-              <View className="py-6">
-                <ActivityIndicator color={palette.primary} />
+              /* Al pedir la página siguiente NO se pone una ruedecita: se ponen las FILAS que
+                 vienen, vacías y con la luz recorriéndolas. Así el scroll no topa con un final —
+                 se puede seguir bajando— y cada tarjeta se limita a rellenar su hueco en vez de
+                 empujar la lista hacia abajo cuando llega. La ruedecita decía «espera»; esto dice
+                 «sigue, que ya viene». */
+              <View style={{ marginTop: ROW_GAP }}>
+                <GridSkeleton
+                  width={width - GUTTER_X * 2}
+                  gutter={0}
+                  cardWidth={cardWidth}
+                  columnGap={GRID_GAP}
+                  rowGap={ROW_GAP}
+                  rows={2}
+                />
               </View>
             ) : null
           }

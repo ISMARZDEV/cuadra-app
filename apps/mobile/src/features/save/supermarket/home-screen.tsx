@@ -1,4 +1,4 @@
-import { ActivityIndicator, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type Href, useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
@@ -7,12 +7,12 @@ import { AppBackground } from "@/components/ui/app-background";
 import { useTabBarClearance } from "@/components/navigation/use-tab-bar-clearance";
 import { PillButton } from "@/components/ui/pill-button";
 import { t, useLang } from "@/i18n";
-import { palette } from "@/theme";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import { useCategories, useFeaturedProducts, useSubscribeAlert, useTodaysDeals } from "../api";
 import { useCompareCount } from "../compare-basket";
 import { ProductRail } from "./components/product-rail";
+import { RailsSkeleton } from "./components/supermarket-skeletons";
 import { SupermarketHeader } from "./components/supermarket-header";
 import { resolveHomeState } from "./home-state";
 
@@ -117,9 +117,10 @@ export function SupermarketHomeScreen() {
           }
         />
         {state === "loading" ? (
-          <View className="pt-16">
-            <ActivityIndicator color={palette.primary} />
-          </View>
+          /* El HUECO de lo que viene, con su luz recorriéndolo — no una ruedecita. Una ruedecita
+             dice «espera» y nada más; el esqueleto dice QUÉ está por llegar y dónde, así que
+             cuando llega no hay salto. Ocupa el sitio exacto (`skeleton-layout`). */
+          <RailsSkeleton width={width} gutter={GUTTER_X} />
         ) : state === "error" ? (
           /* Un error de red tiene que DECIRSE. Sin esto la pantalla quedaba en blanco y no había
              forma de distinguir «se cayó la API» de «no hay productos» — pasó de verdad, y costó
@@ -155,8 +156,13 @@ export function SupermarketHomeScreen() {
         ) : (
           /* Los rails se separan ENTRE ELLOS acá dentro, no desde el contenedor: así el header
              queda pegado a su primer título, como en el diseño. */
+          /* Los rails ENTRAN SUBIENDO al estar listos. El escalonado lo hace CADA RAIL por dentro
+             —título, bajada y luego tarjeta a tarjeta—, no este contenedor: subir el rail entero
+             como un bloque se lee como una losa que aparece. `entranceOrder` desplaza el arranque
+             del segundo para que la cascada baje por la pantalla en vez de sonar dos veces. */
           <View style={{ gap: RAIL_GAP }}>
             <ProductRail
+              entranceOrder={0}
               title={t("save.supermarket.deals.title")}
               subtitle={t("save.supermarket.deals.subtitle")}
               products={deals.data ?? []}
@@ -165,6 +171,7 @@ export function SupermarketHomeScreen() {
               onSeeAll={() => seeAll("deals")}
             />
             <ProductRail
+              entranceOrder={2}
               title={t("save.supermarket.products.title")}
               subtitle={t("save.supermarket.products.subtitle")}
               products={featured.data ?? []}

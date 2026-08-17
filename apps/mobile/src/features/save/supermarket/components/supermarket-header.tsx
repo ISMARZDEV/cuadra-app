@@ -12,6 +12,7 @@ import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import { headerBlockHeight, headerPath } from "../arc-geometry";
 import { CategoryArc, type ArcCategory } from "./category-arc";
+import { ArcSkeleton } from "./supermarket-skeletons";
 
 // El header de la home de Supermarket: el verde con el canto arqueado, su fila de controles, la
 // ubicación, la campana y el carrusel de categorías montado en la curva.
@@ -102,7 +103,14 @@ export function SupermarketHeader({
           buscador y la campana se dibujan después, así que siguen por delante y se llevan sus
           toques. A cambio, las categorías pueden subir por el arco enteras — antes la banda
           empezaba en el canto del círculo en reposo y las recortaba en seco al girar. */}
-      <CategoryArc categories={categories} width={width} onSelect={onSelectCategory} />
+      {/* Mientras no hay categorías, el HUECO de los cuatro círculos sobre la curva —puestos con la
+          misma geometría que las de verdad, así que al llegar no saltan. Se DESMONTA al llegar los
+          datos: el reloj del shimmer late mientras esté montado. */}
+      {categories.length === 0 ? (
+        <ArcSkeleton width={width} height={height} />
+      ) : (
+        <CategoryArc categories={categories} width={width} onSelect={onSelectCategory} />
+      )}
 
       {/* Fila de controles: volver · buscador · carrito. Va por DEBAJO del área segura, no del
           canto de la pantalla, o el reloj del sistema se le montaría encima. */}

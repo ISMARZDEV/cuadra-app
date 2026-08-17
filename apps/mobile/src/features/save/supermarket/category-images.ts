@@ -42,26 +42,9 @@ const IMAGES: Record<string, ImageSourcePropType> = {
   "snacks-dulces": require("@/assets/categories-supermarket/snacks-dulces.png"),
 };
 
-/**
- * Los pasteles del respaldo, MUESTREADOS de las ilustraciones reales (no inventados): así el círculo
- * de una categoría sin foto pertenece a la misma familia que sus vecinas en vez de cantar.
- */
-const FALLBACK_TINTS = ["#E9FFD9", "#FFD2D2", "#FEDFB5", "#CAEFFA", "#FFE2F8", "#FFC8C8"] as const;
-
 /** La ilustración de una categoría, o `null` si todavía no la exportaron. */
 export function categoryImage(slug: string): ImageSourcePropType | null {
   return IMAGES[slug] ?? null;
-}
-
-/**
- * El pastel del círculo de respaldo. Se elige por el SLUG y no al azar ni por el índice: tiene que
- * salir el mismo color en cada render y en cada página del carrusel, o la categoría cambiaría de
- * color al deslizar y parecería otra.
- */
-export function fallbackTint(slug: string): string {
-  let hash = 0;
-  for (let i = 0; i < slug.length; i += 1) hash = (hash * 31 + slug.charCodeAt(i)) % 100_000;
-  return FALLBACK_TINTS[hash % FALLBACK_TINTS.length];
 }
 
 /**

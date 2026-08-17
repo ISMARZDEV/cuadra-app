@@ -3,7 +3,7 @@
 // (__DEV__, matchMedia). We expose only the surface our components use: Animated.* host components
 // (so children still render), inert worklet hooks, identity `withX` helpers, and chainable
 // layout-animation builders. Behavior is asserted at the hook level (use-chat), not via worklets.
-import { ScrollView, Text, View } from "react-native";
+import { Image, ScrollView, Text, View } from "react-native";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const chainable: any = new Proxy({}, { get: () => () => chainable });
@@ -14,6 +14,9 @@ const Animated = {
   View,
   Text,
   ScrollView,
+  // `Animated.Image` lo usan las fotos que se funden al cargar (tarjeta de producto, ruleta de
+  // categorías). Sin él aquí, esos componentes renderizan `undefined` y el árbol entero revienta.
+  Image,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createAnimatedComponent: (component: any) => component,
 };

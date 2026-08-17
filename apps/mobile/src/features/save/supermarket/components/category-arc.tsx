@@ -1,16 +1,19 @@
 import { useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
-import { Image, Pressable, type ScrollView, Text, View } from "react-native";
+import { Pressable, type ScrollView, Text, View } from "react-native";
+import { useColorScheme } from "nativewind";
 import Animated, {
   runOnJS,
   useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
   type SharedValue,
 } from "react-native-reanimated";
 
 import { AndroidHoldPopover } from "@/components/ui/android-hold-popover";
+import { cardPalette } from "@/components/ui/basket-product-card";
 import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import {
@@ -27,7 +30,7 @@ import {
   initialRotation,
   maxRotation,
 } from "../arc-geometry";
-import { categoryImage, fallbackInitial, fallbackTint } from "../category-images";
+import { categoryImage, fallbackInitial } from "../category-images";
 
 // LA RULETA DE CATEGORÍAS: una rueda que gira sobre la elipse del header.
 //
@@ -232,6 +235,15 @@ function WheelItem({
 }) {
   const ref = useRef<View>(null);
   const image = categoryImage(category.slug);
+  // LA MISMA superficie que el esqueleto de las tarjetas —blanca en claro—, no un pastel por
+  // categoría. Los pasteles se probaron y competían: catorce tonos distintos girando sobre el verde
+  // se leían como confeti, y encima el disco de espera cambiaba de color al llegar su ilustración.
+  // Con una superficie única, el disco es un HUECO y la ilustración es lo único que aporta color.
+  const { colorScheme } = useColorScheme();
+  const surface = cardPalette(colorScheme === "dark" ? "dark" : "light").shell;
+  // 0 mientras el PNG se decodifica, 1 cuando ya se puede enseñar.
+  const ready = useSharedValue(0);
+  const revealStyle = useAnimatedStyle(() => ({ opacity: ready.value }));
 
   // La posición sale del ÁNGULO en cada fotograma, en el hilo de UI. Por eso `angleForSlot` es un
   // worklet: calcularlo en JS haría que la rueda fuese a tirones.
@@ -269,21 +281,44 @@ function WheelItem({
         style={{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }}
       >
         {image ? (
-          <Image
-            source={image}
-            style={{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }}
-            resizeMode="contain"
-          />
+          // LA ILUSTRACIÓN SE FUNDE SOBRE SU PASTEL, no aparece de golpe.
+          //
+          // Son 17 PNG de ~150 KB y el sistema los decodifica cuando puede, así que al entrar
+          // aparecían de una en una, a tirones, sobre un hueco vacío. Ahora debajo hay SIEMPRE un
+          // disco del pastel de esa categoría —el sitio nunca está vacío— y la ilustración se
+          // revela encima en cuanto está lista. Lo que era un goteo pasa a ser un relevo.
+          <View style={{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }}>
+            <View
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                width: CIRCLE_SIZE,
+                height: CIRCLE_SIZE,
+                borderRadius: CIRCLE_SIZE / 2,
+                borderCurve: "continuous",
+                backgroundColor: surface,
+              }}
+            />
+            <Animated.Image
+              source={image}
+              onLoad={() => {
+                ready.value = withTiming(1, { duration: 260 });
+              }}
+              style={[{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }, revealStyle]}
+              resizeMode="contain"
+            />
+          </View>
         ) : (
-          // Respaldo para las categorías cuya ilustración todavía no exportaron. Mismo tamaño y
-          // misma familia de pasteles que las demás — ver `fallbackTint`.
+          // Respaldo para las categorías cuya ilustración todavía no exportaron: la inicial sobre
+          // la misma superficie que las demás, así que no canta como una pieza distinta.
           <View
             style={{
               width: CIRCLE_SIZE,
               height: CIRCLE_SIZE,
               borderRadius: CIRCLE_SIZE / 2,
               borderCurve: "continuous",
-              backgroundColor: fallbackTint(category.slug),
+              backgroundColor: surface,
               alignItems: "center",
               justifyContent: "center",
             }}

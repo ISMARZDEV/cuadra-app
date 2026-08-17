@@ -1,4 +1,5 @@
 import { ArrowRight } from "lucide-react-native";
+import type { ReactElement } from "react";
 import { FlatList, Text, View } from "react-native";
 import { useColorScheme } from "nativewind";
 import type { ProductCardDto } from "@cuadra/api-client";
@@ -12,6 +13,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { t } from "@/i18n";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
+import { RiseIn } from "../../components/rise-in";
 import { toCardItemView } from "../to-card-item";
 
 // Un rail de la home de Supermarket: encabezado (título + bajada + botón de «ver todos») y un
@@ -29,6 +31,13 @@ import { toCardItemView } from "../to-card-item";
 // adentro, el título y la primera tarjeta siguen alineados y el scroll llega al canto.
 const GAP = 5;
 
+/**
+ * Cuántas tarjetas entran ESCALONADAS. Sólo las primeras: a partir de ahí la tarjeta ya está fuera
+ * de pantalla, así que escalonarla no la vería nadie —y peor, aparecería con un retardo largo al
+ * desplazar el carrusel, como si llegara tarde—. Las demás se dibujan puestas.
+ */
+const STAGGERED_CARDS = 4;
+
 interface ProductRailProps {
   title: string;
   subtitle: string;
@@ -38,6 +47,15 @@ interface ProductRailProps {
   onSeeAll?: () => void;
   onSelect?: (productId: string) => void;
   onFollow?: (productId: string) => void;
+  /**
+   * Desde qué escalón arranca la entrada de este rail.
+   *
+   * Existe para que dos rails no suenen como dos olas separadas: desplazando el segundo unos
+   * escalones, su título entra mientras las tarjetas del primero todavía están subiendo y la
+   * cascada BAJA por la pantalla como una sola. Ausente = sin animación de entrada (el rail se
+   * dibuja puesto), que es lo que quiere quien lo use fuera de una carga inicial.
+   */
+  entranceOrder?: number;
 }
 
 export function ProductRail({
@@ -48,6 +66,7 @@ export function ProductRail({
   onSeeAll,
   onSelect,
   onFollow,
+  entranceOrder,
 }: ProductRailProps) {
   const { colorScheme } = useColorScheme();
   // El icono tiene que ir del color de la LETRA del `PillButton`, que en la variante `brand` se
@@ -59,6 +78,11 @@ export function ProductRail({
   // algo se rompió. Que no haya ofertas hoy es un estado legítimo, no un error que anunciar.
   if (products.length === 0) return null;
 
+  // Envuelve en la entrada escalonada, o deja el elemento tal cual si este rail no la pidió. Así el
+  // mismo componente sirve para la carga inicial y para cualquier otro sitio sin ramificar el JSX.
+  const step = (offset: number, node: ReactElement): ReactElement =>
+    entranceOrder === undefined ? node : <RiseIn index={entranceOrder + offset}>{node}</RiseIn>;
+
   return (
     <View>
       <View
@@ -66,12 +90,18 @@ export function ProductRail({
         style={{ paddingHorizontal: gutter }}
       >
         <View className="flex-1 pr-3">
+          {/* Primero el TÍTULO, después la bajada: se leen en ese orden, así que entran en ese
+              orden. Al revés, el ojo empieza por lo secundario. */}
+          {step(0,
           <Text className="text-[18px] text-[#034842]" style={{ fontFamily: KANTUMRUY_SEMIBOLD }}>
             {title}
           </Text>
+          )}
+          {step(1,
           <Text className="text-[14px] text-[#7CB342]" style={{ fontFamily: KANTUMRUY_MEDIUM }}>
             {subtitle}
           </Text>
+          )}
         </View>
         {/* «Ver todos» es el `PillButton` compartido —el mismo del input del chat—, no un botón
             redondo propio. La variante `brand` es la lima de ese input.
@@ -94,7 +124,7 @@ export function ProductRail({
         keyExtractor={(p) => p.id}
         renderItem={({ item: dto, index }) => {
           const view = toCardItemView(dto, index);
-          return (
+          const card = (
             <BasketProductCard
               item={view.item}
               currency={view.currency}
@@ -105,6 +135,9 @@ export function ProductRail({
               onBookmark={onFollow ? () => onFollow(dto.id) : undefined}
             />
           );
+          // Las tarjetas siguen a la bajada, una detrás de otra desde la primera. Sólo las que se
+          // ven: ver `STAGGERED_CARDS`.
+          return index < STAGGERED_CARDS ? step(2 + index, card) : card;
         }}
         ItemSeparatorComponent={() => <View style={{ width: GAP }} />}
         // El aire de arriba NO es estético: el sello de oferta monta sobre el canto del card, y sin

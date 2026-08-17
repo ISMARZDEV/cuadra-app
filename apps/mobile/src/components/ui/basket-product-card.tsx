@@ -7,6 +7,7 @@ import Animated, {
   useSharedValue,
   withSequence,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { memo, useRef, useState } from "react";
 
@@ -88,6 +89,9 @@ export function cardPalette(scheme: "light" | "dark") {
     shellStroke: dark ? "#242424" : "#F4F4F4",
     /** Ver la nota de arriba: blanca en los dos temas, a propósito. */
     photoPlate: "#FFFFFF",
+    /** El hueco mientras la foto viaja desde el CDN. El MISMO tono del barrido del esqueleto de
+     *  Save, para que la espera se lea igual en toda la vertical. */
+    photoPending: dark ? "#242424" : "#EFEFF2",
     /** En claro la placa se funde con la cáscara y un radio no diría nada; en oscuro es lo que
      *  convierte un recuadro en una placa.
      *  En unidades de DISEÑO —lo escala el componente con SU `s()`—: la tarjeta se dibuja a dos
@@ -447,6 +451,9 @@ function BasketProductCard({
   const cardStyle = useAnimatedStyle(() => ({ transform: [{ scale: cardScale.value }] }));
   // Cuándo empezó el toque, para distinguir un tap de un dedo apoyado (ver TAP_MAX_MS).
   const pressStartedAt = useRef<number | null>(null);
+  // 0 mientras la foto viaja, 1 cuando ya se puede enseñar.
+  const photoIn = useSharedValue(0);
+  const photoStyle = useAnimatedStyle(() => ({ opacity: photoIn.value }));
 
   const handleCardPress = () => {
     // `null` = nunca hubo press-in (solo pasa en el harness de tests, donde un `click` sintético no
@@ -552,11 +559,34 @@ function BasketProductCard({
           }}
         >
           {item.image_url ? (
-            <Image
-              source={{ uri: item.image_url }}
-              style={{ width: "100%", height: "100%" }}
-              resizeMode="contain"
-            />
+            // LA FOTO SE FUNDE SOBRE SU HUECO, no aparece de golpe.
+            //
+            // Viene del CDN del proveedor, así que tarda bastante más que el resto de la tarjeta:
+            // sin esto, la tarjeta entraba con la placa en blanco y la foto caía encima segundos
+            // después, de una en una. Debajo hay ahora un hueco del tono del esqueleto —el mismo
+            // idioma que el resto de Save— y la foto se revela encima cuando está lista.
+            <View style={{ width: "100%", height: "100%" }}>
+              <View
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  borderRadius: s(c.photoRadius),
+                  borderCurve: "continuous",
+                  backgroundColor: c.photoPending,
+                }}
+              />
+              <Animated.Image
+                source={{ uri: item.image_url }}
+                onLoad={() => {
+                  photoIn.value = withTiming(1, { duration: 240 });
+                }}
+                style={[{ width: "100%", height: "100%" }, photoStyle]}
+                resizeMode="contain"
+              />
+            </View>
           ) : (
             <Icon as={ImageOff} size={s(36)} color="#D1D5DB" />
           )}
