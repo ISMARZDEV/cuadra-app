@@ -11,7 +11,7 @@ import { useColorScheme } from "nativewind";
 // superficie de las tarjetas, que en oscuro es casi negra, y ahí ese verde desaparecía — medido
 // sobre la captura, no supuesto. Con `currentColor` el color se lo da quien lo usa, vía `color`.
 import SearchIcon from "@/assets/carrusel-save/search-icon.svg";
-import { cardPalette } from "@/components/ui/basket-product-card";
+import { GlassField } from "@/components/ui/glass-field";
 import { KANTUMRUY_MEDIUM } from "@/theme/fonts";
 
 // EL BUSCADOR EN REPOSO: la píldora del blanco, entre el arco y el primer rail.
@@ -66,11 +66,9 @@ export function HomeSearchBar({
 }: HomeSearchBarProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
-  // LA MISMA superficie que las tarjetas que tiene debajo, no un blanco propio: el buscador se
-  // apoya en el mismo fondo que ellas, así que en oscuro tiene que oscurecerse igual o se queda
-  // como un parche encendido sobre la pantalla.
-  const surface = cardPalette(isDark ? "dark" : "light").shell;
-  const muted = isDark ? "rgba(255,255,255,0.45)" : "#9AA8A6";
+  // Del compositor del chat, no de la superficie de las tarjetas: sobre vidrio, el gris al 45% de
+  // antes se hunde y el marcador de posición deja de leerse.
+  const muted = isDark ? "#6A6A6A" : "#BEC2C0";
   // La lupa, en oscuro, va del LIMA de marca y no del verde profundo: el verde es el color de la
   // marca sobre BLANCO, y sobre la superficie oscura de las tarjetas se hunde hasta desaparecer.
   const iconColor = isDark ? "#C2FB7E" : "#034842";
@@ -78,57 +76,64 @@ export function HomeSearchBar({
   const ref = useRef<View>(null);
 
   return (
-    <Pressable
-      ref={ref}
-      accessibilityRole="search"
-      accessibilityLabel={placeholder}
-      // SE MIDE EN EL TOQUE Y SÓLO EN EL TOQUE.
+    // ⚠️ SE ESCONDE POR OPACIDAD Y ESO TIENE UN COSTE CONOCIDO: con `opacity: 0` el vidrio nativo no
+    // se dibuja (lo documenta Expo). No importa mientras está escondida —justamente no se ve— y al
+    // volver a 1 el material se rehace. Se acepta porque la píldora TIENE que seguir ocupando su
+    // sitio: desmontarla haría saltar la home entera durante todo el viaje de la hoja.
+    <GlassField
+      radius={SEARCH_H / 2}
+      style={{ opacity: hidden ? 0 : 1 }}
+      // ⚠️ SIN `alignItems: "center"` AQUÍ, y cuesta un defecto entenderlo. Con el centrado, el
+      // `Pressable` de dentro —que es QUIEN LLEVA EL REF QUE SE MIDE— no se estira: queda tan alto
+      // como su contenido (el icono, 26pt) y centrado en los 52 de la píldora, o sea 13pt por
+      // debajo de su techo. `measureInWindow` devolvía esos 13pt de más, el viaje salía largo y la
+      // copia nacía por debajo de la píldora real: se veía BAJAR y luego subir, y al cerrar
+      // aterrizaba demasiado abajo antes de colocarse.
       //
-      // Hubo también una medida en `onLayout` que se guardaba de respaldo, y se ha quitado: era
-      // respaldo de nada. `measureInWindow` devuelve 0 en frío —también dentro de `onLayout`—, así
-      // que en el primer toque no había ninguna medida buena guardada y la hoja se quedaba sin
-      // posición. Y cuando sí la había, podía estar rancia: `onLayout` no se dispara al hacer
-      // scroll. El respaldo bueno es la GEOMETRÍA, y vive en quien recibe esto (`search-anchor`).
-      //
-      // `measureInWindow` y no las coordenadas de `onLayout`: éstas son relativas al padre, y la
-      // hoja se posiciona contra la VENTANA. Mezclarlas es el defecto clásico de este patrón.
-      //
-      // ⚠️ ABRIR NO PUEDE DEPENDER DE QUE LA MEDIDA FUNCIONE: si el buscador sólo se abriera dentro
-      // del callback, un fallo dejaría el botón MUERTO — y una medida es una comodidad de la
-      // animación, no la función del control.
-      onPress={() => {
-        const node = ref.current;
-        if (typeof node?.measureInWindow !== "function") return onOpen(undefined);
-        // Un 0 no es una posición: es el fallo de `measureInWindow` disfrazado de dato. Se dice
-        // «no lo sé» y quien recibe deriva la posición, que en frío es la ÚNICA que hay.
-        node.measureInWindow((_x, y) => onOpen(y > 0 ? y : undefined));
-      }}
-      style={{
-        opacity: hidden ? 0 : 1,
+      // Y de paso esos 13pt de arriba y abajo dejaban de ser TOCABLES. Dejando que el hijo se
+      // estire (el `stretch` por defecto), el ref mide el sitio de verdad y toda la píldora recibe
+      // el dedo. El centrado vertical del contenido lo hace el propio Pressable, más adentro.
+      contentStyle={{
         height: SEARCH_H,
-        borderRadius: SEARCH_H / 2,
-        borderCurve: "continuous",
-        backgroundColor: surface,
         flexDirection: "row",
-        alignItems: "center",
         paddingHorizontal: 18,
-        gap: 10,
-        // La misma sombra baja y difusa del card del hub y del buscador de la rejilla: las
-        // superficies de Save se despegan del fondo igual en toda la app.
-        shadowColor: "#000",
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 2,
       }}
     >
-      <SearchIcon width={26} height={26} color={iconColor} />
-      <Text
-        numberOfLines={1}
-        style={{ flex: 1, fontFamily: KANTUMRUY_MEDIUM, fontSize: 16, color: muted }}
+      {/* El toque va DENTRO del cristal, no envolviéndolo: `isInteractive` es una deformación del
+          material bajo el dedo, y un Pressable por fuera se quedaría con el evento antes de que el
+          vidrio lo viera. */}
+      <Pressable
+        ref={ref}
+        accessibilityRole="search"
+        accessibilityLabel={placeholder}
+        // SE MIDE EN EL TOQUE Y SÓLO EN EL TOQUE.
+        //
+        // Hubo también una medida en `onLayout` que se guardaba de respaldo, y se quitó: era
+        // respaldo de nada. `measureInWindow` devuelve 0 en frío —también dentro de `onLayout`—, así
+        // que en el primer toque no había ninguna medida buena guardada y la hoja se quedaba sin
+        // posición. Y cuando sí la había, podía estar rancia: `onLayout` no se dispara al hacer
+        // scroll. El respaldo bueno es la GEOMETRÍA, y vive en quien recibe esto (`search-anchor`).
+        //
+        // ⚠️ ABRIR NO PUEDE DEPENDER DE QUE LA MEDIDA FUNCIONE: si el buscador sólo se abriera dentro
+        // del callback, un fallo dejaría el botón MUERTO — y una medida es una comodidad de la
+        // animación, no la función del control.
+        onPress={() => {
+          const node = ref.current;
+          if (typeof node?.measureInWindow !== "function") return onOpen(undefined);
+          // Un 0 no es una posición: es el fallo de `measureInWindow` disfrazado de dato. Se dice
+          // «no lo sé» y quien recibe deriva la posición, que en frío es la ÚNICA que hay.
+          node.measureInWindow((_x, y) => onOpen(y > 0 ? y : undefined));
+        }}
+        style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}
       >
-        {placeholder}
-      </Text>
-    </Pressable>
+        <SearchIcon width={26} height={26} color={iconColor} />
+        <Text
+          numberOfLines={1}
+          style={{ flex: 1, fontFamily: KANTUMRUY_MEDIUM, fontSize: 16, color: muted }}
+        >
+          {placeholder}
+        </Text>
+      </Pressable>
+    </GlassField>
   );
 }

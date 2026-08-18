@@ -22,8 +22,8 @@ import Animated, {
 
 import SearchIcon from "@/assets/carrusel-save/search-icon.svg";
 import { appBgColorAt } from "@/components/ui/app-background";
-import { cardPalette } from "@/components/ui/basket-product-card";
 import { GlassButton } from "@/components/ui/glass-button";
+import { GlassField } from "@/components/ui/glass-field";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useNavHideStore } from "@/store/nav-hide-store";
 import { useRecentSearchesStore } from "@/store/recent-searches-store";
@@ -272,13 +272,16 @@ export function SearchOverlay({
   const { width, height: windowH } = useWindowDimensions();
   const reduceMotion = useReduceMotion();
 
-  const surface = cardPalette(isDark ? "dark" : "light").shell;
   // El fondo de la hoja es EL MISMO que el de la home, no un gris propio: la hoja sustituye a la
   // pantalla, así que abrirla no puede cambiar el color del suelo. En oscuro se pregunta por el
   // valor del degradado ARRIBA (fracción 0), que es donde se apoya.
   const sheetBg = isDark ? appBgColorAt("dark", 0) : BG_LIGHT;
   const text = isDark ? "#FFFFFF" : "#034842";
-  const muted = isDark ? "rgba(255,255,255,0.45)" : "#9AA8A6";
+  // Los del compositor del chat: sobre vidrio, el gris al 45% de antes se hunde. `muted` viste el
+  // marcador de posición Y las filas secundarias de la lista, así que el cambio va a las dos.
+  const muted = isDark ? "#6A6A6A" : "#BEC2C0";
+  /** El cursor y la selección, del chat: lima sobre oscuro, verde de marca sobre claro. */
+  const cursor = isDark ? "#DEFFB7" : "#034842";
   const iconColor = isDark ? "#C2FB7E" : "#034842";
 
   const inputRef = useRef<TextInput>(null);
@@ -671,25 +674,22 @@ export function SearchOverlay({
       >
         {/* Ancho EXPLÍCITO y animado, no `flex: 1`: con flex el ancho lo decide la fila y no se
             puede interpolar, que es justo lo que hacía saltar el cierre. Ver `pillStyle`. */}
-        <Animated.View
-          className="flex-row items-center"
-          style={[
-            pillStyle,
-            {
+        {/* ⚠️ EL ANCHO SE ANIMA EN EL ENVOLTORIO, NO EN EL CRISTAL, y no es un capricho de estructura.
+            Para que una placa de vidrio crezca hay que animar ancho/alto como VALORES DE LAYOUT
+            REALES; una `transform: scale` la rasteriza y la deja saturada y granulosa. Animando el
+            contenedor, el `GlassField` de dentro se re-dispone cada fotograma, que es exactamente
+            lo que el material necesita. */}
+        <Animated.View style={pillStyle}>
+          <GlassField
+            radius={SEARCH_H / 2}
+            contentStyle={{
               height: SEARCH_H,
-              borderRadius: SEARCH_H / 2,
-              borderCurve: "continuous",
-              backgroundColor: surface,
+              flexDirection: "row",
+              alignItems: "center",
               paddingHorizontal: 18,
               gap: 10,
-              shadowColor: "#000",
-              shadowOpacity: 0.08,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 3 },
-              elevation: 2,
-            },
-          ]}
-        >
+            }}
+          >
           <SearchIcon width={26} height={26} color={iconColor} />
           <TextInput
             ref={inputRef}
@@ -698,6 +698,8 @@ export function SearchOverlay({
             onSubmitEditing={() => submit(query)}
             placeholder={placeholder}
             placeholderTextColor={muted}
+            cursorColor={cursor}
+            selectionColor={cursor}
             returnKeyType="search"
             autoCorrect={false}
             // Aquí se pide el teclado: cuando la vista nativa ya existe y tiene tamaño. Ver
@@ -705,8 +707,12 @@ export function SearchOverlay({
             onLayout={focusOnce}
             accessibilityLabel={placeholder}
             className="flex-1"
-            style={{ fontFamily: KANTUMRUY_MEDIUM, fontSize: 16, color: text }}
+            // `alignSelf: "stretch"` para que el campo ocupe el alto entero de la píldora: con el
+            // centrado de la fila era tan alto como su texto, y el dedo no lo encontraba cerca de
+            // los cantos. Mismo arreglo que en la píldora de reposo y en la rejilla.
+            style={{ alignSelf: "stretch", fontFamily: KANTUMRUY_MEDIUM, fontSize: 16, color: text }}
           />
+          </GlassField>
         </Animated.View>
 
         {/* CERRAR es el MISMO botón de vidrio del carrito y del volver, en rojo: en esta pantalla
