@@ -29,11 +29,20 @@ export const useAnimatedStyle = () => ({});
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const useDerivedValue = (fn: () => any) => ({ value: fn() });
 export const useAnimatedRef = () => ({ current: null });
+// `scrollTo` es el worklet que empuja la ruleta de categorías fotograma a fotograma durante su
+// barrido de presentación. Inerte acá —no hay lista nativa que desplazar— pero DEBE existir: el
+// módulo lo exporta y importar algo que el stub no tiene revienta el árbol entero, lección que ya
+// costó ocho tests con `Animated.Image`.
+export const scrollTo = () => {};
 export const withSpring = identity;
 export const withTiming = identity;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const withSequence = (...steps: any[]) => steps[0];
 export const withRepeat = identity;
+// No-op: sin animaciones reales bajo jsdom no hay nada que cancelar. Está aquí porque el módulo
+// DEBE exportarlo — importar algo que el stub no tiene revienta el árbol entero, y esa lección ya
+// costó ocho tests con `Animated.Image`.
+export const cancelAnimation = () => {};
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const withDelay = (_delay: any, value: any) => value;
 export const Easing = new Proxy({}, { get: () => () => 0 });
