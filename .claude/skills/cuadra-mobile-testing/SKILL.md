@@ -125,6 +125,16 @@ pnpm --filter @cuadra/mobile test        # vitest run (NOT gated by CI — run i
 pnpm --filter @cuadra/mobile typecheck   # the actual mobile CI gate
 ```
 
+## Testear MOVIMIENTO — no se hace aquí
+
+⚠️ **El stub de `react-native-reanimated` hace los defectos de animación INVISIBLES**: `useAnimatedStyle`
+devuelve `{}` y `withTiming` es la identidad. 396 tests estuvieron verdes con la barra del buscador
+destellando en el dispositivo. **Un mock más amable que la realidad es un test que miente.**
+
+Si vas a testear una animación, lee la sección «Testear movimiento» de **`cuadra-motion`**: lleva el
+mock que reproduce la congelación del updater y la escritura ASÍNCRONA del shared value, y la regla de
+afirmar RELACIONES en vez de milisegundos.
+
 ## Resources
 
 - **Stack/structure**: `cuadra-mobile` skill. **Forms under test**: `cuadra-mobile-forms`.
