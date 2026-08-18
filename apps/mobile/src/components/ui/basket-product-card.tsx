@@ -579,6 +579,10 @@ function BasketProductCard({
                 }}
               />
               <Animated.Image
+                // La URL llega YA DIMENSIONADA desde el API (`domain/image_variant`): los
+                // originales son 1000×1000 y decodifican 4 MB cada uno, mientras esta placa mide
+                // 110pt. El recorte lo hace el servidor porque la forma de la URL es conocimiento
+                // del PROVEEDOR — y así la web se beneficia igual que la app.
                 source={{ uri: item.image_url }}
                 onLoad={() => {
                   photoIn.value = withTiming(1, { duration: 240 });

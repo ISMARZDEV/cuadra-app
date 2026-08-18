@@ -56,6 +56,8 @@ interface ProductRailProps {
    * dibuja puesto), que es lo que quiere quien lo use fuera de una carga inicial.
    */
   entranceOrder?: number;
+  /** Cambiarlo repite la entrada del rail entero. Ver `RiseIn`. */
+  replay?: number;
 }
 
 export function ProductRail({
@@ -67,6 +69,7 @@ export function ProductRail({
   onSelect,
   onFollow,
   entranceOrder,
+  replay,
 }: ProductRailProps) {
   const { colorScheme } = useColorScheme();
   // El icono tiene que ir del color de la LETRA del `PillButton`, que en la variante `brand` se
@@ -81,7 +84,13 @@ export function ProductRail({
   // Envuelve en la entrada escalonada, o deja el elemento tal cual si este rail no la pidió. Así el
   // mismo componente sirve para la carga inicial y para cualquier otro sitio sin ramificar el JSX.
   const step = (offset: number, node: ReactElement): ReactElement =>
-    entranceOrder === undefined ? node : <RiseIn index={entranceOrder + offset}>{node}</RiseIn>;
+    entranceOrder === undefined ? (
+      node
+    ) : (
+      <RiseIn index={entranceOrder + offset} replay={replay}>
+        {node}
+      </RiseIn>
+    );
 
   return (
     <View>
@@ -148,6 +157,16 @@ export function ProductRail({
         }}
         removeClippedSubviews
         scrollEventThrottle={16}
+        // El rail es HORIZONTAL, así que la ventana se mide en anchos de pantalla: con `windowSize`
+        // 21 —el valor por defecto— se mantienen montadas decenas de tarjetas con su foto a cada
+        // lado del viewport, y cada foto decodificada cuesta memoria de verdad. Con 5 quedan dos
+        // pantallas a cada lado: nadie ve un hueco al deslizar y la memoria baja un orden.
+        windowSize={5}
+        // En un móvil entran ~2.5 tarjetas; 6 llena la primera pantalla con margen para el primer
+        // empujón del dedo sin retrasar el fotograma inicial.
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={50}
         getItemLayout={(_data, index) => ({
           length: CARD_WIDTH,
           offset: gutter + (CARD_WIDTH + GAP) * index,

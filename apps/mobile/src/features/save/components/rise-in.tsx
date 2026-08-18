@@ -40,6 +40,14 @@ interface RiseInProps {
    * escalonados unas décimas, se lee como que la pantalla se va montando.
    */
   index?: number;
+  /**
+   * Cambiar este número REPITE la entrada.
+   *
+   * Existe porque volver de la hoja del buscador tiene que sentirse como llegar a la pantalla, no
+   * como descubrir que seguía ahí debajo. El montaje ya no sirve de señal —la home nunca se
+   * desmontó—, así que hace falta una explícita. Sin él, la vuelta era un corte.
+   */
+  replay?: number;
 }
 
 /**
@@ -52,7 +60,7 @@ interface RiseInProps {
  */
 const STAGGER_MS = 45;
 
-export function RiseIn({ children, index = 0 }: RiseInProps) {
+export function RiseIn({ children, index = 0, replay = 0 }: RiseInProps) {
   const reduceMotion = useReduceMotion();
   // Arranca ABAJO y transparente, y sube al montarse. El montaje ES la señal: este componente se
   // monta cuando el contenido está listo, así que no necesita saber nada del estado de carga.
@@ -64,8 +72,10 @@ export function RiseIn({ children, index = 0 }: RiseInProps) {
       progress.value = 1;
       return;
     }
+    // Se reinicia a 0 antes de animar: si se dejara donde estaba, repetir no movería nada.
+    progress.value = 0;
     progress.value = withDelay(index * STAGGER_MS, withSpring(1, SPRING));
-  }, [index, progress, reduceMotion]);
+  }, [index, progress, reduceMotion, replay]);
 
   const style = useAnimatedStyle(() => ({
     // La opacidad se ACOTA: un muelle puede pasarse de 1 al asentarse, y una opacidad por encima de

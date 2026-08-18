@@ -17,7 +17,24 @@ export default function TabsLayout() {
   return (
     <>
       <Tabs
-        screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "transparent" } }}
+        screenOptions={{
+          headerShown: false,
+          sceneStyle: { backgroundColor: "transparent" },
+          // ⚠️ CONGELAR LA PESTAÑA QUE NO SE ESTÁ MIRANDO.
+          //
+          // Las cinco pantallas quedan MONTADAS a la vez —así funcionan las tabs—, y montado no es
+          // gratis: el chat tiene relojes de Skia (`orb-sphere`, `shimmer-text`,
+          // `suggestion-skeleton`) que laten EN CADA FOTOGRAMA mientras estén montados, y consultas
+          // con `refetchInterval`. O sea que estando en Ahorra seguías pagando el chat entero.
+          //
+          // Eso explica el síntoma exacto que se midió: el hilo de UI aguanta (49-60 fps) y el de
+          // JS se hunde (40 → 21) cuanto más se usa la app. No es sólo memoria — es trabajo por
+          // fotograma que se ACUMULA con cada pantalla visitada.
+          //
+          // `freezeOnBlur` deja de renderizar la pantalla que perdió el foco (react-native-screens).
+          // No la desmonta: al volver está donde estaba, sin recargar.
+          freezeOnBlur: true,
+        }}
         tabBar={(props) => <CuadraTabBar {...props} />}
       >
         <Tabs.Screen name="index" options={{ title: "AISpace" }} />
