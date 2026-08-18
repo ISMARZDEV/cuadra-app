@@ -67,6 +67,46 @@ metadata:
 
 **5. i18n:** all visible copy via `src/i18n` (es/en/pt). No hardcoded user-facing strings.
 
+## Catálogo de controles — QUÉ EXISTE YA, antes de construir uno nuevo
+
+⚠️ **Lee esta tabla antes de escribir un campo, un botón o una superficie.** Casi todo lo que una
+pantalla nueva necesita ya está resuelto —y con gotchas caros dentro—; rehacerlo produce dos cosas
+que se parecen y se separan con el tiempo.
+
+### Compartidos (`src/components/ui/`) — se reusan en cualquier pantalla
+
+| Componente | Para qué | Antes de tocarlo, lee |
+|---|---|---|
+| `GlassField` | **CUALQUIER campo o superficie de vidrio**: buscadores, barras, píldoras de entrada. Empaqueta las 6 decisiones del input del chat (material, tinte, sombra, borde, toque, geometría) | `cuadra-chat-input` |
+| `GlassButton` | Botón REDONDO de símbolo (volver, canasta, cerrar). `tone="brand"` (lima/verde) o `tone="danger"` (rojo de cerrar/deshacer) | `cuadra-glass-button` |
+| `PillButton` | Acción secundaria con más peso que texto y menos que un botón sólido. Variantes `brand`/`surface`/`discount`; `label` opcional (sólo icono) | `cuadra-chat-input` + `cuadra-chat-suggestions` |
+| `GlassSurface` | La primitiva de vidrio. **Normalmente NO se usa directa** — usa `GlassField` o `GlassButton` | `cuadra-chat-input` |
+| `RiseIn` | Entrada «sube y aparece» de un bloque. Prop `replay` para repetirla al volver a la pantalla | `cuadra-motion` |
+| `ShimmerSkeleton` | El hueco de lo que viene, con su luz. **Nunca una ruedecita**: el esqueleto dice QUÉ llega y dónde, así que al llegar no hay salto | — |
+
+### De Save, reutilizables dentro del vertical (`features/save/supermarket/`)
+
+| Componente | Para qué |
+|---|---|
+| `SearchBar` | Campo de búsqueda + botón de filtros, sobre una lista que scrollea DEBAJO |
+| `HomeSearchBar` | El ANCLA: no es un campo, es la píldora en reposo que abre la hoja |
+| `SearchOverlay` | La hoja de búsqueda completa: sube desde el ancla, recientes, typeahead |
+| `CascadeItem` | Un escalón de una cascada. Un reloj compartido, una ventana por fila |
+| `useWheelAutoplay` + `wheelAutoplayPlan` | Presentación automática de un carrusel (el plan es una función PURA, testeable aparte) |
+
+### Las reglas que hacen que esto siga sirviendo
+
+1. **Un buscador nuevo NO se escribe: se compone.** `GlassField` + tu contenido. Si necesitas el
+   viaje desde una píldora en reposo, el patrón entero está en `HomeSearchBar` + `SearchOverlay` +
+   `search-anchor` + `search-choreography`.
+2. **El mismo trabajo, el mismo icono.** La lupa con destello (`carrusel-save/search-icon.svg`)
+   anuncia que el buscador entiende lenguaje natural. Poner la lupa pelada de lucide en otra pantalla
+   son dos buscadores prometiendo cosas distintas.
+3. **Una variante es una PROP, no un componente nuevo.** `tone` en `GlassButton` nació así: el vidrio,
+   el degradado y el muelle son los mismos, y duplicarlos daría dos botones que se separan.
+4. **Se promueve a `components/ui/` al SEGUNDO uso**, no al primero (checklist en `cuadra-mobile`).
+5. **Si un control se MIDE para animarlo, su nodo medido debe llenar su caja** — ver `cuadra-motion` §6.
+
 ## Commands
 
 ```bash

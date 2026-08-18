@@ -102,6 +102,38 @@ None of them is the radius or the colour. Measured against the Claude iOS app an
 - **The orb and the PRO logo are exported PNGs.** In Figma they are composites of masks with
   `mix-blend-screen` / `plus-lighter` — not reproducible in RN. Never redraw them.
 
+## GlassField — `@/components/ui/glass-field`
+
+La receta de arriba, EMPAQUETADA. Los buscadores de Save tenían que quedar «igual que el input del
+chat», y esa receta son SEIS decisiones que sólo funcionan juntas (material, tinte, sombra, borde,
+toque, geometría). Copiada tres veces, la primera vez que alguien ajuste una se separan.
+
+```tsx
+<GlassField
+  radius={52 / 2}                       // una PÍLDORA cierra la cápsula; el defecto (23) es del chat
+  style={{ flex: 1 }}                   // el CONTENEDOR: lleva la sombra, el flex, los márgenes
+  contentStyle={{ height: 52, flexDirection: "row", paddingHorizontal: 18 }}
+>
+  <Pressable style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>…</Pressable>
+</GlassField>
+```
+
+- **El toque va DENTRO del cristal**, nunca envolviéndolo: `isInteractive` es una deformación del
+  material bajo el dedo, y un `Pressable` por fuera se queda el evento antes de que el vidrio lo vea.
+- ⚠️ **NADA de `alignItems: "center"` en `contentStyle`.** Encoge al hijo a su contenido, y eso costó
+  dos defectos a la vez: (1) si ese hijo es el que se MIDE con `measureInWindow`, devuelve la `y` del
+  ICONO y no la de la píldora —13pt de error, la copia que viaja nace por debajo y se ve BAJAR antes
+  de subir—; (2) los 13pt de arriba y abajo dejan de ser TOCABLES. Deja el `stretch` por defecto y
+  que el centrado vertical lo haga el hijo, más adentro. (Ver `cuadra-motion` §6.)
+- **Para animar el ancho**, el `withTiming` va en un envoltorio `Animated.View` POR FUERA del
+  `GlassField`: la placa se re-dispone como layout real, que es lo que el material necesita. Un
+  `scale` la rasteriza.
+- **Se esconde por opacidad con un coste conocido**: con `opacity: 0` el vidrio nativo no se dibuja.
+  Se acepta cuando la píldora tiene que seguir ocupando su sitio (o la pantalla salta).
+- ⚠️ **El vidrio necesita CONTENIDO DETRÁS.** De los tres buscadores de Save sólo el de la rejilla lo
+  tiene (la lista scrollea debajo); en la home y en la hoja se apoya sobre un fondo plano y el
+  material se lee apagado. **Está funcionando; simplemente no hay nada que refractar.**
+
 ## PillButton — `@/components/ui/pill-button`
 
 The shared pill-shaped button. Use it for any secondary action that needs more weight than text and

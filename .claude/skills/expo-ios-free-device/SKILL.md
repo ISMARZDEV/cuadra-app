@@ -108,6 +108,38 @@ security cms -D -i "<App>.app/embedded.mobileprovision" | plutil -extract Expira
 codesign -d --entitlements - --xml "<App>.app" | plutil -p -   # debe salir SIN las de pago
 ```
 
+**7. BUILD DE RELEASE — lo que cambia respecto de Debug** (`./ios-release.command`).
+
+En Debug el JS lo sirve Metro EN VIVO, así que `EXPO_PUBLIC_API_URL` se decide al arrancar Metro
+(`dev-up.sh`) y se cambia reiniciándolo. En **Release el bundle se HORNEA DENTRO del binario**: esa
+variable queda CONGELADA en el `.app`.
+
+- ⚠️ `apps/mobile/.env` dice `EXPO_PUBLIC_API_URL=http://localhost:3000` — mal por dos motivos
+  (`localhost` desde el teléfono ES el teléfono; el puerto es 8005). **En dev no se nota nunca**, sólo
+  muerde en release. Por eso llevaba meses roto sin descubrirse.
+- **El entorno exportado GANA sobre `.env`** — verificado en `@expo/env/build/index.js:402`:
+  `if (typeof process.env[key] !== 'undefined') { … IS NOT overwritten }`. Por eso el script exporta
+  la IP LAN antes de `xcodebuild` en vez de tocar el `.env` (que además está protegido).
+- ⭐ **VERIFICAR EN EL ARTEFACTO, no en el «BUILD SUCCEEDED»**: `grep` de la URL dentro de
+  `<App>.app/main.jsbundle`. Un build sale verde con la URL equivocada horneada tan feliz.
+- Si cambia la IP de la Mac hay que RECOMPILAR.
+
+**8. ⚠️ `set -o pipefail` + `grep -q` = la tubería FALLA aunque encuentre lo que busca.**
+
+`grep -q` sale al PRIMER acierto y cierra la tubería; el productor (`xcrun`, `find`) recibe SIGPIPE y
+muere; `pipefail` se queda con ESE código. **Cuanto antes acierta el grep, más seguro falla el
+script** — un fallo que se comporta al revés de lo que uno espera al depurar. La guarda de device
+daba «no hay ningún device» con el iPhone conectado y `available`.
+
+```bash
+DEVICES="$(xcrun devicectl list devices 2>/dev/null || true)"   # capturar…
+if ! grep -q "available" <<<"${DEVICES}"; then                    # …y filtrar sin tubería
+```
+
+Mismo patrón latente en `find … | head -1`. **Regla: en un script con `pipefail`, toda tubería cuyo
+consumidor pueda salir antes que el productor necesita `|| true` — o no ser una tubería.** Y un
+`| tail` al final de una invocación enmascara el código de salida del script entero.
+
 ## Commands
 
 ```bash
