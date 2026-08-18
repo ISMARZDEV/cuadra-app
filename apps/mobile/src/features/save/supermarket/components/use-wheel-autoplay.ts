@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { wheelAutoplayPlan } from "./wheel-autoplay-plan";
 
 // LA RULETA GIRA SOLA al entrar en la pantalla: pasa las categorías DE UNA EN UNA, de izquierda a
-// derecha, desde la primera hasta la penúltima — como si alguien la estuviera deslizando despacio.
+// derecha, lo que dura UN PANTALLAZO — como si alguien la estuviera deslizando despacio.
 //
 // ⚠️ PARA QUÉ SIRVE ESTO, porque no es decoración: un carrusel que no se mueve NO SE LEE COMO
 // DESLIZABLE. Las categorías están sobre un arco, sin flechas ni puntos de página, así que nada

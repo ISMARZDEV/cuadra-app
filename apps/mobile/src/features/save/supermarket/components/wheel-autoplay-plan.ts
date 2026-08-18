@@ -44,6 +44,8 @@ export const WHEEL_PAUSE_MS = 1150;
 /** Entre un puesto y el siguiente: lo que dura el viaje más lo que descansa al llegar. */
 const STEP_MS = WHEEL_SLIDE_MS + WHEEL_PAUSE_MS;
 
+import { VISIBLE_SLOTS } from "../arc-geometry";
+
 export interface AutoplayStep {
   /** Milisegundos desde que la rueda se monta. */
   at: number;
@@ -83,16 +85,32 @@ export function wheelAutoplayPlan({
   if (limit <= from) return [];
 
   /**
-   * Dónde para: en la PENÚLTIMA.
+   * Hasta dónde barre: UN PANTALLAZO — tantos puestos como categorías caben a la vez.
    *
-   * Parar justo en el tope se lee como chocar contra la pared; una ranura antes deja a la vista que
-   * todavía queda algo, que es una invitación en vez de un final.
+   * ⚠️ ESTO ERA «HASTA LA PENÚLTIMA» Y SE ACORTÓ, con motivo. Recorrer el catálogo entero cumplía la
+   * letra —enseñaba dónde termina la rueda— y costaba **de 12 a 18 segundos** según cuántas
+   * categorías hubiera ese día. Es demasiado tiempo con algo moviéndose solo en pantalla, aunque se
+   * apague al primer toque: durante todo ese rato el usuario está esperando a que termine para
+   * poder mirar en paz.
    *
-   * El `max` cubre el caso degenerado: si sólo hay UN puesto de recorrido, la penúltima ranura es
-   * la de partida y la regla literal no movería nada — el usuario no vería girar la rueda. Un
-   * puesto es poco, pero es exactamente lo que hay que enseñar.
+   * Con `VISIBLE_SLOTS` puestos se ven IRSE todas las que estaba mirando y llegar un juego nuevo.
+   * Eso ya dice «esto se desliza», que es lo ÚNICO que este barrido existe para decir; «dónde acaba
+   * la rueda» es otro objetivo, y perseguirlo aquí salía carísimo.
+   *
+   * ⭐ Y el número sale de la GEOMETRÍA, no del gusto: es cuántas caben a la vez. Un 4 escrito a
+   * mano se despegaría el día que el arco tenga cinco ranuras — y este archivo ya se equivocó dos
+   * veces por números que no sabían nada de los datos.
    */
-  const last = Math.max(from + 1, limit - 1);
+  const reach = from + VISIBLE_SLOTS;
+  /**
+   * El techo: la PENÚLTIMA. Parar justo en el tope se lee como chocar contra la pared; una ranura
+   * antes deja a la vista que todavía queda algo.
+   *
+   * El `max` cubre el caso degenerado: si sólo hay UN puesto de recorrido, la penúltima ranura es la
+   * de partida y la regla literal no movería nada — el usuario no vería girar la rueda.
+   */
+  const ceiling = Math.max(from + 1, limit - 1);
+  const last = Math.min(reach, ceiling);
 
   const steps: AutoplayStep[] = [];
   for (let to = from + 1; to <= last; to += 1) {

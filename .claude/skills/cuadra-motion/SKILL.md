@@ -150,7 +150,13 @@ retardos que habría que mantener sincronizadas.
   Lo que hace legible cada elemento no es lo despacio que viaje, sino el rato que se queda QUIETO al
   llegar. La pausa debe ser MAYOR que el deslizamiento.
 - **Un número mágico que a veces acierta es peor que uno que siempre falla** (`STEPS = 3` alcanzaba el
-  final con 10 categorías y no con 12): el destino se DERIVA de los datos, no se escribe.
+  final con 10 categorías y no con 12): el destino se DERIVA de los datos, no se escribe. En la
+  ruleta acabó siendo `VISIBLE_SLOTS` —cuántas caben a la vez—, así que un pantallazo dura lo mismo
+  con 13 categorías que con 25.
+- ⭐ **Acota la AMBICIÓN de una presentación automática, no sólo su ritmo.** Recorrer el catálogo
+  entero costaba **12-18s** (30 con 25 categorías) y era demasiado tiempo con algo moviéndose solo:
+  el usuario espera a que termine para poder mirar en paz, aunque se apague al primer toque. Un
+  barrido dice «esto se desliza» — «dónde acaba» es OTRO objetivo, y perseguirlo ahí sale carísimo.
 
 ### 9. ⭐ Un control que no suelta el gesto está roto, por bonito que se mueva
 

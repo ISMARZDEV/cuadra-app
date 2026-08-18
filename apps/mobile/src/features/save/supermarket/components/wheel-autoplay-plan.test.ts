@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { WHEEL_PAUSE_MS, WHEEL_SLIDE_MS, wheelAutoplayPlan } from "./wheel-autoplay-plan";
-import { initialRotation, maxRotation } from "../arc-geometry";
+import { VISIBLE_SLOTS, initialRotation, maxRotation } from "../arc-geometry";
 
 // EL BARRIDO DE PRESENTACIÓN de la ruleta, como plan: a qué ranura y en qué momento.
 //
@@ -41,8 +41,26 @@ describe("el barrido de presentación de la ruleta", () => {
     }
   });
 
-  test("se detiene en la PENÚLTIMA", () => {
-    expect(plan[plan.length - 1].to).toBe(LIMIT - 1);
+  // ⭐ RECORRE UN PANTALLAZO, NO EL CATÁLOGO ENTERO — y el número no es a dedo.
+  //
+  // Llegar hasta la penúltima cumplía la letra («enseña dónde termina») y costaba de 12 a 18
+  // segundos según cuántas categorías hubiera: demasiado tiempo con la rueda moviéndose sola, aun
+  // apagándose al primer toque. Barriendo `VISIBLE_SLOTS` puestos, el usuario ve irse TODAS las que
+  // estaba mirando y llegar un juego nuevo. Eso ya dice «esto se desliza», que es lo único que este
+  // barrido existe para decir, y sale de la GEOMETRÍA (cuántas caben) en vez de un número elegido.
+  test("recorre exactamente un PANTALLAZO de categorías", () => {
+    expect(plan).toHaveLength(VISIBLE_SLOTS);
+    expect(plan[plan.length - 1].to).toBe(FROM + VISIBLE_SLOTS);
+  });
+
+  test("y nunca se acerca al tope, ni siquiera con pocas categorías", () => {
+    // El techo sigue siendo la penúltima: parar justo en el tope se lee como chocar contra la pared.
+    for (const count of [8, 12, 14, 17, 25]) {
+      const limit = maxRotation(count);
+      const steps = wheelAutoplayPlan({ from: initialRotation(count), limit });
+
+      expect(steps[steps.length - 1].to).toBeLessThanOrEqual(Math.max(1, limit - 1));
+    }
   });
 
   test("la cadencia es PAREJA: ningún paso se adelanta ni se rezaga", () => {
@@ -75,15 +93,6 @@ describe("el barrido de presentación de la ruleta", () => {
     const gap = plan[1].at - plan[0].at;
 
     expect(gap).toBe(WHEEL_SLIDE_MS + WHEEL_PAUSE_MS);
-  });
-
-  test("el recorrido no depende de cuántas categorías haya", () => {
-    for (const count of [8, 12, 14, 17, 25]) {
-      const limit = maxRotation(count);
-      const steps = wheelAutoplayPlan({ from: initialRotation(count), limit });
-
-      expect(steps[steps.length - 1].to).toBe(limit - 1);
-    }
   });
 
   test("si no hay nada que girar, no hay nada que presentar", () => {
