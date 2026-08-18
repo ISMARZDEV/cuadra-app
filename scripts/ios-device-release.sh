@@ -62,7 +62,12 @@ echo "▶ Backend: ${API_URL}  (queda HORNEADO en el binario)"
 # ── El device tiene que estar ahí de verdad ────────────────────────────────────
 # `devicectl` y no `xctrace`: con el teléfono conectado y desbloqueado, `xctrace` lo sigue
 # listando como offline. Para el ESTADO manda devicectl; `xctrace` sólo sirve para leer el UDID.
-if ! xcrun devicectl list devices 2>/dev/null | grep -q "available"; then
+# ⚠️ SE CAPTURA PRIMERO Y SE FILTRA DESPUÉS, sin tubería, y hay motivo. Con `set -o pipefail`,
+# `... | grep -q` FALLA aunque encuentre lo que busca: `grep -q` sale al primer acierto y cierra la
+# tubería, `xcrun` recibe SIGPIPE y muere, y pipefail se queda con ESE código. La guarda daba «no
+# hay ningún device» con el iPhone conectado y disponible.
+DEVICES="$(xcrun devicectl list devices 2>/dev/null || true)"
+if ! grep -q "available" <<<"${DEVICES}"; then
   echo "✖ No hay ningún device disponible. Conectá el iPhone por cable, desbloquealo y dale 'Confiar'." >&2
   exit 1
 fi
@@ -103,7 +108,9 @@ xcodebuild -workspace "${WORKSPACE}" -scheme "${SCHEME}" -configuration "${CONFI
   -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
   build
 
-APP="$(find "${HOME}/Library/Developer/Xcode/DerivedData/${SCHEME}-"*"/Build/Products/${CONFIG}-iphoneos" -maxdepth 1 -name "${SCHEME}.app" 2>/dev/null | head -1)"
+# Misma trampa que arriba: `find | head -1` puede matar a `find` con SIGPIPE en cuanto `head` tiene
+# lo suyo. El `|| true` deja que el `[[ -d ]]` de la línea siguiente sea quien decida.
+APP="$(find "${HOME}/Library/Developer/Xcode/DerivedData/${SCHEME}-"*"/Build/Products/${CONFIG}-iphoneos" -maxdepth 1 -name "${SCHEME}.app" 2>/dev/null | head -1 || true)"
 [[ -d "${APP}" ]] || { echo "✖ No encontré ${SCHEME}.app compilado en ${CONFIG}-iphoneos." >&2; exit 1; }
 
 # ── VERIFICAR EN EL ARTEFACTO, no en el «BUILD SUCCEEDED» ──────────────────────
