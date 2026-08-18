@@ -101,11 +101,24 @@ export function maxRotation(count: number): number {
 }
 
 /**
- * Por dónde se abre la rueda: por el MEDIO de la lista, para que haya recorrido hacia los dos lados
- * desde el primer momento. Las dos marcas laterales del indicador prometen exactamente eso.
+ * Por dónde se abre la rueda: por el PRINCIPIO de la lista.
+ *
+ * ⚠️ ESTO CAMBIÓ, y la razón anterior no era mala. Abría por el MEDIO «para que hubiera recorrido
+ * hacia los dos lados desde el primer momento», y eso es correcto para una rueda QUIETA que espera
+ * a que la muevan.
+ *
+ * Pero esta rueda se PRESENTA SOLA al entrar (ver `wheel-autoplay-plan`), y una presentación que
+ * arranca a mitad del catálogo deja sin enseñar todo lo que había a la izquierda: el usuario nunca
+ * llega a saber que estaba ahí. Empezando por la primera categoría, el barrido recorre la lista
+ * ENTERA y de paso dice dónde empieza — que es más información, no menos.
+ *
+ * Se mantiene como función y no se sustituye por un 0 suelto porque el CONCEPTO sigue existiendo
+ * —«la ranura por la que abre»— y lo leen cuatro sitios: el desplazamiento inicial, el valor
+ * compartido del giro, el origen del escalonado del rebote y el arranque del barrido. El día que
+ * vuelva a abrir por otro sitio, se cambia aquí y los cuatro obedecen.
  */
-export function initialRotation(count: number): number {
-  return Math.round(maxRotation(count) / 2);
+export function initialRotation(_count: number): number {
+  return 0;
 }
 
 /** El punto del arco a un ángulo dado, medido desde el punto más bajo. */

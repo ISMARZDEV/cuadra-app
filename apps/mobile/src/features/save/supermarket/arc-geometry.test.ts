@@ -121,13 +121,17 @@ describe("los topes del giro", () => {
     expect(maxRotation(2)).toBe(0);
   });
 
-  test("abre por el MEDIO, para poder ir hacia los dos lados", () => {
-    expect(initialRotation(17)).toBe(7);
-    expect(initialRotation(17)).toBeLessThan(maxRotation(17));
-    expect(initialRotation(17)).toBeGreaterThan(0);
+  // ⚠️ ABRE POR EL PRINCIPIO, y esto CAMBIÓ. Abría por el medio —«para poder ir hacia los dos
+  // lados»—, y esa razón era buena mientras la rueda estuviera quieta. Pero la rueda se PRESENTA
+  // sola al entrar, y una presentación que arranca a mitad de la lista deja sin enseñar todo lo
+  // que había a la izquierda: el usuario no llega a saber que estaba ahí. Empezando por la primera
+  // categoría, el barrido recorre el catálogo ENTERO y de paso dice dónde empieza.
+  test("abre por la PRIMERA categoría, que es donde arranca el barrido", () => {
+    expect(initialRotation(17)).toBe(0);
+    expect(initialRotation(14)).toBe(0);
   });
 
-  test("con pocas categorías abre al principio y no se mueve", () => {
+  test("con pocas categorías también abre al principio, y ahí se queda", () => {
     expect(initialRotation(4)).toBe(0);
   });
 });
