@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from ..domain.drops import detect_drops
+from ..domain.image_variant import sized_image_url
 from ..domain.listing import OfferingRow  # re-exportado para el port y los tests
 from ..domain.ports import (
     CanonicalProductRepository,
@@ -206,7 +207,10 @@ def _to_card(p: _Aggregated, discount: _Discount | None = None) -> ProductCardDt
         brand=p.brand,
         quality=p.quality,
         display_size=p.display_size,
-        image_url=p.image_url,
+        # AL TAMAÑO QUE SE VE, no al que trae el CDN. Los originales son 1000×1000 y decodifican
+        # 4 MB CADA UNO en el cliente, mientras la tarjeta los dibuja a 110pt. Ver `image_variant`:
+        # es la diferencia entre 1.2 GB de RAM y unas decenas de MB.
+        image_url=sized_image_url(p.image_url),
         price_minor=p.min_price.amount_minor,
         currency=p.min_price.currency.code,
         unit_price_minor=p.unit_price_minor,
