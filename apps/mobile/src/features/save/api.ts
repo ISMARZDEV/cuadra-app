@@ -5,6 +5,7 @@ import {
   listAlerts,
   listCategories,
   searchProductCards,
+  searchProducts,
   subscribeAlert,
   todaysDeals,
   unsubscribeAlert,
@@ -152,6 +153,46 @@ export function useSearchProductCards(query: string) {
       ),
     getNextPageParam: nextOffset,
     enabled: q.length >= 2,
+  });
+}
+
+export const SEARCH_SUGGESTIONS_KEY = ["save", "searchSuggestions"] as const;
+/**
+ * Las SUGERENCIAS del buscador mientras se escribe. Endpoint `/save/search`, no `/save/search/cards`.
+ *
+ * ⚠️ LA ELECCIÓN DEL ENDPOINT ES LO IMPORTANTE ACÁ, y va al revés de lo que parece.
+ *
+ * `/search/cards` es más rico —trae precio e imagen— y encima es HÍBRIDO: cruza una consulta léxica
+ * con una de embeddings. Suena mejor para sugerir, y es peor, por dos razones:
+ *
+ * 1. **Coste**: se paga una consulta léxica MÁS una de embeddings POR CADA TECLA. Un typeahead
+ *    dispara diez veces lo que una búsqueda; eso es un orden de magnitud de trabajo por sugerencias
+ *    que el usuario descarta al teclear la letra siguiente.
+ * 2. **Precisión**: un prefijo NO TIENE SEMÁNTICA que embeber. «carre» no significa nada — es medio
+ *    token. Los embeddings brillan con INTENCIÓN («algo para la gripe»), y sobre un prefijo
+ *    devuelven vecinos arbitrarios. Para completar lo que se está tecleando, lo que gana es el
+ *    emparejamiento léxico, que además es el barato.
+ *
+ * O sea: lo vectorial se queda donde rinde —la búsqueda de VERDAD, en la rejilla— y el typeahead
+ * usa el endpoint ligero. No es una limitación que arrastramos: es el reparto correcto.
+ *
+ * `enabled` a partir de 2 letras, igual que la rejilla: con una sola, cualquier ranking devuelve
+ * medio catálogo.
+ */
+export function useSearchSuggestions(query: string) {
+  const q = query.trim();
+  return useQuery({
+    queryKey: [...SEARCH_SUGGESTIONS_KEY, q],
+    queryFn: () => searchProducts({ query: { q } }).then((r) => r.data ?? []),
+    enabled: q.length >= 2,
+    // Lo tecleado se revisita constantemente —se borra una letra y se vuelve a poner—, así que la
+    // respuesta anterior sigue siendo válida un rato. Sin esto, retroceder una letra vuelve a pegarle
+    // al servidor por algo que se acaba de pedir.
+    staleTime: 60_000,
+    // Mantiene en pantalla las sugerencias de la tecla anterior mientras llega la siguiente. Sin
+    // esto la lista PARPADEA a vacío en cada letra, que es exactamente lo que hace que un typeahead
+    // se sienta roto.
+    placeholderData: (previous) => previous,
   });
 }
 

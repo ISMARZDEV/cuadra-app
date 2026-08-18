@@ -27,6 +27,17 @@ type GlassButtonProps = {
   iconSize?: number;
   accent?: boolean;
   /**
+   * El COLOR del vidrio.
+   *
+   * `brand` (por defecto) es el par lima/verde de siempre. `danger` es el rojo de CERRAR o
+   * DESCARTAR — el mismo papel que el aviso rojo del contador, y por eso comparte su familia: en
+   * esta app el rojo significa «esto interrumpe o deshace», nunca decora.
+   *
+   * Es una PROP y no un botón nuevo a propósito: el vidrio, el gradiente de profundidad y el muelle
+   * del toque son los mismos, y duplicarlos daría dos botones que se separarían con el tiempo.
+   */
+  tone?: "brand" | "danger";
+  /**
    * Aviso arriba a la derecha: `true` = punto a secas · un NÚMERO = contador. `false`, `0` o
    * ausente no dibujan nada — un cero en un contador es ruido, la ausencia ya dice «no llevas nada».
    *
@@ -73,6 +84,7 @@ export function GlassButton({
   size = 44,
   iconSize = 22,
   accent = false,
+  tone = "brand",
   badge = false,
 }: GlassButtonProps) {
   // `true` = punto · número > 0 = contador · lo demás = nada.
@@ -86,11 +98,21 @@ export function GlassButton({
   // dark-green icon (the icon never washes out). `accent` (the send button) flips the theme so it's
   // the photo-negative of the tool buttons: distinct in BOTH themes, making the mic⇄send swap obvious.
   const styleDark = accent ? !isDark : isDark;
-  const tint = styleDark ? "#001A0C" : "#C2FB7E";
-  const iconColor = styleDark ? "#C2FB7E" : "#002E22";
-  // Depth gradient color follows the fill: a dark shadow on the dark-green fill, a light lime
-  // highlight (#E7FDCD) on the lime fill.
-  const gradientColor = styleDark ? "#21362A" : "#E7FDCD";
+  // El rojo sigue EXACTAMENTE la misma receta que el lima —vidrio oscuro + glifo claro en tema
+  // oscuro, vidrio claro + glifo oscuro en claro—, sólo que en la familia del rojo señal del aviso.
+  // Copiar la receta y no sólo el color es lo que hace que los dos botones se lean como el mismo
+  // objeto en dos estados, en vez de como dos componentes distintos.
+  const danger = tone === "danger";
+  //
+  // ⚠️ EL ROJO CLARO VA SATURADO (`#FF9A90`, no un rosa pálido) y se midió por qué: el vidrio
+  // nativo sólo luce cuando tiene algo DEBAJO que refractar, y este botón se apoya en el gris liso
+  // de la hoja. Con un tinte suave el disco desaparecía y quedaba la «x» flotando. El lima puede
+  // permitírselo porque vive sobre el verde oscuro del header, que sí le da contraste.
+  const tint = styleDark ? (danger ? "#2A0705" : "#001A0C") : danger ? "#FF9A90" : "#C2FB7E";
+  const iconColor = styleDark ? (danger ? "#FF8177" : "#C2FB7E") : danger ? "#5C0F0A" : "#002E22";
+  // Depth gradient color follows the fill: a dark shadow on the dark fill, a light highlight on
+  // the light fill.
+  const gradientColor = styleDark ? (danger ? "#4A1512" : "#21362A") : danger ? "#FFC9C3" : "#E7FDCD";
 
   // Press feedback: a springy scale-down. The native liquid-glass "light up" is masked by the
   // depth gradient on top, so we drive the tactile feedback ourselves — consistent on iOS & Android.

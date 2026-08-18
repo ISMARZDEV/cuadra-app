@@ -110,10 +110,13 @@ export type BrowseOrigin = "deals" | "featured";
 export function SupermarketBrowseScreen({
   origin,
   category,
+  initialQuery,
 }: {
   origin: BrowseOrigin;
   /** Slug de la categoría con la que arrancar, si se llegó tocando un círculo del header. */
   category?: string;
+  /** Lo escrito en el buscador de la home, si se llegó desde ahí. */
+  initialQuery?: string;
 }) {
   useLang();
   const router = useRouter();
@@ -126,7 +129,10 @@ export function SupermarketBrowseScreen({
   // Arranca en la pestaña de la que vino el usuario: pediste ver más de ESO. Las dos listas
   // transversales están siempre, así que desde aquí se salta a la otra sin volver atrás.
   const [activeTab, setActiveTab] = useState<TabId>(category ?? origin);
-  const [query, setQuery] = useState("");
+  // Arranca con lo que se escribió en la home, si vino de ahí. Es el valor INICIAL y no queda
+  // atado al parámetro: a partir de aquí el campo es del usuario, y volver a sembrarlo en cada
+  // render le borraría lo que estuviera escribiendo.
+  const [query, setQuery] = useState(initialQuery ?? "");
 
   const deals = useTodaysDealsPaged();
   const featured = useFeaturedProductsPaged("popular");
@@ -471,6 +477,30 @@ export function SupermarketBrowseScreen({
           keyExtractor={(p: never) => (p as { id: string }).id}
           onScroll={onScroll}
           scrollEventThrottle={16}
+          // ── VENTANA DE LA REJILLA ────────────────────────────────────────────
+          // `windowSize` POR DEFECTO ES 21 — o sea, `FlatList` mantiene montadas unas DIEZ
+          // pantallas por arriba y otras diez por abajo. En una rejilla de tres columnas con foto
+          // eso son ~180 tarjetas vivas con sus imágenes decodificadas, y es de donde salía buena
+          // parte de la RAM medida en el aparato (1.2 GB con el hilo de JS a 21 fps).
+          //
+          // A 5 se conservan dos pantallas a cada lado: suficiente para que un scroll normal nunca
+          // vea un hueco, y una décima parte de la memoria.
+          windowSize={5}
+          // Lo que cabe en una pantalla: cuatro filas de tres. Menos deja la rejilla a medio pintar
+          // al entrar; más retrasa el primer fotograma útil.
+          initialNumToRender={12}
+          // Tres filas por tanda. Es el compromiso entre llenar rápido al desplazar y no bloquear
+          // el hilo de JS con un lote grande justo mientras el dedo se mueve.
+          maxToRenderPerBatch={9}
+          updateCellsBatchingPeriod={50}
+          // DESCONECTA del árbol nativo lo que sale de pantalla. Es lo que de verdad libera las
+          // imágenes: sin esto las vistas siguen adjuntas —invisibles pero vivas— y sus mapas de
+          // bits siguen ocupando memoria.
+          removeClippedSubviews
+          // NO se pasa `getItemLayout`, y es a propósito: la tarjeta NO tiene alto fijo —crece con
+          // su contenido, ver `basket-product-card`—, así que cualquier alto que declarásemos aquí
+          // sería MENTIRA y descalibraría el scroll. Un `getItemLayout` que miente es peor que no
+          // tenerlo.
           // La rejilla NO se remonta al cambiar de pestaña, así que hay que devolverla arriba a
           // mano: sin esto, entrar a una categoría desde la fila 8 te deja mirando el hueco donde
           // ya no hay productos.
