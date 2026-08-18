@@ -73,9 +73,21 @@ export function useWheelAutoplay({
    *
    * Guardándolo aquí, el efecto depende sólo de lo que de verdad describe el recorrido, y el
    * temporizador llama igualmente a la versión más reciente.
+   *
+   * ⚠️ Y SE REFRESCA EN UN EFECTO, no en el cuerpo del render. Escribir un ref mientras se renderiza
+   * es impuro —React puede descartar un render a medias y la escritura ya habría ocurrido—, y con
+   * React Compiler encendido eso deja de ser teórico. Acá no cuesta nada evitarlo: `useRef` ya nace
+   * con el primer valor, y el efecto sin lista de dependencias corre tras CADA commit, así que el
+   * callback está al día mucho antes de que salte el primer temporizador (1800ms).
+   *
+   * (Distinto es el caso de los valores compartidos de `search-overlay`: ahí un efecto llega TARDE
+   * a propósito —corre después de pintar— y por eso sí se escriben durante el render. La regla no
+   * es «nunca en el render», es «sólo cuando el efecto llega tarde».)
    */
   const glide = useRef(glideTo);
-  glide.current = glideTo;
+  useEffect(() => {
+    glide.current = glideTo;
+  });
 
   useEffect(() => {
     if (!enabled || reduceMotion || stopped.current) return;
