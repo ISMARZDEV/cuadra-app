@@ -1,0 +1,9 @@
+# Reference clips are study material, not source. They are re-downloadable from the
+# `video_url` recorded in each apps/<app>/shot.json — run ./fetch-clips.sh to restore them.
+*.mp4
+*.mov
+*.m4v
+
+# Frames extracted by from-video.sh are DERIVED from the clip. Regenerate with the
+# ffmpeg command printed in each frames/README.md.
+frames/
