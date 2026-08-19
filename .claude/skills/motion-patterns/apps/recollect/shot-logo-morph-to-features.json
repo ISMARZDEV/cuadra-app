@@ -1,0 +1,116 @@
+{
+  "slug": "recollect-logo-morph-to-features-animation",
+  "video_url": "https://60fps.design/shots/recollect-logo-morph-to-features-animation",
+  "clip_file": "main.mp4",
+  "app": "recollect",
+  "platform": "ios",
+  "source": "mcp+manual",
+  "evidence": "corroborated",
+  "evidence_note": "One MCP shot with the video measured directly. The MCP supplied the descriptive schema (confidence 0.95); every number below is MEASURED off 60fps frames because the MCP's `animation` is derived from the labels timing:medium + springiness:subtle, not from the footage. §5 checklist answered in each PATTERN.md; 1, 3 and 4 pass for all three.",
+  "dimensions": "2160x2160",
+  "duration_s": 19.416667,
+  "frames_fps": 60,
+  "patterns": [
+    "brand-mark-to-caret-morph",
+    "category-batch-swap",
+    "rolling-word-swap"
+  ],
+  "animation": "MEASURED per pattern — the mark→caret morph is .spring(response: 0.135, dampingFraction: 1.00) -> { mass: 1, stiffness: 2162, damping: 93 }. The MCP reported .spring(0.45, 0.72) for the whole shot, which is its label-derived default and matches nothing measured here.",
+  "stagger_delay": 0.12,
+  "measured": {
+    "note": "Read off 60fps frames. Screen rect inside the mockup: 406x879+337+100 (auto-detected).",
+    "mark_to_caret_morph": "onset ~292ms, settle ~470ms (~200ms). Bounding box of the white glyph goes 70x86 -> 5x48: NON-UNIFORM, width collapses to 7% while height only reaches 56%. Fitted zeta=1.00 w0=46.5 (rms 0.0151), beating iOS-standard/140ms (0.0236) and easeOut/100ms (0.0340). No overshoot at any frame.",
+    "batch_swap": "The card set is REPLACED wholesale roughly every 2.4s (5 phrases across 12.3s). Quadrant luminance shows the four regions changing 100-150ms apart, i.e. a staggered swap, not a scroll.",
+    "word_roll": "The trailing word changes over ~250ms (8583 -> 8833ms), travelling vertically through a 54px band while the previous word fades — a roll, not typing.",
+    "no_vertical_scroll": "Phase correlation over a 260x600 card column at lags of 100/200/500ms returns 0-2px of vertical displacement while RMSE grows 0.059->0.122. The cards change WITHOUT translating: they do not scroll.",
+    "mcp_divergences": [
+      "start_state: the MCP calls the initial glyph 'a white vertical bar representing the logo mark'. It is a BOOKMARK glyph that morphs INTO the bar; the bar is the text caret. The bookmark exists for only ~375ms and the MCP's keyframes are 1s apart, so it never saw it.",
+      "'an array of image cards scrolls through the screen background' — measured: no vertical translation at all. The batch is swapped in place.",
+      "motion_behavior includes 'typing' and the prose says 'typewriter-style text updates'. Measured: the word rolls vertically and crossfades. No character-by-character reveal."
+    ]
+  },
+  "description": {
+    "one_line_summary": "A brand mark contracts into the blinking caret of a search field, which then cycles categories while a gallery of cards swaps behind it.",
+    "detailed_description": "A bookmark-shaped brand mark sits centred on black. It contracts — fast and completely dry — until it IS the blinking text caret of an empty search field. The caret blinks alone for about 2.5s, then a search prompt appears beside it with a small gradient thumbnail. For the next 12s the prompt cycles through categories: the trailing word rolls vertically to the next one while, behind it, the whole set of gallery cards is replaced by a new set, the four quadrants swapping 100-150ms apart. At the end the cards clear and the field contracts back into the mark.",
+    "interaction_pattern": [
+      "intro",
+      "showcase",
+      "splash",
+      "search"
+    ],
+    "gesture_or_trigger": "system event",
+    "motion_behavior": [
+      "morph",
+      "scale",
+      "fade",
+      "stagger",
+      "sequence",
+      "crossfade"
+    ],
+    "ui_elements": [
+      "logo",
+      "input",
+      "card",
+      "text"
+    ],
+    "visual_style": [
+      "dark mode",
+      "gradient",
+      "vibrant",
+      "minimal"
+    ],
+    "product_context": [
+      "media",
+      "design",
+      "search",
+      "inspiration"
+    ],
+    "intensity": "bold",
+    "mood": [
+      "delightful",
+      "dynamic",
+      "futuristic",
+      "creative",
+      "confident"
+    ],
+    "motion_breakdown": {
+      "start_state": "A bookmark-shaped white mark centred on a pitch-black screen. Nothing else is on screen.",
+      "transition": "The mark contracts non-uniformly — width to 7%, height to 56% — over ~200ms on a critically damped spring, arriving as the caret of an empty search field. It blinks; the prompt and a gradient thumbnail join it; then the trailing word rolls to the next category every ~2.4s while the card set behind swaps in staggered quadrants.",
+      "end_state": "Cards cleared, field contracted, the bookmark mark alone on black again.",
+      "why_it_works": "The mark does not fade into the field, it BECOMES the part of it that matters — the caret, the thing that says 'type here'. Identity is spent buying the affordance instead of being replaced by it. It is critically damped for the same reason: a caret that overshoots reads as a glitch, because a text cursor is the one element a user expects to be perfectly still.",
+      "motion_params": {
+        "timing": "fast",
+        "easing": "spring",
+        "springiness": "subtle",
+        "stagger": "balanced",
+        "direction": [
+          "scale",
+          "fade"
+        ]
+      }
+    },
+    "search_keywords": [
+      "logo to caret morph",
+      "brand mark becomes cursor",
+      "splash into search field",
+      "category cycling gallery",
+      "rolling word swap",
+      "placeholder category cycle"
+    ],
+    "assigned_filter_slugs": [
+      "intro",
+      "splash",
+      "morph",
+      "logo",
+      "search",
+      "input",
+      "card",
+      "glow",
+      "sequence",
+      "text",
+      "showcase"
+    ],
+    "confidence": 0.82,
+    "confidence_note": "High for the morph: 45 frames at 60fps, a curve fit beating every easing tried, and a clean non-uniform scale read off the glyph's bounding box. Lower for the two showcase patterns — the batch cadence and the 100-150ms quadrant stagger come from luminance sampling rather than from tracking individual cards, and the word roll is timed to +/-1 frame but its easing was not fitted. Deliberately BELOW the MCP's own 0.95, because three of its descriptive claims did not survive measurement."
+  }
+}

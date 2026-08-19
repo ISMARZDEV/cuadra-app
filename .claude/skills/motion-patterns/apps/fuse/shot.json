@@ -1,0 +1,75 @@
+{
+  "slug": "focus-slot-ticker",
+  "video_url": "https://60fps.design/shots/fuse-intro-value-prop-cycle-animation",
+  "clip_file": "focus-slot-ticker.mp4",
+  "app": "fuse",
+  "platform": "ios",
+  "source": "60fps MCP (generated) + measured video",
+  "evidence": "corroborated",
+  "evidence_note": "One clip, but questions 1, 3 and 4 of the SKILL.md §5 checklist pass and the answers are written into PATTERN.md. The mechanism survives stripping the app (a fixed focus slot with content rolling through it), three distinct screens want it, and what varies between them is data. Upgrade to `confirmed` only when another app's clip is ingested as a sibling here.",
+  "dimensions": "2000x2000",
+  "duration_s": 7.95,
+  "frames_fps": 60,
+  "patterns": ["focus-slot-ticker"],
+
+  "animation": ".spring(response: 0.34, dampingFraction: 0.82)",
+  "stagger_delay": 0,
+  "measured": {
+    "calibration": "phone screen 766 px wide inside a 2000 px frame; against 393 pt logical width that is 1.95 px/pt",
+    "step_period_ms": 1540,
+    "step_onsets_ms": [1133, 2717, 4250, 5800, 7283],
+    "transition_ms": 300,
+    "dwell_ms": 1240,
+    "travel_px": 136,
+    "travel_pt": 70,
+    "overshoot_px": "1-2 (~1.2% of travel) — at the limit of what the strip resolves",
+    "zeta": 0.82,
+    "zeta_bracket": [0.79, 0.82],
+    "w0_rad_s": 18.5,
+    "resting_opacity": 0.087,
+    "resting_scale": 0.84,
+    "focus_indent_pt": 50,
+    "mark_size_pt": 24,
+    "note": "The segmenter found only 2 windows in a clip with 5 transitions, and window 2 (3950-4317 ms) contained 18 static frames and cut off before the motion finished. The text is a few dozen px inside a 2000 px frame, so the per-frame scene score never clears the threshold. Everything above was measured off a whole-clip kymograph of the ticker band instead."
+  },
+
+  "description": {
+    "one_line_summary": "A column of words rolls one step at a time through a fixed centre slot, and whatever lands in the slot is promoted to full weight, full colour and its own mark while its neighbours stay near-invisible ghosts.",
+    "detailed_description": "A vertical list sits behind a three-row viewport with one focus slot at its centre. On a metronome, the whole column translates DOWN by exactly one row: the word that was in the slot leaves via the bottom, the word that was above it arrives in the slot, and a new one appears at the top. Arrival is what confers status — as a row nears the slot it gains opacity, grows back to full scale, slides right to open a gap, and its mark fades in at the row's fixed left edge. Leaving reverses all four. The result reads as one object moving through a spotlight rather than a set of items animating in parallel.",
+    "interaction_pattern": ["onboarding", "value proposition loop", "vertical ticker", "focus slot"],
+    "gesture_or_trigger": "system event",
+    "motion_behavior": ["ticker", "slide", "fade", "scale", "spring", "overshoot"],
+    "ui_elements": ["text", "icon"],
+    "visual_style": ["minimalist", "clean typography"],
+    "product_context": ["fintech", "onboarding"],
+    "intensity": "balanced",
+    "mood": ["premium", "clean", "delightful"],
+    "motion_breakdown": {
+      "start_state": "One word occupies the centre slot at full opacity, full scale, indented, with its mark showing. The rows immediately above and below carry the same words at 0.84 scale and ~9% opacity, with no mark and no indent. Rows beyond that are transparent.",
+      "transition": "The column translates down by one row pitch (70 pt) on a spring. Opacity, scale, indent and mark presence are not animated alongside it — they are read off each row's distance from the slot, so all four resolve exactly when the travel does. The outgoing word dims, shrinks, un-indents and loses its mark on the way out; the incoming word does the reverse on the way in.",
+      "end_state": "The next word occupies the slot in the state the previous one just left, and the cycle waits ~1240 ms before stepping again.",
+      "why_it_works": "The focus never moves, so the eye never has to chase it — a single spot on screen is always the thing worth reading. Making status a function of distance rather than a separate animation means the promotion cannot desynchronise from the travel. And the long dwell is the actual product decision: the motion exists to let someone READ a word, so the spring is damped enough not to wobble the text and the pause is four times longer than the movement.",
+      "motion_params": {
+        "timing": "fast",
+        "easing": "spring",
+        "springiness": "subtle",
+        "stagger": "none",
+        "direction": ["down"]
+      }
+    },
+    "search_keywords": [
+      "focus slot ticker",
+      "vertical value prop cycle",
+      "rolling list with promoted centre",
+      "auto ticker onboarding",
+      "spring stepped ticker",
+      "word column rolls through spotlight"
+    ],
+    "assigned_filter_slugs": [
+      "ticker", "onboarding", "intro", "spring-physics", "fade", "icon", "text",
+      "idle-animation", "grow", "shrink", "sequence"
+    ],
+    "confidence": 0.8,
+    "confidence_note": "High on structure, geometry and cadence: the step onsets, the 70 pt pitch, the 0.84 scale and the 0.087 resting opacity were each measured directly, and the two ghost rows measured IDENTICALLY, which is a strong signal the fade is a pure function of distance. Medium on the spring: the overshoot is 1-2 px on a 136 px travel, so zeta is bracketed 0.79-0.82 rather than known — it is reported as 0.82 partly because the reference independently labels the springiness 'subtle'. Low on the mark's fade curve, which is INFERRED and flagged as a tuning knob in timings.ts. Note two deliberate divergences from the reference metadata: timing is recorded 'fast' (measured response 0.34) where the MCP said 'medium', and the cadence is 1540 ms where the generated Swift file says 2100 ms."
+  }
+}
