@@ -25,6 +25,7 @@ import { CHAT_BODY, CHAT_FONT_SIZE, CHAT_LINE_HEIGHT } from "../chat-typography"
 // recolorea con una prop — se elige el archivo.
 import SparkDark from "../../../assets/chat/icon-spark-dark.svg";
 import SparkLight from "../../../assets/chat/icon-spark-light.svg";
+import { useChatDraftStore } from "@/store/chat-draft-store";
 import type { ChatInputBarProps } from "../interfaces";
 
 // ── Medidas (Figma 675:16699 / 675:16918 / 675:17356) ─────────────────────────
@@ -170,6 +171,9 @@ const echoFingerprint = (s: string) =>
 // the sessions drawer (hide on open, refocus on close). `onSend` receives the trimmed message when
 // the user taps send (the screen streams it to the chat); without it the bar just clears.
 export function ChatInputBar({ inputRef: externalRef, onSend, onChangeText }: ChatInputBarProps) {
+  // Selector: sólo la ACCIÓN, que es estable — suscribirse al valor re-renderizaría el input
+  // en cada tecla por partida doble (ya tiene su propio `value` local).
+  const setDraft = useChatDraftStore((s) => s.setDraft);
   useLang(); // re-render on a language change — t() alone reads a module var, invisible to React
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -202,6 +206,10 @@ export function ChatInputBar({ inputRef: externalRef, onSend, onChangeText }: Ch
   // que el usuario ya borró o ya mandó.
   const commitValue = (text: string) => {
     setValue(text);
+    // Al STORE, no por prop hacia arriba: publicarlo al padre re-renderizaba la pantalla entera
+    // del chat en cada tecla (ver `store/chat-draft-store.ts`). `onChangeText` sigue existiendo
+    // por si algún día alguien necesita escuchar además del store.
+    setDraft(text);
     onChangeText?.(text);
   };
 

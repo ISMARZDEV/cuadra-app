@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from ..domain.drops import detect_drops
+from ..domain.image_variant import sized_image_url
 from ..domain.listing import OfferingRow  # re-exportado para el port y los tests
 from ..domain.ports import (
     CanonicalProductRepository,
@@ -28,6 +29,7 @@ from .dtos import (
     FacetValueDto,
     PriceBucketDto,
     PriceFacetDto,
+    ProductCardPageDto,
     ProductCardDto,
 )
 from .errors import CategoryNotFoundError
@@ -184,7 +186,20 @@ def _sort_key(sort: str):
     return lambda p: (p.min_price.amount_minor, p.name)  # "price" (default)
 
 
-def _to_card(p: _Aggregated, discount_bps: int | None = None) -> ProductCardDto:
+@dataclass(frozen=True)
+class _Discount:
+    """El badge «−X%» y el precio TACHADO, atados.
+
+    Van juntos en un solo valor a propósito: son las dos caras de UNA bajada. Con dos mapas
+    sueltos, el badge podía quedarse con la bajada mayor y el tachado con otra, y el card mostraría
+    un porcentaje que no cuadra con el precio que tacha. Acá eso no se puede escribir.
+    """
+
+    bps: int
+    previous_minor: int
+
+
+def _to_card(p: _Aggregated, discount: _Discount | None = None) -> ProductCardDto:
     return ProductCardDto(
         id=p.product_id,
         slug=p.slug,
@@ -192,27 +207,36 @@ def _to_card(p: _Aggregated, discount_bps: int | None = None) -> ProductCardDto:
         brand=p.brand,
         quality=p.quality,
         display_size=p.display_size,
-        image_url=p.image_url,
+        # AL TAMAÑO QUE SE VE, no al que trae el CDN. Los originales son 1000×1000 y decodifican
+        # 4 MB CADA UNO en el cliente, mientras la tarjeta los dibuja a 110pt. Ver `image_variant`:
+        # es la diferencia entre 1.2 GB de RAM y unas decenas de MB.
+        image_url=sized_image_url(p.image_url),
         price_minor=p.min_price.amount_minor,
         currency=p.min_price.currency.code,
         unit_price_minor=p.unit_price_minor,
         unit_measure=p.quantity.measure.value if p.quantity else None,
         store_count=len(p.providers),
-        discount_bps=discount_bps,
+        discount_bps=discount.bps if discount else None,
+        previous_price_minor=discount.previous_minor if discount else None,
     )
 
 
 _DISCOUNT_WINDOW_DAYS = 30  # ventana para el badge "−X%" (bajada reciente = producto "en oferta")
 
 
-def _discount_map(store_repo: StoreProductRepository, market_id: str) -> dict[str, int]:
-    """canonical_id → mayor % de bajada reciente (bps). Reusa la detección G4 (detect_drops)."""
+def _keep_biggest(out: dict[str, _Discount], cid: str, drop) -> None:  # noqa: ANN001
+    """Se queda con la bajada MAYOR de ese producto, arrastrando su precio anterior."""
+    current = out.get(cid)
+    if current is None or drop.drop_bps > current.bps:
+        out[cid] = _Discount(drop.drop_bps, drop.change.previous.amount_minor)
+
+
+def _discount_map(store_repo: StoreProductRepository, market_id: str) -> dict[str, _Discount]:
+    """canonical_id → mayor bajada reciente. Reusa la detección G4 (detect_drops)."""
     since = datetime.now(timezone.utc) - timedelta(days=_DISCOUNT_WINDOW_DAYS)
-    out: dict[str, int] = {}
+    out: dict[str, _Discount] = {}
     for drop in detect_drops(store_repo.list_price_changes(market_id, since)):
-        cid = drop.change.canonical_product_id
-        if drop.drop_bps > out.get(cid, 0):
-            out[cid] = drop.drop_bps
+        _keep_biggest(out, drop.change.canonical_product_id, drop)
     return out
 
 
@@ -283,14 +307,20 @@ class ListFeaturedProducts:
         self._store = store_repo
 
     def execute(
-        self, market_id: str, *, sort: str = "unit_price", limit: int = 12
-    ) -> list[ProductCardDto]:
+        self, market_id: str, *, sort: str = "unit_price", limit: int = 12, offset: int = 0
+    ) -> ProductCardPageDto:
         rows = self._store.list_market_offerings(market_id)
         products = _aggregate(rows)
         disc = _discount_map(self._store, market_id)
         sort = sort if sort in _SORTS else "unit_price"
         ordered = sorted(products.values(), key=_sort_key(sort))
-        return [_to_card(p, disc.get(p.product_id)) for p in ordered[:limit]]
+        # El total sale de la lista ENTERA, antes de cortar: es lo que le dice al cliente si queda
+        # algo más que pedir.
+        page = ordered[offset : offset + limit]
+        return ProductCardPageDto(
+            items=[_to_card(p, disc.get(p.product_id)) for p in page],
+            total=len(ordered),
+        )
 
 
 class ListBrandProducts:
@@ -335,24 +365,28 @@ class ListTodaysDeals:
         *,
         days: int = 7,
         limit: int = 12,
+        offset: int = 0,
         now: datetime | None = None,
-    ) -> list[ProductCardDto]:
+    ) -> ProductCardPageDto:
         since = (now or datetime.now(timezone.utc)) - timedelta(days=days)
         changes = self._store.list_price_changes(market_id, since)
         drops = detect_drops(changes)  # ya viene ordenado por drop_bps desc
 
         ordered_ids: list[str] = []
-        disc: dict[str, int] = {}
+        disc: dict[str, _Discount] = {}
         for drop in drops:
             pid = drop.change.canonical_product_id
             if pid not in disc:
                 ordered_ids.append(pid)  # primera aparición = mayor bajada (drops viene ordenado)
-            if drop.drop_bps > disc.get(pid, 0):
-                disc[pid] = drop.drop_bps
+            _keep_biggest(disc, pid, drop)
 
         products = _aggregate(self._store.list_market_offerings(market_id))
+        # Se arma la lista COMPLETA antes de cortar, y a propósito: el filtro `if pid in products`
+        # descarta bajadas cuyo producto ya no está en la oferta vigente, así que el total honesto
+        # es el de las que SOBREVIVEN. Contar las bajadas crudas mandaría al cliente a pedir
+        # páginas que no existen.
         cards = [_to_card(products[pid], disc.get(pid)) for pid in ordered_ids if pid in products]
-        return cards[:limit]
+        return ProductCardPageDto(items=cards[offset : offset + limit], total=len(cards))
 
 
 class ListProviderProducts:

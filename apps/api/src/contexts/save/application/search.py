@@ -49,7 +49,13 @@ class SearchProducts:
         self._embedder = embedding_provider
         self._limit = limit
 
-    def execute(self, query: str, market_id: str) -> list[ProductSearchDto]:
+    def rank(self, query: str, market_id: str) -> list[str]:
+        """Ids en orden de relevancia — la cascada léxica + semántica fusionada por RRF.
+
+        Extraído de `execute` para poder REUTILIZARLO: `SearchProductCards` necesita exactamente
+        este orden pero cruzado con precios, y duplicar la cascada habría garantizado que un día
+        las dos búsquedas dejaran de coincidir.
+        """
         text = query.strip()
         if not text:
             return []
@@ -58,7 +64,12 @@ class SearchProducts:
         semantic = self._semantic(text, market_id)
 
         fused = reciprocal_rank_fusion(lexical, semantic)[: self._limit]
-        ranked_ids = [c.canonical_product_id for c in fused]
+        return [c.canonical_product_id for c in fused]
+
+    def execute(self, query: str, market_id: str) -> list[ProductSearchDto]:
+        ranked_ids = self.rank(query, market_id)
+        if not ranked_ids:
+            return []
 
         found = {p.id: p for p in self._repo.get_many(ranked_ids, market_id)}
         # El orden lo impone la fusión: `get_many` no promete ninguno. Un id que ya no está

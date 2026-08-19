@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Image, Text, View } from "react-native";
 
 import { t } from "@/i18n";
@@ -11,7 +12,9 @@ import type { ProductCardData } from "../interfaces";
 // calcula un número» — y la UI tampoco). Lo único que pone el cliente es el CHROME localizado:
 // «Más barato» y la línea de captura viven en i18n, no en el payload, porque un chat en inglés
 // con una etiqueta en español sería el mismo bug que la regla es/en/pt existe para evitar.
-export function ProductCard({ data }: { data: ProductCardData }) {
+// MEMOIZADO: es una fila de la lista del chat. Sin esto, cualquier re-render de `chat-screen`
+// re-renderiza TODAS las filas de la conversación — el coste crece con el largo del historial.
+function ProductCardBase({ data }: { data: ProductCardData }) {
   return (
     <View className="mx-3 my-2 overflow-hidden rounded-2xl border border-text/10 bg-text/5">
       <View className="flex-row items-center gap-3 p-3">
@@ -67,3 +70,4 @@ export function ProductCard({ data }: { data: ProductCardData }) {
     </View>
   );
 }
+export const ProductCard = memo(ProductCardBase);

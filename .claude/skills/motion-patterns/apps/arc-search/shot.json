@@ -1,0 +1,119 @@
+{
+  "slug": "arc-search-add-widget-animation",
+  "video_url": "https://video.gumlet.io/66b49d08225b7b88f78b7b44/676960968f5e80dcc0b73037/main.mp4",
+  "clip_file": "arc-search-add-widget-animation.mp4",
+  "app": "arc-search",
+  "platform": "ios",
+  "source": "recipes",
+  "evidence": "confirmed",
+  "evidence_note": "5 distinct apps triangulated via the 60fps MCP",
+  "gesture_or_trigger": "tap",
+  "motion_behavior": [
+    "slide",
+    "fade",
+    "wiggle",
+    "reveal",
+    "sequence",
+    "scale"
+  ],
+  "motion_params": {
+    "timing": "medium",
+    "easing": "ease-out",
+    "springiness": "subtle",
+    "stagger": "subtle",
+    "direction": [
+      "up",
+      "scale"
+    ]
+  },
+  "animation": ".easeOut(duration: 0.45)",
+  "stagger_delay": 0.04,
+  "patterns": [
+    "ghost-touch-walkthrough"
+  ],
+  "notes": "NOT a spring. No recipe covers `wiggle`. Strongest triangulation of the set (5 distinct apps).",
+  "description": {
+    "one_line_summary": "An animated, step-by-step onboarding tutorial guiding users on how to add a widget to their iOS home screen.",
+    "detailed_description": "The sequence starts with an introductory card displaying the widget, which transitions into a step-by-step simulated walkthrough. A touch indicator mimics user actions, first performing a long-press to trigger the home screen's wiggle mode, and then tapping the add button to slide up the widget gallery.",
+    "interaction_pattern": [
+      "onboarding",
+      "setup",
+      "sequence",
+      "tutorial"
+    ],
+    "gesture_or_trigger": "tap",
+    "motion_behavior": [
+      "slide",
+      "fade",
+      "wiggle",
+      "reveal",
+      "sequence",
+      "scale"
+    ],
+    "ui_elements": [
+      "card",
+      "button",
+      "icon",
+      "bottom-sheet",
+      "text"
+    ],
+    "visual_style": [
+      "minimal",
+      "pastel",
+      "clean",
+      "flat"
+    ],
+    "product_context": [
+      "onboarding",
+      "system-integration",
+      "utility"
+    ],
+    "intensity": "balanced",
+    "mood": [
+      "friendly",
+      "helpful",
+      "clean",
+      "playful"
+    ],
+    "motion_breakdown": {
+      "start_state": "An introductory screen showing the widget card with an 'Add Widget' button.",
+      "transition": "Tapping the button transitions into a simulated home screen. A touch indicator simulates a long press, causing icons to wiggle, followed by a tap on the plus button which slides up the widget search menu.",
+      "end_state": "The simulated widget search menu is fully revealed.",
+      "why_it_works": "By visually simulating the exact system gestures and behaviours, the tutorial lowers cognitive load and makes a multi-step setup process feel effortless.",
+      "motion_params": {
+        "timing": "medium",
+        "easing": "ease-out",
+        "springiness": "subtle",
+        "stagger": "subtle",
+        "direction": [
+          "up",
+          "scale"
+        ]
+      }
+    },
+    "search_keywords": [
+      "how to add widget",
+      "ios widget tutorial",
+      "wiggle mode animation",
+      "simulated touch gesture"
+    ],
+    "assigned_filter_slugs": [
+      "onboarding",
+      "setup",
+      "sequence",
+      "wiggle",
+      "widget",
+      "card",
+      "tap",
+      "long-press",
+      "gallery",
+      "slide",
+      "fade",
+      "reveal",
+      "button",
+      "icon"
+    ],
+    "confidence": 1.0,
+    "confidence_note": "as reported by the 60fps MCP get_shot payload"
+  }
+}

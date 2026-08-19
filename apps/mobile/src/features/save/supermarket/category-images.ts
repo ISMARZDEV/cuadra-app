@@ -1,0 +1,56 @@
+import type { ImageSourcePropType } from "react-native";
+
+// La ilustración de cada categoría del carrusel del header.
+//
+// EL MAPA VA POR SLUG, NO POR NOMBRE. El nombre viene del servidor, lleva acentos y ampersands, y
+// cambia con el idioma: casarlo contra un nombre de archivo es una bomba de relojería que estalla el
+// día que la app se abra en inglés. El slug es el identificador estable de la categoría.
+//
+// Y es un mapa EXPLÍCITO, no un `require()` armado con plantillas: Metro empaqueta los assets
+// resolviendo las rutas en tiempo de compilación, así que un `require(\`...${slug}.png\`)` no
+// encuentra nada. Escritas a mano, además, una ruta mal puesta revienta al empaquetar —fuerte y
+// temprano— en vez de dejar un hueco en la pantalla.
+//
+// ⚠️ LOS PNG SE GUARDAN A 180×180, Y ESE NÚMERO NO ES ARBITRARIO: el círculo se dibuja a 60pt, y
+// 60 × 3 = 180 es todo lo que puede enseñar la pantalla más densa que existe. Diseño los exportó a
+// 435, o sea casi SEIS VECES los píxeles que se ven — y eso se pagaba en el arranque: 2.1 MB de
+// assets y ~10 MB de mapas de bits al decodificarlos, con las categorías apareciendo de una en una.
+// A 180 la carpeta baja a 520 KB sin perder NADA visible (no se puede enseñar más resolución de la
+// que cabe). Verificado por captura: idénticas.
+//   · Al re-exportar desde Figma: `sips -Z 180 *.png`.
+//   · Los originales a 435 siguen en el historial de git si alguna vez hacen falta más grandes.
+//
+// ⚠️ LOS ARCHIVOS SE RENOMBRARON AL SLUG, y hubo que hacerlo: como salieron de diseño llevaban
+// acentos, ampersands y hasta espacios DOBLES, y Metro no los resuelve. `Alcohol.png` entraba y
+// `Bebés.png` reventaba el empaquetado — macOS guarda la `é` DESCOMPUESTA (NFD, `e` + tilde
+// suelta) y el mismo carácter escrito en el editor va compuesto (NFC): son dos cadenas distintas
+// para el resolvedor, aunque en pantalla se vean iguales. Con el nombre en ASCII el problema no
+// puede volver. Al re-exportar desde Figma hay que renombrar al slug.
+const IMAGES: Record<string, ImageSourcePropType> = {
+  alcohol: require("@/assets/categories-supermarket/alcohol.png"),
+  bebes: require("@/assets/categories-supermarket/bebes.png"),
+  bebidas: require("@/assets/categories-supermarket/bebidas.png"),
+  "carnes-pescados": require("@/assets/categories-supermarket/carnes-pescados.png"),
+  "cuidado-del-hogar": require("@/assets/categories-supermarket/cuidado-del-hogar.png"),
+  "cuidado-personal": require("@/assets/categories-supermarket/cuidado-personal.png"),
+  "despensa-abarrotes": require("@/assets/categories-supermarket/despensa-abarrotes.png"),
+  "embutidos-delicatessen": require("@/assets/categories-supermarket/embutidos-delicatessen.png"),
+  "escolares-oficina": require("@/assets/categories-supermarket/escolares-oficina.png"),
+  "frutas-verduras": require("@/assets/categories-supermarket/frutas-verduras.png"),
+  "panaderia-tortilleria": require("@/assets/categories-supermarket/panaderia-tortilleria.png"),
+  "salud-farmacia": require("@/assets/categories-supermarket/salud-farmacia.png"),
+  "snacks-dulces": require("@/assets/categories-supermarket/snacks-dulces.png"),
+};
+
+/** La ilustración de una categoría, o `null` si todavía no la exportaron. */
+export function categoryImage(slug: string): ImageSourcePropType | null {
+  return IMAGES[slug] ?? null;
+}
+
+/**
+ * La letra del círculo de respaldo. `Array.from` y no `slug[0]`: cortar por unidad de código parte
+ * en dos cualquier carácter fuera del plano básico y dibuja media letra.
+ */
+export function fallbackInitial(name: string): string {
+  return (Array.from(name.trim())[0] ?? "?").toUpperCase();
+}

@@ -25,13 +25,12 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import MaskedView from "@react-native-masked-view/masked-view";
-import { BlurView } from "expo-blur";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useColorScheme } from "nativewind";
 import { type Href, useFocusEffect, useRouter } from "expo-router";
 
 import { GlassSurface } from "@/components/ui/glass-surface";
+import { TopScrollFade } from "@/components/ui/top-scroll-fade";
 import {
   NAVBAR_CIRCLE,
   NAVBAR_VIEWBOX,
@@ -60,11 +59,20 @@ import type { ChatMessage } from "./interfaces";
 import { useChat } from "./use-chat";
 
 // SVG gradient overlay — Figma "Siri AI" card: dark 85% at top → 18% at bottom.
-function CardGradient({ isDark }: { isDark: boolean }) {
+function CardGradient({ isDark, height }: { isDark: boolean; height: number }) {
   const color = isDark ? "#000000" : "#ffffff";
   return (
+    // ⚠️ ALTO FIJO, no `absoluteFill`. Este SVG ocupa toda la tarjeta, y la tarjeta CAMBIA DE ALTO
+    // en cada frame mientras el teclado sube (el `marginBottom` animado). Un `react-native-svg`
+    // que cambia de caja se RE-RASTERIZA: un degradado a pantalla completa, 60 veces por segundo,
+    // en el hilo de UI. Medido en device: la animación del teclado bajaba a ~40 fps INCLUSO con el
+    // chat vacío y con el vidrio desactivado — o sea no eran ni las filas ni el blur.
+    //
+    // Anclado ARRIBA y con el alto máximo de la tarjeta: cuando ésta se encoge, el SVG no se
+    // redimensiona, sólo lo recorta `cardClip`. Lo que queda fuera es la cola del degradado, que ya
+    // es transparente (`stopOpacity` 0) y encima vive detrás del dock.
     <Svg
-      style={StyleSheet.absoluteFill}
+      style={{ position: "absolute", top: 0, left: 0, right: 0, height }}
       preserveAspectRatio="none"
       pointerEvents="none"
     >
@@ -80,56 +88,10 @@ function CardGradient({ isDark }: { isDark: boolean }) {
   );
 }
 
-// Banda superior del scroll — va DELANTE de la lista (a diferencia de CardGradient, que es un lavado
-// de fondo por detrás), así el texto que sube se DESVANECE en vez de cortarse a ras del borde.
-//
-// No es sólo un degradado: es un **desenfoque con degradado**. El texto que asciende se difumina y
-// se apaga, y eso es lo que produce la sensación de que ARRIBA HAY MÁS conversación — un corte
-// limpio comunica «acá se acaba», un difuminado comunica «esto sigue». Es lo que hace ChatGPT.
-//
-// Receta: `MaskedView` cuyo mask es un degradado vertical (opaco arriba → transparente abajo), y
-// dentro un `BlurView` más un lavado del color de la tarjeta. El mask hace que TANTO el desenfoque
-// COMO el lavado se desvanezcan juntos; si sólo se pusiera el blur, su borde inferior se vería como
-// una línea recta.
-//
-// El degradado del mask se dibuja con `react-native-svg`, NO con `expo-linear-gradient`: su vista
-// nativa no se enlaza de forma fiable en el dev build (mismo motivo documentado en glass-button).
-// `pointerEvents="none"`: es puramente visual, jamás bloquea toques.
+// La banda superior del scroll (el desvanecido tipo ChatGPT) vive ahora en
+// `@/components/ui/top-scroll-fade` — la comparte con el hub de Ahorra.
 // Aire entre el borde inferior del header y el primer mensaje EN REPOSO.
 const TOP_CONTENT_GAP = 10;
-
-function TopScrollFade({ isDark, height }: { isDark: boolean; height: number }) {
-  const color = isDark ? "#000000" : "#ffffff";
-  return (
-    <MaskedView
-      style={{ position: "absolute", top: 0, left: 0, right: 0, height }}
-      pointerEvents="none"
-      maskElement={
-        <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none">
-          <Defs>
-            <LinearGradient id="topScrollFade" x1="0" y1="0" x2="0" y2="1">
-              {/* Totalmente opaco en el borde superior y ya transparente al 70%: el último tramo
-                  se deja limpio para que el texto entre en foco ANTES de terminar la banda. */}
-              <Stop offset="0" stopColor="#000000" stopOpacity="1" />
-              <Stop offset="0.7" stopColor="#000000" stopOpacity="0.35" />
-              <Stop offset="1" stopColor="#000000" stopOpacity="0" />
-            </LinearGradient>
-          </Defs>
-          <Rect x="0" y="0" width="100%" height="100%" fill="url(#topScrollFade)" />
-        </Svg>
-      }
-    >
-      <BlurView
-        intensity={26}
-        tint={isDark ? "dark" : "light"}
-        style={StyleSheet.absoluteFill}
-      />
-      {/* El lavado del color de la tarjeta: el blur solo difumina, no APAGA. Sin esto el texto se
-          vería borroso pero igual de brillante, y no leería como que se está yendo. */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: 0.65 }]} />
-    </MaskedView>
-  );
-}
 
 // ── Geometría del anclaje ────────────────────────────────────────────────────
 // A cuánto del borde superior de la lista se apoya el mensaje recién enviado. Pegado al borde se
@@ -172,7 +134,7 @@ const KB_HIDE = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 // card SLIDES UP intact rather than being squished from the bottom.
 export function ChatScreen() {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height: windowH } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
   const orbActive = useOrbStore((s) => s.active);
@@ -200,7 +162,9 @@ export function ChatScreen() {
   // Lo que el usuario está escribiendo, publicado por el input. Vive acá y no dentro de
   // `ChatInputBar` porque su consumidor es el DOCK, que es hermano del input, no su hijo: las
   // sugerencias del carrusel se derivan de este texto (`use-live-suggestions`).
-  const [draft, setDraft] = useState("");
+  // El borrador NO vive acá: cambia en cada tecla y esta pantalla es enorme. Está en
+  // `chat-draft-store` para que sólo `QuickActions` se re-renderice al escribir — ver el porqué
+  // medido en ese archivo. La pantalla ni siquiera se suscribe.
   useEffect(() => {
     if (chat.interaction) setManualOpen(false); // a flow took over the dock → drop the manual menu
   }, [chat.interaction]);
@@ -529,9 +493,22 @@ export function ChatScreen() {
       const dur = e.duration > 0 ? e.duration : 250;
       keyboardH.value = withTiming(0, { duration: dur, easing: EASE_OUT });
     });
+    // RED DE SEGURIDAD, y no es defensa paranoica: iOS NO garantiza `keyboardWillHide`. Cuando el
+    // teclado se cierra ARRASTRANDO (`keyboardDismissMode="interactive"`, que esta lista usa) el
+    // sistema puede saltarse el `will` y emitir sólo el `did`. Si eso pasa, `keyboardH` se queda
+    // clavado en el alto del teclado y la tarjeta NUNCA vuelve a crecer: queda encogida con un
+    // hueco muerto debajo, y no se recupera sola — hay que salir de la pantalla.
+    //
+    // `didHide` SIEMPRE llega. Si el `will` ya hizo su trabajo esto vale 0 sobre 0 y no se ve nada;
+    // si se perdió, esto la devuelve a su sitio. Es idempotente a propósito: la corrección no puede
+    // depender de adivinar CUÁL de los dos eventos llegó.
+    const onDidHide = Keyboard.addListener("keyboardDidHide", () => {
+      keyboardH.value = withTiming(0, { duration: 120, easing: EASE_OUT });
+    });
     return () => {
       onShow.remove();
       onHide.remove();
+      onDidHide.remove();
     };
   }, [keyboardH, scrollToBottom]);
 
@@ -622,7 +599,9 @@ export function ChatScreen() {
           {/* Clips children to the 48px card radius. */}
           <View style={styles.cardClip}>
             {/* Gradient overlay — sits above blur, below content. */}
-            <CardGradient isDark={isDark} />
+            {/* El alto MÁXIMO que puede tener la tarjeta (teclado cerrado, dock recogido). Se pasa
+                como número fijo para que el SVG no se re-rasterice al encogerse la tarjeta. */}
+            <CardGradient isDark={isDark} height={windowH} />
 
             {/* La lista va PRIMERA y ocupa la tarjeta entera: el header la SOBREVUELA (abajo), no le
                 quita alto. Esa es la diferencia estructural con ChatGPT que hacía que el texto se
@@ -858,11 +837,15 @@ export function ChatScreen() {
                   // Dejando el dock abierto, enviar desde una sugerencia tiene el MISMO perfil
                   // geométrico que enviar desde el input. Además es lo que la feature quiere: las
                   // sugerencias se recalculan y siguen ahí.
-                  <QuickActions draft={draft} onSelect={sendAndAnchor} />
+                  //
+                  // `draft` ya no baja por prop: `QuickActions` lo lee del store. Pasándolo desde
+                  // acá, la pantalla tendría que suscribirse y volveríamos al re-render por tecla
+                  // que este cambio elimina.
+                  <QuickActions onSelect={sendAndAnchor} />
                 ) : null}
               </ChatDock>
 
-              <ChatInputBar inputRef={chatInputRef} onSend={sendAndAnchor} onChangeText={setDraft} />
+              <ChatInputBar inputRef={chatInputRef} onSend={sendAndAnchor} />
             </View>
 
             {/* When the drawer is open the chat is just a sliver — tapping it closes the drawer. */}

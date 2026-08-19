@@ -1,0 +1,110 @@
+{
+  "slug": "brilliant-choose-voice-interaction",
+  "video_url": "https://video.gumlet.io/66b49d08225b7b88f78b7b44/6a45fa16e81b019c9729fc37/main.mp4",
+  "clip_file": "brilliant-choose-voice-interaction.mp4",
+  "app": "brilliant",
+  "platform": "ios",
+  "source": "recipes",
+  "evidence": "confirmed",
+  "evidence_note": "4 distinct apps triangulated via the 60fps MCP",
+  "gesture_or_trigger": "tap",
+  "motion_behavior": [
+    "spring",
+    "bounce",
+    "slide",
+    "pulse",
+    "crossfade"
+  ],
+  "motion_params": {
+    "timing": "medium",
+    "easing": "spring",
+    "springiness": "subtle",
+    "stagger": "none",
+    "direction": [
+      "left",
+      "right",
+      "up"
+    ]
+  },
+  "animation": ".spring(response: 0.45, dampingFraction: 0.72)",
+  "stagger_delay": 0.0,
+  "patterns": [
+    "traveling-selection-indicator"
+  ],
+  "notes": "Identical physics to the abode sheet entry. `direction` includes `up` \u2014 that is the hop arc. get_related_shots returned 4 Brilliant shots, so triangulation was redone with search_shots.",
+  "description": {
+    "one_line_summary": "A playful character badge hops with spring physics between selectable option cards.",
+    "detailed_description": "During onboarding, selecting an option causes the animated character badge to spring and hop across to the selected card. The selected card lights up with a subtle gradient glow while a sample plays with character and wave animations.",
+    "interaction_pattern": [
+      "onboarding",
+      "option selector",
+      "audio preview"
+    ],
+    "gesture_or_trigger": "tap",
+    "motion_behavior": [
+      "spring",
+      "bounce",
+      "slide",
+      "pulse",
+      "crossfade"
+    ],
+    "ui_elements": [
+      "card",
+      "icon",
+      "switch",
+      "button"
+    ],
+    "visual_style": [
+      "minimal",
+      "playful",
+      "clean"
+    ],
+    "product_context": [
+      "education",
+      "onboarding",
+      "voice assistant"
+    ],
+    "intensity": "balanced",
+    "mood": [
+      "playful",
+      "delightful",
+      "friendly"
+    ],
+    "motion_breakdown": {
+      "start_state": "The left card is selected with the character active inside its frame.",
+      "transition": "Tapping the right card causes the character avatar to hop horizontally via a smooth spring curve onto the target card while the background glow shifts.",
+      "end_state": "The character rests centred on the newly selected card, playing its preview.",
+      "why_it_works": "The hopping character turns a simple radio button selection into an engaging, embodied choice.",
+      "motion_params": {
+        "timing": "medium",
+        "easing": "spring",
+        "springiness": "subtle",
+        "stagger": "none",
+        "direction": [
+          "left",
+          "right",
+          "up"
+        ]
+      }
+    },
+    "search_keywords": [
+      "character hop",
+      "card select spring",
+      "voice picker",
+      "option selector"
+    ],
+    "assigned_filter_slugs": [
+      "tap",
+      "voice",
+      "card",
+      "onboarding",
+      "setup",
+      "spring-physics",
+      "bounce",
+      "sound",
+      "mascot"
+    ],
+    "confidence": 0.95,
+    "confidence_note": "as reported by the 60fps MCP get_shot payload"
+  }
+}

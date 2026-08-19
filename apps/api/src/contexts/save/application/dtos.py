@@ -260,6 +260,19 @@ class CategoryPageDto(BaseModel):
     products: list[ProductSearchDto]
 
 
+class ProductCardPageDto(BaseModel):
+    """Una página de cards + CUÁNTAS hay en total.
+
+    El total no es un adorno: sin él el cliente no sabe cuándo dejar de pedir. Una página llena no
+    significa que haya más, y —en `ListTodaysDeals`, que descarta en silencio las bajadas cuyo
+    producto ya no está en la oferta vigente— una página CORTA tampoco significa que se acabó.
+    Contar en el servidor, que es quien tiene la lista entera, evita las dos suposiciones.
+    """
+
+    items: list["ProductCardDto"]
+    total: int
+
+
 class ProductCardDto(BaseModel):
     """Card de producto en el listado (Imagen #5): precio mínimo, precio/unidad, N tiendas."""
 
@@ -276,6 +289,14 @@ class ProductCardDto(BaseModel):
     unit_measure: str | None  # mass|volume|count; None si no declara cantidad
     store_count: int          # "N tiendas" (B4)
     discount_bps: int | None = None  # % de bajada reciente (badge −X%), None si no está en oferta
+    # Precio TACHADO: lo que costaba antes de la bajada que produjo `discount_bps`. Viaja el precio
+    # REAL de esa bajada, no una reconstrucción a partir del porcentaje — dividir el precio actual
+    # por el descuento devuelve un número redondeado que nunca existió.
+    #
+    # Va en pareja con `discount_bps`: los dos son `None` juntos, y los dos salen de la MISMA
+    # bajada. OJO con leerlo contra `price_minor`: aquél es el mínimo ENTRE TIENDAS y éste es de la
+    # tienda que bajó, así que no tienen por qué dar el porcentaje exacto entre sí.
+    previous_price_minor: int | None = None
 
 
 class CollectionDto(BaseModel):

@@ -100,6 +100,62 @@ const { chromium } = require('/Users/<you>/.npm/_npx/<hash>/node_modules/playwri
 })();
 ```
 
+### Mobile (simulador iOS) recipes (aprendido 2026-08-13/14)
+
+El agente puede verificar el móvil SOLO, sin pedirle nada al usuario. Todo esto se midió en una
+sesión entera de UI; cada punto costó tiempo real.
+
+**Navegar y recargar SIN tocar la GUI** — el simulador se maneja por deep link:
+
+```bash
+# Relanzar el dev-client contra Metro (recarga COMPLETA, no Fast Refresh)
+xcrun simctl openurl booted "cuadra://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8087"
+# Navegar a una ruta concreta (el scheme es `cuadra`, de app.json)
+xcrun simctl openurl booted "cuadra:///save/supermarket"
+```
+
+- ⛔ **Cmd+R por AppleScript NO funciona.** `tell application "Simulator" to activate` no gana el
+  foco de forma fiable y el keystroke se lo come el editor del usuario (pasó: se lo mandé a Cursor).
+  Usá el deep link de arriba.
+- **Una pantalla en blanco tras editar suele ser Fast Refresh, no un bug.** Cambios ESTRUCTURALES
+  en caliente (cambiar `SafeAreaView` por un hook, agregar una prop requerida) dejan el árbol roto.
+  **Relanzá el dev-client ANTES de diagnosticar** — dos veces di por roto código que estaba bien.
+
+**Ver el estado de una consulta cuando no hay consola**: pintar un `TEMP-DIAG` temporal en la
+pantalla con `status`/`fetchStatus`/`error`/`base URL`, sacar el screenshot, y BORRARLO
+(`grep -rn "TEMP-DIAG" src` antes de cerrar). Fue lo que destapó que el `.env` apuntaba a una IP
+muerta — el síntoma en pantalla era sólo un spinner eterno.
+
+**Detalle fino: recortar y ampliar.** Un PNG de pantalla completa no alcanza para juzgar un canto
+o un degradado. `sips` ya está en el Mac, no hace falta instalar nada:
+
+```bash
+sips -c <alto> <ancho> --cropOffset <top> <left> shot.png --out crop.png   # recorta
+sips -Z 700 crop.png --out zoom.png                                        # amplía
+```
+Así se comprobó que `borderCurve:"continuous"` NO se estaba aplicando: el canto era un arco de
+círculo y a tamaño normal se veía idéntico.
+
+**Temas**: `xcrun simctl ui booted appearance dark|light`. **Tarda un render en propagarse** — una
+foto inmediata muestra el tema viejo y hace creer que la app no sigue al sistema. Esperá y repetí.
+
+**Lo que el agente NO puede verificar y hay que DECIR**: `simctl` no hace scroll ni gestos. Un
+desvanecido de scroll, un long-press o un carrusel al deslizar **no se pueden ejercitar** — se
+verifica la geometría y se le pide al usuario el resto, diciéndolo explícitamente.
+
+**Antes de culpar al código, mirar el entorno** (en este orden — los tres fallaron en una sesión):
+
+| Síntoma | Causa real que ya pasó |
+|---|---|
+| Consulta colgada en `pending/fetching`, sin error | `.env` apuntando a una IP LAN vieja (hotspot del iPhone). El TCP espera sin fallar |
+| «Could not connect to the server» | La API se murió. `lsof -nP -iTCP:8005 -sTCP:LISTEN` → vacío |
+| Cambiar `.env` no surte efecto | **`EXPO_PUBLIC_*` se HORNEA en el bundle**: hay que reiniciar Metro (`--clear`), no recargar la app |
+| «Unable to resolve module ../../App» | Metro arrancado desde la RAÍZ del repo. Tiene que ser desde `apps/mobile`: `pnpm --filter @cuadra/mobile exec expo start --dev-client --port 8087` |
+
+**Una corrida de tests lentísima puede ser contención de máquina, no una regresión.** Una suite que
+normalmente tarda 12s tardó 966s con el simulador y Metro compilando a la vez. **Medí de nuevo en
+reposo antes de acusar al código.**
+
 ## Definition of Done (visual work)
 
 - [ ] Screenshot of the real render captured and READ
@@ -111,3 +167,42 @@ const { chromium } = require('/Users/<you>/.npm/_npx/<hash>/node_modules/playwri
 - [ ] i18n switch verified (if strings changed)
 - [ ] Admin route smoke-tested authenticated (if under /admin)
 - [ ] Only THEN report done — with the screenshot/computed-value evidence in the reply
+
+## INSTRUMENTAR ANTES DE TEORIZAR (2026-08-15 — la lección más cara de la sesión)
+
+Ante un síntoma visual que NO se explica solo —«sale en blanco», «se ve transparente», «parpadea»—
+**pintar los números en pantalla ANTES de proponer una causa**. No después de dos intentos: antes
+del primero.
+
+Lo que pasó: «la rejilla entra en blanco». Gasté **tres hipótesis razonadas y todas falsas**, y una
+de mis «correcciones» **introdujo** el fallo que luego perseguí. Un `TEMP-DIAG` de cuatro números lo
+resolvió al primer intento: `vpH=76` cuando debía ser 874.
+
+```tsx
+// TEMP-DIAG — se BORRA al tener la respuesta (`grep -rn "TEMP-DIAG" src`)
+const [diag, setDiag] = useState("");
+useEffect(() => {
+  const id = setInterval(() => {
+    setDiag(`rowH=${rowHeight.value.toFixed(0)} vpH=${viewportH.value.toFixed(0)} n=${items.length}`);
+  }, 400);
+  return () => clearInterval(id);
+});
+// ...y en el render, en un sitio que NO tape el header:
+<Text style={{ backgroundColor: "#FFEB99", fontSize: 12 }}>{diag}</Text>
+```
+
+Detalles que costaron una vuelta extra cada uno:
+- **Colocar el panel donde se VEA.** El primero quedó bajo la curva del header y la línea que
+  importaba (`base=`) salió tapada.
+- **Los valores animados hay que refrescarlos**: leer un `useSharedValue` en el render da su valor
+  de ese instante y no se re-renderiza solo. Un `setInterval` corto basta.
+- **Aislar con UNA variable.** Si dudas entre «es la animación» o «son los datos», apaga la
+  animación (`enabled={false}`) y mira. Una variable por vez.
+
+### Corolario: el estado por defecto es VISIBLE
+
+Cualquier efecto que dependa de una MEDIDA (alto de fila, alto de viewport, posición) debe dibujar
+**normal** mientras falte cualquiera de ellas. Un fallo de medición tiene que dejar el contenido a
+la vista, nunca una pantalla vacía — y hay que comprobar **todas** las medidas, no la primera que
+se te ocurra: el `onLayout` del ÍTEM dispara ANTES que el de su lista, así que existe una ventana
+real con una medida lista y la otra en cero.

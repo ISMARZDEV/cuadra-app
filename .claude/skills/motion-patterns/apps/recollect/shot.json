@@ -1,0 +1,114 @@
+{
+  "slug": "recollect-splash",
+  "video_url": "https://video.gumlet.io/66b49d08225b7b88f78b7b44/6a1aac9e057d9d41780fba06/main.mp4",
+  "clip_file": "recollect-splash.mp4",
+  "app": "recollect",
+  "platform": "ios",
+  "source": "recipes",
+  "evidence": "confirmed",
+  "evidence_note": "4 distinct apps triangulated via the 60fps MCP",
+  "gesture_or_trigger": "system event",
+  "motion_behavior": [
+    "stagger",
+    "blur",
+    "scale",
+    "fade",
+    "shrink",
+    "sequence"
+  ],
+  "motion_params": {
+    "timing": "slow",
+    "easing": "ease-in-out",
+    "springiness": "subtle",
+    "stagger": "pronounced",
+    "direction": [
+      "down",
+      "scale",
+      "fade"
+    ]
+  },
+  "animation": ".easeInOut(duration: 0.7)",
+  "stagger_delay": 0.09,
+  "patterns": [
+    "splash-logo-settle"
+  ],
+  "notes": "NOT a spring. Declares `blur`, and React Native has NO per-frame motion blur \u2014 ghost trails or Skia (this repo already ships Skia for the shimmer).",
+  "description": {
+    "one_line_summary": "App launch splash sequence with cascading photo cards converging into a centred logo.",
+    "detailed_description": "Upon opening the app, a vibrant media card appears on a dark screen before triggering a continuous cascade of colourful photo cards. The cards stream downwards with heavy vertical motion blur and converge into the central logo, which scales and settles into place on a minimal dark background.",
+    "interaction_pattern": [
+      "splash",
+      "intro",
+      "loading"
+    ],
+    "gesture_or_trigger": "system event",
+    "motion_behavior": [
+      "stagger",
+      "blur",
+      "scale",
+      "fade",
+      "shrink",
+      "sequence"
+    ],
+    "ui_elements": [
+      "card",
+      "logo",
+      "icon",
+      "illustration"
+    ],
+    "visual_style": [
+      "dark mode",
+      "motion blur",
+      "colorful",
+      "minimal"
+    ],
+    "product_context": [
+      "get-started",
+      "media"
+    ],
+    "intensity": "bold",
+    "mood": [
+      "energetic",
+      "playful",
+      "delightful",
+      "dynamic"
+    ],
+    "motion_breakdown": {
+      "start_state": "A single image card displays near the top centre against a black screen.",
+      "transition": "A rapid stream of media cards cascades downwards with vertical motion blur, shrinking and converging directly into the logo.",
+      "end_state": "The logo rests clearly in the centre of the dark screen.",
+      "why_it_works": "The rapid particle-like suction effect visually reinforces the core brand concept of collecting and bookmarking content.",
+      "motion_params": {
+        "timing": "slow",
+        "easing": "ease-in-out",
+        "springiness": "subtle",
+        "stagger": "pronounced",
+        "direction": [
+          "down",
+          "scale",
+          "fade"
+        ]
+      }
+    },
+    "search_keywords": [
+      "app opening animation",
+      "logo intro",
+      "cascading cards",
+      "motion blur splash"
+    ],
+    "assigned_filter_slugs": [
+      "splash",
+      "intro",
+      "logo",
+      "card",
+      "blur",
+      "stagger",
+      "fade",
+      "sequence",
+      "illustration",
+      "icon"
+    ],
+    "confidence": 0.95,
+    "confidence_note": "as reported by the 60fps MCP get_shot payload"
+  }
+}

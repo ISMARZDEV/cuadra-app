@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { FlatList, Pressable, Text, View } from "react-native";
@@ -9,12 +9,14 @@ import { t } from "@/i18n";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import type { BasketCardData, BasketProviderData } from "../interfaces";
-import BasketProductCard, { CARD_WIDTH } from "./basket-product-card";
+import BasketProductCard, { CARD_WIDTH } from "@/components/ui/basket-product-card";
 import { ProviderLogo } from "./provider-logo";
 
 // Basket-by-budget: one summary + collapsible product-list button per provider.
 // No parent card; each provider block sits directly in the chat below the agent text.
-export function BasketCard({ data }: { data: BasketCardData }) {
+// MEMOIZADO: es una fila de la lista del chat. Sin esto, cualquier re-render de `chat-screen`
+// re-renderiza TODAS las filas de la conversación — el coste crece con el largo del historial.
+function BasketCardBase({ data }: { data: BasketCardData }) {
   const sortedProviders = [...data.providers].sort(
     (a, b) => Number(b.is_cheapest) - Number(a.is_cheapest),
   );
@@ -138,3 +140,4 @@ function ProviderSection({
     </View>
   );
 }
+export const BasketCard = memo(BasketCardBase);

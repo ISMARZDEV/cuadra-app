@@ -13,6 +13,7 @@ import { useSuggestionUsageStore } from "@/store/suggestion-usage-store";
 import { useLiveSuggestions } from "../use-live-suggestions";
 import { ShimmerText } from "./shimmer-text";
 import { SuggestionSkeleton } from "./suggestion-skeleton";
+import { useChatDraftStore } from "@/store/chat-draft-store";
 import type { QuickActionsProps } from "../interfaces";
 
 // Carrusel de sugerencias del dock: una fila horizontal de píldoras que se envían al chat de un
@@ -80,7 +81,10 @@ function ResolvedProductHeader({ product }: { product: string }) {
   );
 }
 
-export function QuickActions({ onSelect, draft = "" }: QuickActionsProps) {
+export function QuickActions({ onSelect }: QuickActionsProps) {
+  // El borrador se LEE del store, no llega por prop: así el re-render por tecla se queda en este
+  // componente en vez de subir a la pantalla del chat. Selector, no destructuring del store.
+  const draft = useChatDraftStore((s) => s.draft);
   useLang(); // re-render on a language change — t() alone reads a module var, invisible to React
   const { items, isResolving, product, reshuffle } = useLiveSuggestions(draft);
   const record = useSuggestionUsageStore((s) => s.record);

@@ -1,0 +1,146 @@
+{
+  "slug": "in-place-tab-crossfade",
+  "video_url": "/Users/ismartz/Movies/Uber.mp4",
+  "clip_file": "Uber.mp4",
+  "app": "uber",
+  "platform": "ios",
+  "source": "manual",
+  "evidence": "corroborated",
+  "evidence_note": "single clip, but the same swap is observed TWICE in it (Uber->Eats at 5217ms, Eats->Uber at 7100ms) with identical timing. Passes checklist Q1/Q3/Q4.",
+  "dimensions": "1620x2160",
+  "duration_s": 9.066,
+  "frames_fps": 20,
+  "patterns": [
+    "in-place-tab-crossfade"
+  ],
+  "animation": "opacity only \u2014 withTiming ~280ms, ease-out. No spring, no translation.",
+  "stagger_delay": 0.0,
+  "measured": {
+    "windows_ms": [
+      [
+        1400,
+        1733
+      ],
+      [
+        1883,
+        2550
+      ],
+      [
+        2517,
+        2983
+      ],
+      [
+        3950,
+        4567
+      ],
+      [
+        5217,
+        5517
+      ],
+      [
+        7100,
+        7533
+      ]
+    ],
+    "swap_window_ms": [
+      7100,
+      7533
+    ],
+    "content_full_until_ms": 7200,
+    "swap_instant_at_ms": 7250,
+    "fade_settled_ms": 7500,
+    "fade_duration_ms": 280,
+    "opacity_trajectory": [
+      1.0,
+      1.0,
+      1.0,
+      0.35,
+      0.6,
+      0.75,
+      0.85,
+      0.95,
+      1.0
+    ],
+    "horizontal_travel_px": 0,
+    "note": "\u2b50 The outgoing content is CUT, not crossfaded \u2014 the incoming fades up from ~0.35 on its first frame. Against a dark background a fade-from-black and a crossfade are indistinguishable, so this is recorded as observed, not inferred."
+  },
+  "description": {
+    "one_line_summary": "Top-level tabs swap the whole page body by fading it in place, while the shared header persists and morphs its own contents.",
+    "detailed_description": "Tapping a top tab does not slide the page sideways. The outgoing body is replaced immediately and the incoming body fades up over roughly 280ms at its final position, with zero horizontal travel. Above it, the search bar is not replaced: it stays put and morphs \u2014 its placeholder changes and a secondary action appears or disappears \u2014 and the tab pill travels to the newly selected tab. The bottom navigation swaps its items in the same beat. The result is that only the body changes state while the chrome around it remains continuous.",
+    "interaction_pattern": [
+      "tab navigation",
+      "in-place content swap",
+      "persistent chrome"
+    ],
+    "gesture_or_trigger": "tap",
+    "motion_behavior": [
+      "fade",
+      "crossfade",
+      "morph",
+      "reveal"
+    ],
+    "ui_elements": [
+      "tabs",
+      "input",
+      "button",
+      "card",
+      "icon",
+      "carousel"
+    ],
+    "visual_style": [
+      "dark mode",
+      "minimal",
+      "rounded corners",
+      "dense"
+    ],
+    "product_context": [
+      "marketplace",
+      "super-app",
+      "navigation"
+    ],
+    "intensity": "subtle",
+    "mood": [
+      "calm",
+      "confident",
+      "efficient",
+      "minimal"
+    ],
+    "motion_breakdown": {
+      "start_state": "One top tab is selected, its body filling the screen below a search header and above a bottom bar.",
+      "transition": "The body is replaced in place and fades up over ~280ms with no horizontal movement, while the search header morphs its placeholder and secondary action, the tab pill travels, and the bottom bar swaps its items.",
+      "end_state": "The new tab's body is fully opaque, with the same header and bottom bar now showing that tab's variants.",
+      "why_it_works": "Sliding would drag the shared header along or force it to be duplicated per tab. Fading in place is what lets one header serve every tab and morph between them, so the app reads as one surface with changing content rather than as several stacked apps.",
+      "motion_params": {
+        "timing": "medium",
+        "easing": "ease-out",
+        "springiness": "subtle",
+        "stagger": "none",
+        "direction": [
+          "fade"
+        ]
+      }
+    },
+    "search_keywords": [
+      "tab switch crossfade",
+      "super app tabs",
+      "in place content swap",
+      "persistent search header",
+      "no slide tab transition"
+    ],
+    "assigned_filter_slugs": [
+      "tabs",
+      "tap",
+      "fade",
+      "crossfade",
+      "morph",
+      "input",
+      "search",
+      "card",
+      "carousel",
+      "icon",
+      "reveal"
+    ],
+    "confidence": 0.85,
+    "confidence_note": "0.85: durations and the absence of horizontal travel are solid across 9 frames at 50ms; the exact opacity values are read visually against a dark background, so they are approximate."
+  }
+}

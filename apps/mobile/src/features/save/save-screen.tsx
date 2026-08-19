@@ -1,5 +1,6 @@
 import { Bell } from "lucide-react-native";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppBackground } from "@/components/ui/app-background";
@@ -7,6 +8,7 @@ import { Icon } from "@/components/ui/icon";
 import { t, useLang } from "@/i18n";
 import { palette } from "@/theme";
 
+import { useAlertsReadStore } from "./alerts-read";
 import { useAlertNotifications, useMyAlerts, useUnsubscribeAlert } from "./api";
 import { NotificationCard } from "./components/notification-card";
 import { SubscriptionRow } from "./components/subscription-row";
@@ -28,6 +30,16 @@ export function SaveScreen() {
 
   const notifs = notifications.data ?? [];
   const subs = alerts.data ?? [];
+
+  // Llegar hasta acá ES haberlas mirado: esto apaga el punto rojo de la campana del hub.
+  // Depende de los IDS y no de un `[]`: si mientras estás parado en la pantalla entra una alerta
+  // nueva, también queda vista — estabas mirándola. Con `[]` quedaría sin leer para siempre hasta
+  // que salieras y volvieras a entrar.
+  const markAllRead = useAlertsReadStore((s) => s.markAllRead);
+  const notifIds = notifs.map((n) => n.id).join(",");
+  useEffect(() => {
+    if (notifIds) void markAllRead(notifIds.split(","));
+  }, [notifIds, markAllRead]);
 
   return (
     <SafeAreaView className="flex-1" edges={["top"]}>

@@ -159,6 +159,29 @@ Core `/save/*` endpoints: `search · compare (by slug) · featured · categories
 collections · collection/{slug} · deals · providers · store/{id} · history · products (sitemap) ·
 alerts (subscribe/list/notifications/run-matching)`. Public catalog needs no auth (price data).
 
+**Antes de proponer un endpoint nuevo, MIRÁ los que hay.** Para los dos rails de la home de
+Supermarket iba a extender el backend y resultó que `featured` (`?sort=popular|unit_price|price`) y
+`deals` ya devolvían `ProductCardDto[]` — cero backend. Y ⚠️ **`/save/products` NO es browse: es el
+que alimenta el `sitemap.xml`** (devuelve hasta 1000 `ProductSearchDto`, sólo id/slug/name/brand).
+Convertirlo en cards haría que un trabajo de SEO pague por precios e imágenes que no usa.
+
+**`ProductCardDto` — el badge y el precio tachado son UNA sola cosa.** `discount_bps` y
+`previous_price_minor` salen ambos de la MISMA bajada (`PriceChange.previous`, la misma que ya
+alimentaba el badge) y viajan atados en un valor único (`_Discount` + `_keep_biggest()` en
+`application/listing.py`). Con dos mapas sueltos, el badge se queda con la bajada MAYOR y el tachado
+podía quedarse con otra: el card diría «−25%» tachando un precio que no da −25%, y nadie lo nota
+hasta verlo en pantalla. **Nunca reconstruyas el precio anterior dividiendo por el descuento** —
+devuelve un número redondeado que nunca existió.
+- Al pintarlo: `price_minor` es el mínimo ENTRE TIENDAS y `previous_price_minor` es de la tienda que
+  bajó, así que no tienen por qué dar el porcentaje exacto entre sí.
+
+**Sembrar ofertas en la base de DEV** (para ver el rail de deals sin re-correr la ingesta): el
+detector empareja capturas consecutivas por `store_product` con un `LAG` sobre `captured_at`, así
+que bastan **2 filas por producto** en `save.price` — una vieja con precio alto y una reciente con el
+precio actual. La tabla es **append-only**: NO toques `store_product.current_price_minor`. `source`
+es NOT NULL → usá **`'seed-dev'`**, nunca imites una fuente real (`vtex`/`magento`/`bravova`), o los
+datos a mano quedan indistinguibles de una ingesta de verdad.
+
 ### 6. The agent (PurchasesAgent / CoachAgent)
 
 Router → `PurchasesAgent` (Save node). **Prices come from FIXED deterministic tools, NEVER
@@ -365,3 +388,45 @@ cd apps/api && DAGSTER_HOME=$HOME/.cuadra-dagster SAVE_MATCHING_CASCADE_ENABLED=
 - **App skills:** `cuadra-web` · `cuadra-mobile` · `cuadra-mobile-forms` · `cuadra-agent-prompts`.
 - **Pending:** `docs/pending/save-web-f1-pendientes.md` · `docs/pending/save-alerts-remote-push.md`.
 ```
+
+## Pantalla «Categorías» (el «ver más» de Supermarket) — 2026-08-15
+
+Destino de la flecha de los rails de la home: `app/(tabs)/save/supermarket/browse.tsx` →
+`features/save/supermarket/browse-screen.tsx`. Rejilla de 3 columnas con header verde de canto
+CURVO que colapsa al desplazarse, pestañas, buscador fijo y canasta de comparación.
+
+**Arranca en la lista de ORIGEN** (`?origin=deals|featured`): pediste ver más de ESO. Las dos listas
+transversales van SIEMPRE como pestañas por delante del árbol de categorías — así se salta de una a
+otra sin volver atrás, y el título deja de repetir a la primera pestaña.
+
+### La canasta es de COMPARACIÓN, no un carrito
+
+**Save compara precios, NO vende.** No hay dónde añadir ni con qué pagar, así que el «+» de la
+tarjeta es un INTERRUPTOR que mete el producto en `features/save/compare-basket.ts` (zustand, tope
+20, en memoria). Copiar el carrito de una app de compra sería prometer una acción que no llega.
+
+### Geometría derivada, nunca fija
+
+`BasketProductCard` acepta `scale`; la rejilla la calcula con `gridScaleFor(anchoDeColumna)` a
+partir del ancho REAL de pantalla. Los cuatro consumidores de carrusel (chat, canasta, proveedor,
+rails) siguen con `RAIL_SCALE` y su `CARD_WIDTH` exportado — que NO se movió. Misma lección que la
+sangría del hub: un número fijo es holgado en un Pro Max y desborda en un SE.
+
+### El buscador busca en el SERVIDOR
+
+Filtrar en memoria dejó de ser honesto en cuanto la rejilla empezó a paginar: sólo veía el bloque
+descargado, así que en un catálogo grande enseñaba cuatro resultados como si fueran todos — y con
+tan pocos no quedaba scroll, luego `onEndReached` no disparaba y no había forma de ver el resto.
+
+`/save/search/cards` es un endpoint **NUEVO**, no una reforma de `/save/search`: aquél devuelve
+`ProductSearchDto` (id/slug/nombre/marca) y lo consumen la web **y el typeahead del chat**, que
+justamente NO quiere precios. Los dos comparten el MISMO ranking híbrido (`SearchProducts.rank()`,
+extraído para no duplicar la cascada léxica+semántica y que un día dejaran de coincidir).
+
+En el móvil manda a partir de **2 letras**; con 1 sigue el filtro local, que no cuesta consulta.
+
+### Paginación
+
+`/deals`, `/featured` y `/category/{slug}/products` aceptan `offset`. Los tres devuelven el TOTAL
+— ver `cuadra-api` para el porqué. El cliente calcula el siguiente offset como **cuántos lleva**,
+nunca `página × tamaño`: con una página corta, multiplicar saltaría productos en silencio.
