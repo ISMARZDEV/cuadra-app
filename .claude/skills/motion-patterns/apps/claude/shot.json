@@ -1,0 +1,147 @@
+{
+  "slug": "self-sizing-sheet",
+  "video_url": "/Users/ismartz/Movies/Claude.mp4",
+  "clip_file": "Claude.mp4",
+  "app": "claude",
+  "platform": "ios",
+  "source": "manual",
+  "evidence": "corroborated",
+  "evidence_note": "single clip, but the SAME resize spring is observed FOUR times in it (open, and three content changes) \u2014 internal repetition is corroboration the other single-source patterns did not have. Passes checklist Q1/Q3/Q4.",
+  "dimensions": "1620x2160",
+  "duration_s": 8.106,
+  "frames_fps": 20,
+  "patterns": [
+    "self-sizing-sheet"
+  ],
+  "animation": "critically damped, no overshoot \u2014 \u03b6\u22481.0, \u03c9\u2080\u224819 rad/s (\u2248.spring(response: 0.33, dampingFraction: 1.0))",
+  "stagger_delay": 0.0,
+  "measured": {
+    "windows_ms": [
+      [
+        1550,
+        2417
+      ],
+      [
+        3083,
+        3667
+      ],
+      [
+        3767,
+        4417
+      ],
+      [
+        5567,
+        6117
+      ],
+      [
+        6700,
+        7083
+      ]
+    ],
+    "open_onset_ms": 1930,
+    "open_settled_ms": 2150,
+    "open_rise_ms": 220,
+    "header_trajectory_px": [
+      204,
+      148,
+      116,
+      108,
+      107,
+      106,
+      106
+    ],
+    "deltas_px": [
+      -56,
+      -32,
+      -8,
+      -1,
+      -1,
+      0
+    ],
+    "overshoot": "none \u2014 monotonic, never passes the resting position",
+    "note": "\u2b50 The motion WINDOW (867ms) is not the animation (220ms): the window also contains the press feedback and the backdrop dim ramp. Never read a duration off a window."
+  },
+  "description": {
+    "one_line_summary": "A bottom sheet whose height follows its content: it grows on open and grows again whenever a toggle adds a row, revealing the new content with its own rising edge.",
+    "detailed_description": "Tapping the composer's add button dims the chat behind and raises a sheet from the bottom edge. The sheet does not arrive fully formed \u2014 its height animates, and the rows inside are revealed by the rising top edge rather than fading or sliding in individually. Once open, switching a toggle adds a further row and the sheet GROWS AGAIN by exactly that row's height, with the same curve. Closing reverses it. The behaviour is the same on open and on every content change, which is what makes it a sizing rule rather than an entrance.",
+    "interaction_pattern": [
+      "bottom sheet presentation",
+      "content-driven resize",
+      "edge reveal"
+    ],
+    "gesture_or_trigger": "tap",
+    "motion_behavior": [
+      "expand",
+      "collapse",
+      "reveal",
+      "slide",
+      "fade"
+    ],
+    "ui_elements": [
+      "bottom-sheet",
+      "button",
+      "icon",
+      "switch",
+      "text"
+    ],
+    "visual_style": [
+      "dark mode",
+      "minimal",
+      "rounded corners",
+      "flat"
+    ],
+    "product_context": [
+      "chat",
+      "ai",
+      "attachment picker",
+      "settings"
+    ],
+    "intensity": "subtle",
+    "mood": [
+      "calm",
+      "premium",
+      "confident",
+      "minimal"
+    ],
+    "motion_breakdown": {
+      "start_state": "A chat home screen with a greeting and a composer bar docked at the bottom.",
+      "transition": "The chat behind dims; a sheet rises from the bottom edge while its height animates to fit its content, its top edge revealing each row as it passes. Later, toggling a switch adds a row and the sheet grows again by that row's height using the same curve.",
+      "end_state": "The sheet rests at exactly the height its current content needs, with the dimmed chat visible above it.",
+      "why_it_works": "Because the height is a function of the content rather than a fixed value, adding a row never scrolls, never clips and never jumps \u2014 the container simply becomes the right size, and the reveal comes free from the edge that is already moving. Nothing is animated twice.",
+      "motion_params": {
+        "timing": "fast",
+        "easing": "spring",
+        "springiness": "subtle",
+        "stagger": "none",
+        "direction": [
+          "up",
+          "down"
+        ]
+      }
+    },
+    "search_keywords": [
+      "self sizing sheet",
+      "content height sheet",
+      "sheet grows with content",
+      "attachment sheet",
+      "resize on toggle"
+    ],
+    "assigned_filter_slugs": [
+      "bottom-sheet",
+      "expand",
+      "reveal",
+      "tap",
+      "button",
+      "icon",
+      "fade",
+      "slide",
+      "grow",
+      "shrink",
+      "chat",
+      "ai",
+      "setup"
+    ],
+    "confidence": 0.85,
+    "confidence_note": "0.85: durations and the absence of overshoot are solid (read off 62 frames at 50ms), but automated edge detection failed on this dark-mode clip \u2014 background 31, sheet 23, dim 16 \u2014 so the trajectory was read visually rather than computed."
+  }
+}

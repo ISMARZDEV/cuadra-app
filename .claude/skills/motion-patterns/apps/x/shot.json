@@ -1,0 +1,75 @@
+{
+  "slug": "push-back-drawer-reveal",
+  "video_url": "/Users/ismartz/Movies/X-Twiter.mp4",
+  "clip_file": "X-Twiter.mp4",
+  "app": "x",
+  "platform": "ios",
+  "source": "manual",
+  "evidence": "corroborated",
+  "evidence_note": "One user-supplied clip. `library.py triangulate` reported NO overlap and suggested single-source — but it compares interaction_pattern verbs, and the library simply contains no other drawer, which is absence of evidence rather than evidence of idiosyncrasy. SKILL.md §5's checklist decides: 1, 3 and 4 pass (see PATTERN.md), which is the stated floor for `corroborated`. Question 2 corroborates independently: k640/z0.84 is the SAME tempo as flighty/snap-carousel-spring (k632) with a drier character, which is exactly the library's 'stiffness is tempo, damping is character' prior.",
+  "dimensions": "1620x2160",
+  "duration_s": 4.116,
+  "frames_fps": 60,
+  "patterns": ["push-back-drawer-reveal"],
+
+  "animation": ".spring(response: 0.246, dampingFraction: 0.84) -> { mass: 1, stiffness: 640, damping: 42.5 }",
+  "stagger_delay": 0,
+  "measured": {
+    "note": "Read BY EYE off gridded kymographs (one 24px band per frame, stacked), then fitted numerically. No pixel edge detector was written — SKILL.md §0a.",
+    "frames_fps": 60,
+    "tracked_feature": "a saturated-blue avatar in the timeline, unique against the near-black ground",
+    "windows": {
+      "w1_00517-01000ms": "OPEN — rest until ~652ms, motion 652 -> 834ms (182ms), then flat for 10 frames",
+      "w2_02617-03317ms": "CLOSE — rest until ~2767ms, motion 2767 -> 2967ms (200ms), then flat for 21 frames",
+      "w3_03850-04067ms": "NOT an animation. Sampled luminance is constant to 0.1/255 across all 14 frames — segmenter noise near the clip end. Recorded so a future session does not re-investigate it."
+    },
+    "travel_px": 498,
+    "travel_pct_of_screen_width": 77.8,
+    "overshoot_px": 0,
+    "overshoot_note": "Both kymographs are monotone and flatten; no reversal in 10 (open) / 21 (close) settled frames. z=0.84 predicts a 0.8% overshoot = ~4px, at or below the ~5px reading resolution — so 'no visible overshoot' is the honest claim, not 'z is exactly 1'.",
+    "curve_fit": {
+      "method": "least-squares over t0, w0 and zeta against 13 (open) / 14 (close) measured positions",
+      "open": "z=0.84 w0=25.5 rms=0.0081 — beats easeOut/150ms (rms 0.0124) and iOS-standard/200ms (0.0133)",
+      "close": "z=0.84 w0=25.0 rms=0.0047 — beats iOS-standard/205ms (0.0084) and easeOut/150ms (0.0128)",
+      "conclusion": "A spring fits both directions ~1.6x better than the best easing. Open and close land on the same zeta and the same w0 within measurement error, so ONE config ships for both."
+    },
+    "what_does_NOT_happen": [
+      "No scale on the pushed screen — glyph sizes and every vertical landmark are identical at rest, mid-motion and settled.",
+      "No dim/scrim on the pushed screen — luminance of a text block tracked WITH the translation stays 31-35/255 throughout.",
+      "No parallax on the revealed panel — its items sit at the same x in every frame; it is static and only its opacity changes.",
+      "No shadow on the leading edge — the luminance step is 0 -> 6 -> 14 over 8px, an antialiased hard edge."
+    ],
+    "derived_channel": "Panel opacity tracks the position curve to within 2% at every sampled frame (0.713 vs 0.731, 0.883 vs 0.900, 0.960 vs 0.974, 0.995 vs 0.998) — one driver, one linear derivation.",
+    "corner_radius_pt": 8
+  },
+
+  "description": {
+    "one_line_summary": "The whole current screen slides aside as one rigid card, uncovering a navigation panel that fades up beneath it.",
+    "detailed_description": "At rest the screen is filled by the scrollable content and the panel beneath is invisible. On tap the content, as a single rigid card, translates sideways by ~78% of the screen width on a fast, nearly-dry spring, settling in ~180ms with no visible bounce. It does not shrink, tilt or darken — only its leading corner shows a small radius as it leaves the screen edge. The panel underneath never moves; it is simply uncovered, and its opacity rises on the same driver so it is fully legible exactly as the card stops. Closing runs the same spring in reverse over ~200ms and returns the card flush to the edge.",
+    "interaction_pattern": ["spring transition", "swipe-to-reveal"],
+    "gesture_or_trigger": "tap",
+    "motion_behavior": ["slide", "reveal", "spring", "fade", "snap"],
+    "ui_elements": ["navigation drawer", "card", "avatar", "icon", "list"],
+    "visual_style": ["dark mode", "minimal", "flat"],
+    "product_context": ["navigation", "account switcher"],
+    "intensity": "balanced",
+    "mood": ["efficient", "responsive", "confident", "clean"],
+    "motion_breakdown": {
+      "start_state": "Content fills the screen edge to edge. The panel is mounted beneath at opacity 0, already at its final position. The status bar belongs to the root and never moves.",
+      "transition": "The content card translates sideways by 78% of the screen width on a k640/z0.84 spring. The panel's opacity is derived from that same progress, so it resolves exactly as the card lands. Nothing scales, nothing dims, nothing lags.",
+      "end_state": "The panel is fully opaque and legible; a ~22% sliver of the content card remains at the far edge as the affordance for going back. The card is unscaled and undimmed — still plainly the live screen, merely set aside.",
+      "why_it_works": "The screen is not replaced, it is MOVED, and that is the whole argument. Because the card neither shrinks nor darkens, it never becomes a picture of itself: the user's context stays literally present and the remaining sliver reads as a door rather than as a decoration. The refusal to bounce matters just as much — a navigation surface that overshoots reads as loose, so the damping sits at 0.84 rather than the 0.72 the library uses for things that ARRIVE. And because the panel is static and only fades, there are no two moving things to desynchronise.",
+      "motion_params": {
+        "timing": "fast",
+        "easing": "spring",
+        "springiness": "subtle",
+        "stagger": "none",
+        "direction": ["right", "fade"]
+      }
+    },
+    "search_keywords": ["navigation drawer", "side menu", "push content aside", "reveal panel", "hamburger menu", "account drawer", "edge swipe", "slide-over navigation"],
+    "assigned_filter_slugs": ["navigation", "dark-mode", "spring-transition", "reveal"],
+    "confidence": 0.88,
+    "confidence_note": "High for the primary channel: 30 frames at 60fps across the open and 43 across the close, two independent curve fits agreeing on zeta and w0, and four negative findings (no scale, no dim, no parallax, no shadow) each backed by a luminance or position measurement rather than by eye alone. Lower on two points: the exact overshoot is under the ~5px reading resolution, so zeta is 0.84 +/- ~0.05; and the clip only ever shows a TAP, so nothing here witnesses the drag physics a real drawer needs."
+  }
+}

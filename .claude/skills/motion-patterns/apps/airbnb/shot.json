@@ -1,0 +1,130 @@
+{
+  "slug": "pill-to-panel-expansion",
+  "video_url": "/Users/ismartz/Movies/Airbnb.mp4",
+  "clip_file": "Airbnb.mp4",
+  "app": "airbnb",
+  "source": "manual",
+  "evidence": "corroborated",
+  "evidence_note": "single clip, but passes corroboration Q1/Q3/Q4 (see PATTERN.md). Mechanism survives stripping the brand; three distinct uses named; parameterisation is data-only.",
+  "dimensions": "2160x2160",
+  "duration_s": 8.767,
+  "frames_fps": 20,
+  "gesture_or_trigger": "tap",
+  "motion_behavior": [
+    "expand",
+    "collapse",
+    "morph",
+    "blur",
+    "fade",
+    "scale",
+    "reveal",
+    "shared-element"
+  ],
+  "motion_params": {
+    "timing": "fast",
+    "easing": "spring",
+    "springiness": "subtle",
+    "stagger": "subtle",
+    "direction": [
+      "down",
+      "scale",
+      "fade"
+    ]
+  },
+  "animation": ".spring(response: 0.42, dampingFraction: 0.86)",
+  "stagger_delay": 0.05,
+  "patterns": [
+    "pill-to-panel-expansion"
+  ],
+  "measured": {
+    "expand_ms": 417,
+    "collapse_ms": 633,
+    "note": "MEASURED from motion windows, not reported by any API. Collapse is 1.5x the expand \u2014 the inverse of the bottom-sheet asymmetry, and deliberate."
+  },
+  "platform": "ios",
+  "description": {
+    "one_line_summary": "A compact search pill expands in place into a full query panel while the feed behind blurs and recedes.",
+    "detailed_description": "From a listings feed, tapping the collapsed search pill makes it grow in place: the pill's label fades out within the first quarter of the motion while the same view expands downward and its horizontal inset goes to zero, becoming a rounded panel. The panel's contents \u2014 a 'Where?' heading, a destination field, recent searches, suggested destinations, and When/Who rows above a Clear/Search footer \u2014 crossfade in on a later window, so the box arrives before its contents. Behind it the feed does not unmount: it blurs and scales down slightly, reading as depth rather than as a scrim. Closing reverses the sequence more slowly, with the contents fading before the box finishes shrinking, so the panel is empty by the time it is a pill again.",
+    "interaction_pattern": [
+      "expanding control",
+      "in-place panel presentation",
+      "backdrop recession"
+    ],
+    "gesture_or_trigger": "tap",
+    "motion_behavior": [
+      "expand",
+      "collapse",
+      "morph",
+      "blur",
+      "fade",
+      "scale",
+      "reveal",
+      "shared-element"
+    ],
+    "ui_elements": [
+      "input",
+      "card",
+      "button",
+      "text",
+      "icon"
+    ],
+    "visual_style": [
+      "minimal",
+      "clean",
+      "rounded corners",
+      "light mode"
+    ],
+    "product_context": [
+      "search",
+      "filtering",
+      "marketplace"
+    ],
+    "intensity": "balanced",
+    "mood": [
+      "premium",
+      "smooth",
+      "confident",
+      "minimal"
+    ],
+    "motion_breakdown": {
+      "start_state": "A listings feed with a compact search pill docked at the top, inset from the screen edges.",
+      "transition": "The pill grows downward into a panel while its inset collapses to zero; its label fades out early and the panel's contents fade in on a later window. The feed behind blurs and scales to ~0.94 without unmounting.",
+      "end_state": "A full search panel occupying the upper screen, with the blurred feed visible behind it.",
+      "why_it_works": "Because it is ONE object throughout, the user never loses the thread between what they tapped and what opened. Receding the feed instead of replacing it says the context was set aside, not abandoned \u2014 which is what makes the slower close feel correct rather than sluggish.",
+      "motion_params": {
+        "timing": "fast",
+        "easing": "spring",
+        "springiness": "subtle",
+        "stagger": "subtle",
+        "direction": [
+          "down",
+          "scale",
+          "fade"
+        ]
+      }
+    },
+    "search_keywords": [
+      "expanding search bar",
+      "pill to panel",
+      "in-place expansion",
+      "blurred backdrop search",
+      "filter panel expansion"
+    ],
+    "assigned_filter_slugs": [
+      "search",
+      "input",
+      "card",
+      "blur",
+      "morph",
+      "expand",
+      "reveal",
+      "tap",
+      "shared-element",
+      "fade",
+      "grow",
+      "shrink"
+    ],
+    "confidence": 0.9,
+    "confidence_note": "0.9 not 1.0: read from 22 frames at 50ms, so sub-50ms detail (exact crossfade onsets) is interpolated, not observed."
+  }
+}
