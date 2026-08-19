@@ -1,0 +1,128 @@
+{
+  "slug": "duolingo-cards-spin-mascot-word-wizard-animation",
+  "video_url": "https://video.gumlet.io/66b49d08225b7b88f78b7b44/6a45fa15e4e7cc890ee8fbe5/main.mp4",
+  "clip_file": "duolingo-cards-spin-mascot-word-wizard-animation.mp4",
+  "app": "duolingo",
+  "platform": "ios",
+  "source": "recipes",
+  "evidence": "confirmed",
+  "evidence_note": "7 distinct apps triangulated via the 60fps MCP",
+  "gesture_or_trigger": "system event",
+  "motion_behavior": [
+    "orbit",
+    "rotate",
+    "stagger",
+    "bounce",
+    "spring",
+    "scale",
+    "fade",
+    "reveal",
+    "ticker"
+  ],
+  "motion_params": {
+    "timing": "medium",
+    "easing": "spring",
+    "springiness": "bouncy",
+    "stagger": "pronounced",
+    "direction": [
+      "up",
+      "scale",
+      "rotate"
+    ]
+  },
+  "animation": ".spring(response: 0.45, dampingFraction: 0.5)",
+  "stagger_delay": 0.09,
+  "patterns": [
+    "reward-recap-stagger",
+    "orbiting-satellites"
+  ],
+  "notes": "ONE shot, TWO unrelated patterns \u2014 this is exactly why the app level exists. The spring belongs to the stat cards; the orbit is perpetual and must be linear. No recipe covers `orbit` or `ticker`. get_related_shots returned 5 Duolingo shots, so triangulation was redone with search_shots.",
+  "description": {
+    "one_line_summary": "A lesson recap screen featuring an orbiting card mascot animation followed by staggered stat badges.",
+    "detailed_description": "The screen transitions from a celebratory splash into a dark result view. The mascot hovers in a floating loop with glowing cards orbiting around it in an elliptical 3D path with particle sparkles. Below, header text appears followed by a staggered entrance of stat cards that pop in with spring physics and count up before settling alongside the primary CTA.",
+    "interaction_pattern": [
+      "success-state",
+      "gamification",
+      "recap",
+      "idle-animation",
+      "reward",
+      "stats"
+    ],
+    "gesture_or_trigger": "system event",
+    "motion_behavior": [
+      "orbit",
+      "rotate",
+      "stagger",
+      "bounce",
+      "spring",
+      "scale",
+      "fade",
+      "reveal",
+      "ticker"
+    ],
+    "ui_elements": [
+      "card",
+      "button",
+      "illustration",
+      "badge"
+    ],
+    "visual_style": [
+      "playful",
+      "dark mode",
+      "colorful",
+      "flat"
+    ],
+    "product_context": [
+      "gamification"
+    ],
+    "intensity": "bold",
+    "mood": [
+      "playful",
+      "delightful",
+      "energetic",
+      "rewarding"
+    ],
+    "motion_breakdown": {
+      "start_state": "A bright splash screen displays the mascot before transitioning into the dark summary view.",
+      "transition": "The mascot settles into a floating hover with cards rotating around it in a 3D orbit, while stat cards pop into view sequentially with bouncy spring scaling and numerical counting.",
+      "end_state": "All three stat cards and the action button are fully settled and ready for interaction.",
+      "why_it_works": "The looping orbiting animation maintains visual delight and celebration while staggered stat pops pace the reward feedback clearly.",
+      "motion_params": {
+        "timing": "medium",
+        "easing": "spring",
+        "springiness": "bouncy",
+        "stagger": "pronounced",
+        "direction": [
+          "up",
+          "scale",
+          "rotate"
+        ]
+      }
+    },
+    "search_keywords": [
+      "lesson complete",
+      "orbit card animation",
+      "stats count up",
+      "gamification recap"
+    ],
+    "assigned_filter_slugs": [
+      "gamification",
+      "success-state",
+      "recap",
+      "reward",
+      "stats",
+      "mascot",
+      "orbit",
+      "stagger",
+      "spring-physics",
+      "bounce",
+      "card",
+      "button",
+      "illustration",
+      "ticker",
+      "idle-animation"
+    ],
+    "confidence": 0.95,
+    "confidence_note": "as reported by the 60fps MCP get_shot payload"
+  }
+}

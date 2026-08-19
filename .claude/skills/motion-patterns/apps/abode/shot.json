@@ -1,0 +1,116 @@
+{
+  "slug": "abode-invite-friends-pop-animation",
+  "video_url": "https://video.gumlet.io/66b49d08225b7b88f78b7b44/67fe8f2dcb2a6516988e9c91/main.mp4",
+  "clip_file": "abode-invite-friends-pop-animation.mp4",
+  "app": "abode",
+  "platform": "ios",
+  "source": "generated",
+  "evidence": "confirmed",
+  "evidence_note": "4 distinct apps triangulated via the 60fps MCP",
+  "gesture_or_trigger": "system event",
+  "motion_behavior": [
+    "slide",
+    "spring",
+    "stagger",
+    "scale",
+    "fade",
+    "overshoot"
+  ],
+  "motion_params": {
+    "timing": "medium",
+    "easing": "spring",
+    "springiness": "subtle",
+    "stagger": "pronounced",
+    "direction": [
+      "up",
+      "scale"
+    ]
+  },
+  "animation": ".spring(response: 0.45, dampingFraction: 0.72)",
+  "stagger_delay": 0.09,
+  "patterns": [
+    "premium-bottom-sheet-spring"
+  ],
+  "notes": "The ONLY shot of the six with `source: generated`. Its stagger_delay (0.09) disagrees with the generated file (0.18) \u2014 canonical is 0.09.",
+  "description": {
+    "one_line_summary": "A playful bottom sheet slides up with springy, staggered entry animations for its illustrations, text, and buttons.",
+    "detailed_description": "Upon transitioning, a bottom sheet slides up from the bottom of the screen. Inside, the content enters using a highly coordinated, staggered spring sequence. First, the main illustration scales up with a bouncy overshoot. This is immediately followed by the title and description text fading and sliding upward. Finally, the input field and the primary action button spring into place from below.",
+    "interaction_pattern": [
+      "bottom sheet presentation",
+      "staggered entry",
+      "spring transition"
+    ],
+    "gesture_or_trigger": "system event",
+    "motion_behavior": [
+      "slide",
+      "spring",
+      "stagger",
+      "scale",
+      "fade",
+      "overshoot"
+    ],
+    "ui_elements": [
+      "bottom-sheet",
+      "button",
+      "input",
+      "illustration",
+      "text"
+    ],
+    "visual_style": [
+      "playful",
+      "rounded corners",
+      "vibrant colors",
+      "flat design"
+    ],
+    "product_context": [
+      "onboarding",
+      "referral",
+      "social sharing"
+    ],
+    "intensity": "balanced",
+    "mood": [
+      "playful",
+      "friendly",
+      "delightful",
+      "energetic"
+    ],
+    "motion_breakdown": {
+      "start_state": "An onboarding screen with a white background, central illustration, and heading text.",
+      "transition": "A bottom sheet slides up from the bottom edge. Its internal elements animate in sequentially using spring physics, scaling and sliding up with distinct offsets.",
+      "end_state": "The bottom sheet is fully expanded, showing illustration, header text, a copyable link input, and a prominent action button.",
+      "why_it_works": "The staggered spring physics give the interface a tactile, physical quality that feels responsive and friendly, turning a standard utility screen into a delightful moment.",
+      "motion_params": {
+        "timing": "medium",
+        "easing": "spring",
+        "springiness": "subtle",
+        "stagger": "pronounced",
+        "direction": [
+          "up",
+          "scale"
+        ]
+      }
+    },
+    "search_keywords": [
+      "invite friends bottom sheet",
+      "spring animation bottom sheet",
+      "staggered onboarding animation"
+    ],
+    "assigned_filter_slugs": [
+      "bottom-sheet",
+      "spring-physics",
+      "stagger",
+      "illustration",
+      "invite",
+      "onboarding",
+      "button",
+      "input",
+      "text",
+      "fade",
+      "slide",
+      "mascot",
+      "bounce"
+    ],
+    "confidence": 1.0,
+    "confidence_note": "as reported by the 60fps MCP get_shot payload"
+  }
+}

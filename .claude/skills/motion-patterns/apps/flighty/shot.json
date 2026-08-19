@@ -1,0 +1,106 @@
+{
+  "slug": "flighty-pricing",
+  "video_url": "https://video.gumlet.io/66b49d08225b7b88f78b7b44/66b4bd1061d73e2622b3555c/main.mp4",
+  "clip_file": "flighty-pricing.mp4",
+  "app": "flighty",
+  "platform": "ios",
+  "source": "recipes",
+  "evidence": "confirmed",
+  "evidence_note": "5 distinct apps triangulated via the 60fps MCP",
+  "gesture_or_trigger": "swipe",
+  "motion_behavior": [
+    "slide",
+    "snap",
+    "spring",
+    "overshoot"
+  ],
+  "motion_params": {
+    "timing": "fast",
+    "easing": "spring",
+    "springiness": "subtle",
+    "stagger": "none",
+    "direction": [
+      "left",
+      "right"
+    ]
+  },
+  "animation": ".spring(response: 0.25, dampingFraction: 0.72)",
+  "stagger_delay": 0.0,
+  "patterns": [
+    "snap-carousel-spring"
+  ],
+  "notes": "Fastest spring of the set (k632). Two independent carousels stacked on one screen \u2014 they need directionalLock or they fight for the gesture.",
+  "description": {
+    "one_line_summary": "A multi-carousel pricing screen featuring independent horizontal swiping for feature showcases and subscription plans.",
+    "detailed_description": "Two independent horizontal carousels present information. The top carousel showcases premium features with animated mockups. The bottom carousel displays payment plans with dedicated CTAs. Swiping either section triggers a smooth, springy horizontal slide that snaps cleanly into place.",
+    "interaction_pattern": [
+      "carousel",
+      "swipe-to-reveal",
+      "independent-scrolling"
+    ],
+    "gesture_or_trigger": "swipe",
+    "motion_behavior": [
+      "slide",
+      "snap",
+      "spring",
+      "overshoot"
+    ],
+    "ui_elements": [
+      "card",
+      "button",
+      "carousel"
+    ],
+    "visual_style": [
+      "vibrant-gradients",
+      "rounded-corners",
+      "dark-mode",
+      "clean-typography"
+    ],
+    "product_context": [
+      "pricing",
+      "onboarding"
+    ],
+    "intensity": "balanced",
+    "mood": [
+      "premium",
+      "delightful",
+      "confident",
+      "polished"
+    ],
+    "motion_breakdown": {
+      "start_state": "A feature card is centred in the top half of the screen, and a pricing plan card in the bottom half.",
+      "transition": "Swiping horizontally on either card slides the active card out of view while the adjacent card slides in, snapping into place with a subtle spring bounce.",
+      "end_state": "The newly selected card is centred and fully active, updating the displayed content or pricing option.",
+      "why_it_works": "Decoupling the feature showcase from the pricing plans lets users digest the value proposition and the cost options independently, while the tactile snapping makes exploration feel responsive.",
+      "motion_params": {
+        "timing": "fast",
+        "easing": "spring",
+        "springiness": "subtle",
+        "stagger": "none",
+        "direction": [
+          "left",
+          "right"
+        ]
+      }
+    },
+    "search_keywords": [
+      "paywall carousel",
+      "horizontal swipe card",
+      "spring snapping carousel"
+    ],
+    "assigned_filter_slugs": [
+      "pricing",
+      "swipe",
+      "card",
+      "button",
+      "onboarding",
+      "illustration",
+      "slide",
+      "showcase",
+      "carousel",
+      "widget"
+    ],
+    "confidence": 0.95,
+    "confidence_note": "as reported by the 60fps MCP get_shot payload"
+  }
+}
