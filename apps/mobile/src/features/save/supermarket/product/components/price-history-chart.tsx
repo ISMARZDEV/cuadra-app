@@ -1,5 +1,5 @@
 import type { PriceHistoryDto } from "@cuadra/api-client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Text, View, useWindowDimensions } from "react-native";
 import Svg, { Line, Path } from "react-native-svg";
 
@@ -38,6 +38,15 @@ export function PriceHistoryChart({ history, gutter }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const width = screenWidth - gutter * 2 - PAD_X * 2;
 
+  // ⭐ El «ahora» del dominio, FIJADO al montar. Vivía como `Date.now()` DENTRO del `useMemo`, y eso
+  // era impuro dos veces: React Compiler no podía optimizarlo (`react-hooks-js/purity`), y el valor
+  // se congelaba igualmente en la última vez que el memo corrió — así que el borde derecho del chart
+  // ya era «el momento de montar», sólo que sin decirlo. Ahora lo dice.
+  //
+  // Inicializador PEREZOSO, mismo patrón que `screenMountedAt` en `product-screen`: con
+  // `useRef(Date.now())` la fecha se recalcularía en cada render.
+  const [now] = useState(() => Date.now());
+
   const chart = useMemo(() => {
     const series = (history?.series ?? []).map((s) =>
       s.points
@@ -49,7 +58,7 @@ export function PriceHistoryChart({ history, gutter }: Props) {
         .filter((p) => Number.isFinite(p.capturedAtMs))
         .sort((a, b) => a.capturedAtMs - b.capturedAtMs),
     );
-    const domain = chartDomain(series, Date.now());
+    const domain = chartDomain(series, now);
     if (!domain || width <= 0) return null;
     const inner = HEIGHT - PAD_Y * 2;
     return {
@@ -66,7 +75,7 @@ export function PriceHistoryChart({ history, gutter }: Props) {
           ),
         ),
     };
-  }, [history, width]);
+  }, [history, width, now]);
 
   return (
     <View className="pt-6" style={{ paddingHorizontal: gutter, gap: 10 }}>
