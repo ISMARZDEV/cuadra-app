@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { type Href, useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import Animated, {
@@ -20,6 +20,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import type { ProductCardDto } from "@cuadra/api-client";
+
 import BasketProductCard, {
   cardWidthAt,
   discountOverhangAt,
@@ -30,6 +32,8 @@ import { GlassButton } from "@/components/ui/glass-button";
 import { useTabBarClearance } from "@/components/navigation/use-tab-bar-clearance";
 import { PillButton } from "@/components/ui/pill-button";
 import { t, useLang } from "@/i18n";
+import { nextHiddenState } from "@/components/navigation/hide-on-scroll";
+import { useIdleHideHere } from "@/components/navigation/use-idle-hide-here";
 import { useNavHideStore } from "@/store/nav-hide-store";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
@@ -79,26 +83,8 @@ const SEARCH_GAP = 34;
 /** Cuánto tarda la banda del buscador en disolverse en el fondo. Es lo que evita el canto recto. */
 const FADE_TAIL = 44;
 
-// Por debajo de esto SIEMPRE está desplegado, mires donde mires. Sin este suelo, un rebote en el
-// tope dejaba el header plegado con la lista ya arriba del todo.
-const TOP_ZONE = 24;
 /** Por debajo de esto una medida de «viewport» no es creíble y se descarta — ver el uso. */
 const MIN_VIEWPORT = 200;
-/**
- * Cuánto recorrido hace falta —en PANTALLAS— para que esconder el navbar compense.
- *
- * No basta con «se puede scrollear»: con dos o tres filas hay unos cientos de píxeles de recorrido,
- * el navbar se esconde, llegas al final enseguida y vuelve. Ese ir y venir es peor que no esconderlo
- * nunca — la barra parece no saber qué hacer.
- *
- * Esconder la navegación se PAGA con desorientación y se COBRA en espacio: sólo sale a cuenta si
- * queda al menos otra pantalla entera por recorrer. En proporción al viewport y no en píxeles, por
- * la misma razón que la sangría del hub: un número fijo dice cosas distintas en un SE y en un Pro Max.
- */
-const MIN_SCROLL_SCREENS = 1;
-/** Distancia ACUMULADA en una dirección antes de plegar o desplegar. Un solo frame no basta — con
- *  el umbral por frame que había antes, el temblor del dedo hacía parpadear el header. */
-const COMMIT_DISTANCE = 28;
 /** La MISMA animación con la que la barra de tabs se va hacia abajo (`cuadra-tab-bar`), porque el
  *  header y la barra se mueven en el mismo gesto: con tiempos distintos, una perseguía a la otra. */
 const COLLAPSE_TIMING = { duration: 300 } as const;
@@ -145,7 +131,15 @@ export function SupermarketBrowseScreen({
   const subscribe = useSubscribeAlert();
   const follow = (productId: string) => subscribe.mutate({ productId });
 
-  const toggleCompare = useCompareBasket((s) => s.toggle);
+  const addCompare = useCompareBasket((s) => s.add);
+  const removeCompare = useCompareBasket((s) => s.remove);
+  // La lista entera, no `has`: un selector que devuelve una FUNCIÓN no re-renderiza cuando cambia
+  // el contenido, así que las tarjetas se quedarían con el estado de pertenencia congelado.
+  const compareItems = useCompareBasket((s) => s.items);
+
+  // Mismo destino que los rails de la home: por SLUG (permalink), con el UUID de reserva.
+  const openProduct = (product: ProductCardDto) =>
+    router.push(`/save/supermarket/product/${product.slug || product.id}` as Href);
   const compareCount = useCompareCount();
 
   const listQuery = activeTab === "deals" ? deals : featured;
@@ -192,10 +186,10 @@ export function SupermarketBrowseScreen({
   // reloj para todo el gesto, en vez de cuatro animaciones que se persiguen.
   const collapse = useSharedValue(0);
   const lastY = useSharedValue(0);
-  // Distancia acumulada en la dirección actual, y el DESTINO del plegado (no el valor animado: leer
-  // `collapse.value` a mitad de animación devuelve un intermedio y la comparación se vuelve ruido).
+  // Distancia acumulada en la dirección actual. El DESTINO del plegado no se guarda aparte: es
+  // `hiddenSV` (leer `collapse.value` a mitad de animación devuelve un intermedio y la
+  // comparación se vuelve ruido).
   const dragAccum = useSharedValue(0);
-  const collapseTarget = useSharedValue(0);
   // Alimentan la aparición de las tarjetas (`RevealCard`). Viven acá y no en cada ítem: son UN
   // reloj para toda la rejilla, no cincuenta suscripciones al scroll.
   const scrollY = useSharedValue(0);
@@ -207,6 +201,8 @@ export function SupermarketBrowseScreen({
   // Espejo del booleano para no cruzar a JS en cada frame: `runOnJS` sólo se llama cuando CAMBIA.
   const hiddenSV = useSharedValue(false);
   const setNavHidden = useNavHideStore((s) => s.setHidden);
+  // Sólo aquí la barra se retira sola: es un catálogo largo y cada franja de pantalla cuenta.
+  useIdleHideHere();
   // El MISMO estado que esconde la barra de tabs decide si la canasta flotante existe: son la misma
   // transición, y con dos señales acabarían desincronizadas.
   const navHidden = useNavHideStore((s) => s.hidden);
@@ -250,7 +246,6 @@ export function SupermarketBrowseScreen({
     },
     onScroll: (e) => {
       const y = e.contentOffset.y;
-      const maxY = e.contentSize.height - e.layoutMeasurement.height;
 
       // El desplazamiento SIEMPRE se publica: alimenta la aparición de las tarjetas, que sí debe
       // seguir a la inercia — lo que no debe seguirla es el plegado.
@@ -261,60 +256,31 @@ export function SupermarketBrowseScreen({
         viewportH.value = e.layoutMeasurement.height;
       }
 
-      // GUARDA 1 — si el recorrido NO COMPENSA, no se pliega nunca. Cubre las dos formas del mismo
-      // problema: una lista que cabe entera (el rebote emite eventos igual) y una de dos o tres
-      // filas, donde el navbar se escondía sólo para reaparecer al llegar al final un segundo
-      // después. Ver `MIN_SCROLL_SCREENS`.
-      if (maxY <= e.layoutMeasurement.height * MIN_SCROLL_SCREENS) {
-        dragAccum.value = 0;
-        if (collapseTarget.value !== 0) {
-          collapseTarget.value = 0;
-          collapse.value = withTiming(0, COLLAPSE_TIMING);
-        }
-        if (hiddenSV.value) {
-          hiddenSV.value = false;
-          runOnJS(setNavHidden)(false);
-        }
-        return;
-      }
-
-      // GUARDA 2 — sin dedo encima no se decide nada (inercia, rebote, asentamiento).
-      if (!dragging.value) {
-        lastY.value = y;
-        return;
-      }
-
-      // GUARDA 3 — el REBOTE no es recorrido. Fuera del rango real el estado se congela.
-      if (y < 0 || y > maxY) {
-        lastY.value = y;
-        return;
-      }
-
       const dy = y - lastY.value;
       lastY.value = y;
 
-      // GUARDA 4 — HISTÉRESIS. No se decide con el delta de UN frame (temblor del dedo =
-      // parpadeo): se acumula distancia en la MISMA dirección y sólo se conmuta al superar un
-      // compromiso claro. Cambiar de sentido reinicia la cuenta.
-      if (dy > 0 !== dragAccum.value > 0) dragAccum.value = 0;
-      dragAccum.value += dy;
+      // Las cuatro guardas viven en una función PURA y probada (`hide-on-scroll`), la MISMA que
+      // usan el inicio y el detalle. Aquí estuvieron COPIADAS, que es la forma segura de que las
+      // tres pantallas se separen en cuanto alguien afine una: cada guarda costó un defecto, y
+      // pagarlo tres veces no lo arregla mejor.
+      const next = nextHiddenState({
+        y,
+        maxY: e.contentSize.height - e.layoutMeasurement.height,
+        viewportH: e.layoutMeasurement.height,
+        dy,
+        accum: dragAccum.value,
+        dragging: dragging.value,
+        hidden: hiddenSV.value,
+      });
+      dragAccum.value = next.accum;
 
-      let next = collapseTarget.value;
-      // Cerca del tope siempre desplegado, mires donde mires.
-      if (y <= TOP_ZONE) next = 0;
-      else if (dragAccum.value > COMMIT_DISTANCE) next = 1;
-      else if (dragAccum.value < -COMMIT_DISTANCE) next = 0;
-
-      if (next !== collapseTarget.value) {
-        collapseTarget.value = next;
-        collapse.value = withTiming(next, COLLAPSE_TIMING);
-        dragAccum.value = 0;
-      }
-      const wantHidden = next === 1;
-      if (hiddenSV.value !== wantHidden) {
-        hiddenSV.value = wantHidden;
-        runOnJS(setNavHidden)(wantHidden);
-      }
+      if (next.hidden === hiddenSV.value) return;
+      hiddenSV.value = next.hidden;
+      // UN solo booleano manda las dos cosas: el plegado del header/rejilla y la barra de tabs.
+      // Antes había dos espejos del mismo destino (`collapseTarget` y `hiddenSV`) que se ponían
+      // en dos sitios distintos — ahí es donde una animación se queda atrás de la otra.
+      collapse.value = withTiming(next.hidden ? 1 : 0, COLLAPSE_TIMING);
+      runOnJS(setNavHidden)(next.hidden);
     },
   });
 
@@ -612,7 +578,14 @@ export function SupermarketBrowseScreen({
                   badge={view.badge}
                   discountBps={view.discountBps}
                   previousPrice={view.previousPrice}
-                  onSelect={() => toggleCompare({ id: dto.id, name: dto.name })}
+                  // El CUERPO abre el detalle y el «+» es el interruptor de la canasta — un
+                  // gesto, un significado, igual que en los rails de la home. Antes la tarjeta
+                  // entera era el interruptor y no había forma de llegar al producto.
+                  onSelect={() => openProduct(dto)}
+                  quantity={compareItems.some((p) => p.id === dto.id) ? 1 : 0}
+                  onQuantityChange={(qty) =>
+                    qty > 0 ? addCompare({ id: dto.id, name: dto.name }) : removeCompare(dto.id)
+                  }
                   onBookmark={() => follow(dto.id)}
                 />
               </RevealCard>

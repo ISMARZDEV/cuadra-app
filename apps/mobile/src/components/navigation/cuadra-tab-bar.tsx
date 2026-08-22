@@ -31,6 +31,9 @@ import { t, type TranslationKey } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { useChatExpandStore } from "@/store/chat-expand-store";
 import { useNavHideStore } from "@/store/nav-hide-store";
+
+import { NAV_HIDE_TIMING } from "./nav-hide-motion";
+import { IDLE_HIDE_MS } from "./use-nav-visibility";
 import { useDrawer } from "@/store/drawer-store";
 import { useOrbStore } from "@/store/orb-store";
 
@@ -89,10 +92,9 @@ function AnimatedTabIcon({
   );
 }
 
-// Cuánto tarda la barra en irse hacia abajo. UNA constante para los tres disparadores (drawer del
-// chat, chat expandido, scroll de una rejilla): si cada uno pusiera el suyo, el mismo gesto se
-// sentiría distinto según de dónde viniera.
-const NAV_HIDE_MS = 300;
+// El movimiento de esconderse vive en `nav-hide-motion`: ya son CUATRO las barras que deben
+// ponerse de acuerdo (cajón del chat, chat expandido, scroll de una rejilla y el pie del detalle
+// de producto), y una constante privada de este archivo dejaba a las demás copiando su número.
 
 // Cuadra tab bar — exact Figma silhouette: one smooth wave with a central dip concentric to the
 // raised "iM" logo (AISpace). Geometry scales from the design viewBox so the curve stays faithful.
@@ -253,7 +255,7 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const chatExpanded = useChatExpandStore((s) => s.expanded);
   const expandProgress = useSharedValue(chatExpanded ? 1 : 0);
   useEffect(() => {
-    expandProgress.value = withTiming(chatExpanded ? 1 : 0, { duration: NAV_HIDE_MS });
+    expandProgress.value = withTiming(chatExpanded ? 1 : 0, NAV_HIDE_TIMING);
   }, [chatExpanded, expandProgress]);
   // TERCER disparador: una pantalla que se está desplazando hacia abajo pide la barra fuera para
   // devolverle esa franja al contenido (la rejilla del «ver más»).
@@ -263,15 +265,51 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   // VAYA HACIA ABAJO en vez de esfumarse. A 240ms el desvanecido se comía la bajada antes de que
   // se leyera — se percibía como que desaparece, no como que se va.
   const navHidden = useNavHideStore((s) => s.hidden);
+  const setNavHidden = useNavHideStore((s) => s.setHidden);
+  const tappedAt = useNavHideStore((s) => s.tappedAt);
+  // Una pantalla puede exigirla fuera y entonces nada la trae: ni un toque ni el reposo.
+  const forceHidden = useNavHideStore((s) => s.forceHidden);
+  // El reposo es OPT-IN de la pantalla: fuera de Supermarket la barra no se va sola.
+  const idleHideEnabled = useNavHideStore((s) => s.idleHideEnabled);
+
+  // CUARTA causa: el REPOSO. Sin tocar la pantalla, la barra se va sola tras `IDLE_HIDE_MS`; un
+  // toque —no un arrastre— la trae de vuelta y rearma el reloj.
+  //
+  // El temporizador vive aquí y no en cada pantalla: es UNA barra, y repartir su reloj entre cinco
+  // pestañas sería garantizar que se comporte distinto según dónde estés.
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    if (!idleHideEnabled) return;
+    idleTimer.current = setTimeout(() => setNavHidden(true), IDLE_HIDE_MS);
+    return () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    };
+    // `navHidden` en las dependencias a propósito: cada vez que la barra vuelve, el reposo empieza
+    // a contar de nuevo desde ese momento.
+  }, [tappedAt, navHidden, idleHideEnabled, setNavHidden]);
+
+  // Un toque la trae. Va aparte del temporizador porque son dos efectos distintos: aquél cuenta,
+  // éste responde.
+  useEffect(() => {
+    if (tappedAt > 0 && !forceHidden) setNavHidden(false);
+  }, [tappedAt, forceHidden, setNavHidden]);
+
   const scrollProgress = useSharedValue(navHidden ? 1 : 0);
   useEffect(() => {
-    scrollProgress.value = withTiming(navHidden ? 1 : 0, { duration: NAV_HIDE_MS });
-  }, [navHidden, scrollProgress]);
+    scrollProgress.value = withTiming(navHidden || forceHidden ? 1 : 0, NAV_HIDE_TIMING);
+  }, [navHidden, forceHidden, scrollProgress]);
   const drawerHideStyle = useAnimatedStyle(() => {
     const p = Math.max(drawerProgress.value, expandProgress.value, scrollProgress.value);
+    // ⭐ SÓLO se traslada. El fade que había aquí es exactamente lo que el vidrio nativo no
+    // tolera: una opacidad animada en un ancestro de un `GlassView` lo aísla en su propia capa de
+    // composición, y ahí ya no hay «detrás» que muestrear — el cristal se apaga y quedan los
+    // iconos flotando. Además el desvanecido se COMÍA el recorrido: la barra desaparecía a mitad
+    // de camino y nunca se la veía llegar al borde, que es justo la parte que se lee como fluida.
+    //
+    // El viaje llega más lejos (+72 en vez de +40) para que salga del todo sin ayuda del fade.
     return {
-      transform: [{ translateY: p * (navHeight + (insets.bottom || 0) + 40) }],
-      opacity: 1 - p,
+      transform: [{ translateY: p * (navHeight + (insets.bottom || 0) + 72) }],
     };
   });
 
