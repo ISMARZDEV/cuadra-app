@@ -436,6 +436,10 @@ def get_compare_product(session: Session = Depends(get_session)) -> CompareProdu
         SqlCanonicalProductRepository(session),
         SqlStoreProductRepository(session),
         SqlTaxonomyRepository(session),
+        # La galería del carrusel. El mismo repositorio que ya usaba el admin: la fuente de verdad
+        # de las fotos es una sola, y que el público leyera otra es cómo el admin y la app acaban
+        # enseñando imágenes distintas del mismo producto.
+        SqlCanonicalImageRepository(session),
     )
 
 
