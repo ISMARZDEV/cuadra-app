@@ -254,9 +254,56 @@ valor del reloj (`useAnimatedStyle(() => ({ width: v.value * 360 }))`) se mide p
 los fotogramas — sin OCR, sin acertar un recorte, sin `setInterval`. Y colócala donde SE VEA: el
 primer panel quedó bajo la curva del header y perdí una ronda entera.
 
+## Navegar a datos REALES sin tocar la pantalla (2026-08-22)
+
+Un deep link no es un toque —ver arriba— pero para verificar **estados estáticos** es la vía. El
+esquema es `cuadra` y las rutas son las de expo-router:
+
+```bash
+# 1) saca un slug de verdad del API (no inventes uno: la pantalla mostraría "no encontrado")
+curl -s "http://localhost:8005/v1/save/featured?market=DO&limit=5" | python3 -c "
+import sys,json; [print(i['slug']) for i in json.load(sys.stdin)[:5]]"
+
+# 2) elige uno que EJERCITE lo que estás verificando (aquí: con más de una foto)
+curl -s "http://localhost:8005/v1/save/compare?slug=$S&market=DO" | python3 -c "
+import sys,json; print(len(json.load(sys.stdin).get('image_urls',[])))"
+
+# 3) navega y captura
+xcrun simctl openurl <UDID> "cuadra://save/supermarket/product/$S"
+xcrun simctl io <UDID> screenshot shot.png
+```
+
+⭐ **El paso 2 es el que importa.** Un carrusel con un producto de una sola foto se ve idéntico a un
+carrusel roto. Elige el dato que hace visible la diferencia, o la captura no prueba nada.
+
+## VERIFICAR ANTES DE ENTREGAR (2026-08-22 — cuatro rechazos seguidos)
+
+Una animación se entregó **cuatro veces** con typecheck limpio y todos los tests verdes, y el usuario
+la rechazó las cuatro. Ninguna se había visto correr.
+
+**Lo que hacía invisible el defecto**: los tests probaban la ARITMÉTICA y el fallo vivía en la
+GEOMETRÍA DE PANTALLA (dónde caían las cosas). Pasaban en las cuatro versiones rotas.
+
+**Lo que rompió el bucle**: descubrir que la app YA ESTABA INSTALADA en un simulador arrancado y que
+Metro corría — se podía abrir y capturar **sin ningún rebuild**.
+
+```bash
+xcrun simctl list devices booted                    # ¿hay uno arrancado?
+xcrun simctl listapps <UDID> | grep -i <bundle-id>  # ¿está la app instalada?
+```
+
+**Regla**: antes de decir que un trabajo visual está hecho, corre esas dos líneas. Si hay simulador y
+app, **ofrécelo y hazlo**. Cuesta 20 segundos y ahorra una ronda entera. Si de verdad no se puede
+verificar, **dilo en la entrega** en vez de dejar que el usuario lo descubra.
+
 ## Lo que `simctl` NO puede hacer, y hay que DECIRLO
 
 - **No toca la pantalla**: nada de taps, scroll, long-press ni gestos. Una hoja que se abre al tocar
   **no se puede verificar** — se dice explícitamente y se le pide al usuario, no se da por buena.
-- **AppleScript tampoco**: `System Events` no ve `window 1` del proceso Simulator (error -1719), y
-  el keystroke se lo puede comer el editor del usuario.
+- **AppleScript ve la ventana pero NO sirve para arrastrar** (corregido 2026-08-22). Con permisos de
+  accesibilidad concedidos, `System Events` SÍ devuelve posición y tamaño de `window 1` del
+  Simulator. Lo que falta es sintetizar el gesto: `System Events` no hace drags, y en esta máquina
+  **no hay `cliclick`, ni `idb`, ni `Quartz`** (ni en el `python3` del sistema ni en el de Homebrew).
+  → **Un SCROLL sigue sin poder verificarse.** Antes de gastar media hora buscando: comprueba
+  `which cliclick idb` y `python3 -c "import Quartz"`; si no están, dilo y pide al usuario que
+  haga el gesto.
