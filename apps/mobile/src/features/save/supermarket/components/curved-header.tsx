@@ -49,8 +49,37 @@ interface CurvedHeaderProps {
   basketCount: number;
   onBasket?: () => void;
   basketIcon: LucideIcon;
+  /**
+   * Hacia dónde arquea el canto inferior.
+   *
+   * `convex` (por defecto) = el verde BAJA en el centro, como una gota. Es lo que llevan la home y
+   * la rejilla, donde debajo empieza contenido y la panza lo acuna.
+   *
+   * `concave` = al revés: el verde baja en los LADOS y el blanco SUBE en el centro. Es la forma del
+   * detalle de producto, y no es un capricho — la hoja blanca de abajo se lee como una SUPERFICIE
+   * que asciende hacia la foto, en vez de como un fondo que el header pisa.
+   */
+  curve?: CurveDirection;
   /** Las pestañas de categoría, que viajan DENTRO del verde. */
   children?: ReactNode;
+}
+
+export type CurveDirection = "convex" | "concave";
+
+/**
+ * El canto inferior, en unidades del viewBox (100 de ancho × `HEADER_BULGE` de alto).
+ *
+ * ⭐ El punto de control va al DOBLE de la flecha deseada porque una bezier cuadrática sólo llega a
+ * la MITAD del camino hacia su control: en `t = 0.5` la curva vale `¼·P0 + ½·C + ¼·P2`. Escribir la
+ * flecha directamente en el control daría una curva con la mitad de panza de la pedida.
+ */
+function curvePath(direction: CurveDirection): string {
+  if (direction === "concave") {
+    // El verde llega abajo en los LADOS y se retira en el centro: el blanco sube por el medio.
+    // Control en `-HEADER_BULGE` para que el vértice caiga exactamente en 0.
+    return `M0 0 L0 ${HEADER_BULGE} Q50 ${-HEADER_BULGE} 100 ${HEADER_BULGE} L100 0 Z`;
+  }
+  return `M0 0 H100 Q50 ${HEADER_BULGE * 2} 0 0 Z`;
 }
 
 export function CurvedHeader({
@@ -64,9 +93,16 @@ export function CurvedHeader({
   basketCount,
   onBasket,
   basketIcon,
+  curve = "convex",
   children,
 }: CurvedHeaderProps) {
-  const expanded = safeTop + HEADER_ROW + HEADER_TABS;
+  // ⭐ El alto de las PESTAÑAS sólo se reserva si hay pestañas. Sin esto, una pantalla sin ellas
+  // —el detalle de producto— arrastraba 52pt de verde vacío bajo la fila de botones: casi el doble
+  // de cabecera que el diseño, y el contenido empezaba muy por debajo de donde debía.
+  //
+  // Es la diferencia entre reservar sitio para lo que HAY y reservarlo para lo que este componente
+  // suele llevar.
+  const expanded = safeTop + HEADER_ROW + (children ? HEADER_TABS : 0);
   // Colapsado se queda la franja del área segura y un dedo de verde: sin ese resto, la curva
   // aterrizaría sobre el reloj del sistema.
   const collapsed = safeTop + 6;
@@ -95,7 +131,7 @@ export function CurvedHeader({
         pointerEvents="none"
         style={{ position: "absolute", bottom: -HEADER_BULGE, left: 0, right: 0 }}
       >
-        <Path d={`M0 0 H100 Q50 ${HEADER_BULGE * 2} 0 0 Z`} fill={GREEN} />
+        <Path d={curvePath(curve)} fill={GREEN} />
       </Svg>
 
 

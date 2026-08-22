@@ -1,11 +1,16 @@
 import {
   alertNotifications,
+  brandProducts,
   categoryProducts,
+  compareProduct,
   featuredProducts,
   listAlerts,
   listCategories,
+  priceHistory,
+  productStores,
   searchProductCards,
   searchProducts,
+  similarProducts,
   subscribeAlert,
   todaysDeals,
   unsubscribeAlert,
@@ -247,5 +252,85 @@ export function useSubscribeAlert() {
         body: { product_id: vars.productId, threshold_minor: vars.thresholdMinor ?? null },
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: MY_ALERTS_KEY }),
+  });
+}
+
+
+// ── Detalle de producto ────────────────────────────────────────────────────────────────────────
+//
+// ⭐ HAY UN WATERFALL OBLIGATORIO y no es negociable: el producto se resuelve por SLUG (llave
+// pública, SEO), pero el historial y las listas hermanas se piden por `canonical_product_id`, que
+// sólo se conoce DESPUÉS de que responda la comparación. Lanzar las cuatro a la vez deja tres
+// pidiendo `undefined`. Por eso las tres dependientes van con `enabled` contra el id.
+//
+// La web hace exactamente esto en su `+data.ts`; acá se replica con `enabled` porque no hay SSR.
+
+/** Una comparación se pide muchas veces (volver atrás, cambiar de pestaña) y el precio no cambia
+ *  en segundos. Un minuto evita el parpadeo de recarga sin llegar a servir un precio rancio. */
+const DETAIL_STALE_MS = 60_000;
+
+export const PRODUCT_KEY = (slug: string) => ["save", "product", slug] as const;
+/** El detalle: identidad, precio mínimo, migas y las tiendas con su sobreprecio. */
+export function useProductComparison(slug: string) {
+  return useQuery({
+    queryKey: PRODUCT_KEY(slug),
+    queryFn: () => compareProduct({ query: { slug } }).then((r) => r.data),
+    staleTime: DETAIL_STALE_MS,
+    enabled: slug.length > 0,
+  });
+}
+
+export const PRODUCT_STORES_KEY = (slug: string) => ["save", "productStores", slug] as const;
+/** El panel «Otras tiendas»: logo, precio anterior, tipo de precio y cuándo se vio.
+ *
+ *  Va por SLUG, así que NO espera al waterfall — puede volar junto con la comparación. Es el
+ *  gemelo público del panel del admin y lee su misma consulta. */
+export function useProductStores(slug: string) {
+  return useQuery({
+    queryKey: PRODUCT_STORES_KEY(slug),
+    queryFn: () => productStores({ path: { slug } }).then((r) => r.data ?? []),
+    staleTime: DETAIL_STALE_MS,
+    enabled: slug.length > 0,
+  });
+}
+
+export const PRICE_HISTORY_KEY = (id: string) => ["save", "priceHistory", id] as const;
+/** El histórico. Los puntos son CHANGE-ONLY: cada uno rige hasta el siguiente, así que el chart
+ *  es de ESCALONES. Interpolar dibujaría precios que nunca existieron. */
+export function usePriceHistory(productId: string | undefined) {
+  return useQuery({
+    queryKey: PRICE_HISTORY_KEY(productId ?? ""),
+    queryFn: () =>
+      priceHistory({ query: { product_id: productId!, range: "all" } }).then((r) => r.data),
+    staleTime: DETAIL_STALE_MS,
+    enabled: Boolean(productId),
+  });
+}
+
+export const SIMILAR_PRODUCTS_KEY = (id: string) => ["save", "similar", id] as const;
+/** Alternativas: los hermanos en la taxonomía, más barato POR UNIDAD primero. */
+export function useSimilarProducts(productId: string | undefined) {
+  return useQuery({
+    queryKey: SIMILAR_PRODUCTS_KEY(productId ?? ""),
+    queryFn: () =>
+      similarProducts({ path: { product_id: productId! }, query: { limit: 12 } }).then(
+        (r) => r.data ?? [],
+      ),
+    staleTime: DETAIL_STALE_MS,
+    enabled: Boolean(productId),
+  });
+}
+
+export const BRAND_PRODUCTS_KEY = (id: string) => ["save", "brand", id] as const;
+/** «Más de la marca». Pregunta distinta de la de arriba: aquélla es ahorro, ésta es fidelidad. */
+export function useBrandProducts(productId: string | undefined) {
+  return useQuery({
+    queryKey: BRAND_PRODUCTS_KEY(productId ?? ""),
+    queryFn: () =>
+      brandProducts({ path: { product_id: productId! }, query: { limit: 12 } }).then(
+        (r) => r.data ?? [],
+      ),
+    staleTime: DETAIL_STALE_MS,
+    enabled: Boolean(productId),
   });
 }
