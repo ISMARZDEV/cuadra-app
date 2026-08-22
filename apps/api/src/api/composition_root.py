@@ -79,11 +79,13 @@ from src.contexts.save.application.canonical_catalog import (
 from src.contexts.save.application.get_review_detail import GetReviewDetail
 from src.contexts.save.application.history import GetPriceHistory
 from src.contexts.save.application.list_review_queue import ListReviewQueue
+from src.contexts.save.application.product_stores import ListProductStores
 from src.contexts.save.application.listing import (
     ListBrandProducts,
     ListCategoryProducts,
     ListFeaturedProducts,
     ListProviderProducts,
+    ListSimilarProducts,
     ListTodaysDeals,
 )
 from src.contexts.save.application.products import ListProducts
@@ -608,6 +610,20 @@ def get_collection(session: Session = Depends(get_session)) -> GetCollection:
 
 def get_list_brand_products(session: Session = Depends(get_session)) -> ListBrandProducts:
     return ListBrandProducts(
+        SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
+    )
+
+
+def get_list_product_stores(session: Session = Depends(get_session)) -> ListProductStores:
+    """Mismo repo de catálogo que el panel del admin — a propósito: una sola consulta, un solo
+    juego de números. Lo que cambia entre las dos pantallas es el DTO, no la fuente."""
+    return ListProductStores(
+        SqlCanonicalProductRepository(session), SqlAdminCanonicalCatalogRepository(session)
+    )
+
+
+def get_list_similar_products(session: Session = Depends(get_session)) -> ListSimilarProducts:
+    return ListSimilarProducts(
         SqlCanonicalProductRepository(session), SqlStoreProductRepository(session)
     )
 

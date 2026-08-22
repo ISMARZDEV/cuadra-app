@@ -14,6 +14,7 @@ from src.shared.money import Money
 from ..admin_audit import AdminAuditEntry
 from ..alerts import Alert, AlertNotification, AlertSubscription
 from ..basket import ProviderOffer
+from ..canonical_catalog import CanonicalProviderPriceRow
 from ..canonical_image import CanonicalImage
 from ..classification import (
     CategoryCandidate,
@@ -164,6 +165,17 @@ class CollectionRepository(Protocol):
     def list_product_ids(self, collection_id: str) -> list[str]:
         """canonical_product_id de la colección, en orden de `position` (hand-pick)."""
         ...
+
+
+class CanonicalProviderReader(Protocol):
+    """Las tiendas que venden un canónico, más barata primero.
+
+    Puerto ESTRECHO a propósito (ISP): lo satisface el mismo repo de catálogo que usa el admin,
+    pero quien lo consume desde el catálogo público sólo necesita esta consulta. Un puerto ancho
+    dejaría a una pantalla pública dependiendo de las mutaciones del back-office.
+    """
+
+    def list_providers(self, canonical_product_id: str) -> list[CanonicalProviderPriceRow]: ...
 
 
 class TaxonomyRepository(Protocol):

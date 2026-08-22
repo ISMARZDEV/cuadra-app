@@ -346,6 +346,40 @@ class ListBrandProducts:
         return [_to_card(p) for p in same_brand[:limit]]
 
 
+class ListSimilarProducts:
+    """Alternativas a un producto: sus HERMANOS en la taxonomía, la más barata por unidad primero.
+
+    Es el hermano de `ListBrandProducts` y responde a la pregunta contraria. Aquél dice «qué más
+    hace esta marca» (fidelidad); éste dice «qué otra cosa puedo llevarme en lugar de ésta»
+    (ahorro), que es la razón de ser de Save.
+
+    ⭐ Quien decide el parecido es la TAXONOMÍA, nunca el nombre. Es la doctrina de discriminación:
+    un token que nombra dos cosas no discrimina ninguna, y `word_similarity('aceite', 'Atún En
+    Aceite')` vale 1.0 legítimamente. Subir un umbral no arregla eso — hay que traer una señal
+    independiente, y aquí esa señal es el nodo del árbol. El nombre PROPONE; la estructura DISPONE.
+
+    Se mira el nodo EXACTO del producto, no la rama entera: el nodo hoja es lo que hace que dos
+    productos sean intercambiables. Subir al padre traería primos («arroz integral» para quien mira
+    «arroz blanco») y una alternativa que no lo es cuesta más que ninguna alternativa.
+    """
+
+    def __init__(
+        self, canonical_repo: CanonicalProductRepository, store_repo: StoreProductRepository
+    ) -> None:
+        self._canonical = canonical_repo
+        self._store = store_repo
+
+    def execute(self, product_id: str, *, limit: int = 12) -> list[ProductCardDto]:
+        product = self._canonical.get_by_id(product_id)
+        if product is None or not product.taxonomy_node_id:
+            return []
+        siblings = _aggregate(self._store.list_category_offerings([product.taxonomy_node_id]))
+        alternatives = [p for p in siblings.values() if p.product_id != product_id]
+        # Por unidad, no por precio a secas: un saco de 20 kg cuesta MÁS pesos y es más barato.
+        alternatives.sort(key=_sort_key("unit_price"))
+        return [_to_card(p) for p in alternatives[:limit]]
+
+
 class ListTodaysDeals:
     """"Mejores ofertas de hoy" (A7): productos con bajada de precio reciente, mayor % primero.
 

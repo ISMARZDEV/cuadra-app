@@ -18,6 +18,7 @@ from src.contexts.save.application.listing import (
     ListCategoryProducts,
     ListFeaturedProducts,
     ListProviderProducts,
+    ListSimilarProducts,
     ListTodaysDeals,
     OfferingRow,
 )
@@ -492,3 +493,74 @@ def test_ordenar_por_precio_unitario_manda_al_FINAL_lo_que_no_tiene_cantidad() -
     )
 
     assert [p.name for p in ordenados] == ["barato", "caro", "sin cantidad"]
+
+
+# ── ListSimilarProducts: alternativas de OTRA marca en la misma rama de la taxonomía ──
+#
+# La DOCTRINA DE DISCRIMINACIÓN manda aquí: quien decide qué es "parecido" es la TAXONOMÍA, no el
+# nombre. Buscar por parecido textual es exactamente cómo "Atún En Aceite" acabó emparejado con el
+# grupo "Aceites" a similitud 1.0. El nombre PROPONE; la estructura DISPONE.
+
+
+def _alt(pid: str, name: str, brand: str, minor: int, kg: str = "10") -> OfferingRow:
+    return OfferingRow(pid, name, brand, None, None, None, _q(kg), "p1", "Merca", Money(minor, DOP))
+
+
+def test_similar_products_are_the_taxonomy_siblings_excluding_self() -> None:
+    garza = CanonicalProduct("garza", "Arroz Garza", "La Garza", _q("10"), "n-blanco", "DO")
+    rows = [
+        _alt("garza", "Arroz Garza", "La Garza", 42400),
+        _alt("bisono", "Arroz Bisono", "Bisono", 21195),
+        _alt("rica", "Arroz Rica", "Rica", 30000),
+    ]
+    uc = ListSimilarProducts(FakeCanonicalRepo([garza]), FakeStoreRepo({("n-blanco",): rows}))
+
+    cards = uc.execute("garza")
+
+    assert [c.id for c in cards] == ["bisono", "rica"]  # sin el propio producto
+
+
+def test_similar_products_ignores_other_branches_of_the_tree() -> None:
+    """El discriminador es ESTRUCTURAL: un producto de otro nodo no entra aunque se llame igual."""
+    garza = CanonicalProduct("garza", "Arroz Garza", "La Garza", _q("10"), "n-blanco", "DO")
+    uc = ListSimilarProducts(
+        FakeCanonicalRepo([garza]),
+        # El fake sólo responde al nodo del producto; pedir otro devuelve vacío.
+        FakeStoreRepo({("n-integral",): [_alt("integral", "Arroz Integral", "X", 10000)]}),
+    )
+
+    assert uc.execute("garza") == []
+
+
+def test_similar_products_lead_with_the_cheapest_per_unit() -> None:
+    """Una alternativa sirve para AHORRAR: la más barata por unidad va primero, no la más parecida.
+
+    Los precios absolutos están al revés del orden por unidad a propósito — si el use case ordenara
+    por precio a secas, este test se pondría rojo.
+    """
+    garza = CanonicalProduct("garza", "Arroz Garza", "La Garza", _q("10"), "n-blanco", "DO")
+    rows = [
+        _alt("garza", "Arroz Garza", "La Garza", 42400),
+        _alt("caro_por_kg", "Arroz Chico", "A", 20000, kg="2"),    # 100 por kg, pero MENOS pesos
+        _alt("barato_por_kg", "Arroz Saco", "B", 40000, kg="20"),  # 20 por kg, pero MÁS pesos
+    ]
+    uc = ListSimilarProducts(FakeCanonicalRepo([garza]), FakeStoreRepo({("n-blanco",): rows}))
+
+    assert [c.id for c in uc.execute("garza")] == ["barato_por_kg", "caro_por_kg"]
+
+
+def test_similar_products_respects_the_limit() -> None:
+    garza = CanonicalProduct("garza", "Arroz Garza", "La Garza", _q("10"), "n-blanco", "DO")
+    rows = [_alt("garza", "Arroz Garza", "La Garza", 42400)] + [
+        _alt(f"alt{i}", f"Arroz {i}", "B", 10000 + i) for i in range(5)
+    ]
+    uc = ListSimilarProducts(FakeCanonicalRepo([garza]), FakeStoreRepo({("n-blanco",): rows}))
+
+    assert len(uc.execute("garza", limit=3)) == 3
+
+
+def test_similar_products_of_an_unknown_product_is_empty_not_an_error() -> None:
+    """Una pantalla de detalle sin alternativas se pinta vacía; no revienta."""
+    uc = ListSimilarProducts(FakeCanonicalRepo([]), FakeStoreRepo({}))
+
+    assert uc.execute("no-existe") == []
