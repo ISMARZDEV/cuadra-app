@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react-native";
 import type { ReactElement } from "react";
-import { FlatList, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 import { useColorScheme } from "nativewind";
 import type { ProductCardDto } from "@cuadra/api-client";
 
@@ -45,7 +45,9 @@ interface ProductRailProps {
   /** Sangría lateral del encabezado y de la primera/última tarjeta. La pone el rail, no el padre. */
   gutter: number;
   onSeeAll?: () => void;
-  onSelect?: (productId: string) => void;
+  /** Tocar la tarjeta. Entrega el DTO entero porque el destino se arma con el SLUG
+   *  (permalink público), no con el id. */
+  onSelect?: (product: ProductCardDto) => void;
   onFollow?: (productId: string) => void;
   /**
    * Desde qué escalón arranca la entrada de este rail.
@@ -58,6 +60,19 @@ interface ProductRailProps {
   entranceOrder?: number;
   /** Cambiarlo repite la entrada del rail entero. Ver `RiseIn`. */
   replay?: number;
+  /**
+   * Cómo se ofrece «ver todo».
+   *
+   * `pill` (por defecto) es la píldora con flecha de la home. `link` es el texto de acción del
+   * detalle de producto, donde el rail va detrás de otras secciones que YA usan un enlace de texto
+   * («Ver tiendas»): una píldora ahí sería un tercer lenguaje de acción en la misma columna.
+   *
+   * Es una PROP y no un rail nuevo: el carrusel, la cascada de entrada y la geometría son los
+   * mismos, y duplicarlos daría dos componentes que se separan al primer retoque.
+   */
+  seeAllStyle?: "pill" | "link";
+  /** Texto del enlace cuando `seeAllStyle` es `link`. */
+  seeAllLabel?: string;
 }
 
 export function ProductRail({
@@ -70,6 +85,8 @@ export function ProductRail({
   onFollow,
   entranceOrder,
   replay,
+  seeAllStyle = "pill",
+  seeAllLabel,
 }: ProductRailProps) {
   const { colorScheme } = useColorScheme();
   // El icono tiene que ir del color de la LETRA del `PillButton`, que en la variante `brand` se
@@ -102,7 +119,10 @@ export function ProductRail({
           {/* Primero el TÍTULO, después la bajada: se leen en ese orden, así que entran en ese
               orden. Al revés, el ojo empieza por lo secundario. */}
           {step(0,
-          <Text className="text-[18px] text-[#034842]" style={{ fontFamily: KANTUMRUY_SEMIBOLD }}>
+          <Text
+            className="text-[#034842]"
+            style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: seeAllStyle === "link" ? 20 : 18 }}
+          >
             {title}
           </Text>
           )}
@@ -118,12 +138,23 @@ export function ProductRail({
             ⚠️ Todavía NO tiene destino: la pantalla de listado no existe. Sin `onSeeAll` el
             `PillButton` no se hunde ni vibra (él mismo gatea la reacción al toque a que haya
             handler), así que no promete una acción que no llega. */}
-        <PillButton
-          accessibilityLabel={t("save.supermarket.seeAll")}
-          icon={<Icon as={ArrowRight} size={20} color={pillFg} strokeWidth={2.5} />}
-          onPress={onSeeAll}
-          paddingHorizontal={12}
-        />
+        {/* Sólo se dibuja si LLEVA a algún sitio. Un botón inerte que no se hunde al tocarlo no
+            engaña al dedo, pero sí ocupa el sitio de una acción y el ojo lo cuenta como tal —
+            «Más de LA FAMOSA →» con la flecha muerta se lee como una promesa rota. */}
+        {onSeeAll && seeAllStyle === "link" ? (
+          <Pressable onPress={onSeeAll} hitSlop={8} accessibilityRole="button">
+            <Text style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: 15, color: "#C2410C" }}>
+              {seeAllLabel ?? t("save.supermarket.seeAll")}
+            </Text>
+          </Pressable>
+        ) : onSeeAll ? (
+          <PillButton
+            accessibilityLabel={t("save.supermarket.seeAll")}
+            icon={<Icon as={ArrowRight} size={20} color={pillFg} strokeWidth={2.5} />}
+            onPress={onSeeAll}
+            paddingHorizontal={12}
+          />
+        ) : null}
       </View>
 
       <FlatList
@@ -140,7 +171,7 @@ export function ProductRail({
               badge={view.badge}
               discountBps={view.discountBps}
               previousPrice={view.previousPrice}
-              onSelect={onSelect ? () => onSelect(dto.id) : undefined}
+              onSelect={onSelect ? () => onSelect(dto) : undefined}
               onBookmark={onFollow ? () => onFollow(dto.id) : undefined}
             />
           );

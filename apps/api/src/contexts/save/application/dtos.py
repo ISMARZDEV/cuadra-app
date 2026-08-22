@@ -55,6 +55,38 @@ class ComparedPriceDto(BaseModel):
     url: str | None = None
 
 
+class StorePriceDto(BaseModel):
+    """Una tienda en el panel PÚBLICO de «otras tiendas» del detalle de producto.
+
+    Gemelo público de `AdminCanonicalProviderPriceDto`, y a propósito NO es el mismo objeto: la
+    fila del admin arrastra auditoría (nombre en la tienda, descripción, todas las imágenes, el id
+    del store_product) que no tiene por qué salir a una app pública. Comparten la CONSULTA
+    (`list_providers`), no la forma.
+
+    Todo el dinero en MINOR UNITS; el formateo es de la UI (regla sagrada de Save).
+    """
+
+    provider_id: str
+    provider_name: str
+    provider_logo_url: str | None = None
+    price_minor: int
+    currency: str
+    # Último precio DISTINTO al vigente. `None` = la tienda nunca lo movió, y es lo que APAGA el
+    # tachado en la UI: un 0 encendería un tachado de «RD$0.00».
+    previous_price_minor: int | None = None
+    # Sobreprecio contra la más barata. Se calcula en el SERVIDOR para que la fila y el tile de
+    # «Diferencia» no puedan discrepar — el mismo defecto que ya documentó el panel del admin.
+    extra_minor: int = 0
+    is_cheapest: bool = False
+    # `online|delivery|shelf|receipt`. Viaja porque el usuario tiene derecho a saber QUÉ precio
+    # está mirando: online y góndola no son lo mismo y nunca se mezclan (regla sagrada).
+    price_type: str | None = None
+    # Cuándo se vio por última vez. Es la mitad de la confianza: un precio sin fecha no se puede
+    # juzgar, y un precio rancio destruye el producto.
+    last_seen_at: datetime | None = None
+    url: str | None = None
+
+
 class PriceComparisonDto(BaseModel):
     canonical_product_id: str
     slug: str        # llave pública del producto (SEO / canonical URL)
@@ -63,6 +95,10 @@ class PriceComparisonDto(BaseModel):
     quality: str | None = None
     display_size: str | None = None   # tamaño original ("10 LB") para el badge
     image_url: str | None = None
+    # Prosa comercial del producto. Ya vivía en la entidad y no salía por la API; sin ella la
+    # pantalla de detalle tendría que pedir el producto DOS veces para leer un dato que la
+    # comparación ya tiene en la mano.
+    description: str | None = None
     currency: str
     entries: list[ComparedPriceDto]
     cheapest_provider: str
@@ -98,6 +134,7 @@ class PriceComparisonDto(BaseModel):
             quality=canonical.quality,
             display_size=canonical.display_size,
             image_url=canonical.image_url,
+            description=canonical.description,
             currency=comparison.cheapest.price.currency.code,
             entries=entries,
             cheapest_provider=comparison.cheapest.provider_name,

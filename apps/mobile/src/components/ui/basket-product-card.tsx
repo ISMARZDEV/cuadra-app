@@ -391,6 +391,14 @@ interface BasketProductCardProps {
   /** Seguir el precio del producto. Cuando llega, el marcador REEMPLAZA al ojo de la esquina. */
   onBookmark?: () => void;
   bookmarked?: boolean;
+  /** Cantidad CONTROLADA desde fuera. Sin ella el card la lleva en estado local, que es lo que
+   *  quiere la canasta del chat. La rejilla SÍ la controla: su «cantidad» es la pertenencia a la
+   *  canasta de comparación, que vive en un store — con estado local, volver a la pantalla
+   *  remontaría las tarjetas a cero mientras la canasta sigue llena. */
+  quantity?: number;
+  /** Avisa de cada cambio de cantidad. Es lo que convierte el «+» en el INTERRUPTOR que la
+   *  doctrina de la canasta de comparación ya describía («un interruptor, no un contador»). */
+  onQuantityChange?: (quantity: number) => void;
   /** Escala de dibujo. Por defecto la de los carruseles; la rejilla del «ver más» pasa la suya
    *  (`gridScaleFor`). Se escala TODO junto —no sólo la caja— porque el contenido a tamaño original
    *  dentro de una cáscara más chica revienta el recorte. */
@@ -407,6 +415,8 @@ function BasketProductCard({
   discountBps,
   previousPrice,
   onBookmark,
+  quantity: controlledQuantity,
+  onQuantityChange,
   bookmarked = false,
   scale = RAIL_SCALE,
 }: BasketProductCardProps) {
@@ -437,7 +447,10 @@ function BasketProductCard({
   const BAR_ICON_DY = 3.5 * k;
   const BAR_SIDE_ICON_DY = -5.5 * k;
   // Local quantity starts at 0: the card is a product picker, not a committed basket line.
-  const [quantity, setQuantity] = useState(0);
+  // Controlada si el padre la pasa; local si no. No hay `mode` nuevo: la diferencia la marca quien
+  // consume, que es la misma regla que ya gobierna `onSelect`.
+  const [localQuantity, setLocalQuantity] = useState(0);
+  const quantity = controlledQuantity ?? localQuantity;
   const { whole, cents } = formatPriceParts(item.unit_price);
   const unitLabel = buildUnitLabelParts(item.unit_price, item.size);
   const isAdded = quantity > 0;
@@ -469,7 +482,11 @@ function BasketProductCard({
   const qtyScale = useSharedValue(1);
   const qtyStyle = useAnimatedStyle(() => ({ transform: [{ scale: qtyScale.value }] }));
   const setQuantityWithPop = (next: number) => {
-    setQuantity(next);
+    // Quien MANDA es el `??` de arriba, no esta línea: con la prop puesta, escribir el estado local
+    // no cambiaría nada dibujado. Está para no provocar un re-render muerto por cada toque dentro
+    // de una FlatList, donde este card es pesado (SVG). Es rendimiento, no corrección.
+    if (controlledQuantity === undefined) setLocalQuantity(next);
+    onQuantityChange?.(next);
     qtyScale.value = withSequence(withSpring(1.22, POP_OUT), withSpring(1, POP_BACK));
   };
 

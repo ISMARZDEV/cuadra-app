@@ -45,6 +45,16 @@ type GlassButtonProps = {
    * ni un número de color existen para un lector de pantalla.
    */
   badge?: boolean | number;
+  /**
+   * Texto junto al icono. Con él el botón deja de ser un círculo y se dibuja como PÍLDORA de ancho
+   * automático, conservando el alto.
+   *
+   * Es una PROP y no un botón nuevo por la misma razón que `tone`: el vidrio, el gradiente de
+   * profundidad y el muelle del toque son los mismos. Un «botón de vidrio con texto» aparte
+   * empezaría idéntico y se separaría al primer retoque — que es como una app acaba con dos
+   * lenguajes de botón.
+   */
+  text?: string;
 };
 
 // El aviso. Rojo señal —no el lima de marca— porque no es decoración del botón sino una
@@ -60,7 +70,16 @@ const BADGE_COLOR = "#FF3B30";
 // the view config"; react-native-svg is already used across the app so it's guaranteed present.
 // Drawn ALREADY circular (rounded rect, rx=size/2) so the parent glass needs no overflow:hidden —
 // that clip + a scale transform was making the rounded mask "cut" on press.
-function ButtonDepthGradient({ color, size }: { color: string; size: number }) {
+function ButtonDepthGradient({
+  color,
+  width,
+  height,
+}: {
+  color: string;
+  /** `undefined` = ocupa todo el ancho disponible (píldora de ancho automático). */
+  width?: number;
+  height: number;
+}) {
   // Unique gradient id per instance — duplicate <Defs> ids across multiple <Svg> can collide.
   const gid = `btnGrad-${useId()}`;
   return (
@@ -72,7 +91,18 @@ function ButtonDepthGradient({ color, size }: { color: string; size: number }) {
           <Stop offset="1" stopColor={color} stopOpacity="0" />
         </LinearGradient>
       </Defs>
-      <Rect x="0" y="0" width={size} height={size} rx={size / 2} ry={size / 2} fill={`url(#${gid})`} />
+      {/* Radio = MITAD DEL ALTO, no del ancho: en una píldora el ancho es mayor y usarlo daría un
+          óvalo. Y va dibujado ya redondeado para que el vidrio no necesite `overflow: hidden`, que
+          bajo un `scale` no sigue a la transformación y deja asomar las esquinas cuadradas. */}
+      <Rect
+        x="0"
+        y="0"
+        width={width ?? "100%"}
+        height={height}
+        rx={height / 2}
+        ry={height / 2}
+        fill={`url(#${gid})`}
+      />
     </Svg>
   );
 }
@@ -86,13 +116,17 @@ export function GlassButton({
   accent = false,
   tone = "brand",
   badge = false,
+  text,
 }: GlassButtonProps) {
   // `true` = punto · número > 0 = contador · lo demás = nada.
   const badgeCount = typeof badge === "number" ? badge : null;
   const showBadge = badgeCount != null ? badgeCount > 0 : badge;
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
-  const shape = { width: size, height: size, borderRadius: size / 2 } as const;
+  // Con texto: píldora de ancho automático y el MISMO alto. Sin texto: el círculo de siempre.
+  const shape = text
+    ? ({ height: size, borderRadius: size / 2, paddingHorizontal: size * 0.4 } as const)
+    : ({ width: size, height: size, borderRadius: size / 2 } as const);
 
   // Inverted brand pair per theme — dark → dark-green glass + lime icon; light → lime glass +
   // dark-green icon (the icon never washes out). `accent` (the send button) flips the theme so it's
@@ -139,10 +173,28 @@ export function GlassButton({
       <GlassSurface
         isInteractive
         tint={tint}
-        style={{ ...shape, alignItems: "center", justifyContent: "center" }}
+        style={{
+          ...shape,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: text ? 8 : 0,
+        }}
       >
-        <ButtonDepthGradient color={gradientColor} size={size} />
+        <ButtonDepthGradient
+          color={gradientColor}
+          width={text ? undefined : size}
+          height={size}
+        />
         <Icon as={icon} size={iconSize} color={iconColor} />
+        {text ? (
+          <Text
+            style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: size * 0.36, color: iconColor }}
+            numberOfLines={1}
+          >
+            {text}
+          </Text>
+        ) : null}
       </GlassSurface>
 
       {/* Fuera del `GlassSurface`, no dentro: el vidrio nativo TIÑE lo que tiene encima, y un punto

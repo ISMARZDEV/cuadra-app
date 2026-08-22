@@ -17,6 +17,8 @@ from src.api.composition_root import (
     get_list_alerts,
     get_mark_notifications_read,
     get_list_brand_products,
+    get_list_product_stores,
+    get_list_similar_products,
     get_list_categories,
     get_list_category_products,
     get_list_collections,
@@ -63,6 +65,7 @@ from src.contexts.save.application.dtos import (
     ProductCardDto,
     ProductCardPageDto,
     ProductSearchDto,
+    StorePriceDto,
     ProviderPageDto,
     ProviderRefDto,
 )
@@ -76,6 +79,7 @@ from src.contexts.save.application.listing import (
     ListCategoryProducts,
     ListFeaturedProducts,
     ListProviderProducts,
+    ListSimilarProducts,
     ListTodaysDeals,
 )
 from src.contexts.save.application.products import ListProducts
@@ -84,6 +88,7 @@ from src.contexts.save.infrastructure.catalog_sources.ssrf_guard import (
     SsrfBlockedError,
     guarded_image_get,
 )
+from src.contexts.save.application.product_stores import ListProductStores
 from src.contexts.save.application.search import SearchProducts
 from src.contexts.save.application.search_cards import SearchProductCards
 
@@ -231,6 +236,39 @@ def category_products(
         )
     except CategoryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/product/{slug}/stores")
+def product_stores(
+    slug: str,
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    use_case: ListProductStores = Depends(get_list_product_stores),
+) -> list[StorePriceDto]:
+    """Las tiendas que venden el producto, más barata primero — el panel «Otras tiendas».
+
+    Gemelo público de «Proveedores matcheados» del admin y sobre la MISMA consulta, así que los dos
+    paneles no pueden discrepar. Trae lo que `/compare` no lleva y el panel necesita: logo de la
+    tienda, precio anterior (el tachado), `price_type` y CUÁNDO se vio por última vez.
+    """
+    try:
+        return use_case.execute(slug, market)
+    except CanonicalProductNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/product/{product_id}/similar")
+def similar_products(
+    product_id: str,
+    limit: int = Query(12, ge=1, le=50),
+    use_case: ListSimilarProducts = Depends(get_list_similar_products),
+) -> list[ProductCardDto]:
+    """Alternativas: los HERMANOS del producto en la taxonomía, más barato por unidad primero.
+
+    Hermano de `/brand` y su pregunta contraria — aquél dice «qué más hace esta marca», éste dice
+    «qué otra cosa puedo llevarme en lugar de ésta», que es la razón de ser de Save. El parecido lo
+    decide la TAXONOMÍA, nunca el nombre (doctrina de discriminación).
+    """
+    return use_case.execute(product_id, limit=limit)
 
 
 @router.get("/product/{product_id}/brand")

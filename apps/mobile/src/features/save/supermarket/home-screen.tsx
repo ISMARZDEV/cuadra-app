@@ -31,6 +31,12 @@ import {
   HEADER_BACK_MS,
 } from "./search-choreography";
 import { SearchOverlay } from "./search/search-overlay";
+import type { ProductCardDto } from "@cuadra/api-client";
+
+import { nextHiddenState } from "@/components/navigation/hide-on-scroll";
+import { useIdleHideHere } from "@/components/navigation/use-idle-hide-here";
+import { useNavHideStore } from "@/store/nav-hide-store";
+
 import { ProductRail } from "./components/product-rail";
 import { RailsSkeleton } from "./components/supermarket-skeletons";
 import { SupermarketHeader, headerBlockHeight } from "./components/supermarket-header";
@@ -153,6 +159,24 @@ export function SupermarketHomeScreen() {
   const seeAll = (origin: "deals" | "featured") =>
     router.push(`/save/supermarket/browse?origin=${origin}` as Href);
 
+  // El detalle se abre por SLUG, que es la llave pública del producto (permalink). El UUID es el
+  // plan B para los canónicos que todavía no tienen slug: el endpoint resuelve los dos.
+  // El estado del plegado vive en refs: se lee y escribe dentro del manejador de scroll, y en
+  // estado de React provocaría un repintado por fotograma.
+  const lastY = useRef(0);
+  const dragAccum = useRef(0);
+  const dragging = useRef(false);
+  const navHiddenRef = useRef(false);
+  const setNavHidden = useNavHideStore((s) => s.setHidden);
+  // Sólo aquí la barra se retira sola: es un catálogo largo y cada franja de pantalla cuenta.
+  useIdleHideHere();
+  // Al salir SIEMPRE se devuelve: una pantalla que se va dejándola escondida se la esconde también
+  // a la siguiente, que no tiene forma de saber por qué.
+  useEffect(() => () => setNavHidden(false), [setNavHidden]);
+
+  const openProduct = (product: ProductCardDto) =>
+    router.push(`/save/supermarket/product/${product.slug || product.id}` as Href);
+
   const state = resolveHomeState(
     { isLoading: deals.isLoading, isError: deals.isError, count: deals.data?.length ?? 0 },
     { isLoading: featured.isLoading, isError: featured.isError, count: featured.data?.length ?? 0 },
@@ -171,10 +195,38 @@ export function SupermarketHomeScreen() {
         <View pointerEvents="none" className="absolute inset-0" style={{ backgroundColor: BG_LIGHT }} />
       )}
       <ScrollView
-        // Sólo para saber dónde ha quedado la píldora del buscador al abrirlo — ver `search-anchor`.
-        // El manejador no hace más que escribir un número en un ref: ni estado ni repintado.
+        // Dos trabajos, los dos baratos: apuntar dónde quedó la píldora del buscador (`scrollY`, un
+        // ref: ni estado ni repintado) y decidir si la barra de tabs se aparta.
         onScroll={(e) => {
-          scrollY.current = e.nativeEvent.contentOffset.y;
+          const y = e.nativeEvent.contentOffset.y;
+          scrollY.current = y;
+
+          const dy = y - lastY.current;
+          lastY.current = y;
+          const next = nextHiddenState({
+            y,
+            maxY: e.nativeEvent.contentSize.height - e.nativeEvent.layoutMeasurement.height,
+            viewportH: e.nativeEvent.layoutMeasurement.height,
+            dy,
+            accum: dragAccum.current,
+            dragging: dragging.current,
+            hidden: navHiddenRef.current,
+          });
+          dragAccum.current = next.accum;
+          if (next.hidden !== navHiddenRef.current) {
+            navHiddenRef.current = next.hidden;
+            setNavHidden(next.hidden);
+          }
+        }}
+        // Las mismas guardas que la rejilla y el detalle, desde el MISMO módulo: sin el dedo encima
+        // no se decide nada (la inercia no es intención) y hace falta comprometer distancia.
+        onScrollBeginDrag={(e) => {
+          dragging.current = true;
+          dragAccum.current = 0;
+          lastY.current = e.nativeEvent.contentOffset.y;
+        }}
+        onScrollEndDrag={() => {
+          dragging.current = false;
         }}
         scrollEventThrottle={16}
         contentContainerStyle={{
@@ -309,6 +361,7 @@ export function SupermarketHomeScreen() {
               products={deals.data ?? []}
               gutter={GUTTER_X}
               onFollow={follow}
+              onSelect={openProduct}
               onSeeAll={() => seeAll("deals")}
             />
             <ProductRail
@@ -319,6 +372,7 @@ export function SupermarketHomeScreen() {
               products={featured.data ?? []}
               gutter={GUTTER_X}
               onFollow={follow}
+              onSelect={openProduct}
               onSeeAll={() => seeAll("featured")}
             />
           </View>

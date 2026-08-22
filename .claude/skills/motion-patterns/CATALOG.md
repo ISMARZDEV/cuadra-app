@@ -38,6 +38,7 @@ New patterns can come from the 60fps MCP **or from any video you supply** — se
 | **recollect** | ↑ same shot | [`category-batch-swap`](apps/recollect/category-batch-swap/PATTERN.md) | 2.4 s batch, 120 ms stagger, no scroll | ✅ verified |
 | **recollect** | ↑ same shot | [`rolling-word-swap`](apps/recollect/rolling-word-swap/PATTERN.md) | ease-out 250 ms, never a spring | ✅ verified |
 | **fuse** | `fuse-intro-value-prop-cycle-animation` | [`focus-slot-ticker`](apps/fuse/focus-slot-ticker/PATTERN.md) | spring ζ0.82 · k341, 1540 ms cadence | ✅ verified |
+| **grocery-concept** | user clip (no MCP) | [`deliberate-return-sheet`](apps/grocery-concept/deliberate-return-sheet/PATTERN.md) | ease-out 150 ms in · ease-in 420 ms out, **no spring** | ✅ verified |
 
 All fifteen ship working `src/`, typechecked against `apps/mobile` with a canary that must fail.
 Run `~/.claude/skills/60fps-to-reanimated/assets/verify.sh --all` to re-check the library.
@@ -68,7 +69,7 @@ Run `~/.claude/skills/60fps-to-reanimated/assets/verify.sh --all` to re-check th
 | a panel that clips, jumps or scrolls when a row appears | `self-sizing-sheet` |
 | a search entry, filter bar or compose control | `pill-to-panel-expansion` |
 
-## What the ten have in common
+## What the sixteen have in common
 
 - ⭐ **ζ ≈ 0.72 is the "premium" signature** — reached independently by abode, flighty and brilliant.
 - ⭐ **Stiffness is tempo, damping is character.** k195/ζ0.72 (sheet) vs k632/ζ0.72 (carousel) =

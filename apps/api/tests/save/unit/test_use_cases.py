@@ -137,3 +137,31 @@ def test_list_products_returns_all_in_market_for_sitemap() -> None:
     uc = ListProducts(FakeCanonicalRepo([a, b]))
     res = uc.execute("DO")
     assert {r.id for r in res} == {"c1", "c2"}
+
+
+def test_compare_product_carries_the_description() -> None:
+    """La descripción YA vivía en la entidad y no salía por la API.
+
+    La pantalla de detalle la pinta, y sin este campo habría que pedir el producto por segunda vez
+    a otro endpoint para leer un dato que la comparación ya tenía en la mano.
+    """
+    canonical = CanonicalProduct(
+        "c1", "Arroz La Garza", "La Garza", Quantity(Decimal("2"), UnitMeasure.MASS), "t", "DO",
+        slug="arroz-la-garza",
+        description="Arroz blanco de grano largo, cosecha nacional.",
+    )
+    quotes = {"c1": [StoreQuote("p-merca", "Merca", Money(42400, DOP))]}
+    uc = CompareProduct(FakeCanonicalRepo([canonical]), FakeStoreRepo(quotes))
+
+    dto = uc.execute("arroz-la-garza", "DO")
+
+    assert dto.description == "Arroz blanco de grano largo, cosecha nacional."
+
+
+def test_compare_product_description_is_none_when_absent() -> None:
+    """`None`, no cadena vacía: la pantalla decide con eso si dibuja el bloque y su «Leer más»."""
+    canonical = _canonical("c1", "Arroz La Garza")
+    quotes = {"c1": [StoreQuote("p-merca", "Merca", Money(42400, DOP))]}
+    uc = CompareProduct(FakeCanonicalRepo([canonical]), FakeStoreRepo(quotes))
+
+    assert uc.execute("arroz-la-garza", "DO").description is None

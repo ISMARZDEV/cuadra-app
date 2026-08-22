@@ -1,7 +1,11 @@
 import { Tabs } from "expo-router";
+import { useRef } from "react";
+import { type GestureResponderEvent, View } from "react-native";
 
 import { CuadraTabBar } from "@/components/navigation/cuadra-tab-bar";
+import { isRevealTap } from "@/components/navigation/reveal-tap";
 import { DevMockToggle } from "@/features/insights/components/dev-mock-toggle";
+import { useNavHideStore } from "@/store/nav-hide-store";
 
 // Tab bar — News · Insights · [iM logo · AISpace] · Save · Config.
 // Custom pill-with-notch bar (cuadra-design-system §3 tab bar); routes stay declarative.
@@ -14,8 +18,28 @@ import { DevMockToggle } from "@/features/insights/components/dev-mock-toggle";
 // at `index.tsx`. The custom tab bar filters routes by NAME into fixed visual slots (unaffected by
 // which file is "index"), but its OWN name lookups needed updating too — see cuadra-tab-bar.tsx.
 export default function TabsLayout() {
+  const tap = useNavHideStore((s) => s.tap);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  const onTouchStart = (e: GestureResponderEvent) => {
+    touchStart.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
+  };
+  const onTouchEnd = (e: GestureResponderEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    // Sólo un TOQUE revela la barra. Un arrastre es el gesto que la esconde: revelarla a mitad
+    // haría que apareciera y desapareciera dentro del mismo movimiento.
+    if (isRevealTap({ dx: e.nativeEvent.pageX - start.x, dy: e.nativeEvent.pageY - start.y })) {
+      tap();
+    }
+  };
+
   return (
-    <>
+    // El detector va en el LAYOUT, no dentro de la barra: una barra escondida está fuera de la
+    // pantalla y no puede escuchar toques. `onTouchStart`/`onTouchEnd` burbujean desde cualquier
+    // hijo SIN reclamar el gesto, así que observan sin robárselo a nadie.
+    <View style={{ flex: 1 }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -49,6 +73,6 @@ export default function TabsLayout() {
           (see dev-mock-toggle.tsx for why a Modal froze the screen instead). Only meaningfully
           affects data while you're on Insights, but it's harmless to leave visible elsewhere. */}
       {__DEV__ && <DevMockToggle />}
-    </>
+    </View>
   );
 }

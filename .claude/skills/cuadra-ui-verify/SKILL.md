@@ -206,3 +206,57 @@ Cualquier efecto que dependa de una MEDIDA (alto de fila, alto de viewport, posi
 la vista, nunca una pantalla vacía — y hay que comprobar **todas** las medidas, no la primera que
 se te ocurra: el `onLayout` del ÍTEM dispara ANTES que el de su lista, así que existe una ventana
 real con una medida lista y la otra en cero.
+
+## PREGUNTA ANTES DE EXCAVAR (2026-08-20 — la lección más cara de la sesión)
+
+Un usuario reportó «la animación de entrada no se ve la segunda vez». Gasté **muchas rondas de
+grabación y kimógrafos** intentando reproducirlo, con instrumentos que fallaban por motivos distintos
+cada vez. Después mandé **una** `AskUserQuestion` con tres preguntas —qué CAMINO exacto, en qué
+DISPOSITIVO, y qué SÍNTOMA ve— y las tres respuestas juntas («los cuatro caminos», «el simulador»,
+«aparece puesta, sin nada») **destaparon la causa raíz en un turno**.
+
+> **Cuando el síntoma depende de cómo el usuario LLEGA a la pantalla, el usuario es el instrumento
+> más barato que tienes.** Medir es para verificar una hipótesis, no para adivinar cuál es el caso.
+
+Las tres preguntas que casi siempre valen: **por qué camino**, **en qué dispositivo**, **qué ves
+exactamente** (con opciones que discriminen: «no aparece» ≠ «aparece sin desplazarse» ≠ «parpadea»).
+
+## Verificar MOVIMIENTO en el simulador (2026-08-20)
+
+Un screenshot no sirve para juzgar una animación. Lo que funciona:
+
+```bash
+# grabar mientras se navega (SIGINT para cerrar el fichero)
+xcrun simctl io booted recordVideo --codec h264 --force clip.mov
+# la cadencia REAL de fotogramas distintos
+ffprobe -v error -select_streams v:0 -show_entries frame=pts_time -of csv=p=0 clip.mov
+# extraer y comparar por bandas de fila (kimógrafo) — PGM crudo, sin PIL
+ffmpeg -v error -i clip.mov -vf "fps=60,scale=160:-1,format=gray" out/f%05d.pgm
+```
+
+Trampas que costaron una ronda cada una:
+
+- ⚠️ **`recordVideo` graba a TASA VARIABLE**: sólo emite fotograma cuando la pantalla cambia.
+  Extraer con `fps=60` DUPLICA fotogramas y los diffs salen `0.00`, que parece jank y no lo es.
+  **La cadencia real se lee con `ffprobe -show_entries frame=pts_time`, nunca de `nb_frames`.**
+- ⚠️ **Una ventana de análisis FIJA no sirve**: el instante de navegación varía en cada corrida. Hay
+  que localizar el cambio de pantalla por energía y medir relativo a él.
+- ⚠️ **Un deep link NO es un toque.** `xcrun simctl openurl` monta la pantalla bastante ANTES de que
+  empiece la transición nativa; con un toque real ambas cosas ocurren en el mismo tick. Cualquier
+  medida que dependa de ese desfase **no es concluyente** — dilo en vez de dar el arreglo por bueno.
+- ⚠️ **Pedir el MISMO deep link estando ya en esa ruta es un no-op del router** (energía 0.0). No lo
+  confundas con «no anima».
+- ⚠️ **Espera a que el bundle ACABE de recargar** tras relanzar el dev-client (~12-20 s). Una corrida
+  con el spinner en pantalla es una corrida perdida, y no siempre se nota en los números.
+
+**Instrumento preferido cuando el recorte falla: dibuja el número.** Una barra cuya ANCHURA es el
+valor del reloj (`useAnimatedStyle(() => ({ width: v.value * 360 }))`) se mide por píxeles en todos
+los fotogramas — sin OCR, sin acertar un recorte, sin `setInterval`. Y colócala donde SE VEA: el
+primer panel quedó bajo la curva del header y perdí una ronda entera.
+
+## Lo que `simctl` NO puede hacer, y hay que DECIRLO
+
+- **No toca la pantalla**: nada de taps, scroll, long-press ni gestos. Una hoja que se abre al tocar
+  **no se puede verificar** — se dice explícitamente y se le pide al usuario, no se da por buena.
+- **AppleScript tampoco**: `System Events` no ve `window 1` del proceso Simulator (error -1719), y
+  el keystroke se lo puede comer el editor del usuario.
