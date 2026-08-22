@@ -8,6 +8,7 @@ import { useColorScheme } from "nativewind";
 import * as Haptics from "expo-haptics";
 
 import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
+import { SquircleCard } from "@/components/ui/squircle-card";
 
 import { HUB_GUTTER_X } from "../layout";
 
@@ -136,6 +137,13 @@ export function VerticalCard({ vertical, onPress }: VerticalCardProps) {
       style={[
         {
           height: CARD_HEIGHT,
+          // ⚠️ NO es duplicado del `SquircleCard` de dentro: este radio da forma a la SOMBRA, que
+          // vive aquí porque en iOS `overflow: "hidden"` y `shadow*` en la MISMA vista se pelean.
+          // Borrarlo dejaría una sombra de esquina circular bajo una tarjeta suavizada.
+          //
+          // Sí queda una asimetría asumida: la silueta de la sombra es la curva de Apple (60 %) y
+          // la de la tarjeta el suavizado al máximo. Con 12.4pt de desenfoque la diferencia no se
+          // ve, y un `Pressable` no puede ser la vista nativa del squircle.
           borderRadius: CARD_RADIUS,
           borderCurve: "continuous",
           backgroundColor: cardBg,
@@ -158,11 +166,10 @@ export function VerticalCard({ vertical, onPress }: VerticalCardProps) {
           devolvía el canto duro. Verificado con lupa sobre el render real.
           El borde se pinta ENCIMA de los hijos ya recortados: de ahí sale el aro de 2pt del
           diseño, parejo en todo el contorno y siguiendo la misma curva. */}
-      <View
+      <SquircleCard
         style={{
           flex: 1,
           borderRadius: CARD_RADIUS,
-          borderCurve: "continuous",
           overflow: "hidden",
           borderWidth: CARD_BORDER,
           borderColor: cardBg,
@@ -260,7 +267,7 @@ export function VerticalCard({ vertical, onPress }: VerticalCardProps) {
           pointerEvents: "none",
         }}
       />
-      </View>
+      </SquircleCard>
     </AnimatedPressable>
   );
 }

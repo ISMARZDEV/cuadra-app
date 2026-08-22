@@ -8,11 +8,15 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useColorScheme } from "nativewind";
 import { Platform, View, type ViewProps } from "react-native";
-import SquircleView from "react-native-squircle-view";
+import SquircleView from "react-native-fast-squircle";
 
 // Cross-platform "glass" surface with Apple corner smoothing (squircle) + liquid glass border:
 //   • iOS 26+  → real Apple liquid glass (expo-glass-effect GlassView) — handles its own border
 //   • Android / older iOS → frosted blur (expo-blur) + SquircleView + gradient border
+//
+// ⚠️ Esta rama de respaldo NO se ejecuta en iOS 26, que es donde se prueba la app: un defecto suyo
+// puede pasar meses sin verse (ya pasó — ver el historial de `react-native-squircle-view`). Cambiar
+// algo aquí sin poder ejecutarlo es escribir a ciegas.
 //   • web → translucent fill.
 //
 // Border: vertical gradient simulating light reflection on glass edge —

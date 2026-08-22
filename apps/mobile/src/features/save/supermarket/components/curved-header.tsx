@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
+  Extrapolation,
   interpolate,
   useAnimatedStyle,
   type SharedValue,
@@ -50,6 +51,44 @@ interface CurvedHeaderProps {
   onBasket?: () => void;
   basketIcon: LucideIcon;
   /**
+   * El reloj del CONTENIDO (título y botones), si debe diferir del de la cáscara.
+   *
+   * Por defecto es el mismo `progress`: la cabecera encoge y su contenido se va con ella. El
+   * detalle de producto los separa porque allí quien empuja los controles hacia arriba es la
+   * tarjeta de la foto, que se retira mucho antes de que el verde termine de encoger — con un solo
+   * reloj, la tarjeta les pasaba por encima en vez de empujarlos.
+   */
+  contentProgress?: SharedValue<number>;
+  /**
+   * Cuánto SUBE el contenido mientras se va, en puntos.
+   *
+   * Por defecto 34: en la rejilla la cabecera entera se retira de un tirón y los controles la
+   * acompañan hacia arriba, que es lo que dice que se van CON ella.
+   *
+   * El detalle de producto pasa **0** a propósito: allí el header se queda FIJO y quien se mueve es
+   * la tarjeta de la foto, que les pasa por encima. Si además se desplazaran, dos cosas se moverían
+   * en direcciones que el usuario no pidió y el header dejaría de leerse como el suelo firme sobre
+   * el que la foto se desliza.
+   */
+  contentLift?: number;
+  /**
+   * En qué punto del reloj del contenido termina de apagarse.
+   *
+   * Por defecto 0.6: la cabecera de la rejilla encoge deprisa y sus controles tienen que estar
+   * fuera antes de que el verde los alcance. El detalle pasa **1** porque su reloj YA es la ventana
+   * exacta del apagado (ver `HEADER_CONTENT_FADE`) — recortarla otra vez aquí la dejaría a la mitad.
+   */
+  contentFadeEnd?: number;
+  /**
+   * Aire verde EXTRA por debajo de la fila de botones, antes de que empiece la curva.
+   *
+   * Por defecto 0: la mayoría de las cabeceras quieren la curva pegada a la fila, y reservar sitio
+   * «por si acaso» fue justo el defecto que dejó al detalle con 52pt de verde vacío. Se pide
+   * explícitamente donde el diseño lo pide — en el detalle, para que la tarjeta de la foto tenga
+   * verde de sobra sobre el que montarse.
+   */
+  belowRow?: number;
+  /**
    * Hacia dónde arquea el canto inferior.
    *
    * `convex` (por defecto) = el verde BAJA en el centro, como una gota. Es lo que llevan la home y
@@ -94,6 +133,10 @@ export function CurvedHeader({
   onBasket,
   basketIcon,
   curve = "convex",
+  belowRow = 0,
+  contentProgress,
+  contentLift = 34,
+  contentFadeEnd = 0.6,
   children,
 }: CurvedHeaderProps) {
   // ⭐ El alto de las PESTAÑAS sólo se reserva si hay pestañas. Sin esto, una pantalla sin ellas
@@ -102,7 +145,7 @@ export function CurvedHeader({
   //
   // Es la diferencia entre reservar sitio para lo que HAY y reservarlo para lo que este componente
   // suele llevar.
-  const expanded = safeTop + HEADER_ROW + (children ? HEADER_TABS : 0);
+  const expanded = safeTop + HEADER_ROW + (children ? HEADER_TABS : 0) + belowRow;
   // Colapsado se queda la franja del área segura y un dedo de verde: sin ese resto, la curva
   // aterrizaría sobre el reloj del sistema.
   const collapsed = safeTop + 6;
@@ -114,9 +157,12 @@ export function CurvedHeader({
   // El contenido se va HACIA ARRIBA mientras se desvanece, en vez de sólo desaparecer: acompaña al
   // dedo. Y deja de recibir toques en cuanto empieza a irse — un botón invisible que aún responde
   // es peor que uno que no está.
+  // El contenido puede llevar SU propio reloj — ver `contentProgress`. Se resuelve fuera del
+  // worklet para que éste capture una referencia y no una condición.
+  const contentClock = contentProgress ?? progress;
   const contentStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.5], [1, 0]),
-    transform: [{ translateY: interpolate(progress.value, [0, 1], [0, -24]) }],
+    opacity: interpolate(contentClock.value, [0, contentFadeEnd], [1, 0], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(contentClock.value, [0, 1], [0, -contentLift]) }],
   }));
 
   return (

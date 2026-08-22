@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/icon";
 import { t, useLang } from "@/i18n";
 import { formatMoney } from "@/lib/money";
 import { palette } from "@/theme";
+import { SquircleCard } from "@/components/ui/squircle-card";
 
 import type { SubscriptionRowProps } from "../interfaces";
 
@@ -12,7 +13,7 @@ import type { SubscriptionRowProps } from "../interfaces";
 export function SubscriptionRow({ alert, onRemove }: SubscriptionRowProps) {
   useLang(); // re-render en vivo al cambiar idioma (skill cuadra-mobile §5)
   return (
-    <View className="flex-row items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
+    <SquircleCard className="flex-row items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3">
       <View className="flex-1">
         <Text className="text-base text-text">{alert.product_name}</Text>
         {alert.threshold_minor != null && (
@@ -27,6 +28,6 @@ export function SubscriptionRow({ alert, onRemove }: SubscriptionRowProps) {
       >
         <Icon as={Trash2} size={20} color={palette.danger} />
       </Pressable>
-    </View>
+    </SquircleCard>
   );
 }

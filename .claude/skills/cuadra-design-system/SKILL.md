@@ -4,7 +4,12 @@ description: >
   Cuadra's visual language for the Expo app — dark/light themes, green brand palette,
   card/FAB/tile/bubble components, and the signature screen patterns (Insights wheel,
   Daily Diary, News masonry, Chat, Save marketplace). Lucide icons. Gamified, warm, rounded.
+  Dueña de LA ESQUINA de Cuadra: el corner smoothing (squircle) vía `SquircleCard`, cuándo aplicarlo
+  y cuándo NO (círculos y píldoras nunca), el patrón para `Pressable`, y por qué
+  `borderCurve: "continuous"` —que ES el 60 % de Apple— no basta.
   Trigger: Building or styling any screen/component in apps/mobile, or defining theme tokens.
+  Cargar también ante «Unimplemented component: <FastSquircleView>», «las esquinas no se ven
+  suavizadas» o al añadir CUALQUIER superficie redondeada.
 license: Apache-2.0
 metadata:
   author: aispace
@@ -67,6 +72,75 @@ metadata:
 
 **5. i18n:** all visible copy via `src/i18n` (es/en/pt). No hardcoded user-facing strings.
 
+## La ESQUINA de Cuadra — corner smoothing (squircle)
+
+**Toda superficie con esquina usa `SquircleCard`, no un `<View>` con `borderRadius`.**
+
+```tsx
+import { SquircleCard } from "@/components/ui/squircle-card";
+
+<SquircleCard className="rounded-2xl bg-surface px-4 py-3">…</SquircleCard>
+```
+
+El suavizado vive en UNA constante (`CORNER_SMOOTHING = 1`). No lo repitas en cada tarjeta: bastaría
+olvidarlo en una para tener dos lenguajes de esquina en la misma pantalla — lo que nadie sabe
+explicar pero todo el mundo nota.
+
+### Por qué NO basta `borderCurve: "continuous"`
+
+`borderCurve: "continuous"` **es** el corner smoothing de Apple (`RoundedCornerStyle.continuous`), y
+equivale al **60 %** que Figma documenta como su preset de iOS. A los radios de esta app la
+diferencia contra una esquina circular son un par de puntos: **se siente, no se ve**. El diseño de
+Cuadra la quiere visible, y `borderCurve` no tiene escala intermedia —sólo `circular` o
+`continuous`—, así que el suavizado tiene que venir de fuera. Además es **iOS-only**: en Android cae
+a esquinas circulares en silencio.
+
+### La regla NO es el tamaño del radio, es la FORMA
+
+| Aplícalo | NO lo apliques |
+|---|---|
+| Tarjetas y **botones**, de radio ~8 para arriba | **Círculos y píldoras** (`borderRadius: alto / 2`) |
+| Cualquier superficie con lado recto | Sellos y separadores de radio 2-6 |
+
+En un círculo o una píldora **no hay lado recto contra el que suavizar la curva**: el suavizado no
+significa nada y la forma resultante es incorrecta. En radios diminutos es imperceptible y sólo
+añade una vista nativa de más.
+
+> La primera versión de esta regla decía «de 12pt para arriba». Era una inferencia, y los botones de
+> `store-actions` —radio 8— la desmintieron: ahí sí se lee.
+
+### Un `Pressable` no puede ser la vista nativa del squircle
+
+Patrón para botones y filas pulsables — **la FORMA fuera, el TOQUE dentro**:
+
+```tsx
+<SquircleCard className="rounded-2xl <tinte>" style={{ borderRadius: 8, overflow: "hidden", … }}>
+  <Pressable onPress={…} className="flex-row items-center" style={{ paddingHorizontal: 12 }}>…</Pressable>
+</SquircleCard>
+```
+
+- ⭐ **El `overflow: "hidden"` se queda ARRIBA.** Dejándolo en el `Pressable`, el contenido (un
+  degradado, una foto) se recorta contra una esquina CIRCULAR mientras el borde dibuja la suavizada,
+  y el canto delata las dos formas.
+- ⭐ **El tinte sigue yendo por `className`**, no por `style`: es lo que le da pareja en oscuro.
+
+### Es una vista NATIVA — consecuencias
+
+`react-native-fast-squircle` es un componente de **Fabric** (`codegenConfig` + `componentProvider`).
+Se eligió sobre alternativas por eso: `react-native-squircle-view` usaba `requireNativeComponent` de
+la arquitectura vieja y fue **borrada**.
+
+⚠️ **Si ves `Unimplemented component: <FastSquircleView>`**, el arreglo NO es tocar código:
+
+```bash
+./scripts/check-native-build.sh          # ¿qué dep nativa falta en Podfile.lock?
+cd apps/mobile && EXPO_FREE_SIGNING=1 npx expo prebuild --clean
+./scripts/ios-device-build.sh
+```
+
+`cssInterop(SquircleView, { className: "style" })` ya está aplicado en `squircle-card.tsx`: por eso
+`className` funciona y no hay que reescribir a estilos en línea para cambiar una esquina.
+
 ## Catálogo de controles — QUÉ EXISTE YA, antes de construir uno nuevo
 
 ⚠️ **Lee esta tabla antes de escribir un campo, un botón o una superficie.** Casi todo lo que una
@@ -81,6 +155,8 @@ que se parecen y se separan con el tiempo.
 | `GlassButton` | Botón REDONDO de símbolo (volver, canasta, cerrar). `tone="brand"` (lima/verde) o `tone="danger"` (rojo de cerrar/deshacer) | `cuadra-glass-button` |
 | `PillButton` | Acción secundaria con más peso que texto y menos que un botón sólido. Variantes `brand`/`surface`/`discount`; `label` opcional (sólo icono) | `cuadra-chat-input` + `cuadra-chat-suggestions` |
 | `GlassSurface` | La primitiva de vidrio. **Normalmente NO se usa directa** — usa `GlassField` o `GlassButton` | `cuadra-chat-input` |
+| `SquircleCard` | **CUALQUIER superficie con esquina**: tarjetas, filas, botones no-píldora. Trae la esquina de Cuadra (suavizado al máximo) y acepta `className`. **Nunca en círculos ni píldoras** | § La ESQUINA de Cuadra |
+| `TopScrollFade` | El canto superior de una lista que se corta: desenfoque + lavado con degradado. Dice «arriba hay más» donde un corte limpio diría «acá se acaba». Pásale el color de fondo REAL de la pantalla | `cuadra-motion` |
 | `RiseIn` | Entrada «sube y aparece» de un bloque. Prop `replay` para repetirla al volver a la pantalla | `cuadra-motion` |
 | `ShimmerSkeleton` | El hueco de lo que viene, con su luz. **Nunca una ruedecita**: el esqueleto dice QUÉ llega y dónde, así que al llegar no hay salto | — |
 

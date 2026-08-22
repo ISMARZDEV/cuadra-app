@@ -1,7 +1,8 @@
-import { Text, View } from "react-native";
+import { Text } from "react-native";
 
 import { t, useLang } from "@/i18n";
 import { formatMoney } from "@/lib/money";
+import { SquircleCard } from "@/components/ui/squircle-card";
 
 import type { NotificationCardProps } from "../interfaces";
 
@@ -9,7 +10,7 @@ import type { NotificationCardProps } from "../interfaces";
 export function NotificationCard({ notification: n }: NotificationCardProps) {
   useLang(); // re-render en vivo al cambiar idioma (skill cuadra-mobile §5, reactividad de t())
   return (
-    <View className="rounded-2xl border border-border bg-surface px-4 py-3">
+    <SquircleCard className="rounded-2xl border border-border bg-surface px-4 py-3">
       <Text className="text-base font-semibold text-text">{n.product_name}</Text>
       <Text className="mt-0.5 text-sm text-muted">
         {t("save.alerts.droppedFromTo", {
@@ -19,6 +20,6 @@ export function NotificationCard({ notification: n }: NotificationCardProps) {
         })}{"  "}
         <Text className="font-semibold text-primary">−{(n.drop_bps / 100).toFixed(1)}%</Text>
       </Text>
-    </View>
+    </SquircleCard>
   );
 }

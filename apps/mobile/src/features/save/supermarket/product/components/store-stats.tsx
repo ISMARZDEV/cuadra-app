@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
 import { formatMoney } from "@/lib/money";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
+import { SquircleCard } from "@/components/ui/squircle-card";
 
 import type { StoreStanding } from "../product-view";
 
@@ -66,7 +67,7 @@ function Tile({
 }) {
   const c = TONES[tone];
   return (
-    <View
+    <SquircleCard
       className="flex-1 items-center rounded-2xl px-2"
       style={{
         paddingVertical: 10,
@@ -94,6 +95,6 @@ function Tile({
       >
         {label}
       </Text>
-    </View>
+    </SquircleCard>
   );
 }

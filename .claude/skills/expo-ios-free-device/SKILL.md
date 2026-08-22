@@ -140,6 +140,32 @@ Mismo patrón latente en `find … | head -1`. **Regla: en un script con `pipefa
 consumidor pueda salir antes que el productor necesita `|| true` — o no ser una tubería.** Y un
 `| tail` al final de una invocación enmascara el código de salida del script entero.
 
+**9. ⚠️ NO EDITES FUENTES MIENTRAS UN RELEASE COMPILA.**
+
+En Debug el JS lo sirve Metro en vivo, así que editar durante un build es inocuo. **En Release el
+bundle se HORNEA DENTRO del binario** (`main.jsbundle`), así que un cambio a mitad puede dejar un
+`.app` con medio cambio dentro — y nadie sabría qué está mirando al probarlo.
+
+El script dice cuándo ha pasado el peligro:
+
+```
+Writing bundle output to: …/main.jsbundle   ← a partir de aquí, editar ya no contamina ESTE build
+** BUILD SUCCEEDED **
+✓ El bundle apunta a http://<IP-LAN>:8005
+✓ La firma caduca: <fecha>                  ← los 7 días del perfil gratuito
+▶ Instalando en <UDID>…
+✅ Cuadra instalada en RELEASE. Ya NO necesita Metro.
+```
+
+⭐ **Y verifica en el artefacto que el código NUEVO va dentro**, no sólo que el build salió verde
+(patrón 7). Un `grep` cuenta la verdad:
+
+```bash
+B=~/Library/Developer/Xcode/DerivedData/Cuadra-*/Build/Products/Release-iphoneos/main.jsbundle
+ls -la $B                    # ¿la marca de tiempo es de HACE UN MINUTO?
+grep -ac "FastSquircleView" $B   # ¿está el componente que acabas de añadir?
+```
+
 ## Commands
 
 ```bash

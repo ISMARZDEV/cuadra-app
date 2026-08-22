@@ -7,13 +7,15 @@ description: >
   Cada regla salió de un defecto real y trae el síntoma por el que se reconoce.
   Trigger: construir o depurar CUALQUIER animación en `apps/mobile` — `useAnimatedStyle`,
   `useSharedValue`, `withTiming`/`withSpring`/`withDelay`, `useAnimatedScrollHandler`, worklets,
-  transiciones entre pantallas, carruseles que se mueven solos, cascadas/escalonados. Dueña además
-  del PATRÓN COMPLETO «una pantalla que se REORGANIZA para dejarle sitio a un campo» — el campo que
-  sube desde su sitio en reposo empujando el header/carrusel hacia arriba y vuelve al cancelar—,
-  listo para reusar en pantallas nuevas. Cargar también ante
+  transiciones entre pantallas, carruseles que se mueven solos, cascadas/escalonados. Dueña de DOS
+  PATRONES COMPLETOS listos para reusar: «una pantalla que se REORGANIZA para dejarle sitio a un
+  campo» y «una pantalla de DETALLE que se PLIEGA al hacer scroll» —la pieza grande de arriba se
+  retira, la cabecera se compacta y el contenido aterriza bajo la curva—, con su geometría derivada,
+  su imán nativo y sus tests en coordenadas de pantalla. Cargar también ante
   síntomas como «aparece en el sitio equivocado un fotograma», «salta al abrir/cerrar», «a veces sí
-  y a veces no», «la primera vez falla y después va bien», «se mueve demasiado despacio/rápido» o
-  «el control no responde al dedo mientras se anima».
+  y a veces no», «la primera vez falla y después va bien», «se mueve demasiado despacio/rápido»,
+  «el control no responde al dedo mientras se anima», «undefined is not a function» en un worklet
+  con los tests verdes, o «sube demasiado / se queda corto / quedó todo detrás del header».
 license: Apache-2.0
 metadata:
   author: aispace
@@ -262,6 +264,57 @@ El arreglo es retrasar el arranque hasta que la pantalla esté quieta. Dos aviso
   (caché, frío, volver de otra pestaña) salen de una sola resta sin preguntar por qué camino se
   entró. Ver `product/motion/arrival.ts`.
 
+### 12. ⭐⭐⭐ El ORDEN DE DECLARACIÓN es una regla del lenguaje, en DOS sabores
+
+Los dos comparten perfil de peligro: **typechecan, pasan todos los tests y revientan en el
+dispositivo.** Ninguna puerta del repo los ve.
+
+#### 12a. Un worklet NO puede llamar a otro declarado más abajo
+
+**Síntoma: `Render Error — undefined is not a function` en el dispositivo, con TODOS los tests verdes
+y el typecheck limpio.**
+
+El plugin de Babel captura las funciones referenciadas EN EL MOMENTO de crear el worklet, así que
+dentro de un worklet el hoisting normal de JS **no aplica**. El orden de declaración deja de ser
+cosmético y pasa a ser una regla del lenguaje.
+
+```ts
+// ✗ REVIENTA en el dispositivo
+export function galleryLift(y, d, shrink) { "worklet"; return -(y + shrink * headerCollapse(y, d)); }
+export function headerCollapse(y, d)      { "worklet"; return windowProgress(y, d, SHELL); }
+
+// ✓ Los llamados SIEMPRE antes que quien los llama
+export function headerCollapse(y, d)      { "worklet"; ... }
+export function galleryLift(y, d, shrink) { "worklet"; ... }
+```
+
+⚠️ **Ningún test normal puede verlo**: en el arnés `"worklet"` es una cadena inerte y el hoisting
+funciona. 553 tests pasaron verdes mientras la app se caía al abrir la pantalla.
+
+✅ **Ya hay guardia**: `motion/worklet-order.test.ts` lee el CÓDIGO FUENTE de la carpeta, extrae las
+funciones por llaves balanceadas (no regex — los cuerpos llevan objetos anidados), y falla diciendo
+qué mover. **Es portable**: cópialo a cualquier otra carpeta de worklets. Y si escribes uno nuevo,
+pruébalo reintroduciendo el defecto a propósito — un guardia que no se comprueba no protege nada.
+
+#### 12b. Un `useDerivedValue` no puede leer un `const` declarado DESPUÉS
+
+**Síntoma: pantalla en blanco o crash en el PRIMER render.** `useDerivedValue` evalúa su función de
+inmediato para calcular el valor inicial, así que un `const` que aún no existe es un **TDZ**.
+
+```tsx
+// ✗ TDZ: revienta en el primer render, y TypeScript no dice nada
+const collapse = useDerivedValue(() => headerCollapse(scrollY.value, collapseDist));
+const collapseDist = collapseDistance({ … });
+
+// ✓ TODA la geometría ARRIBA del todo, antes de cualquier reloj
+const collapseDist = collapseDistance({ … });
+const collapse = useDerivedValue(() => headerCollapse(scrollY.value, collapseDist));
+```
+
+⚠️ **Los tests tampoco lo cazan** si nadie renderiza esa pantalla —y los tests de movimiento prueban
+módulos PUROS, no pantallas—. **Regla práctica: en una pantalla con movimiento, la geometría se
+calcula ARRIBA DEL TODO**, antes del primer `useSharedValue`/`useDerivedValue`.
+
 ## El PATRÓN: una pantalla que se REORGANIZA para dejarle sitio a un campo
 
 El buscador de Supermarket, construido entero y depurado a lo largo de muchas rondas. **Reúsalo tal
@@ -343,6 +396,127 @@ matemático de la de entrada llegaría a destino a máxima velocidad: un frenazo
 que más se mira, el aterrizaje. **Lo que hace que el cierre se lea como «deshacer» no es la curva: es
 que recorra EL MISMO CAMINO, entre los MISMOS extremos y en el MISMO tiempo.**
 
+## El PATRÓN: una pantalla de DETALLE que se PLIEGA al hacer scroll
+
+El detalle de producto de Supermarket. **Reúsalo tal cual** cuando una pantalla tenga una pieza
+grande arriba (foto, portada, mapa) que deba retirarse al bajar dejando una cabecera compacta:
+detalle de tarjeta, de préstamo, de comercio.
+
+Vive en `product/motion/gallery-collapse.{ts,test.ts}` (TODOS los números),
+`product/product-screen.tsx` (la geometría) y `components/curved-header.tsx` (la cáscara).
+
+### La idea que lo sostiene
+
+**Todo cuelga de UN `scrollY`.** No hay animación de entrada y otra de salida que puedan discrepar:
+hay un número que sube y baja con el dedo. Por eso **la vuelta no hay que escribirla** —es el mismo
+cálculo con otro valor— y el dedo puede pararse donde quiera: cada punto tiene su estado.
+
+Y es aritmética PURA, sin `interpolate` de Reanimated: se puede probar sin dispositivo (el arnés
+stubea `interpolate`, así que un test sobre él no probaría nada) y se puede llamar desde un worklet.
+
+### ⚠️ La GEOMETRÍA es donde viven TODOS los defectos
+
+**Cuatro entregas seguidas se rechazaron, y los tests de la FÓRMULA pasaron en las cuatro.** El
+defecto nunca estuvo en la aritmética: estaba en dónde caían las cosas en la pantalla. Tres verdades,
+una ronda cada una:
+
+1. ⭐⭐⭐ **El `ScrollView` es HERMANO del header, no hijo.** Cuando el verde encoge, el techo del
+   scroll SUBE con él y el contenido recibe ese desplazamiento GRATIS.
+   **Cuánto VIAJA la pieza y cuánto SCROLL hace falta son DOS NÚMEROS DISTINTOS.** Confundirlos
+   se pasa por exactamente lo que el header encoge (118pt aquí), y con imán ese exceso se aplica
+   **de golpe al soltar**: el título termina enterrado detrás de la curva.
+2. ⭐⭐⭐ **La panza de la curva CUELGA FUERA de la caja** (`position:absolute; bottom:-BULGE`).
+   **La altura de `CurvedHeader` NO es dónde termina el verde.** Medir contra la caja se pasa 28pt.
+3. ⭐⭐ **Lo que ocupa sitio en el flujo, cuenta.** Los puntos del carrusel, al moverse de dentro de
+   la foto al hueco bajo ella, dejaron de flotar y pasaron a empujar al título.
+
+```
+D            = photoGap + photoHeight + dotsBand − belowRow − headerBulge − TITLE_CLEARANCE
+headerShrink = headerRow + belowRow − HEADER_REST
+```
+
+⭐ **El área segura SE CANCELA sola** (entra en los dos lados de la resta), por eso la función no la
+pide y nadie tiene que acordarse de ella.
+
+### Los tramos, en FRACCIONES del recorrido — nunca en puntos
+
+Escribir «a los 200pt» ata el plegado a un teléfono: generoso en un Pro Max, ahogado en un SE. En
+fracciones la coreografía es la misma y sólo cambia cuánto dedo cuesta.
+
+| Tramo | Fracción | Regla que lo sujeta |
+|---|---|---|
+| Flechas y puntos del carrusel | `0 → 0.08` | Gobiernan la pieza que se va: se apartan al PRIMER roce |
+| Controles del header | `0.04 → 0.22` | Fuera antes de que la pieza llegue arriba — pero **no en 0** |
+| Cáscara verde | `0.2 → 1` | Arranca DESPUÉS que la pieza, o todo se sacude a la vez |
+| La FOTO | `0.45 → 0.92` | Aguanta entera mientras esté dentro de la pantalla |
+| Tirador | `= fin de la foto → 1` | DERIVADO (`INDICATOR_REVEAL.from = PHOTO_FADE.to`), no un número suelto |
+
+⭐ **El `0.04` de los controles del header no es ruido: es la diferencia entre dos familias.** Las
+flechas y los puntos arrancan en **0** porque gobiernan la pieza que se está yendo —en cuanto el dedo
+baja, dejaron de tener sentido—. Los controles del header **siguen en su sitio en el fotograma 2** de
+la referencia, así que salir disparados con el primer punto de scroll los delataría como accionados
+por un umbral en vez de por el gesto. Hay un test para cada uno.
+
+⭐ **El tirador NO lleva número propio**: se declara `{ from: PHOTO_FADE.to, to: 1 }`. Alargar el
+desvanecido de la foto lo recoloca solo, en vez de descuadrarlo — que fue justo lo que pasó la
+primera vez que se estiró el tramo de la foto.
+
+### Las cuatro reglas que costaron un rechazo cada una
+
+- ⭐⭐⭐ **NO RECORTAR contra un canto inventado.** Se probó bajo la fila de botones y en el canto de
+  la cabecera compacta: las dos veces la tarjeta apareció **AMPUTADA** —canto recto, esquinas
+  cuadradas—. Sale por el borde FÍSICO de la pantalla, sin `overflow`. Lo que la hace desaparecer es
+  el desvanecido tardío. **Un recorte que el usuario ve es un defecto aunque la geometría cuadre.**
+- ⭐⭐⭐ **Los controles del header se van HACIA ARRIBA y fuera, no se quedan apagándose.** Clavados,
+  la pieza sube ENTRE dos botones que siguen ahí, y eso se lee como algo pegado encima de una
+  cabecera que no se entera. (`contentLift` en `CurvedHeader`.)
+- ⭐⭐ **Primero el MOVIMIENTO, después la desaparición.** Una opacidad que cae desde el primer punto
+  de scroll se lee como bajarle el brillo a algo; aguantando entera mientras viaja se lee como una
+  superficie que se retira. El disparo es un hecho GEOMÉTRICO —que el canto superior haya salido—,
+  no «pasada la mitad».
+- ⭐⭐ **La pieza que vive FUERA del scroll necesita las DOS causas**: el dedo y lo que el header
+  encoge. Con una sola, ella y su hueco reservado DIVERGEN y el título acaba leyéndose por debajo.
+
+### El imán lo hace la PLATAFORMA
+
+`snapToOffsets={[0, D]}` + `snapToEnd={false}`. iOS calcula el destino proyectado del gesto
+—velocidad incluida— DENTRO del mismo gesto, antes de decelerar.
+
+⚠️ **NUNCA reimplementarlo con `scrollTo` en `onEndDrag`/`onMomentumEnd`.** Pelea contra el motor de
+deceleración y cada caso que se tapa destapa otro: tirón con impulso, reentrada por el propio
+`scrollTo`, temblor por no aterrizar exacto. Es un anti-patrón documentado
+(`react-native-collapsible-tab-view`), y encima `scrollTo` tiene issues abiertos en Reanimated 4
+sobre Fabric (#8190, #9000).
+
+⭐ **Un imán exige que el destino sea EXACTO**, no aproximado: sin él un error de geometría se
+disimula; con él se aplica de golpe al soltar.
+
+### Cómo se testea (y el error que hay que no repetir)
+
+**Escribe los tests en COORDENADAS DE PANTALLA, no sobre la fórmula.** Los de la fórmula pasaron en
+todas las versiones rotas. El invariante que de verdad importa:
+
+```ts
+// Al imantar, el techo del contenido se posa sobre el canto REAL del verde
+expect(COLLAPSED + PHOTO_SLOT - D).toBe(GREEN_BOTTOM + TITLE_CLEARANCE);
+// Y la pieza queda escondida en ESA MISMA línea — son la misma línea en la maquetación
+expect(BLOCK_BOTTOM - D - SHRINK).toBe(GREEN_BOTTOM + TITLE_CLEARANCE);
+// Y no divergen en NINGÚN punto del recorrido
+for (const y of [0, 40, 90, 150, D]) expect(cardBottom(y)).toBeCloseTo(contentTop(y), 6);
+```
+
+⚠️ **Razona cuál es el dispositivo LÍMITE, no asumas que el pequeño es el peor.** «La foto aguanta
+opaca hasta salir por arriba» aprieta con el área segura MÁS GRANDE (Pro Max) —tarda más en salir—;
+«los controles se han ido antes de que llegue» aprieta con la MÁS PEQUEÑA (SE). Un test escrito
+contra el extremo equivocado pasa sin exigir nada.
+
+### Cuando el brief escrito y la IMAGEN discrepan
+
+Gana la imagen — pero **avísalo**. Aquí el brief decía «los controles NO deben desplazarse» y el
+fotograma 3 los mostraba cortados por el borde superior. Y decía «el usuario debe poder detener el
+dedo en cualquier punto», que se leyó como una prohibición del imán cuando describía el DIBUJO
+DURANTE el gesto, no el ATERRIZAJE al soltar. Son cosas distintas.
+
 ## Testear movimiento
 
 ⚠️ **El stub de `react-native-reanimated` hace estos defectos INVISIBLES.** `useAnimatedStyle` devuelve
@@ -408,6 +582,13 @@ función pura que traduzca el plan a tiempo real (`stepScheduleMs`) y afirma sob
 | Reiniciar un reloj a mano al cambiar de contenido | La escritura desde JS ENCOLA → un fotograma a opacidad plena (§10b) |
 | Colgar la identidad de una entrada del parámetro de RUTA | Cambia antes que los datos: anima el contenido viejo (§10c) |
 | Dar por hecho que «entrar» es «montar» | Con caché el contenido monta con la pantalla y la entrada se gasta en la transición (§11) |
+| Un worklet que llama a otro declarado MÁS ABAJO | `undefined is not a function` en dispositivo, con los tests verdes: el arnés no lo ve (§12) |
+| Medir un aterrizaje contra la ALTURA del header | La panza cuelga fuera de la caja: te pasas por su alto |
+| Calcular un plegado como si sólo lo moviera el dedo | El `ScrollView` es hermano del header y sube CON él: cuánto viaja ≠ cuánto scroll hace falta |
+| Recortar una pieza que sale contra un canto inventado | Se ve AMPUTADA: canto recto y esquinas cuadradas. Que salga por el borde de la pantalla |
+| Reimplementar el imán con `scrollTo` en `onEndDrag` | Pelea contra la deceleración de iOS: tirón, reentrada y temblor. `snapToOffsets` |
+| Escribir los tramos de un plegado en PUNTOS | Ata la coreografía a un teléfono. Fracciones de un recorrido derivado |
+| Probar un plegado sólo sobre la FÓRMULA | Pasa con la geometría rota. Los tests van en coordenadas de PANTALLA |
 
 ## Commands
 
@@ -431,4 +612,8 @@ cada respuesta y el GC se come los fotogramas). Ver `cuadra-ui-verify`.
 - `apps/mobile/src/features/save/supermarket/product/motion/arrival.ts` — cuándo ha LLEGADO la pantalla (§11)
 - `apps/mobile/src/features/save/supermarket/product/components/product-entrance.tsx` — dueño del reloj + `useEntranceVisit`
 - `apps/mobile/src/features/save/supermarket/components/wheel-autoplay-plan.ts` — el plan como función pura
+- `apps/mobile/src/features/save/supermarket/product/motion/gallery-collapse.ts` — el PLEGADO entero: `collapseDistance`, `headerShrinkOf`, los tramos y `snapOffsetsFor`
+- `apps/mobile/src/features/save/supermarket/product/motion/worklet-order.test.ts` — guardia del orden de declaración. PORTABLE a cualquier carpeta de worklets
+- `apps/mobile/src/features/save/supermarket/product/product-screen.tsx` — la geometría, ARRIBA del todo (un `const` leído por un `useDerivedValue` declarado antes es un TDZ que revienta en el primer render)
+- `apps/mobile/src/components/ui/top-scroll-fade.tsx` — el desenfoque del canto superior (chat, hub y detalle). Con `zIndex` entre la lista y la cabecera, SIGUE A LA CURVA sin dibujarla
 - `apps/mobile/src/test/reanimated-stub.tsx` — el arnés. Ya identifica las CURVAS (`easingNameOf`). LEER antes de escribir un test de movimiento

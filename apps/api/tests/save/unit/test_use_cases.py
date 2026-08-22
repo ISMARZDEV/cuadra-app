@@ -14,6 +14,7 @@ from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.errors import CanonicalProductNotFoundError
 from src.contexts.save.application.products import ListProducts
 from src.contexts.save.application.search import SearchProducts
+from src.contexts.save.domain.canonical_image import CanonicalImage
 from src.contexts.save.domain.comparison import StoreQuote
 from src.contexts.save.domain.entities import CanonicalProduct, MatchCandidate
 from src.contexts.save.domain.value_objects import Quantity, UnitMeasure
@@ -165,3 +166,105 @@ def test_compare_product_description_is_none_when_absent() -> None:
     uc = CompareProduct(FakeCanonicalRepo([canonical]), FakeStoreRepo(quotes))
 
     assert uc.execute("arroz-la-garza", "DO").description is None
+
+
+# ── La galería del detalle (carrusel de fotos del producto) ──────────────────────────────────────
+#
+# La galería vive en `canonical_product_image` y hasta ahora sólo la veía el admin: el endpoint
+# público devolvía `image_url`, la posición 1 denormalizada, y el móvil no tenía forma de saber que
+# había más fotos. Sin esto, el carrusel del detalle sería un carrusel de una sola imagen.
+
+
+class FakeImageRepo:
+    """El puerto `CanonicalImageRepository`, con lo justo que el detalle público consume."""
+
+    def __init__(self, images: dict[str, list[CanonicalImage]]) -> None:
+        self._images = images
+
+    def list_images(self, canonical_product_id: str) -> list[CanonicalImage]:
+        return list(self._images.get(canonical_product_id, []))
+
+
+PRIMARY_URL = "https://cdn/una.jpg"
+
+
+def _comparable(image_url: str | None = PRIMARY_URL) -> tuple[CanonicalProduct, dict]:
+    """Un canónico comparable, con su imagen PÚBLICA (la posición 1 denormalizada)."""
+    from src.contexts.save.domain.slug import product_slug
+
+    canonical = CanonicalProduct(
+        "c1", "Arroz La Garza", "La Garza", Quantity(Decimal("2"), UnitMeasure.MASS), "t", "DO",
+        slug=product_slug("Arroz La Garza", "La Garza"),
+        image_url=image_url,
+    )
+    return canonical, {"c1": [StoreQuote("p-merca", "Merca", Money(42400, DOP))]}
+
+
+def test_compare_product_returns_the_whole_gallery_in_position_order() -> None:
+    canonical, quotes = _comparable()
+    # A propósito DESORDENADAS: quien las pide no puede depender de cómo se las devuelva el
+    # almacén, o el carrusel enseñaría la 3ra foto primero en cuanto cambie una consulta.
+    images = {
+        "c1": [
+            CanonicalImage("i3", "https://cdn/tres.jpg", 3),
+            CanonicalImage("i1", "https://cdn/una.jpg", 1),
+            CanonicalImage("i2", "https://cdn/dos.jpg", 2),
+        ]
+    }
+    uc = CompareProduct(
+        FakeCanonicalRepo([canonical]),
+        FakeStoreRepo(quotes),
+        image_repo=FakeImageRepo(images),
+    )
+    dto = uc.execute("arroz-la-garza", "DO")
+
+    assert dto.image_urls == [
+        "https://cdn/una.jpg",
+        "https://cdn/dos.jpg",
+        "https://cdn/tres.jpg",
+    ]
+
+
+def test_compare_product_gallery_starts_with_the_public_image() -> None:
+    # ⚠️ INVARIANTE del modelo: `canonical_product.image_url` ES la posición 1. Si la galería no
+    # empezara por ella, el carrusel abriría en una foto distinta de la que el usuario acaba de
+    # tocar en la rejilla — y eso se lee como que entró al producto equivocado.
+    canonical, quotes = _comparable()
+    images = {
+        "c1": [
+            CanonicalImage("i2", "https://cdn/dos.jpg", 2),
+            CanonicalImage("i1", PRIMARY_URL, 1),
+        ]
+    }
+    uc = CompareProduct(
+        FakeCanonicalRepo([canonical]),
+        FakeStoreRepo(quotes),
+        image_repo=FakeImageRepo(images),
+    )
+    dto = uc.execute("arroz-la-garza", "DO")
+
+    assert dto.image_urls[0] == dto.image_url
+
+
+def test_compare_product_without_image_repo_still_answers() -> None:
+    # El repositorio es OPCIONAL, como el de taxonomía: el detalle es el corazón de Save y no puede
+    # caerse porque falte una dependencia decorativa. Sin galería, cae a la imagen pública sola.
+    canonical, quotes = _comparable()
+    uc = CompareProduct(FakeCanonicalRepo([canonical]), FakeStoreRepo(quotes))
+    dto = uc.execute("arroz-la-garza", "DO")
+
+    assert dto.image_urls == [dto.image_url]
+
+
+def test_compare_product_without_any_image_returns_an_empty_gallery() -> None:
+    # Un producto sin foto no puede colar un `None` en la lista: el móvil lo pintaría como una
+    # diapositiva en blanco con su puntito, prometiendo una imagen que no existe.
+    canonical, quotes = _comparable(image_url=None)
+    uc = CompareProduct(
+        FakeCanonicalRepo([canonical]),
+        FakeStoreRepo(quotes),
+        image_repo=FakeImageRepo({}),
+    )
+    dto = uc.execute("arroz-la-garza", "DO")
+
+    assert dto.image_urls == []

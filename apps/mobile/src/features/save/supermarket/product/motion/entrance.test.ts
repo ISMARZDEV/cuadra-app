@@ -140,11 +140,11 @@ describe("el reparto de puestos en la cascada", () => {
     // La cascada existe para que la pantalla se lea en el orden en que está escrita. Si el panel
     // de tiendas entrara antes que el precio, el movimiento contaría una historia distinta a la
     // que cuenta la maquetación.
-    expect(STEPS.Photo).toBeLessThan(STEPS.Name);
-    expect(STEPS.Name).toBeLessThan(STEPS.Price);
-    expect(STEPS.Price).toBeLessThan(STEPS.Signals);
-    expect(STEPS.Signals).toBeLessThan(STEPS.Stores);
-    expect(STEPS.Stores).toBeLessThan(STEPS.Description);
+    expect(STEPS.Photo).toBeLessThan(STEPS.Identity);
+    expect(STEPS.Identity).toBeLessThan(STEPS.Price);
+    expect(STEPS.Price).toBeLessThan(STEPS.Actions);
+    expect(STEPS.Actions).toBeLessThan(STEPS.Insight);
+    expect(STEPS.Insight).toBeLessThan(STEPS.Description);
     expect(STEPS.Description).toBeLessThan(STEPS.StorePanel);
     expect(STEPS.StorePanel).toBeLessThan(STEPS.History);
   });

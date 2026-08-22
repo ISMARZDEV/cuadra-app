@@ -226,6 +226,9 @@
   "save.product.stores.countTile": "Tiendas activas",
   "save.product.stores.empty": "Ninguna tienda tiene precio para este producto ahora mismo.",
   "save.product.stores.openStore": "Abrir en {store}",
+  "save.product.stores.buyAtStore": "Comprar en la tienda",
+  "save.product.stores.copyLink": "Copiar enlace",
+  "save.product.stores.linkCopied": "Enlace copiado",
   "save.product.history.title": "Historial de precio",
   "save.product.history.empty": "Todavía no hay suficiente historial para dibujar la evolución.",
   "save.product.history.stepNote": "Cada precio rige hasta el siguiente cambio.",
@@ -242,5 +245,13 @@
   "save.product.details.category": "Categoría",
   "save.product.expand": "Desplegar",
   "save.product.collapse": "Plegar",
-  "save.product.seeMore": "Ver más"
+  "save.product.seeMore": "Ver más",
+  "save.product.noImage": "Sin imagen",
+  "save.product.insight.savings": "Ahorro en",
+  "save.product.insight.trendDown": "Tendencia a la baja",
+  "save.product.insight.trendUp": "Tendencia al alza",
+  "save.product.insight.trendFlat": "Precio estable",
+  "save.product.backToTop": "Volver arriba",
+  "save.product.gallery.previous": "Foto anterior",
+  "save.product.gallery.next": "Foto siguiente"
 }

@@ -95,6 +95,13 @@ class PriceComparisonDto(BaseModel):
     quality: str | None = None
     display_size: str | None = None   # tamaño original ("10 LB") para el badge
     image_url: str | None = None
+    # La GALERÍA completa, ordenada por `position`. `image_urls[0]` es siempre `image_url` — la
+    # posición 1 denormalizada— así que el carrusel del detalle abre en la MISMA foto que el usuario
+    # acaba de tocar en la rejilla, no en otra.
+    #
+    # ⚠️ Va como lista de URLs y no de objetos: el público no necesita el `id` ni de qué tienda salió
+    # cada foto —eso es información del admin— y exponerlo obligaría a versionar un DTO más.
+    image_urls: list[str] = []
     # Prosa comercial del producto. Ya vivía en la entidad y no salía por la API; sin ella la
     # pantalla de detalle tendría que pedir el producto DOS veces para leer un dato que la
     # comparación ya tiene en la mano.
@@ -111,6 +118,7 @@ class PriceComparisonDto(BaseModel):
         canonical: CanonicalProduct,
         comparison: PriceComparison,
         breadcrumb: list[CategoryNode] = [],
+        gallery: list[str] | None = None,
     ) -> PriceComparisonDto:
         entries = [
             ComparedPriceDto(
@@ -134,6 +142,14 @@ class PriceComparisonDto(BaseModel):
             quality=canonical.quality,
             display_size=canonical.display_size,
             image_url=canonical.image_url,
+            # Sin galería se cae a la imagen pública sola; y si tampoco hay, la lista queda VACÍA.
+            # Nunca un `[None]`: el móvil lo pintaría como una diapositiva en blanco con su puntito,
+            # prometiendo una foto que no existe.
+            image_urls=(
+                gallery
+                if gallery is not None
+                else ([canonical.image_url] if canonical.image_url else [])
+            ),
             description=canonical.description,
             currency=comparison.cheapest.price.currency.code,
             entries=entries,

@@ -12,6 +12,7 @@ siempre al slug. Así no hay que propagar el slug a cada superficie privada.
 from __future__ import annotations
 
 from ..domain.ports import (
+    CanonicalImageRepository,
     CanonicalProductRepository,
     StoreProductRepository,
     TaxonomyRepository,
@@ -26,10 +27,14 @@ class CompareProduct:
         canonical_repo: CanonicalProductRepository,
         store_repo: StoreProductRepository,
         taxonomy_repo: TaxonomyRepository | None = None,
+        image_repo: CanonicalImageRepository | None = None,
     ) -> None:
         self._canonical_repo = canonical_repo
         self._store_repo = store_repo
         self._taxonomy_repo = taxonomy_repo
+        # OPCIONAL, igual que el de taxonomía: el detalle es el corazón de Save y no puede caerse
+        # porque falte una dependencia decorativa. Sin él, la galería cae a la imagen pública sola.
+        self._image_repo = image_repo
 
     def execute(self, slug: str, market_id: str) -> PriceComparisonDto:
         # slug legible primero; si no matchea, `slug` puede ser un UUID (links privados) → por id.
@@ -43,4 +48,13 @@ class CompareProduct:
         breadcrumb = []
         if self._taxonomy_repo is not None and canonical.taxonomy_node_id:
             breadcrumb = self._taxonomy_repo.ancestors(canonical.taxonomy_node_id)
-        return PriceComparisonDto.from_comparison(canonical, comparison, breadcrumb)
+        gallery = None
+        if self._image_repo is not None:
+            # ORDENADO acá y no confiando en el almacén: quien pide la galería no puede depender de
+            # cómo se la devuelva una consulta, o el carrusel abriría en la 3ra foto en cuanto
+            # alguien toque un `ORDER BY`.
+            images = sorted(
+                self._image_repo.list_images(canonical.id), key=lambda i: i.position
+            )
+            gallery = [i.url for i in images]
+        return PriceComparisonDto.from_comparison(canonical, comparison, breadcrumb, gallery)

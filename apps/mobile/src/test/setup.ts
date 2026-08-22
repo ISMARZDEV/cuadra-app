@@ -101,10 +101,13 @@ vi.mock("expo-blur", async () => ({ BlurView: await viewPassthrough() }));
 // sources don't survive vitest's transform → pass children through to a plain View.
 vi.mock("expo-linear-gradient", async () => ({ LinearGradient: await viewPassthrough() }));
 
-// El paquete exporta por DEFAULT (`export default class SquircleView`). El stub declaraba un
-// export NOMBRADO, así que los tests pasaban con un import que en runtime es `undefined` — el
-// mock tapaba el fallo real. Debe espejar la forma del módulo, no la que nos convendría.
-vi.mock("react-native-squircle-view", async () => ({ default: await viewPassthrough() }));
+// Componente NATIVO de Fabric (`codegenConfig` + `componentProvider`): en jsdom no hay nada que
+// montar. Lo usan la tarjeta de la foto del detalle y el respaldo de `GlassSurface`.
+//
+// ⚠️ Exporta por DEFAULT, y el stub tiene que espejar eso. Su predecesor declaraba un export
+// NOMBRADO: los tests pasaban con un import que en runtime valía `undefined`, y el mock tapó el
+// fallo real durante meses. Un stub espeja la forma del módulo, no la que nos convendría.
+vi.mock("react-native-fast-squircle", async () => ({ default: await viewPassthrough() }));
 
 // MaskedView's REAL visible/queryable content is `maskElement` (the gradient `children` just fill
 // its shape) — unlike the other passthroughs above, rendering `children` here would make gradient

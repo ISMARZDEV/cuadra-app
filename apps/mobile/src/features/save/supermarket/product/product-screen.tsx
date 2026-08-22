@@ -1,16 +1,22 @@
 import { ArrowLeft, ShoppingBasket } from "lucide-react-native";
 import { type Href, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { Linking, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Linking, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   runOnJS,
+  useAnimatedRef,
   useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { useColorScheme } from "nativewind";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppBackground } from "@/components/ui/app-background";
+import { BG_LIGHT, SupermarketBackground } from "../components/supermarket-background";
+import { TopScrollFade } from "@/components/ui/top-scroll-fade";
+import { appBgColorAt } from "@/components/ui/app-background";
 import { PillButton } from "@/components/ui/pill-button";
 import { t } from "@/i18n";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
@@ -21,7 +27,6 @@ import {
   useProductComparison,
   useProductStores,
   useSimilarProducts,
-  useSubscribeAlert,
 } from "../../api";
 import { nextHiddenState } from "@/components/navigation/hide-on-scroll";
 import { NAV_HIDE_TIMING } from "@/components/navigation/nav-hide-motion";
@@ -29,20 +34,33 @@ import { useNavVisibility } from "@/components/navigation/use-nav-visibility";
 import { useNavHideStore } from "@/store/nav-hide-store";
 
 import { useCompareCount } from "../../compare-basket";
-import { CurvedHeader } from "../components/curved-header";
+import { CurvedHeader, HEADER_BULGE, HEADER_ROW } from "../components/curved-header";
 import { ChooseStoreSheet } from "./components/choose-store-sheet";
 import { FOOTER_CLEARANCE, ProductFooter } from "./components/product-footer";
 import { PriceHistoryChart } from "./components/price-history-chart";
 import { ProductSections } from "./components/product-sections";
 import { CascadeItem } from "@/components/ui/cascade-item";
+import { BackToTopHandle } from "./components/back-to-top-handle";
+import { HeroPhotoCard } from "./components/hero-photo-card";
 import { ProductEntrance, useEntranceVisit } from "./components/product-entrance";
 import { ProductSummary } from "./components/product-summary";
 import { entranceKeyOf, STEPS } from "./motion/entrance";
+import { pointsForProvider } from "./hero";
+import { galleryOf, hasCarousel } from "./gallery";
+import { DOTS_BAND } from "./components/gallery-dots";
+import {
+  collapseDistance,
+  headerCollapse,
+  headerContentFade,
+  headerShrinkOf,
+  PHOTO_GAP,
+  snapOffsetsFor,
+} from "./motion/gallery-collapse";
 import { StorePanel } from "./components/store-panel";
 import { ProductRail } from "../components/product-rail";
 import { useDeliberateSheet } from "./motion/use-deliberate-sheet";
 import { resolveProductState, type ProductState } from "./product-state";
-import { storeStandings, type StoreStanding } from "./product-view";
+import { storeStandings, unitLabelOf, type StoreStanding } from "./product-view";
 
 /**
  * Detalle de un producto: qué es, cuánto cuesta y — lo que de verdad importa en Save — en qué
@@ -51,9 +69,39 @@ import { storeStandings, type StoreStanding } from "./product-view";
  * El producto se resuelve por SLUG, que es su llave pública (permalink). El endpoint acepta el
  * UUID de reserva, así que un canónico sin slug todavía se puede abrir.
  */
+/**
+ * Cuánto verde EXTRA cuelga bajo la fila de botones antes de que arranque la curva.
+ *
+ * El diseño le da a la cabecera bastante más aire del que ocupa la fila: es lo que le deja sitio a
+ * la tarjeta de la foto para montarse encima sin taparle los controles. Vive aquí y no dentro del
+ * header porque es una decisión de ESTA pantalla — las demás quieren la curva pegada a la fila.
+ */
+const HEADER_BELOW_ROW = 76;
+
+/**
+ * Cuánto se mete el tirador DENTRO del verde, medido desde el canto de la panza.
+ *
+ * Va por dentro y no colgando: el tirador es parte de la cabecera, y posado justo en el borde se
+ * lee como un elemento del contenido que quedó pegado ahí por casualidad. Es EL número a mover si
+ * queda alto o bajo.
+ */
+const INDICATOR_INSET = 26;
+
+/**
+ * Alto de la banda de desenfoque que va bajo la cabecera.
+ *
+ * Cubre la panza y le sobra un tramo: el verde tapa los primeros `HEADER_BULGE` puntos por el
+ * CENTRO —que es donde la curva baja más— así que sin ese extra el degradado se gastaría escondido
+ * justo donde el título lo necesita.
+ */
+const TOP_FADE_HEIGHT = HEADER_BULGE + 48;
+
 export function ProductScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowW, height: windowH } = useWindowDimensions();
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === "dark";
   const setForceHidden = useNavHideStore((s) => s.setForceHidden);
 
   // ⭐ En el detalle la barra de tabs SE VA, no se le reserva sitio. El pie fijo ocupa exactamente
@@ -71,11 +119,9 @@ export function ProductScreen() {
   );
   const compareCount = useCompareCount();
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const subscribe = useSubscribeAlert();
   // Arranca en 0: la cantidad dice cuántos has añadido a la lista, y al abrir el detalle no has
   // añadido ninguno. Un 1 de salida afirma algo que el usuario no hizo.
   const [quantity, setQuantity] = useState(0);
-  const [following, setFollowing] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
 
   const comparison = useProductComparison(slug ?? "");
@@ -90,9 +136,6 @@ export function ProductScreen() {
   const similar = useSimilarProducts(comparison.data?.canonical_product_id);
   const brand = useBrandProducts(comparison.data?.canonical_product_id);
 
-  // La cabecera todavía no colapsa (llega en la fase del scroll). Un valor fijo la deja desplegada
-  // sin fingir un gesto que aún no existe.
-  const collapse = useSharedValue(0);
 
   // El pie se va y vuelve con el scroll, EXACTAMENTE como la barra de tabs: mismo disparador
   // (arrastrar hacia abajo), mismo viaje y —lo importante— el mismo `NAV_HIDE_TIMING`. Si cada
@@ -100,6 +143,103 @@ export function ProductScreen() {
   // ⭐ Arranca FUERA (1) y sube al entrar: la barra ENTRA en la pantalla igual que la de inicio,
   // en vez de aparecer ya puesta. Aparecer de golpe la delata como una capa pegada encima; subir
   // dice que pertenece a esta pantalla y que llegó con ella.
+  // ── La tarjeta de la foto ─────────────────────────────────────────────────────────────────────
+  //
+  // ⭐ Se DERIVA de la pantalla, no es un número fijo: en la referencia ocupa cerca de un 36% del
+  // alto, y un valor clavado sería generoso en un Pro Max y ahogaría la foto en un SE. Las cotas
+  // sólo evitan los dos extremos absurdos.
+  // ⭐ NO es cuadrada: el mock la da 302,7 × 322 sobre una pantalla de 402pt de ancho. Se deriva del
+  // ANCHO y no del alto —es lo que el diseño fija— y conserva esa proporción, así que en un SE y en
+  // un Pro Max se lee igual de grande en relación a la pantalla.
+  const photoWidth = Math.round(windowW * (302.714 / 402));
+  const photoHeight = Math.round(photoWidth * (322 / 302.714));
+  // ⭐ La galería se resuelve ACÁ ARRIBA y no junto a la tarjeta porque de ella depende la
+  // GEOMETRÍA: con carrusel hay una banda de puntos entre la foto y el título que ocupa sitio, y
+  // sin él no. Quien calcule el recorrido sin saberlo deja al título 23pt fuera de su sitio.
+  const images = galleryOf(comparison.data?.image_urls, comparison.data?.image_url);
+  // Con una sola foto no hay puntos, así que tampoco banda: reservar un hueco vacío bajaría el
+  // título sin motivo.
+  const dotsBand = hasCarousel(images.length) ? DOTS_BAND : 0;
+  // Dónde se posa el canto superior de la tarjeta, en coordenadas de PANTALLA — se mide desde
+  // arriba porque la tarjeta vive fuera del scroll. Derivado de la geometría del header y no
+  // escrito a ojo: si alguien toca la curva o el alto de la fila de botones, esto sigue cuadrando.
+  //
+  // ⭐ Lo usan DOS sitios que tienen que coincidir o el nombre del producto acaba leyéndose por
+  // debajo de la foto: la propia tarjeta y el hueco que se le reserva en el flujo (`photoSlot`).
+  const photoTop = insets.top + HEADER_ROW + PHOTO_GAP;
+  // Lo que hay que reservarle DENTRO del flujo, para que el título no suba hasta el header: desde
+  // donde empieza el scroll hasta donde termina la tarjeta. Se acota en 0 porque con una cabecera
+  // muy alta la tarjeta podría acabar por encima del inicio del contenido, y un hueco negativo
+  // subiría el título en vez de bajarlo.
+  const scrollTop = insets.top + HEADER_ROW + HEADER_BELOW_ROW;
+  // El BLOQUE entero de la galería: la tarjeta MÁS la banda de puntos que va debajo.
+  const photoSlot = Math.max(0, photoTop + photoHeight + dotsBand - scrollTop);
+
+  /**
+   * ⭐ Cuánto scroll dura el plegado ENTERO, derivado de la pantalla y no escrito a mano.
+   *
+   * Termina exactamente cuando el canto inferior de la tarjeta se mete bajo la cabecera compacta.
+   * De aquí cuelgan los cuatro tramos (foto, controles, cáscara, tirador) como FRACCIONES, así que
+   * la coreografía es la misma en un SE y en un Pro Max y sólo cambia cuánto dedo cuesta.
+   */
+  const collapseGeometry = {
+    headerRow: HEADER_ROW,
+    // ⭐ La PANZA cuenta: cuelga por debajo de la caja del header, así que el canto real del verde
+    // está ese tanto más abajo. Sin ella el contenido sube de más y el título queda detrás.
+    headerBulge: HEADER_BULGE,
+    belowRow: HEADER_BELOW_ROW,
+    dotsBand,
+    photoGap: PHOTO_GAP,
+    photoHeight,
+  };
+  const collapseDist = collapseDistance(collapseGeometry);
+  // El alto del header DESPLEGADO, el mismo que calcula `CurvedHeader`. De aquí cuelga la banda de
+  // desenfoque, que tiene que seguir al canto del verde mientras encoge.
+  const headerExpanded = insets.top + HEADER_ROW + HEADER_BELOW_ROW;
+  // ⭐⭐ Lo que el contenido sube DE REGALO cuando el verde encoge: el `ScrollView` es hermano del
+  // header y su techo baja con él. La tarjeta vive fuera del scroll, así que hay que dárselo a mano
+  // o ella y su propio hueco divergen.
+  const headerShrink = headerShrinkOf(collapseGeometry);
+  // Las dos orillas del plegado. El estado intermedio no es un estado: a mitad de camino hay una
+  // cabecera a medio encoger que no es ninguna de las dos cosas que la pantalla sabe ser.
+  const snapOffsets = snapOffsetsFor(collapseDist);
+
+  /**
+   * El relleno del scroll, ESTABLE entre renders.
+   *
+   * Un objeto nuevo en cada render obliga al `ScrollView` a re-aplicar su layout aunque los números
+   * no hayan cambiado — y esta pantalla re-renderiza a menudo (cantidad, hoja, datos que llegan).
+   *
+   * ⭐ SIN colchón arriba para la panza. Con la curva CÓNCAVA el verde baja en los LADOS y el blanco
+   * sube por el CENTRO, así que el contenido centrado —el tirador y la foto— tiene sitio libre ahí.
+   * El colchón de `HEADER_BULGE` era el correcto para la curva convexa de la home, donde la panza
+   * cuelga justo por el medio; aquí sólo empujaba la foto 28pt hacia abajo sin motivo.
+   */
+  const contentPadding = useMemo(
+    () => ({ paddingTop: 0, paddingBottom: insets.bottom + FOOTER_CLEARANCE }),
+    [insets.bottom],
+  );
+
+  // El desplazamiento del scroll, PUBLICADO: la tarjeta de la foto vive fuera de la lista y lo
+  // necesita para viajar con ella. Un solo número compartido, no un segundo reloj.
+  const scrollY = useSharedValue(0);
+  // El ref del scroll, sólo para que el tirador pueda volver arriba. El plegado NO lo usa: cuelga
+  // de `scrollY` y no llama a nadie.
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  // ⭐ La cabecera se compacta DERIVADA del mismo `scrollY` que pliega la galería, no de un estado
+  // propio. Por eso la vuelta no hay que escribirla: no hay animación de ida y otra de vuelta que
+  // puedan discrepar, hay un número que sube y baja con el dedo. Ver `gallery-collapse`.
+  const collapse = useDerivedValue(() => headerCollapse(scrollY.value, collapseDist));
+  // La banda de desenfoque VIAJA con el canto del verde: la cabecera encoge, y con un `top` fijo la
+  // banda se quedaría flotando a media pantalla — el mismo defecto que ya tuvo el tirador.
+  const topFadeStyle = useAnimatedStyle(() => ({
+    top: headerExpanded - headerShrink * headerCollapse(scrollY.value, collapseDist),
+  }));
+  // ⭐ El título y los botones llevan SU PROPIO tramo, no el de la cáscara: se apagan mientras la
+  // tarjeta de la foto les pasa por encima —tapados— y para cuando ella los libera ya no están.
+  // Con el reloj de la cáscara se apagaban a la vista, que es un guiño sin causa.
+  const headerContent = useDerivedValue(() => headerContentFade(scrollY.value, collapseDist));
+
   const footerHidden = useSharedValue(1);
   const dragging = useSharedValue(false);
   const lastY = useSharedValue(0);
@@ -115,6 +255,8 @@ export function ProductScreen() {
   // el reposo esconde, un TOQUE trae de vuelta. Anclada (cantidad ≥ 1) gana a las tres.
   const nav = useNavVisibility({ pinned: quantity > 0 });
 
+  // Publica el scroll y conduce el pie flotante. Ni el plegado ni el imán se deciden aquí: el
+  // primero cuelga de `scrollY`, el segundo lo hace la plataforma con `snapToOffsets`.
   const onScroll = useAnimatedScrollHandler({
     onBeginDrag: (e) => {
       dragging.value = true;
@@ -126,6 +268,7 @@ export function ProductScreen() {
     },
     onScroll: (e) => {
       const y = e.contentOffset.y;
+      scrollY.value = y;
       const dy = y - lastY.value;
       lastY.value = y;
 
@@ -156,6 +299,8 @@ export function ProductScreen() {
   // ⭐ Atado a un `const` a propósito: el estrechado de `comparison.data` NO sobrevive dentro de la
   // clausura del render-prop de `ProductEntrance` (TypeScript no puede saber que no cambió entre
   // el render y la llamada). Con la constante, sobrevive — y de paso el JSX se lee mejor.
+
+
   const product = comparison.data;
   // Cada LLEGADA a la pantalla es una entrada nueva, aunque sea al mismo producto. Ver
   // `useEntranceVisit`: la key del dueño del reloj lleva las dos causas, producto y visita.
@@ -169,6 +314,13 @@ export function ProductScreen() {
   // derivarlos por separado es cómo el panel del admin acabó con tres números que no cerraban.
   const standings = storeStandings(stores.data ?? []);
   const best = standings[0];
+  // La entrada de la comparación de la tienda MÁS BARATA. El precio grande sale del panel de
+  // tiendas y el unitario de aquí: buscarlos por el mismo `provider_id` es lo único que impide que
+  // acaben describiendo envases distintos.
+  const cheapestEntry = product?.entries?.find((e) => e.provider_id === best?.row.provider_id);
+  // La tendencia habla de ESA tienda, no de todas mezcladas.
+  const historyPoints = pointsForProvider(history.data?.series, best?.row.provider_id);
+
 
   // La página se atenúa y RETROCEDE mientras la hoja está arriba; no se desmonta. Recuperarla
   // exactamente donde se dejó es el argumento entero del regreso lento del patrón.
@@ -217,7 +369,7 @@ export function ProductScreen() {
       {/* Cada pantalla de un Stack anidado SE PINTA SU FONDO. Confiar en el de la raíz se ve bien
           quieto y se rompe al empujar: la saliente transparente no se oculta y se transparenta
           bajo la entrante (expo/expo#33040). */}
-      <AppBackground />
+      <SupermarketBackground />
 
       <CurvedHeader
         title={t("save.product.title")}
@@ -229,28 +381,53 @@ export function ProductScreen() {
         basketIcon={ShoppingBasket}
         basketLabel={t("save.supermarket.compare")}
         basketCount={compareCount}
-        // La elipse va INVERTIDA aquí: el blanco sube por el centro y el verde baja en los lados,
-        // así la hoja de abajo se lee como una superficie que asciende hacia la foto.
-        curve="concave"
+        // La MISMA elipse convexa que la cabecera de Categorías: el verde baja en el centro como
+        // una gota. Se probó invertida (cóncava) y el diseño la quiere igual que la del resto de
+        // Supermarket — una sola forma de cabecera en toda la vertical.
+        curve="convex"
+        // Aire verde bajo los botones: la curva pegada a la fila dejaba la cabecera apretada y la
+        // tarjeta de la foto sin verde sobre el que montarse. Es EL número a mover si el diseño
+        // pide más o menos cabecera.
+        belowRow={HEADER_BELOW_ROW}
+        contentProgress={headerContent}
+        // ⭐ Suben hasta SALIRSE por arriba: exactamente el sitio que ocupan (área segura + la
+        // fila). Es lo que muestra el fotograma 3 de la referencia — título y botones cortados por
+        // el borde superior. Clavados y sólo apagándose, la tarjeta subía ENTRE dos círculos verdes
+        // que seguían ahí, y eso se lee como algo pegado encima de una cabecera que no se entera.
+        contentLift={insets.top + HEADER_ROW}
+        // El reloj que recibe YA es la ventana exacta del apagado (`HEADER_CONTENT_FADE`).
+        // Recortarla otra vez dentro del header la dejaría a la mitad.
+        contentFadeEnd={1}
       />
 
+      {/* ⭐ El dueño del reloj envuelve el scroll Y la tarjeta de la foto, porque los dos entran en
+          la MISMA cascada y viven en ramas distintas del árbol: la tarjeta tiene que cruzar el
+          header y el resto del contenido tiene que pasar por debajo. Un reloj por rama serían dos
+          animaciones que arrancan a la vez y se leen como una sola mal hecha. */}
+      <ProductEntrance
+        key={entranceKeyOf(product?.canonical_product_id, slug ?? "", visit)}
+        screenMountedAt={screenMountedAt}
+      >
+        {(cascade) => (
+          <>
       <Animated.View className="flex-1" style={hostStyle}>
       <Animated.ScrollView
+        ref={scrollRef}
+        // ⭐ EL IMÁN LO HACE LA PLATAFORMA. iOS calcula el destino proyectado del gesto —velocidad
+        // incluida— y lo ajusta DENTRO del mismo gesto, antes de decelerar, así que al soltar el
+        // bloque del título queda posado bajo la cabecera compacta en vez de a medio camino. Ver
+        // `snapOffsetsFor`: NUNCA reimplementarlo con `scrollTo` en `onEndDrag`.
+        snapToOffsets={snapOffsets}
+        // ⚠️ Sin esto, bajar a «Otras tiendas» te devolvería de un tirón al final del plegado: por
+        // defecto el scroll imanta también al ÚLTIMO punto. Más allá del plegado, libre.
+        snapToEnd={false}
         className="flex-1"
         onScroll={onScroll}
         scrollEventThrottle={16}
         // El pie flota (`position: absolute`), así que el scroll tiene que reservarle sitio o su
         // última sección queda debajo — el mismo motivo por el que la barra de tabs necesita su
         // propio clearance en las demás pantallas.
-        contentContainerStyle={{
-          // ⭐ SIN colchón para la panza. Con la curva CÓNCAVA el verde baja en los LADOS y el
-          // blanco sube por el CENTRO, así que el contenido centrado —el tirador y la foto— tiene
-          // sitio libre ahí arriba. El colchón de `HEADER_BULGE` era el correcto para la curva
-          // convexa de la home, donde la panza cuelga justo por el medio; aquí sólo empujaba la
-          // foto 28pt hacia abajo sin motivo.
-          paddingTop: 0,
-          paddingBottom: insets.bottom + FOOTER_CLEARANCE,
-        }}
+        contentContainerStyle={contentPadding}
         showsVerticalScrollIndicator={false}
       >
         {state === "content" && product ? (
@@ -258,12 +435,7 @@ export function ProductScreen() {
           // Sin ella la pantalla no se desmonta —`openProduct` hace `replace` sobre la misma ruta—
           // y el contenido del producto nuevo aparecía de golpe, sin animar. Ver `entranceKeyOf`:
           // la identidad sale de los DATOS, nunca del slug de la ruta.
-          <ProductEntrance
-            key={entranceKeyOf(product.canonical_product_id, slug ?? "", visit)}
-            screenMountedAt={screenMountedAt}
-          >
-            {(cascade) => (
-              <>
+          <>
                 <ProductSummary
                   cascade={cascade}
                   name={product.name}
@@ -275,20 +447,18 @@ export function ProductScreen() {
                   // pueda discrepar del panel de tiendas.
                   priceMinor={best?.price_minor ?? 0}
                   currency={best?.row.currency ?? product.currency}
-                  priceType={best?.row.price_type}
-                  seenAt={best?.row.last_seen_at}
-                  stores={standings.map((s2) => ({
-                    name: s2.row.provider_name,
-                    logoUrl: s2.row.provider_logo_url,
-                  }))}
+                  // El precio por unidad NO está en el panel de tiendas: vive en las entradas de la
+                  // COMPARACIÓN. Se busca la de la tienda más barata para que el unitario grande y
+                  // el precio grande hablen siempre de la misma tienda — con dos fuentes acabarían
+                  // describiendo envases distintos.
+                  unitPriceMinor={cheapestEntry?.unit_price_minor}
+                  unitLabel={unitLabelOf(cheapestEntry?.unit_measure)}
+                  previousMinor={best?.row.previous_price_minor}
+                  storeUrl={best?.row.url}
+                  onOpenStore={() => best && openStore(best)}
+                  history={historyPoints}
                   description={product.description}
-                  following={following}
-                  onToggleFollow={() => {
-                    setFollowing((v) => !v);
-                    if (!following) {
-                      subscribe.mutate({ productId: product.canonical_product_id });
-                    }
-                  }}
+                  photoSlot={photoSlot}
                 />
 
                 {/* Los dos ÚLTIMOS peldaños de la misma escalera. Estaban fuera de la cascada y se
@@ -310,9 +480,7 @@ export function ProductScreen() {
                 <CascadeItem progress={cascade} index={STEPS.History}>
                   <PriceHistoryChart history={history.data} gutter={20} />
                 </CascadeItem>
-              </>
-            )}
-          </ProductEntrance>
+          </>
         ) : (
           <Notice state={state} onRetry={() => void comparison.refetch()} onBack={() => router.back()} />
         )}
@@ -363,6 +531,83 @@ export function ProductScreen() {
       </Animated.ScrollView>
 
       </Animated.View>
+
+      {/* ⭐ FUERA del scroll y con `zIndex` POR ENCIMA del header (que lleva 2). Es la ÚNICA pieza
+          que lo cruza: todo lo demás pasa por debajo de la elipse verde. Dentro del `ScrollView`
+          esto era imposible —el header es hermano suyo y ningún z-index de un hijo le gana—, y
+          subir el contenedor entero habría subido también el título y el precio. */}
+      {state === "content" && product ? (
+        <>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: "absolute",
+              left: 0,
+              right: 0,
+              height: TOP_FADE_HEIGHT,
+              // ⭐ ENTRE la lista y la cabecera: por encima del contenido que sube (que no lleva
+              // zIndex) y por debajo del verde (2) y de la foto (3). Así el verde tapa el tramo de
+              // banda que le corresponde y el desenfoque SIGUE A LA CURVA solo, sin dibujarla.
+              zIndex: 1,
+            },
+            topFadeStyle,
+          ]}
+        >
+          {/* El MISMO desvanecido del chat de AISpace y del hub de Ahorra, no una copia: un corte
+              limpio dice «acá se acaba» y un difuminado dice «esto sigue». Reusarlo es lo que
+              impide que los tres se separen al primer retoque. */}
+          <TopScrollFade
+            height={TOP_FADE_HEIGHT}
+            isDark={isDark}
+            // El lavado tiene que ser el fondo REAL de esta pantalla. Con el blanco por defecto se
+            // vería una nube clara sobre el gris de Supermarket.
+            color={isDark ? appBgColorAt("dark", headerExpanded / windowH) : BG_LIGHT}
+          />
+        </Animated.View>
+
+        {/* ⭐⭐ **SIN ventana de recorte.** La tarjeta sale por el borde FÍSICO de la pantalla,
+            como cualquier cosa que se scrollea, conservando sus esquinas redondas hasta el final.
+
+            Se recortó dos veces contra un canto inventado —bajo la fila de botones, y luego en el
+            canto de la cabecera compacta— y las dos se rechazaron por lo mismo: la tarjeta aparecía
+            AMPUTADA, con el canto superior recto. Un recorte que el usuario ve es un defecto,
+            aunque la geometría cuadre.
+
+            ⭐ Va con `zIndex` POR ENCIMA del header (2) y de la banda de desenfoque (1), y es la
+            ÚNICA pieza que cruza el verde. Los controles del header no estorban porque para cuando
+            la tarjeta llega, ya se han ido hacia arriba — ver `HEADER_CONTENT_FADE`. */}
+        <HeroPhotoCard
+          images={images}
+          width={photoWidth}
+          height={photoHeight}
+          // En coordenadas de PANTALLA. Es el mismo `photoTop` del que sale el hueco reservado en
+          // el flujo — si los dos discrepan, el nombre acaba leyéndose bajo la foto.
+          top={photoTop}
+          scrollY={scrollY}
+          distance={collapseDist}
+          headerShrink={headerShrink}
+          cascade={cascade}
+        />
+        </>
+      ) : null}
+          </>
+        )}
+      </ProductEntrance>
+
+      {/* El tirador de volver arriba, posado en el canto de la elipse. Aparece sólo cuando ya has
+          bajado — arriba del todo sería un botón que no hace nada. */}
+      {state === "content" ? (
+        <BackToTopHandle
+          scrollY={scrollY}
+          distance={collapseDist}
+          // Los dos cantos de la elipse: desplegada y compacta. `CurvedHeader` encoge hasta el
+          // área segura más un dedo de verde (`safeTop + 6`), y la panza cuelga siempre por debajo.
+          expandedTop={insets.top + HEADER_ROW + HEADER_BELOW_ROW + HEADER_BULGE - INDICATOR_INSET}
+          collapsedTop={insets.top + 6 + HEADER_BULGE - INDICATOR_INSET}
+          onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+        />
+      ) : null}
 
       {/* ⚠️ FUERA del contenedor que escala con la hoja, y no es una preferencia de maquetación:
           iOS rasteriza el vidrio nativo y estirar ese mapa de bits satura el tinte y granula la

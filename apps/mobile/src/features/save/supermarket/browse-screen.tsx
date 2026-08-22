@@ -27,7 +27,8 @@ import BasketProductCard, {
   discountOverhangAt,
   gridScaleFor,
 } from "@/components/ui/basket-product-card";
-import { AppBackground, appBgColorAt } from "@/components/ui/app-background";
+import { appBgColorAt } from "@/components/ui/app-background";
+import { BG_LIGHT, SupermarketBackground } from "./components/supermarket-background";
 import { GlassButton } from "@/components/ui/glass-button";
 import { useTabBarClearance } from "@/components/navigation/use-tab-bar-clearance";
 import { PillButton } from "@/components/ui/pill-button";
@@ -63,7 +64,6 @@ import { toCardItemView } from "./to-card-item";
 //
 // Arranca en la lista de ORIGEN —de donde vino el usuario al tocar la flecha— y las categorías van
 // detrás. Continúa el gesto: pediste ver más de ESO y eso es lo primero que ves.
-const BG_LIGHT = "#F4F4F4";
 const GUTTER_X = 14;
 /** Aire entre COLUMNAS. */
 const GRID_GAP = 10;
@@ -330,15 +330,7 @@ export function SupermarketBrowseScreen({
 
   return (
     <View className="flex-1">
-      {isDark ? (
-        <AppBackground />
-      ) : (
-        <View
-          pointerEvents="none"
-          className="absolute inset-0"
-          style={{ backgroundColor: BG_LIGHT }}
-        />
-      )}
+      <SupermarketBackground />
 
       <CurvedHeader
         // Título ESTABLE: nombra lo que ES la pantalla —un navegador por categorías—, no la pestaña
