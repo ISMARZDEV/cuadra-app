@@ -1,0 +1,102 @@
+{
+  "slug": "deliberate-return-sheet",
+  "video_url": "/Users/ismartz/Movies/Details Supermarket Save.mp4",
+  "clip_file": "Details Supermarket Save.mp4",
+  "app": "grocery-concept",
+  "platform": "ios",
+  "source": "manual",
+  "evidence": "single-source",
+  "evidence_note": "one user-supplied clip. Run the 5-question corroboration checklist (SKILL.md §5); upgrade to corroborated when 1, 3 and 4 pass.",
+  "dimensions": "1068x2160",
+  "duration_s": 18.111,
+  "frames_fps": 60,
+  "patterns": [
+    "deliberate-return-sheet"
+  ],
+  "animation": ".easeOut(duration: 0.15) in · .easeIn(duration: 0.42) out — NOT a spring: no reversal in either kymograph",
+  "stagger_delay": 0,
+  "measured": {
+    "note": "durations read off vertical kymographs at 60fps; window bounds from peek.sh include padding and are NOT the animation duration",
+    "sheet_rise_ms": 150,
+    "sheet_dismiss_ms": 420,
+    "return_ratio": 2.8,
+    "overshoot_px": 0,
+    "live_motion_ms": {
+      "w1_content_cascade": 134,
+      "w2_sheet_rise": 83,
+      "w3_sheet_dismiss": 467,
+      "w4_scroll": 200,
+      "w5_screen_pop": 434
+    }
+  },
+  "description": {
+    "one_line_summary": "A store-picker sheet rises fast over a product page that dims and recedes, then takes nearly three times as long to hand the page back.",
+    "detailed_description": "On a product detail page, tapping the link beside the store list raises a near-full-height sheet from the bottom in about 150 ms, decelerating into place with a grab handle at its top. While it rises the page behind dims under a grey veil and recedes slightly, iOS-modal style, so the sheet reads as being ON the page rather than replacing it. The sheet lists one row per store — logo, delivery estimate, price, availability — and one row is marked as chosen. Dismissal is not the reverse tempo: the sheet descends over roughly 420 ms, accelerating as it goes, and the veil lifts with it so the page is fully back only at the end. Neither direction overshoots.",
+    "interaction_pattern": [
+      "modal-presentation",
+      "selection-list",
+      "dimmed-backdrop"
+    ],
+    "gesture_or_trigger": "tap",
+    "motion_behavior": [
+      "slide",
+      "dim",
+      "recede"
+    ],
+    "ui_elements": [
+      "bottom sheet",
+      "grab handle",
+      "list rows",
+      "backdrop veil",
+      "sticky footer"
+    ],
+    "visual_style": [
+      "rounded",
+      "layered",
+      "high-contrast header"
+    ],
+    "product_context": [
+      "grocery",
+      "marketplace",
+      "price comparison"
+    ],
+    "intensity": "balanced",
+    "mood": [
+      "calm",
+      "utilitarian"
+    ],
+    "motion_breakdown": {
+      "start_state": "Product page scrolled to the store list; no veil, page at full scale, sheet entirely below the viewport.",
+      "transition": "Sheet translates up ~150 ms decelerating; backdrop veil fades in and host page recedes on the same clock. On dismiss the sheet translates down ~420 ms accelerating while the veil fades out and the page returns to scale.",
+      "end_state": "Sheet off-screen, veil gone, page at full scale and scroll position untouched, with the chosen store row now highlighted in the list.",
+      "why_it_works": "Arrival and return answer different questions. Arriving, the user has already decided to choose a store: the sheet must be there before the thought finishes, so 150 ms and no bounce. Returning, the user is being handed back a page they must re-find their place in, and the veil lifting slowly is what re-establishes it. Overshoot is refused in both directions because the sheet is a surface carrying a list to read, not an object arriving — a list that bounces past its stop reads as broken.",
+      "motion_params": {
+        "timing": "fast",
+        "easing": "ease-out",
+        "springiness": "subtle",
+        "stagger": "none",
+        "direction": [
+          "up",
+          "down"
+        ]
+      }
+    },
+    "search_keywords": [
+      "bottom sheet",
+      "picker",
+      "store selector",
+      "dimmed backdrop",
+      "asymmetric exit",
+      "slow return",
+      "modal",
+      "no overshoot"
+    ],
+    "assigned_filter_slugs": [
+      "modal",
+      "sheet",
+      "selection"
+    ],
+    "confidence": 0.7,
+    "confidence_note": "Both directions measured off 60 fps vertical kymographs, read by eye against the grid: onset and arrival are solid to ~2 frames (~33 ms), so the ratio is trustworthy and the absolute values are ±30 ms. The veil and recede timings were NOT measured separately — they are asserted to share the sheet's clock from the contact sheets, which is the weakest claim here."
+  }
+}

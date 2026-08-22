@@ -139,3 +139,31 @@ afirmar RELACIONES en vez de milisegundos.
 
 - **Stack/structure**: `cuadra-mobile` skill. **Forms under test**: `cuadra-mobile-forms`.
 - **Backend discipline mirrored**: RED-first; `make eval` is the agent-prompt safety net analogue.
+
+## ⭐⭐ Un arnés más amable que la realidad es un test que miente
+
+Los stubs de nativo existen para que el árbol RENDERICE, no para fingir que el motor funciona. Pero
+cuando un stub **aplana una diferencia que el código sí usa**, deja ciega a toda la suite.
+
+Caso real (2026-08-20): `Easing` estaba stubeado como `new Proxy({}, { get: () => () => 0 })`, así
+que toda curva salía como una función nueva e indistinguible. **Ningún test podía afirmar qué curva
+eligió un módulo**, y una cascada de entrada se estuvo atropellando una fase entera con 480 tests en
+verde. El stub ahora devuelve funciones MEMOIZADAS con `easingName`, y exporta `easingNameOf()`:
+
+```ts
+import { easingNameOf } from "@/test/reanimated-stub";
+expect(easingNameOf(ENTRANCE_TIMING.easing)).toBe("linear");
+```
+
+Reglas que deja:
+
+1. **Cuando un defecto se te escapa, pregúntate qué le falta al ARNÉS para poder verlo.** Arreglar el
+   stub es parte del arreglo, no una tarea aparte — si no, el siguiente de la misma familia también
+   pasará.
+2. **Un stub puede aplanar el VALOR, nunca la IDENTIDAD.** Que `Easing.linear` no interpole bajo
+   jsdom está bien; que sea indistinguible de `Easing.bezier(...)` no.
+3. **Antes de tocar el stub compartido, mira quién lo usa** (`grep -rn "Easing" src` dio cero tests:
+   cambio seguro). Un stub es una dependencia de TODA la suite.
+4. **Un test puede pasar por el motivo equivocado.** Cuatro tests afirmaban que un escalón duraba lo
+   medido… en fracción de reloj, no en milisegundos. Si el usuario percibe milisegundos, el test
+   afirma milisegundos.

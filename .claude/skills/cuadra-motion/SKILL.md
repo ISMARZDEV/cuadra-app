@@ -139,6 +139,43 @@ Doce estilos derivados de un reloj no son doce relojes: es una resta por fotogra
 que la escalera se deshace por donde se hizo. El orden vive en la GEOMETRÍA, no en dos listas de
 retardos que habría que mantener sincronizadas.
 
+#### 7a. ⭐⭐ Si el escalonado vive en las VENTANAS, el RELOJ tiene que ser LINEAL
+
+Con `STEP` y `SPAN` en PROGRESO, el desfase que percibe el usuario está en MILISEGUNDOS — y entre los
+dos hay una curva. Poner un *easing* en el reloj compartido **aplasta la escalera**: los escalones del
+medio se amontonan y los de los extremos se separan.
+
+Medido en el detalle de producto, con `Easing.bezier(0.2, 0, 0, 1)` sobre un reloj de 394 ms:
+
+| | Diseñado | Real con la curva |
+|---|---|---|
+| Duración de un escalón | 134 ms (medidos) | **58 ms** |
+| Desfase entre bloques | ~33 ms | **8-11 ms** (medio fotograma a 60 fps) |
+| Fin de la cascada | 301 ms | **143 ms**, y 251 ms del reloj sin animar nada |
+
+Se leía como «todo a la vez», que es justo lo que una cascada existe para no ser. **La curva de cada
+escalón la pone su propia ventana; el reloj sólo cuenta tiempo.**
+
+> La derivación `DURACIÓN = medido / SPAN` **sólo es válida con reloj lineal.** Si el reloj lleva
+> curva, esa cuenta miente y ningún test que mida en PROGRESO lo notará.
+
+⚠️ Esta regla estaba escrita en `search-overlay.tsx` desde el primer consumidor de `CascadeItem`, y
+la pantalla siguiente la rompió igual. **Un aviso en un comentario no protege al código: hace falta
+un test que mire la curva** (ver «Testear movimiento»).
+
+#### 7b. Cuántos escalones caben — y por qué es un número, no una opinión
+
+El último escalón termina en `(n-1) · STEP + SPAN`, y **eso tiene que ser ≤ 1** o ese bloque nunca
+llega a opacidad plena: se queda a medio aparecer para siempre, y sólo se ve mirando muy fijo.
+
+Con `STEP` 0.085 y `SPAN` 0.34 el techo son **ocho** bloques (el noveno acaba en 1.02). Añadir uno
+más obliga a recortar `STEP` o `SPAN` — y eso cambia la cadencia MEDIDA, así que es una decisión, no
+un ajuste. Ponle test con las DOS cotas: que `n` cabe y que `n+1` no.
+
+Y cuando la cascada se reparte entre varios componentes, **el reparto de puestos vive en el módulo
+del reloj**, nunca en cada componente: con el reparto repartido, dos bloques acaban compartiendo
+índice, entran a la vez y NO se ve — se lee como que «ahí la cascada va rápida».
+
 ### 8. Afinar movimiento
 
 - ⭐ **Un muelle se afina por ω₀ y ζ, no por duración.** `withSpring({damping, stiffness, mass})`.
@@ -165,6 +202,65 @@ imantado: durante los ~13s del barrido el dedo no consigue hacerse con ella.
 
 **La velocidad se resigna; el gesto no se negocia.** Y todo movimiento automático se apaga con la
 PRIMERA señal de intención — arrastrar, tocar la banda **y elegir un elemento** (ese se olvida).
+
+### 10. ⭐⭐ Una animación de ENTRADA pertenece a la LLEGADA, no al contenido
+
+Tres defectos distintos, el mismo malentendido: creer que «entrar» es «montar». Los tres salieron de
+la pantalla de detalle de producto y los tres estaban invisibles para 480 tests en verde.
+
+**a) Si la pantalla no se desmonta, el efecto de montaje no vuelve a correr.**
+`router.replace` sobre la MISMA ruta conserva el árbol y sólo cambia el parámetro. Un
+`useEffect(..., [reloj])` no se entera nunca: el reloj se queda donde lo dejó —en 1, con todo
+puesto— y el contenido nuevo aparece de golpe. **Medido: 3 fotogramas distintos en 1 s, los tres
+dentro de 6 ms.**
+
+**b) Se REMONTA con `key`; NO se reinicia el reloj a mano.**
+Poner `reloj.value = 0` es lo obvio y es lo equivocado: escribir un shared value desde JS **encola**
+(§1), así que queda un fotograma con el contenido nuevo pintado a opacidad PLENA y el reloj todavía
+en 1 — un parpadeo, peor que no animar. Remontando, el reposo sale de la maquetación:
+`useSharedValue(0)` nace en 0 y el updater congelado de la primera pasada ya lo lee así.
+
+**c) La `key` lleva DOS causas independientes, y ninguna sustituye a la otra.**
+
+| Causa | Ejemplo | Qué NO cubre |
+|---|---|---|
+| Cambió el CONTENIDO | saltar de un producto a otro por un raíl | no hay llegada nueva: nunca se sale de la pantalla |
+| Cambió la LLEGADA | volver de otra pestaña, o de una subpantalla | no cambia el contenido |
+
+La identidad del contenido sale de los **DATOS**, nunca del parámetro de ruta: el parámetro cambia
+ANTES de que lleguen los datos nuevos, así que la animación correría sobre el contenido ANTERIOR
+—que es lo que sigue en pantalla— y el nuevo entraría después sin animar.
+
+Y el separador importa: con `id + visita` a secas, `canon-1` en la visita 2 y `canon-2` en la
+visita 1 dan la misma cadena y una entrada se pierde en silencio. Usa algo que no aparezca ni en un
+UUID ni en un slug (`${id}#${visita}`).
+
+La visita se cuenta con `useFocusEffect`, **saltándose el PRIMER foco**: el primer foco ES el
+montaje, y contarlo remontaría el dueño del reloj un fotograma después de nacer — la entrada se
+vería reiniciarse a sí misma.
+
+### 11. ⭐⭐ Con los datos en caché, la entrada compite con la transición de pantalla
+
+El defecto más escurridizo de la serie, y el que explica «la primera vez sí y las demás no»:
+
+- **Datos fríos**: la pantalla llega → «cargando» → el contenido monta ~220 ms después. La entrada
+  corre sobre una pantalla **quieta** y se ve perfectamente.
+- **Datos en caché** (o sea, SIEMPRE a partir de la segunda vez): el contenido monta en el **mismo
+  commit** que la pantalla, y los ~400 ms de entrada se gastan **mientras la pantalla se desliza
+  hacia dentro**. Al posarse ya está todo puesto: **animó donde nadie estaba mirando.**
+
+> **La primera vez es la ANÓMALA, no las demás.** Si una entrada «sólo se ve la primera vez»,
+> sospecha del caché antes que del reloj: lo que cambia no es la animación, es CUÁNDO monta.
+
+El arreglo es retrasar el arranque hasta que la pantalla esté quieta. Dos avisos caros:
+
+- ⚠️ **`navigation.addListener("transitionStart" | "transitionEnd")` NO llega** en esta pila.
+  Comprobado subiendo el plazo de espera a 3 s: a 1,2 s de entrar la pantalla seguía VACÍA, lo que
+  sólo puede pasar si el único disparador era el plazo. **Un evento que no llega no es una señal,
+  es una espera.**
+- ⚠️ El retraso se ancla a cuándo montó **la PANTALLA**, no el contenido: así los tres casos
+  (caché, frío, volver de otra pestaña) salen de una sola resta sin preguntar por qué camino se
+  entró. Ver `product/motion/arrival.ts`.
 
 ## El PATRÓN: una pantalla que se REORGANIZA para dejarle sitio a un campo
 
@@ -272,6 +368,32 @@ Reglas del test:
 - La lógica pura (tiempos, plan de un barrido, ancla) va a su **módulo aparte** y se prueba sin montar
   pantalla ni fingir el reloj: `search-choreography.ts`, `search-anchor.ts`, `wheel-autoplay-plan.ts`.
 
+### ⭐⭐ El stub tiene que dejar AFIRMAR QUÉ CURVA se eligió
+
+`Easing` era `new Proxy({}, { get: () => () => 0 })`: cualquier curva —lineal, bezier, la que fuera—
+salía como una función nueva e indistinguible. Con eso **ningún test podía notar que a un reloj de
+cascada le habían puesto una curva**, y la cascada del detalle se estuvo atropellando durante una
+fase entera con 480 tests en verde (§7a).
+
+El arreglo, en `src/test/reanimated-stub.tsx`: cada nombre devuelve **siempre la misma** función
+(identidad estable) etiquetada con su `easingName`; llamarla —`Easing.bezier(...)`, `Easing.out(...)`—
+devuelve otra etiquetada con la llamada (`out(cubic)`). Se lee con `easingNameOf(config.easing)`:
+
+```ts
+expect(easingNameOf(ENTRANCE_TIMING.easing)).toBe("linear");
+// en rojo daba: expected 'bezier(0.2,0,0,1)' to be 'linear'
+```
+
+> **Cuando un defecto se te escapa, pregúntate qué le falta al ARNÉS para poder verlo.** Arreglar el
+> stub es parte del arreglo, no una tarea aparte: si no, el siguiente defecto de la misma familia
+> también pasará.
+
+### ⭐ Medir en PROGRESO no es medir lo que se ve
+
+Cuatro tests verdes afirmaban que un escalón duraba lo medido… en fracción de reloj. En milisegundos
+duraba menos de la mitad. **Si el usuario percibe milisegundos, el test afirma milisegundos**: pon una
+función pura que traduzca el plan a tiempo real (`stepScheduleMs`) y afirma sobre ella.
+
 ## Anti-patrones
 
 | Anti-patrón | Por qué muerde |
@@ -282,6 +404,10 @@ Reglas del test:
 | Un `withDelay` que espera al `onXFinished` de otra animación | Cola de sucesos, no una transición |
 | `MIN_TRAVEL` y demás suelos como «red de seguridad» | Si se activa, ESE es el glitch |
 | Guardar «la última medida buena» | Envejece: `onLayout` no se dispara al hacer scroll |
+| Un *easing* en el RELOJ de una cascada | Aplasta el escalonado: los del medio se amontonan (§7a) |
+| Reiniciar un reloj a mano al cambiar de contenido | La escritura desde JS ENCOLA → un fotograma a opacidad plena (§10b) |
+| Colgar la identidad de una entrada del parámetro de RUTA | Cambia antes que los datos: anima el contenido viejo (§10c) |
+| Dar por hecho que «entrar» es «montar» | Con caché el contenido monta con la pantalla y la entrada se gasta en la transición (§11) |
 
 ## Commands
 
@@ -300,6 +426,9 @@ cada respuesta y el GC se come los fotogramas). Ver `cuadra-ui-verify`.
 - `apps/mobile/src/features/save/supermarket/search-choreography.ts` — tiempos compartidos entre hoja y pantalla
 - `apps/mobile/src/features/save/supermarket/search-anchor.ts` — la posición DERIVADA, no medida
 - `apps/mobile/src/features/save/supermarket/search/search-overlay.tsx` — la fórmula del montaje y el timeline reversible
-- `apps/mobile/src/features/save/supermarket/search/cascade-item.tsx` — un reloj, una ventana por fila
+- `apps/mobile/src/components/ui/cascade-item.tsx` — un reloj, una ventana por fila (COMPARTIDO: buscador y detalle)
+- `apps/mobile/src/features/save/supermarket/product/motion/entrance.ts` — reloj LINEAL, reparto de puestos, `stepScheduleMs`, `entranceKeyOf`
+- `apps/mobile/src/features/save/supermarket/product/motion/arrival.ts` — cuándo ha LLEGADO la pantalla (§11)
+- `apps/mobile/src/features/save/supermarket/product/components/product-entrance.tsx` — dueño del reloj + `useEntranceVisit`
 - `apps/mobile/src/features/save/supermarket/components/wheel-autoplay-plan.ts` — el plan como función pura
-- `apps/mobile/src/test/reanimated-stub.tsx` — el stub que hace invisibles estos defectos. LEER antes de escribir un test de movimiento
+- `apps/mobile/src/test/reanimated-stub.tsx` — el arnés. Ya identifica las CURVAS (`easingNameOf`). LEER antes de escribir un test de movimiento
