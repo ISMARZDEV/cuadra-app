@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
 import { formatMoney } from "@/lib/money";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
+import { SquircleCard } from "@/components/ui/squircle-card";
 
 import { MICRO, ROW_PRICE, ROW_TITLE } from "../product-type";
 import { freshnessOf, rowTintClass, type StoreStanding } from "../product-view";
@@ -35,24 +36,31 @@ export function StoreRow({ standing, onPress, selected = false }: Props) {
   const previous = row.previous_price_minor;
 
   return (
+    // ⭐ La FORMA la pone el squircle y el TOQUE el `Pressable` de dentro. Van separados porque un
+    // `Pressable` no puede ser la vista nativa del squircle, y meter el radio en el `Pressable`
+    // dejaría la esquina circular mientras el resto de la app lleva la de Cuadra.
+    //
+    // La más barata se distingue con un fondo tenue, no sólo con el sello: el sello se lee después
+    // del precio y la fila tiene que cantar antes de leerla entera.
+    //
+    // ⚠️ El tinte va por CLASE y no por `style`, para que tenga pareja en oscuro. Clavado en el
+    // estilo, en tema oscuro el texto se volvía blanco sobre un verde clarísimo y la tienda y su
+    // precio se volvían ilegibles — ver `rowTintClass`.
+    <SquircleCard
+      className={`rounded-2xl ${rowTintClass(place === "cheapest" || selected)}`}
+      style={{
+        borderWidth: selected ? 1 : 0,
+        borderColor: "#BBEB71",
+        overflow: "hidden",
+      }}
+    >
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       aria-label={onPress ? t("save.product.stores.openStore").replace("{store}", row.provider_name) : undefined}
       accessibilityLabel={onPress ? t("save.product.stores.openStore").replace("{store}", row.provider_name) : undefined}
       onPress={onPress}
-      // La más barata se distingue con un fondo tenue, no sólo con el sello: el sello se lee
-      // después del precio y la fila tiene que cantar antes de leerla entera.
-      //
-      // ⚠️ El tinte va por CLASE y no por `style`, para que tenga pareja en oscuro. Clavado en el
-      // estilo, en tema oscuro el texto se volvía blanco sobre un verde clarísimo y la tienda y su
-      // precio se volvían ilegibles — ver `rowTintClass`.
-      className={`flex-row items-center rounded-2xl px-3 ${rowTintClass(place === "cheapest" || selected)}`}
-      style={{
-        gap: 12,
-        paddingVertical: 12,
-        borderWidth: selected ? 1 : 0,
-        borderColor: "#BBEB71",
-      }}
+      className="flex-row items-center px-3"
+      style={{ gap: 12, paddingVertical: 12 }}
     >
       {/* Sin logotipo va la INICIAL, no un cuadro gris vacío: el hueco se lee como una imagen que
           no cargó —un error— cuando en realidad esa tienda simplemente no tiene logo cargado. */}
@@ -135,6 +143,7 @@ export function StoreRow({ standing, onPress, selected = false }: Props) {
 
       {onPress ? <Icon as={ChevronRight} size={18} color="#9CA3AF" /> : null}
     </Pressable>
+    </SquircleCard>
   );
 }
 
