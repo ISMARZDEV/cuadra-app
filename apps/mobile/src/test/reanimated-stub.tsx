@@ -45,7 +45,45 @@ export const withRepeat = identity;
 export const cancelAnimation = () => {};
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const withDelay = (_delay: any, value: any) => value;
-export const Easing = new Proxy({}, { get: () => () => 0 });
+// ⭐ Las curvas se DEVUELVEN ETIQUETADAS, y no es un capricho del arnés.
+//
+// Antes esto era `new Proxy({}, { get: () => () => 0 })`: cualquier curva —lineal, bezier, la que
+// fuera— salía como una función nueva e indistinguible. Con eso NINGÚN test podía notar que a un
+// reloj de cascada le habían puesto una curva, y la cascada del detalle de producto se estuvo
+// atropellando durante toda una fase con 480 tests en verde. Un mock más amable que la realidad es
+// un test que miente.
+//
+// Ahora cada nombre devuelve SIEMPRE la misma función (identidad estable) y lleva su `easingName`,
+// así que se puede afirmar QUÉ curva eligió un módulo. Como valor sigue siendo la identidad: bajo
+// jsdom no se interpola nada, y el arnés no debe fingir que sí.
+type TaggedEasing = ((t: number) => number) & { easingName: string };
+const easingCache = new Map<string, TaggedEasing>();
+function taggedEasing(name: string): TaggedEasing {
+  const hit = easingCache.get(name);
+  if (hit) return hit;
+  const base = ((t: number) => t) as TaggedEasing;
+  base.easingName = name;
+  // Algunos nombres son CURVAS (`Easing.linear`) y otros FÁBRICAS (`Easing.bezier(...)`,
+  // `Easing.out(...)`). El mismo objeto sirve para las dos cosas: al llamarlo devuelve otra curva
+  // etiquetada con la llamada, así `Easing.out(Easing.cubic)` se lee como `out(cubic)`.
+  const fn = new Proxy(base, {
+    apply: (_target, _thisArg, args: unknown[]) =>
+      taggedEasing(
+        `${name}(${args.map((a) => (a as TaggedEasing)?.easingName ?? String(a)).join(",")})`,
+      ),
+  }) as TaggedEasing;
+  easingCache.set(name, fn);
+  return fn;
+}
+export const Easing = new Proxy(
+  {},
+  { get: (_target, key) => taggedEasing(String(key)) },
+) as Record<string, TaggedEasing>;
+
+/** Lee el nombre de la curva que un módulo eligió. Devuelve `undefined` si no es una curva. */
+export function easingNameOf(easing: unknown): string | undefined {
+  return (easing as TaggedEasing | undefined)?.easingName;
+}
 export const ZoomIn = chainable;
 export const ZoomOut = chainable;
 export const FadeIn = chainable;
