@@ -6,7 +6,11 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 
-// UN ESCALÓN de la cascada del buscador: entra un poco después que el de arriba.
+// UN ESCALÓN de una cascada: entra un poco después que el de arriba.
+//
+// Compartido desde su SEGUNDO consumidor (la hoja del buscador y el detalle de producto). Lo que
+// escalona no es el componente sino la GEOMETRÍA del interpolado, así que sirve para cualquier
+// lista que tenga que aparecer de arriba abajo.
 //
 // ⚠️ UN SOLO RELOJ PARA TODA LA LISTA, y esto es lo que distingue esta implementación de la
 // ingenua. La versión anterior daba a cada fila su propio muelle con `withDelay`: doce animaciones
