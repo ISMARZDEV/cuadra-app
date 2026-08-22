@@ -14,6 +14,7 @@ import { memo, useRef, useState } from "react";
 import { useColorScheme } from "nativewind";
 
 import { Icon } from "@/components/ui/icon";
+import { PHOTO_PLATE, photoPendingColor, photoPlateRadius } from "@/components/ui/product-photo";
 import { PillButton } from "@/components/ui/pill-button";
 import { t } from "@/i18n";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
@@ -87,16 +88,17 @@ export function cardPalette(scheme: "light" | "dark") {
     /** El canto. En claro es un pelo MÁS OSCURO que la cáscara; en oscuro, un pelo más CLARO —
      *  el contorno separa del fondo, y para eso tiene que ir en el sentido contrario al relleno. */
     shellStroke: dark ? "#242424" : "#F4F4F4",
-    /** Ver la nota de arriba: blanca en los dos temas, a propósito. */
-    photoPlate: "#FFFFFF",
-    /** El hueco mientras la foto viaja desde el CDN. El MISMO tono del barrido del esqueleto de
-     *  Save, para que la espera se lea igual en toda la vertical. */
-    photoPending: dark ? "#242424" : "#EFEFF2",
+    /** Ver la nota de arriba: blanca en los dos temas, a propósito.
+     *  ⭐ Los tres tokens de la foto se LEEN de `product-photo`, que es la pieza que encarna el
+     *  hecho del catálogo (JPEG sin alfa sobre blanco puro). Repetirlos aquí es como la rejilla y
+     *  el detalle acabaron discrepando sobre lo mismo. */
+    photoPlate: PHOTO_PLATE,
+    photoPending: photoPendingColor(scheme),
     /** En claro la placa se funde con la cáscara y un radio no diría nada; en oscuro es lo que
      *  convierte un recuadro en una placa.
      *  En unidades de DISEÑO —lo escala el componente con SU `s()`—: la tarjeta se dibuja a dos
      *  tamaños y un radio fijo se vería el doble de redondo en la rejilla que en los carruseles. */
-    photoRadius: dark ? 10 : 0,
+    photoRadius: photoPlateRadius(scheme),
     name: dark ? "#F7FAF7" : "#131313",
     /** Marca y tamaño. El gris de claro es demasiado oscuro sobre `#151515`. */
     meta: dark ? "#9CA3AF" : "#898989",

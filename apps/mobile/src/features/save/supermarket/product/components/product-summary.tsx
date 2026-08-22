@@ -1,6 +1,6 @@
 import { Bookmark, Star, Zap } from "lucide-react-native";
 import { useState } from "react";
-import { Image, Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 
 import { Icon } from "@/components/ui/icon";
@@ -11,6 +11,7 @@ import { MOCK_FAST_DELIVERY, MOCK_RATING } from "../product-placeholders";
 import { PRICE, PRICE_CENTS, TITLE } from "../product-type";
 import { freshnessOf, priceParts } from "../product-view";
 import { CascadeItem } from "@/components/ui/cascade-item";
+import { ProductPhoto } from "@/components/ui/product-photo";
 
 import { STEPS as Step } from "../motion/entrance";
 import { StoreAvatars, type AvatarStore } from "./store-avatars";
@@ -85,19 +86,18 @@ export function ProductSummary({
         }}
       />
 
-      {/* La foto sobre blanco: el catálogo llega con fondos recortados y cualquier tinte de marca
-          detrás los delata con un halo. `contain` porque los tamaños de origen no son uniformes.
+      {/* La foto va en la MISMA pieza que la de la rejilla (`ProductPhoto`), y eso arregla dos
+          cosas de un tirón. Aquí había un `Image` suelto con un comentario que afirmaba que «el
+          catálogo llega con fondos recortados» — es FALSO, y la tarjeta ya lo tenía verificado
+          contra el CDN: son JPEG sin alfa sobre blanco puro. En oscuro salía un ladrillo blanco a
+          sangre; ahora es una placa redondeada, que se lee como decisión. Y la foto se FUNDE
+          cuando el CDN la entrega en vez de caer de golpe segundos después de la cascada.
+
           El alto sale de la PANTALLA, no de un número fijo: en la referencia ocupa cerca de un
           tercio, y 240pt clavados son generosos en un Pro Max y ahogan la foto en un SE. */}
       <CascadeItem progress={cascade} index={Step.Photo}>
         <View className="items-center justify-center" style={{ height: imageHeight }}>
-          {imageUrl ? (
-            <Image
-              source={{ uri: imageUrl }}
-              style={{ width: "76%", height: "92%" }}
-              resizeMode="contain"
-            />
-          ) : null}
+          <ProductPhoto uri={imageUrl} width="76%" height="92%" fallbackSize={48} />
         </View>
       </CascadeItem>
 

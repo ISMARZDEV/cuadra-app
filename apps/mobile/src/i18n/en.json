@@ -242,5 +242,6 @@
   "save.product.details.category": "Category",
   "save.product.expand": "Expand",
   "save.product.collapse": "Collapse",
-  "save.product.seeMore": "See more"
+  "save.product.seeMore": "See more",
+  "save.product.noImage": "No image"
 }
