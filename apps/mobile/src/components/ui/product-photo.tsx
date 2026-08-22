@@ -82,6 +82,12 @@ export function ProductPhoto({
   // contenido a 2833 ms y la foto a 3050 ms más la decodificación.
   const photoIn = useSharedValue(0);
   const photoStyle = useAnimatedStyle(() => ({ opacity: photoIn.value }));
+  // ⭐ El hueco se RETIRA a la vez que entra la foto, derivado del MISMO reloj.
+  //
+  // Quedándose debajo para siempre se le veían los cantos: con `contain` la foto no llena la placa
+  // —una lata es más alta que ancha—, y por arriba y por abajo asomaban dos franjas grises donde
+  // debía haber blanco. El hueco es para la ESPERA; pasada la espera, estorba.
+  const pendingStyle = useAnimatedStyle(() => ({ opacity: 1 - photoIn.value }));
 
   if (!uri) {
     return (
@@ -108,16 +114,19 @@ export function ProductPhoto({
 
   return (
     <View style={[photoPlateStyle(scheme), { width, height }]}>
-      <View
+      <Animated.View
         testID="product-photo-pending"
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: photoPendingColor(scheme),
-        }}
+        style={[
+          {
+            position: "absolute",
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: photoPendingColor(scheme),
+          },
+          pendingStyle,
+        ]}
       />
       <Animated.Image
         // La URL llega YA DIMENSIONADA desde el API (`domain/image_variant`): los originales son

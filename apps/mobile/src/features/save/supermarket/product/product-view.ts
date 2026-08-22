@@ -114,3 +114,16 @@ export function freshnessOf(capturedAt: string | null | undefined, now: Date = n
 export function rowTintClass(highlighted: boolean): string {
   return highlighted ? "bg-[#F1F9EC] dark:bg-[#152A1D]" : "";
 }
+
+/**
+ * La etiqueta que va detrás de la «X» en un precio por unidad.
+ *
+ * `unit_measure` llega del API como la MAGNITUD (`mass`|`volume`|`count`), no como la unidad. La
+ * traducción vive aquí y no en la vista porque es la misma en las tres pantallas que enseñan un
+ * precio unitario, y con tres copias la rejilla acabaría diciendo «kg» donde el detalle dice «Kg».
+ */
+export function unitLabelOf(measure: string | null | undefined): string | null {
+  if (!measure) return null;
+  const known: Record<string, string> = { mass: "kg", volume: "L", count: "ud" };
+  return known[measure] ?? measure;
+}

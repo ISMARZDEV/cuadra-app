@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type Href, useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
 
-import { AppBackground } from "@/components/ui/app-background";
+import { SupermarketBackground } from "./components/supermarket-background";
 import { useTabBarClearance } from "@/components/navigation/use-tab-bar-clearance";
 import { PillButton } from "@/components/ui/pill-button";
 import { t, useLang } from "@/i18n";
@@ -48,7 +48,6 @@ import { resolveHomeState } from "./home-state";
 // Mismo fondo y misma geometría que el hub de Ahorra —gris plano en claro, gradiente en oscuro, y
 // el blanco al pie que la barra de tabs flotante necesita— para que pasar de una a otra no se
 // sienta como cambiar de app.
-const BG_LIGHT = "#F4F4F4";
 const GUTTER_X = 14;
 const RAIL_GAP = 28;
 /** Aire entre el buscador y el título del primer rail. El header ya reserva el suyo por arriba
@@ -189,11 +188,7 @@ export function SupermarketHomeScreen() {
 
   return (
     <View className="flex-1">
-      {isDark ? (
-        <AppBackground />
-      ) : (
-        <View pointerEvents="none" className="absolute inset-0" style={{ backgroundColor: BG_LIGHT }} />
-      )}
+      <SupermarketBackground />
       <ScrollView
         // Dos trabajos, los dos baratos: apuntar dónde quedó la píldora del buscador (`scrollY`, un
         // ref: ni estado ni repintado) y decidir si la barra de tabs se aparta.

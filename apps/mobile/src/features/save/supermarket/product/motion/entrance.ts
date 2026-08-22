@@ -30,11 +30,17 @@ export const ENTRANCE_MS = Math.round(MEASURED_STEP_MS / SPAN);
  * MEDIDA. El test lo sujeta.
  */
 export const STEPS = {
+  /** La foto, en su tarjeta blanca montada sobre el verde del header. */
   Photo: 0,
-  Name: 1,
+  /** Nombre + marca · moneda · tamaño. */
+  Identity: 1,
+  /** Precio de hoy, precio de antes y sus unitarios. */
   Price: 2,
-  Signals: 3,
-  Stores: 4,
+  /** «Comprar en la tienda» + el enlace del súper. */
+  Actions: 3,
+  /** La franja de Cuadra: tendencia y ahorro. */
+  Insight: 4,
+  /** La prosa comercial del producto. */
   Description: 5,
   /** «Otras tiendas»: el titular, las tiles y las filas. Lo pone la pantalla, no la cabecera. */
   StorePanel: 6,
