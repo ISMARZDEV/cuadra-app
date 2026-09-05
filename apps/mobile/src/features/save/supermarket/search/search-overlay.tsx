@@ -21,7 +21,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import SearchIcon from "@/assets/carrusel-save/search-icon.svg";
-import { appBgColorAt } from "@/components/ui/app-background";
+import { saveBgFor } from "../../save-background";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassField } from "@/components/ui/glass-field";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -275,7 +275,7 @@ export function SearchOverlay({
   // El fondo de la hoja es EL MISMO que el de la home, no un gris propio: la hoja sustituye a la
   // pantalla, así que abrirla no puede cambiar el color del suelo. En oscuro se pregunta por el
   // valor del degradado ARRIBA (fracción 0), que es donde se apoya.
-  const sheetBg = isDark ? appBgColorAt("dark", 0) : BG_LIGHT;
+  const sheetBg = saveBgFor(isDark);
   const text = isDark ? "#FFFFFF" : "#034842";
   // Los del compositor del chat: sobre vidrio, el gris al 45% de antes se hunde. `muted` viste el
   // marcador de posición Y las filas secundarias de la lista, así que el cambio va a las dos.
