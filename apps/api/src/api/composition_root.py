@@ -13,6 +13,13 @@ from fastapi import Depends
 from jwt import PyJWKClient
 from sqlalchemy.orm import Session
 
+from src.contexts.save.application.groups import (
+    AddProductToGroup,
+    CreateProductGroup,
+    DeleteProductGroup,
+    ListProductGroups,
+    RemoveProductFromGroup,
+)
 from src.contexts.save.application.alerts import (
     ListAlertNotifications,
     ListAlerts,
@@ -140,6 +147,7 @@ from src.contexts.save.infrastructure.matching.repository.product_match_reposito
 from src.contexts.save.infrastructure.repositories import (
     SqlAdminAuditRepository,
     SqlAlertRepository,
+    SqlProductGroupRepository,
     SqlBasketQueryRepository,
     SqlAdminCanonicalCatalogRepository,
     SqlCanonicalImageRepository,
@@ -653,6 +661,32 @@ def get_list_provider_products(
 
 
 # ── Alertas de precio (G4) ──
+def get_list_product_groups(session: Session = Depends(get_session)) -> ListProductGroups:
+    return ListProductGroups(SqlProductGroupRepository(session))
+
+
+def get_create_product_group(session: Session = Depends(get_session)) -> CreateProductGroup:
+    return CreateProductGroup(
+        SqlProductGroupRepository(session), SqlCanonicalProductRepository(session)
+    )
+
+
+def get_add_product_to_group(session: Session = Depends(get_session)) -> AddProductToGroup:
+    return AddProductToGroup(
+        SqlProductGroupRepository(session), SqlCanonicalProductRepository(session)
+    )
+
+
+def get_remove_product_from_group(
+    session: Session = Depends(get_session),
+) -> RemoveProductFromGroup:
+    return RemoveProductFromGroup(SqlProductGroupRepository(session))
+
+
+def get_delete_product_group(session: Session = Depends(get_session)) -> DeleteProductGroup:
+    return DeleteProductGroup(SqlProductGroupRepository(session))
+
+
 def get_subscribe_alert(session: Session = Depends(get_session)) -> SubscribeAlert:
     return SubscribeAlert(SqlAlertRepository(session), SqlCanonicalProductRepository(session))
 
