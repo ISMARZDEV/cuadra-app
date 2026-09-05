@@ -37,6 +37,15 @@ export function toCardItemView(dto: ProductCardDto, index: number): CardItemView
       // Sin URL de tienda: en esta pantalla la esquina la ocupa el marcador, no el ojo.
       url: null,
       unit_price: formatMoney(dto.price_minor, dto.currency),
+      // El precio por unidad LEGIBLE, ya resuelto por el dominio (entero, half-up, en la unidad del
+      // envase). Aquí sólo se formatea — regla sagrada: el dinero llega en minor units y la UI
+      // únicamente lo pinta. Antes la tarjeta lo derivaba sola en float y por eso discrepaba del
+      // detalle. Ver `display_units.py`.
+      display_unit_price:
+        dto.display_unit_price_minor != null
+          ? formatMoney(dto.display_unit_price_minor, dto.currency)
+          : null,
+      display_unit: dto.display_unit ?? null,
     },
     currency: dto.currency,
     badge: dto.store_count,

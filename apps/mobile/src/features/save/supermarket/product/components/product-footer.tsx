@@ -7,6 +7,8 @@ import { GlassSurface } from "@/components/ui/glass-surface";
 import { t } from "@/i18n";
 import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
+import { type HeaderSkin } from "../../header-palette";
+
 interface Props {
   quantity: number;
   onQuantityChange: (quantity: number) => void;
@@ -15,6 +17,14 @@ interface Props {
   safeBottom: number;
   /** 0 = puesta · 1 = fuera. La misma señal que esconde la barra de tabs, y por eso el mismo viaje. */
   hideProgress: SharedValue<number>;
+  /**
+   * La piel de color de la cabecera de ESTA pantalla.
+   *
+   * ⭐ El pie está en el otro extremo de la pantalla, pero es de la misma pantalla: con el verde de
+   * marca fijo, una cabecera rosa dejaba un pie verde abajo y se leían como dos apps pegadas. La
+   * carta es de la PANTALLA, no de su cabecera.
+   */
+  skin: HeaderSkin;
 }
 
 const BAR_HEIGHT = 60;
@@ -50,7 +60,16 @@ export function ProductFooter({
   onAdd,
   safeBottom,
   hideProgress,
+  skin,
 }: Props) {
+  // ⭐ El pie conserva la RELACIÓN que ya tenía —cantidad claros, acción oscura— y sólo cambia de
+  // qué par salen los dos colores. Copiar la relación y no sólo el color es lo que hace que la
+  // barra siga leyéndose igual con las cinco cartas.
+  //
+  // La acción lleva la MISMA pareja que los botones de la cabecera: son los dos controles de más
+  // peso de la pantalla y deben pesar igual.
+  const quantityPalette = { tint: skin.bg, icon: skin.ink };
+  const actionPalette = { tint: skin.ink, icon: skin.bg };
   // ⭐ SÓLO se traslada, nunca se funde. Es la misma regla que gobierna la barra de tabs: una
   // opacidad animada sobre un ancestro de un `GlassView` lo aísla en su propia capa de composición
   // y ahí ya no hay «detrás» que muestrear — el cristal se apaga y quedan los botones flotando.
@@ -102,6 +121,7 @@ export function ProductFooter({
               // añadido ninguno la respuesta honesta es cero. (Arrancaba en 1 con el argumento de
               // que multiplica un precio; el argumento era bueno para otra cosa —cuánto te cuesta
               // llevarte tres— pero no para el estado inicial de algo que no has tocado.)
+              palette={quantityPalette}
               onPress={() => onQuantityChange(Math.max(0, quantity - 1))}
             />
             <Text
@@ -120,6 +140,7 @@ export function ProductFooter({
               label={t("save.product.increase")}
               size={BUTTON}
               iconSize={20}
+              palette={quantityPalette}
               onPress={() => onQuantityChange(quantity + 1)}
             />
           </View>
@@ -128,15 +149,17 @@ export function ProductFooter({
               gradiente y —lo que se notaba— el mismo muelle al pulsar. Antes era un `Pressable`
               plano y por eso no reaccionaba igual que sus vecinos.
 
-              `accent` lo invierte respecto a ellos: es la única acción de la pantalla, y con el
-              mismo verde de los otros dos no se distinguiría de un control de cantidad. */}
+              Va con la pareja INVERTIDA respecto a los de cantidad: es la única acción de la
+              pantalla, y con el mismo tinte que ellos no se distinguiría de un control de cantidad.
+              Antes eso lo hacía `accent`, que invierte contra el TEMA — inútil aquí, donde la
+              superficie la decide la carta y no el esquema del sistema. */}
           <GlassButton
             icon={ShoppingBasket}
             label={t("save.product.addToList")}
             text={t("save.product.addToList")}
             size={BUTTON}
             iconSize={19}
-            accent
+            palette={actionPalette}
             onPress={onAdd}
           />
         </View>

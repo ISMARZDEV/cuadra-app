@@ -6,15 +6,18 @@ import { CascadeItem } from "@/components/ui/cascade-item";
 import { t } from "@/i18n";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
+import type { HeaderSkin } from "../../header-palette";
 import type { HistoryPoint } from "../chart/history-geometry";
 import { STEPS as Step } from "../motion/entrance";
 import { DEEP_GREEN } from "../product-palette";
 import { CuadraInsightBar } from "./cuadra-insight-bar";
+import { ProductActions } from "./product-actions";
 import { ProductIdentity } from "./product-identity";
 import { ProductPriceBlock } from "./product-price-block";
-import { StoreActions } from "./store-actions";
 
 interface Props {
+  /** El canónico, para seguir su precio. `undefined` mientras viaja la comparación. */
+  productId?: string;
   name: string;
   displaySize?: string | null;
   brand?: string | null;
@@ -27,9 +30,14 @@ interface Props {
   unitLabel?: string | null;
   /** Lo que costaba antes en esa misma tienda. */
   previousMinor?: number | null;
-  /** La web de la tienda más barata. */
-  storeUrl?: string | null;
-  onOpenStore: () => void;
+  /** La carta de color de esta llegada: la fila de acciones se pinta con ella. */
+  skin: HeaderSkin;
+  /** Lleva a las secciones plegables del final. */
+  onMoreInfo: () => void;
+  /** Abre la hoja de grupos. Ausente mientras los grupos no existan: el botón se apaga solo. */
+  onAddToGroup?: () => void;
+  /** Si el producto ya está en algún grupo. */
+  inGroup?: boolean;
   history?: readonly HistoryPoint[] | null;
   description?: string | null;
   /**
@@ -42,6 +50,9 @@ interface Props {
 }
 
 const DESCRIPTION_LINES = 3;
+
+/** El aire ENTRE bloques de la cabecera. Uno solo para todos: ver el comentario de la maqueta. */
+const BLOCK_GAP = 20;
 
 /**
  * La cabecera del detalle: la foto, quién es el producto, cuánto cuesta y qué aporta Cuadra.
@@ -58,6 +69,7 @@ const DESCRIPTION_LINES = 3;
  * una lista cualquiera.
  */
 export function ProductSummary({
+  productId,
   name,
   displaySize,
   brand,
@@ -67,8 +79,10 @@ export function ProductSummary({
   unitPriceMinor,
   unitLabel,
   previousMinor,
-  storeUrl,
-  onOpenStore,
+  skin,
+  onMoreInfo,
+  onAddToGroup,
+  inGroup,
   history,
   description,
   cascade,
@@ -84,7 +98,13 @@ export function ProductSummary({
           título subiría hasta la cabecera y la tarjeta se le pondría encima. */}
       <View style={{ height: photoSlot }} pointerEvents="none" />
 
-      <View className="px-5 pt-5" style={{ gap: 14 }}>
+      {/* ⭐ UN SOLO RITMO para toda la cabecera: identidad, precio, la franja de Cuadra y la fila de
+          acciones respiran lo mismo (`BLOCK_GAP`). Estaba en 14 aquí y 12 dentro del bloque de la
+          franja, y esos dos puntos de diferencia no se leían como jerarquía: se leían como que los
+          tres bloques de abajo iban apretados contra el precio. Cuando la separación no significa
+          nada, tiene que ser IGUAL — si un día uno de estos bloques necesita destacarse, se separa
+          ése a propósito y se sabrá por qué. */}
+      <View className="px-5 pt-5" style={{ gap: BLOCK_GAP }}>
         <CascadeItem progress={cascade} index={Step.Identity}>
           <ProductIdentity name={name} brand={brand} currency={currency} displaySize={displaySize} />
         </CascadeItem>
@@ -99,17 +119,29 @@ export function ProductSummary({
           />
         </CascadeItem>
 
-        <CascadeItem progress={cascade} index={Step.Actions}>
-          <StoreActions url={storeUrl} onOpen={onOpenStore} />
-        </CascadeItem>
+        {/* La franja de Cuadra y las tres acciones comparten escalón porque son una sola idea: la
+            banda dice qué está haciendo el precio y los botones son lo que se puede hacer al
+            respecto. Separarlos partiría en dos un gesto que se lee de corrido.
 
+            ⭐ La fila SUSTITUYÓ a la píldora «seguir el precio», que vivía suelta a la derecha de la
+            banda: el corazón es esa misma capacidad. Dos controles para una sola cosa es peor que
+            uno, por mucho que los dos funcionen. */}
         <CascadeItem progress={cascade} index={Step.Insight}>
-          <CuadraInsightBar
-            priceMinor={priceMinor}
-            previousMinor={previousMinor}
-            currency={currency}
-            history={history}
-          />
+          <View style={{ gap: BLOCK_GAP }}>
+            <CuadraInsightBar
+              priceMinor={priceMinor}
+              previousMinor={previousMinor}
+              currency={currency}
+              history={history}
+            />
+            <ProductActions
+              skin={skin}
+              productId={productId}
+              onMoreInfo={onMoreInfo}
+              onAddToGroup={onAddToGroup}
+              inGroup={inGroup}
+            />
+          </View>
         </CascadeItem>
 
         {description ? (

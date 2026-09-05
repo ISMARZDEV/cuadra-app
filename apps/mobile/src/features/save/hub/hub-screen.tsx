@@ -12,7 +12,7 @@ import { type Href, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useColorScheme } from "nativewind";
 
-import { AppBackground } from "@/components/ui/app-background";
+import { SAVE_BG_LIGHT, SaveBackground, saveBgFor } from "../save-background";
 import { useTabBarClearance } from "@/components/navigation/use-tab-bar-clearance";
 import { GlassButton } from "@/components/ui/glass-button";
 import { TopScrollFade } from "@/components/ui/top-scroll-fade";
@@ -28,10 +28,13 @@ import { VerticalCard } from "./components/vertical-card";
 import { HUB_GAP_Y, HUB_GUTTER_X } from "./layout";
 import { VERTICALS } from "./verticals";
 
-// El hub se sale del gradiente de la app en tema CLARO: el diseño lo pide gris plano, y sobre él
-// el card blanco con su aro blanco se recorta. En oscuro se queda con `AppBackground`, porque un
-// gris claro debajo de la barra de tabs oscura partiría la app en dos.
-const HUB_BG_LIGHT = "#F4F4F4";
+// El hub se sale del gradiente de la app en los DOS temas: el diseño lo pide plano, y sobre él el
+// card blanco con su aro blanco se recorta. Ahora el color lo pone `SaveBackground` —el mismo de
+// todas las pantallas de Save— en vez de un hex propio: llegó a tener su `#F4F4F4` escrito a mano,
+// idéntico al de Supermarket, que es exactamente cómo dos fondos empiezan a separarse.
+//
+// (La versión anterior conservaba el gradiente en oscuro «porque un gris CLARO bajo la barra de
+// tabs partiría la app en dos». El argumento era del gris claro; el oscuro de Save no lo hace.)
 
 // La hoja abre y cierra con la MISMA curva y duración con que el chat sigue al teclado de iOS
 // (`chat-screen`: 250ms + `Easing.out(Easing.cubic)`). Sin resorte a propósito: un panel que rebota
@@ -128,11 +131,11 @@ export function HubScreen() {
   return (
     <View className="flex-1">
       {isDark ? (
-        <AppBackground />
+        <SaveBackground />
       ) : (
         <View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: HUB_BG_LIGHT }]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: SAVE_BG_LIGHT }]}
         />
       )}
       <ScrollView
@@ -283,11 +286,10 @@ export function HubScreen() {
           —cards y header— se difumina al subir en vez de cortarse a ras del borde. Misma pieza que
           el chat (`TopScrollFade`), con el color de ESTE fondo: con el del chat se vería una nube
           blanca sobre el gris. */}
-      <TopScrollFade
-        height={fadeHeight}
-        isDark={isDark}
-        color={isDark ? undefined : HUB_BG_LIGHT}
-      />
+      {/* El lavado es el fondo REAL, ahora también en oscuro: antes pasaba `undefined` porque bajo
+          el gradiente no existía «el color del fondo» y el componente tenía que apañarse. Con el
+          fondo plano de Save sí existe, así que se le dice. */}
+      <TopScrollFade height={fadeHeight} isDark={isDark} color={saveBgFor(isDark)} />
     </View>
   );
 }

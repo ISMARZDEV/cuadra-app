@@ -1,6 +1,6 @@
 import { ArrowLeft, ShoppingBasket } from "lucide-react-native";
 import { type Href, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   runOnJS,
@@ -14,18 +14,21 @@ import Animated, {
 import { useColorScheme } from "nativewind";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BG_LIGHT, SupermarketBackground } from "../components/supermarket-background";
+import { saveBgFor, SupermarketBackground } from "../components/supermarket-background";
 import { TopScrollFade } from "@/components/ui/top-scroll-fade";
-import { appBgColorAt } from "@/components/ui/app-background";
 import { PillButton } from "@/components/ui/pill-button";
 import { t } from "@/i18n";
 import { KANTUMRUY_MEDIUM, KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import {
+  useAddToGroup,
   useBrandProducts,
+  useCreateGroup,
+  useMyGroups,
   usePriceHistory,
   useProductComparison,
   useProductStores,
+  useRemoveFromGroup,
   useSimilarProducts,
 } from "../../api";
 import { nextHiddenState } from "@/components/navigation/hide-on-scroll";
@@ -34,7 +37,10 @@ import { useNavVisibility } from "@/components/navigation/use-nav-visibility";
 import { useNavHideStore } from "@/store/nav-hide-store";
 
 import { useCompareCount } from "../../compare-basket";
+import { LAYER } from "../layers";
+import { useHeaderColorFor } from "./header-color-store";
 import { CurvedHeader, HEADER_BULGE, HEADER_ROW } from "../components/curved-header";
+import { ChooseGroupSheet } from "./components/choose-group-sheet";
 import { ChooseStoreSheet } from "./components/choose-store-sheet";
 import { FOOTER_CLEARANCE, ProductFooter } from "./components/product-footer";
 import { PriceHistoryChart } from "./components/price-history-chart";
@@ -60,7 +66,7 @@ import { StorePanel } from "./components/store-panel";
 import { ProductRail } from "../components/product-rail";
 import { useDeliberateSheet } from "./motion/use-deliberate-sheet";
 import { resolveProductState, type ProductState } from "./product-state";
-import { storeStandings, unitLabelOf, type StoreStanding } from "./product-view";
+import { storeStandings, type StoreStanding } from "./product-view";
 
 /**
  * Detalle de un producto: qué es, cuánto cuesta y — lo que de verdad importa en Save — en qué
@@ -123,6 +129,7 @@ export function ProductScreen() {
   // añadido ninguno. Un 1 de salida afirma algo que el usuario no hizo.
   const [quantity, setQuantity] = useState(0);
   const [chooserOpen, setChooserOpen] = useState(false);
+
 
   const comparison = useProductComparison(slug ?? "");
   // Va por SLUG, así que NO espera al waterfall: vuela junto con la comparación.
@@ -226,6 +233,12 @@ export function ProductScreen() {
   // El ref del scroll, sólo para que el tirador pueda volver arriba. El plegado NO lo usa: cuelga
   // de `scrollY` y no llama a nadie.
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  // Dónde empiezan las secciones plegables, en coordenadas del contenido. Lo publica el `onLayout`
+  // de su envoltorio y lo consume «Más información».
+  //
+  // ⭐ Es un `ref` y no estado a propósito: sólo se lee dentro de un gesto, así que guardarlo en
+  // estado provocaría un render por cada medición sin cambiar ni un píxel de lo que se ve.
+  const sectionsY = useRef(0);
   // ⭐ La cabecera se compacta DERIVADA del mismo `scrollY` que pliega la galería, no de un estado
   // propio. Por eso la vuelta no hay que escribirla: no hay animación de ida y otra de vuelta que
   // puedan discrepar, hay un número que sube y baja con el dedo. Ver `gallery-collapse`.
@@ -305,6 +318,10 @@ export function ProductScreen() {
   // Cada LLEGADA a la pantalla es una entrada nueva, aunque sea al mismo producto. Ver
   // `useEntranceVisit`: la key del dueño del reloj lleva las dos causas, producto y visita.
   const visit = useEntranceVisit();
+  // El color de la cabecera de ESTA llegada, del mazo que garantiza que no se repita — ver
+  // `header-palette.ts`. La llave es el SLUG y no la del entrance: aquélla cambia a mitad de carga
+  // (arranca con el slug y pasa al `canonical_product_id`), y repartiría dos cartas por llegada.
+  const headerSkin = useHeaderColorFor(`${slug ?? ""}#${visit}`);
   // Cuándo montó LA PANTALLA. De aquí sale cuánto falta para que termine de deslizarse hacia
   // dentro, que es cuando la cascada puede arrancar sin gastarse en un sitio donde no se ve.
   // Inicializador PEREZOSO: con `useRef(Date.now())` la fecha se recalcularía en cada render.
@@ -325,6 +342,22 @@ export function ProductScreen() {
   // La página se atenúa y RETROCEDE mientras la hoja está arriba; no se desmonta. Recuperarla
   // exactamente donde se dejó es el argumento entero del regreso lento del patrón.
   const { hostStyle, sheetStyle, veilStyle, onSheetLayout } = useDeliberateSheet(chooserOpen);
+
+  // ── Grupos ──────────────────────────────────────────────────────────────────────────────────
+  //
+  // ⚠️ La hoja de grupos tiene su PROPIO reloj de movimiento. Las dos hojas nunca están abiertas a
+  // la vez, pero cada una mide SU alto y de ese alto sale el viaje: compartir un reloj las obligaría
+  // a compartir también la medida, y la que no estuviera abierta la falsearía.
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const groupMotion = useDeliberateSheet(groupsOpen);
+  const canonicalId = comparison.data?.canonical_product_id;
+  const groups = useMyGroups(canonicalId);
+  const createGroup = useCreateGroup();
+  const addToGroup = useAddToGroup();
+  const removeFromGroup = useRemoveFromGroup();
+  // El producto está «en un grupo» si está en ALGUNO: es lo que el marcador de la fila dice, y no
+  // hay marcador por grupo.
+  const inSomeGroup = (groups.data ?? []).some((g) => g.contains);
 
   // Save compara, no vende: el destino de una tienda es SU web. Sin `url` no se hace nada — abrir
   // una búsqueda inventada sería mandar al usuario a adivinar.
@@ -372,6 +405,7 @@ export function ProductScreen() {
       <SupermarketBackground />
 
       <CurvedHeader
+        skin={headerSkin}
         title={t("save.product.title")}
         progress={collapse}
         safeTop={insets.top}
@@ -410,7 +444,9 @@ export function ProductScreen() {
       >
         {(cascade) => (
           <>
-      <Animated.View className="flex-1" style={hostStyle}>
+      {/* La BASE de la pila: todo lo demás se mide contra esto. Va explícito y no implícito porque
+          el defecto del velo nació justo de una capa que nadie había situado. Ver `layers.ts`. */}
+      <Animated.View className="flex-1" style={[{ zIndex: LAYER.content }, hostStyle]}>
       <Animated.ScrollView
         ref={scrollRef}
         // ⭐ EL IMÁN LO HACE LA PLATAFORMA. iOS calcula el destino proyectado del gesto —velocidad
@@ -438,6 +474,7 @@ export function ProductScreen() {
           <>
                 <ProductSummary
                   cascade={cascade}
+                  productId={product.canonical_product_id}
                   name={product.name}
                   brand={product.brand}
                   displaySize={product.display_size}
@@ -451,11 +488,26 @@ export function ProductScreen() {
                   // COMPARACIÓN. Se busca la de la tienda más barata para que el unitario grande y
                   // el precio grande hablen siempre de la misma tienda — con dos fuentes acabarían
                   // describiendo envases distintos.
-                  unitPriceMinor={cheapestEntry?.unit_price_minor}
-                  unitLabel={unitLabelOf(cheapestEntry?.unit_measure)}
+                  //
+                  // ⭐ El par de DISPLAY, no `unit_price_minor`. Aquél va siempre por kg/L/und
+                  // porque es la clave de ORDEN, y como texto es ajena: una lata de 900 Gr no se
+                  // compra por kilos. Esta pantalla decía «RD$227.78 X kg» donde la tarjeta decía
+                  // «RD$22.78 X 100 Gr» — el mismo producto con dos cifras. Ver `display_units.py`.
+                  unitPriceMinor={cheapestEntry?.display_unit_price_minor}
+                  unitLabel={cheapestEntry?.display_unit}
                   previousMinor={best?.row.previous_price_minor}
-                  storeUrl={best?.row.url}
-                  onOpenStore={() => best && openStore(best)}
+                  skin={headerSkin}
+                  // «Más información» BAJA hasta las secciones plegables en vez de abrir una hoja:
+                  // el contenido ya está en la pantalla, y sacarlo a una capa encima obligaría a
+                  // mantener dos sitios donde vive lo mismo. Animado, además, porque un salto seco
+                  // deja al usuario sin saber si cambió de pantalla o se movió dentro de ésta.
+                  onMoreInfo={() =>
+                    scrollRef.current?.scrollTo({ y: sectionsY.current, animated: true })
+                  }
+                  // Sin canónico todavía no se pasa nada: el botón se apaga solo en vez de abrir una
+                  // hoja que no sabría a qué producto añadir.
+                  onAddToGroup={canonicalId ? () => setGroupsOpen(true) : undefined}
+                  inGroup={inSomeGroup}
                   history={historyPoints}
                   description={product.description}
                   photoSlot={photoSlot}
@@ -486,12 +538,14 @@ export function ProductScreen() {
         )}
 
         {state === "content" && comparison.data ? (
+          <View onLayout={(e) => (sectionsY.current = e.nativeEvent.layout.y)}>
           <ProductSections
             brand={comparison.data.brand}
             displaySize={comparison.data.display_size}
             quality={comparison.data.quality}
             breadcrumb={comparison.data.breadcrumb}
           />
+          </View>
         ) : null}
 
         {/* Los rails sólo se dibujan si TRAEN algo. Un carrusel vacío con su título es peor que no
@@ -532,10 +586,10 @@ export function ProductScreen() {
 
       </Animated.View>
 
-      {/* ⭐ FUERA del scroll y con `zIndex` POR ENCIMA del header (que lleva 2). Es la ÚNICA pieza
-          que lo cruza: todo lo demás pasa por debajo de la elipse verde. Dentro del `ScrollView`
-          esto era imposible —el header es hermano suyo y ningún z-index de un hijo le gana—, y
-          subir el contenedor entero habría subido también el título y el precio. */}
+      {/* ⭐ FUERA del scroll y con `zIndex` POR ENCIMA del header. Es la ÚNICA pieza que lo cruza:
+          todo lo demás pasa por debajo de la elipse verde. Dentro del `ScrollView` esto era
+          imposible —el header es hermano suyo y ningún z-index de un hijo le gana—, y subir el
+          contenedor entero habría subido también el título y el precio. Ver `layers.ts`. */}
       {state === "content" && product ? (
         <>
         <Animated.View
@@ -546,10 +600,10 @@ export function ProductScreen() {
               left: 0,
               right: 0,
               height: TOP_FADE_HEIGHT,
-              // ⭐ ENTRE la lista y la cabecera: por encima del contenido que sube (que no lleva
-              // zIndex) y por debajo del verde (2) y de la foto (3). Así el verde tapa el tramo de
-              // banda que le corresponde y el desenfoque SIGUE A LA CURVA solo, sin dibujarla.
-              zIndex: 1,
+              // ⭐ ENTRE la lista y la cabecera: por encima del contenido que sube y por debajo del
+              // verde y de la foto. Así el verde tapa el tramo de banda que le corresponde y el
+              // desenfoque SIGUE A LA CURVA solo, sin dibujarla. La pila entera en `layers.ts`.
+              zIndex: LAYER.topFade,
             },
             topFadeStyle,
           ]}
@@ -562,7 +616,10 @@ export function ProductScreen() {
             isDark={isDark}
             // El lavado tiene que ser el fondo REAL de esta pantalla. Con el blanco por defecto se
             // vería una nube clara sobre el gris de Supermarket.
-            color={isDark ? appBgColorAt("dark", headerExpanded / windowH) : BG_LIGHT}
+            //
+            // Antes preguntaba el color del gradiente A LA ALTURA del header; con el fondo de Save
+            // plano ya no hay altura que consultar.
+            color={saveBgFor(isDark)}
           />
         </Animated.View>
 
@@ -574,7 +631,7 @@ export function ProductScreen() {
             AMPUTADA, con el canto superior recto. Un recorte que el usuario ve es un defecto,
             aunque la geometría cuadre.
 
-            ⭐ Va con `zIndex` POR ENCIMA del header (2) y de la banda de desenfoque (1), y es la
+            ⭐ Va con `zIndex` POR ENCIMA del header y de la banda de desenfoque, y es la
             ÚNICA pieza que cruza el verde. Los controles del header no estorban porque para cuando
             la tarjeta llega, ya se han ido hacia arriba — ver `HEADER_CONTENT_FADE`. */}
         <HeroPhotoCard
@@ -600,6 +657,7 @@ export function ProductScreen() {
       {state === "content" ? (
         <BackToTopHandle
           scrollY={scrollY}
+          ink={headerSkin.ink}
           distance={collapseDist}
           // Los dos cantos de la elipse: desplegada y compacta. `CurvedHeader` encoge hasta el
           // área segura más un dedo de verde (`safeTop + 6`), y la panza cuelga siempre por debajo.
@@ -620,6 +678,7 @@ export function ProductScreen() {
           onAdd={() => {}}
           safeBottom={insets.bottom}
           hideProgress={footerHidden}
+          skin={headerSkin}
         />
       ) : null}
 
@@ -637,6 +696,32 @@ export function ProductScreen() {
         sheetStyle={sheetStyle}
         veilStyle={veilStyle}
         onSheetLayout={onSheetLayout}
+      />
+
+      <ChooseGroupSheet
+        open={groupsOpen}
+        groups={groups.data ?? []}
+        loading={groups.isLoading}
+        // La hoja mira `contains` y avisa; quién entra y quién sale se decide aquí, que es donde
+        // viven las mutaciones.
+        onToggle={(g) => {
+          if (!canonicalId) return;
+          const vars = { groupId: g.id, productId: canonicalId };
+          if (g.contains) removeFromGroup.mutate(vars);
+          else addToGroup.mutate(vars);
+        }}
+        onCreate={(name) => {
+          if (!canonicalId) return;
+          // Crear y meter el producto es UNA llamada (`CreateProductGroup` lo hace en la misma
+          // transacción): en dos, un fallo en la segunda deja una carpeta vacía que nadie pidió.
+          createGroup.mutate({ name, productId: canonicalId });
+        }}
+        duplicate={createGroup.isError}
+        onRequestClose={() => setGroupsOpen(false)}
+        safeBottom={insets.bottom}
+        sheetStyle={groupMotion.sheetStyle}
+        veilStyle={groupMotion.veilStyle}
+        onSheetLayout={groupMotion.onSheetLayout}
       />
     </View>
   );

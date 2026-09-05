@@ -37,6 +37,7 @@ from ..entities import (
     StoreProduct,
     StoreRegistry,
 )
+from ..groups import ProductGroup
 from ..history import PricePoint
 from ..listing import OfferingRow
 from ..store_product_identity import StoreProductLocator
@@ -751,4 +752,37 @@ class ProductMatchRepository(Protocol):
         revisor para un `product_match` `pending_review` (F2·B1, tarea 1.11-1.12). El cap de
         top-5 se enforce AQUÍ (en código, no en la DB) aunque lleguen más candidatos. NUNCA se
         llama para un match `auto_linked` — lo decide el use case, no este método."""
+        ...
+
+
+class ProductGroupRepository(Protocol):
+    """Grupos de productos del usuario (carpetas) y su contenido.
+
+    ⚠️ **Todas las operaciones llevan `user_id` y filtran por él.** No es defensa en profundidad:
+    es LA defensa. Un id de grupo es un UUID que viaja en la URL, así que sin ese filtro conocer un
+    id ajeno bastaría para leer o escribir en la carpeta de otro.
+    """
+
+    def create(self, user_id: str, name: str, market_id: str) -> str:
+        """Crea el grupo y devuelve su id."""
+        ...
+
+    def list_by_user(self, user_id: str) -> list[ProductGroup]:
+        """Los grupos del usuario con su conteo, más recientes primero."""
+        ...
+
+    def delete(self, user_id: str, group_id: str) -> bool:
+        """Borra el grupo si es suyo. `False` si no existe o es ajeno."""
+        ...
+
+    def add_product(self, user_id: str, group_id: str, canonical_product_id: str) -> bool:
+        """Mete el producto (IDEMPOTENTE). `False` si el grupo no existe o es ajeno."""
+        ...
+
+    def remove_product(self, user_id: str, group_id: str, canonical_product_id: str) -> bool:
+        """Lo saca (idempotente). `False` si el grupo no existe o es ajeno."""
+        ...
+
+    def group_ids_with_product(self, user_id: str, canonical_product_id: str) -> set[str]:
+        """En cuáles de SUS grupos está ese producto."""
         ...

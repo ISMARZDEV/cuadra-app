@@ -27,8 +27,7 @@ import BasketProductCard, {
   discountOverhangAt,
   gridScaleFor,
 } from "@/components/ui/basket-product-card";
-import { appBgColorAt } from "@/components/ui/app-background";
-import { BG_LIGHT, SupermarketBackground } from "./components/supermarket-background";
+import { saveBgFor, SupermarketBackground } from "./components/supermarket-background";
 import { GlassButton } from "@/components/ui/glass-button";
 import { useTabBarClearance } from "@/components/navigation/use-tab-bar-clearance";
 import { PillButton } from "@/components/ui/pill-button";
@@ -48,6 +47,7 @@ import {
 } from "../api";
 import { useCompareBasket, useCompareCount } from "../compare-basket";
 import { buildTabs, filterByQuery, isListTab, type TabId } from "./browse-state";
+import { LAYER } from "./layers";
 import { CategoryTabs } from "./components/category-tabs";
 import {
   CurvedHeader,
@@ -322,11 +322,14 @@ export function SupermarketBrowseScreen({
   // que la pantalla puede enseñar; replicar el degradado sería precisión que nadie ve.
   const bandTopY = insets.top + HEADER_ROW + HEADER_TABS;
   const bandH = HEADER_BULGE + HEADER_CLEARANCE + SEARCH_H;
-  const bandColor = isDark ? appBgColorAt("dark", (bandTopY + bandH / 2) / windowH) : BG_LIGHT;
+  // La banda del buscador y la cola que la disuelve son EL MISMO color que el fondo, sin más:
+  // con el fondo plano de Save desaparece el muestreo del gradiente a su altura —y con él, el
+  // recálculo al plegarse la cabecera.
+  const bandColor = saveBgFor(isDark);
   // El degradado que disuelve la banda arranca donde ella acaba, así que pregunta por SU altura.
   const fadeColor = isDark
-    ? appBgColorAt("dark", (bandTopY + bandH + FADE_TAIL / 2) / windowH)
-    : BG_LIGHT;
+    ? saveBgFor(true)
+    : saveBgFor(false);
 
   return (
     <View className="flex-1">
@@ -367,9 +370,9 @@ export function SupermarketBrowseScreen({
             // arriba y por esa rendija asomaban las tarjetas.
             top: insets.top + HEADER_ROW + HEADER_TABS,
             height: HEADER_BULGE + HEADER_CLEARANCE + SEARCH_H + SEARCH_GAP,
-            // POR DEBAJO del header (zIndex 2) a propósito: así la panza se pinta ENCIMA de la
-            // banda y la curva sobrevive, en vez de quedar tapada por un borde recto.
-            zIndex: 1,
+            // POR DEBAJO del header a propósito: así la panza se pinta ENCIMA de la banda y la
+            // curva sobrevive, en vez de quedar tapada por un borde recto. Ver `layers.ts`.
+            zIndex: LAYER.topFade,
           },
           searchStyle,
         ]}
@@ -593,7 +596,7 @@ export function SupermarketBrowseScreen({
       <Animated.View
         pointerEvents="box-none"
         style={[
-          { position: "absolute", right: GUTTER_X + 4, bottom: insets.bottom + 24, zIndex: 4 },
+          { position: "absolute", right: GUTTER_X + 4, bottom: insets.bottom + 24, zIndex: LAYER.floatingControl },
           floatingBasketStyle,
         ]}
       >

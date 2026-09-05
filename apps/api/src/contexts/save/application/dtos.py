@@ -12,6 +12,7 @@ from ..domain.entities import CanonicalProduct
 from ..domain.history import PricePoint
 from ..domain.review_queue import ReviewCandidateView, ReviewDetail, ReviewQueueRow
 from ..domain.taxonomy import CategoryNode
+from ..domain.value_objects.display_units import display_unit_price_or_none
 from .bulk_resolve_review import BulkResolveResult
 
 
@@ -50,6 +51,14 @@ class ComparedPriceDto(BaseModel):
     # unidad base que calcular. Ver `unit_price_or_none`.
     unit_price_minor: int | None   # precio por unidad base
     unit_measure: str | None       # mass|volume|count; None si no declara cantidad
+    # ⭐ El precio por unidad tal como se LEE, con su rótulo ya resuelto ("RD$22.78", "100 Gr").
+    # `unit_price_minor` de arriba es la clave de ORDEN (siempre por kg/L/und) y es correcta; como
+    # texto es ajena — una lata de 900 Gr no se compra por kilos. Viajan las dos porque responden a
+    # preguntas distintas. Ver `display_units.py`, que además explica por qué esto NO se calcula en
+    # el cliente: se calculaba, tres veces, y la tarjeta y el detalle acabaron diciendo cifras
+    # distintas del mismo producto.
+    display_unit_price_minor: int | None = None
+    display_unit: str | None = None
     is_cheapest: bool              # "Mejor precio"
     extra_minor: int               # sobreprecio vs la más barata ("+RD$14")
     url: str | None = None
@@ -120,20 +129,26 @@ class PriceComparisonDto(BaseModel):
         breadcrumb: list[CategoryNode] = [],
         gallery: list[str] | None = None,
     ) -> PriceComparisonDto:
-        entries = [
-            ComparedPriceDto(
-                provider_id=e.provider_id,
-                provider_name=e.provider_name,
-                price_minor=e.price.amount_minor,
-                currency=e.price.currency.code,
-                unit_price_minor=e.unit_price.amount_minor if e.unit_price else None,
-                unit_measure=e.unit_price.measure.value if e.unit_price else None,
-                is_cheapest=e.is_cheapest,
-                extra_minor=e.extra_vs_cheapest.amount_minor,
-                url=e.url,
+        entries = []
+        for e in comparison.entries:
+            # Por TIENDA: cada una tiene su precio, así que cada una tiene su precio por unidad.
+            # El tamaño del envase, en cambio, es del canónico — es el mismo producto.
+            leible = display_unit_price_or_none(e.price, comparison.quantity, canonical.display_size)
+            entries.append(
+                ComparedPriceDto(
+                    provider_id=e.provider_id,
+                    provider_name=e.provider_name,
+                    price_minor=e.price.amount_minor,
+                    currency=e.price.currency.code,
+                    unit_price_minor=e.unit_price.amount_minor if e.unit_price else None,
+                    unit_measure=e.unit_price.measure.value if e.unit_price else None,
+                    display_unit_price_minor=leible.amount_minor if leible else None,
+                    display_unit=leible.label if leible else None,
+                    is_cheapest=e.is_cheapest,
+                    extra_minor=e.extra_vs_cheapest.amount_minor,
+                    url=e.url,
+                )
             )
-            for e in comparison.entries
-        ]
         return cls(
             canonical_product_id=canonical.id,
             slug=canonical.slug or "",
@@ -340,6 +355,10 @@ class ProductCardDto(BaseModel):
     currency: str
     unit_price_minor: int | None  # precio por unidad base (§B2); None si no declara cantidad
     unit_measure: str | None  # mass|volume|count; None si no declara cantidad
+    # El mismo dato que lee el usuario, con su rótulo ya resuelto ("100 Gr", "Oz"). Ver
+    # `display_units.py` y el comentario gemelo en `ComparedPriceDto`.
+    display_unit_price_minor: int | None = None
+    display_unit: str | None = None
     store_count: int          # "N tiendas" (B4)
     discount_bps: int | None = None  # % de bajada reciente (badge −X%), None si no está en oferta
     # Precio TACHADO: lo que costaba antes de la bajada que produjo `discount_bps`. Viaja el precio
@@ -636,3 +655,17 @@ class BudgetBasketDto(BaseModel):
 
     budget_minor: int
     providers: tuple[ProviderBasketDto, ...]
+
+
+class ProductGroupDto(BaseModel):
+    """Un grupo del usuario, tal y como lo pinta la hoja de «añadir a grupo»."""
+
+    id: str
+    name: str
+    #: Cuántos productos tiene. La hoja lo enseña para que el usuario reconozca su grupo por el
+    #: contenido y no sólo por el nombre que le puso hace un mes.
+    product_count: int
+    #: Si el producto por el que se preguntó está dentro. `False` cuando no se preguntó por ninguno
+    #: — que NO es lo mismo que «no está», pero es lo único que se puede afirmar sin la pregunta.
+    contains: bool = False
+    created_at: datetime

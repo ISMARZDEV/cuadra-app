@@ -10,6 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 
 from src.api.composition_root import (
+    get_add_product_to_group,
+    get_create_product_group,
+    get_delete_product_group,
+    get_list_product_groups,
+    get_remove_product_from_group,
     get_category,
     get_collection,
     get_compare_product,
@@ -39,6 +44,13 @@ from src.api.composition_root import (
 )
 from src.api.extensions.security import get_current_user_id
 from src.config import settings
+from src.contexts.save.application.groups import (
+    AddProductToGroup,
+    CreateProductGroup,
+    DeleteProductGroup,
+    ListProductGroups,
+    RemoveProductFromGroup,
+)
 from src.contexts.save.application.alerts import (
     ListAlertNotifications,
     ListAlerts,
@@ -54,6 +66,7 @@ from src.contexts.save.application.compare import CompareProduct
 from src.contexts.save.application.drops import ListPriceDrops
 from src.contexts.save.application.dtos import (
     AlertDto,
+    ProductGroupDto,
     AlertNotificationDto,
     CategoryListingDto,
     CategoryPageDto,
@@ -72,6 +85,9 @@ from src.contexts.save.application.dtos import (
 from src.contexts.save.application.errors import (
     CanonicalProductNotFoundError,
     CategoryNotFoundError,
+    DuplicateGroupNameError,
+    ProductGroupNotFoundError,
+    TooManyGroupsError,
 )
 from src.contexts.save.application.history import GetPriceHistory, HistoryRange
 from src.contexts.save.application.listing import (
@@ -401,6 +417,89 @@ def unsubscribe_alert(
 ) -> None:
     if not use_case.execute(user_id, alert_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada")
+
+
+class CreateProductGroupRequest(BaseModel):
+    name: str
+    #: Si viene, el producto entra en el grupo en el MISMO gesto. Es como se toca en la hoja:
+    #: «crear grupo» siempre se pulsa teniendo un producto delante.
+    product_id: str | None = None
+
+
+class GroupProductRequest(BaseModel):
+    product_id: str
+
+
+@router.get("/groups")
+def list_product_groups(
+    product_id: str | None = Query(
+        None, description="Marca en cuáles de los grupos está este producto"
+    ),
+    user_id: str = Depends(get_current_user_id),
+    use_case: ListProductGroups = Depends(get_list_product_groups),
+) -> list[ProductGroupDto]:
+    return use_case.execute(user_id, product_id)
+
+
+@router.post("/groups", status_code=status.HTTP_201_CREATED)
+def create_product_group(
+    body: CreateProductGroupRequest,
+    market: str = Query("DO", description="Mercado (ISO 3166-1 alpha-2)"),
+    user_id: str = Depends(get_current_user_id),
+    use_case: CreateProductGroup = Depends(get_create_product_group),
+) -> ProductGroupDto:
+    try:
+        return use_case.execute(user_id, body.name, market, body.product_id)
+    except ValueError as exc:  # nombre en blanco
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except DuplicateGroupNameError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except TooManyGroupsError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CanonicalProductNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product_group(
+    group_id: str,
+    user_id: str = Depends(get_current_user_id),
+    use_case: DeleteProductGroup = Depends(get_delete_product_group),
+) -> None:
+    try:
+        use_case.execute(user_id, group_id)
+    except ProductGroupNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/groups/{group_id}/products", status_code=status.HTTP_204_NO_CONTENT)
+def add_product_to_group(
+    group_id: str,
+    body: GroupProductRequest,
+    user_id: str = Depends(get_current_user_id),
+    use_case: AddProductToGroup = Depends(get_add_product_to_group),
+) -> None:
+    try:
+        use_case.execute(user_id, group_id, body.product_id)
+    except ProductGroupNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CanonicalProductNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/groups/{group_id}/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def remove_product_from_group(
+    group_id: str,
+    product_id: str,
+    user_id: str = Depends(get_current_user_id),
+    use_case: RemoveProductFromGroup = Depends(get_remove_product_from_group),
+) -> None:
+    try:
+        use_case.execute(user_id, group_id, product_id)
+    except ProductGroupNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/image-proxy")

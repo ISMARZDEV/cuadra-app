@@ -80,6 +80,8 @@ export function ProductCard({
               product.display_size,
               product.unit_price_minor,
               product.unit_measure,
+              product.display_unit_price_minor,
+              product.display_unit,
             )}
           </p>
           <p className="text-xs text-muted-foreground">

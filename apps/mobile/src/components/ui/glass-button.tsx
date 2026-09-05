@@ -13,6 +13,13 @@ import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
 import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
+/** La maquetación interna, idéntica en las dos cáscaras. */
+const CONTENT_LAYOUT = {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+} as const;
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // Round liquid-glass symbol button (Figma "Button - Liquid Glass - Symbol"), tinted glass + a
@@ -37,6 +44,20 @@ type GlassButtonProps = {
    * del toque son los mismos, y duplicarlos daría dos botones que se separarían con el tiempo.
    */
   tone?: "brand" | "danger";
+  /**
+   * Los DOS colores del botón, cuando la superficie no es la del tema.
+   *
+   * Por defecto el botón sigue al esquema del sistema, que es lo correcto casi siempre: se apoya en
+   * el fondo de la app. Pero la cabecera del detalle de producto pinta su propia carta de color, y
+   * ahí el tema no dice nada útil — en claro el botón es vidrio lima, y sobre una cabecera lima
+   * desaparece.
+   *
+   * ⚠️ NO sirve `accent` para esto, aunque también invierta: `accent` invierte contra el TEMA
+   * (`accent ? !isDark : isDark`), así que en tema oscuro sobre cabecera clara volvería a dar claro
+   * sobre claro. Y tampoco basta un booleano de superficie: la cabecera trae una PAREJA elegida
+   * —tinta y fondo del mismo tono— y el botón tiene que llevar ESOS dos, no la receta de marca.
+   */
+  palette?: { tint: string; icon: string; solid?: boolean };
   /**
    * Aviso arriba a la derecha: `true` = punto a secas · un NÚMERO = contador. `false`, `0` o
    * ausente no dibujan nada — un cero en un contador es ruido, la ausencia ya dice «no llevas nada».
@@ -85,7 +106,11 @@ function ButtonDepthGradient({
   return (
     <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
       <Defs>
-        <LinearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+        {/* ⭐ DE ABAJO A ARRIBA: el borde denso va en el CANTO INFERIOR. Así el disco se lee como
+            una superficie curvada que recoge el rebote de la luz por debajo, que es el mismo modelo
+            de iluminación que ya usa `PillButton`. Al revés —denso arriba— se leía como una tapa
+            iluminada de frente, y con los tintes claros de las cartas ensuciaba la parte alta. */}
+        <LinearGradient id={gid} x1="0" y1="1" x2="0" y2="0">
           <Stop offset="0" stopColor={color} stopOpacity="0.55" />
           <Stop offset="0.5" stopColor={color} stopOpacity="0.18" />
           <Stop offset="1" stopColor={color} stopOpacity="0" />
@@ -107,6 +132,15 @@ function ButtonDepthGradient({
   );
 }
 
+/** Un paso hacia el blanco. El degradado de profundidad SIEMPRE aclara — ver `gradientColor`. */
+function lighten(hex: string, amount: number): string {
+  const n = Number.parseInt(hex.replace("#", ""), 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) =>
+    Math.round(v + (255 - v) * amount),
+  );
+  return `#${ch.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 export function GlassButton({
   icon,
   label,
@@ -115,6 +149,7 @@ export function GlassButton({
   iconSize = 22,
   accent = false,
   tone = "brand",
+  palette,
   badge = false,
   text,
 }: GlassButtonProps) {
@@ -142,11 +177,20 @@ export function GlassButton({
   // nativo sólo luce cuando tiene algo DEBAJO que refractar, y este botón se apoya en el gris liso
   // de la hoja. Con un tinte suave el disco desaparecía y quedaba la «x» flotando. El lima puede
   // permitírselo porque vive sobre el verde oscuro del header, que sí le da contraste.
-  const tint = styleDark ? (danger ? "#2A0705" : "#001A0C") : danger ? "#FF9A90" : "#C2FB7E";
-  const iconColor = styleDark ? (danger ? "#FF8177" : "#C2FB7E") : danger ? "#5C0F0A" : "#002E22";
+  const tint = palette?.tint ?? (styleDark ? (danger ? "#2A0705" : "#001A0C") : danger ? "#FF9A90" : "#C2FB7E");
+  const iconColor = palette?.icon ?? (styleDark ? (danger ? "#FF8177" : "#C2FB7E") : danger ? "#5C0F0A" : "#002E22");
   // Depth gradient color follows the fill: a dark shadow on the dark fill, a light highlight on
   // the light fill.
-  const gradientColor = styleDark ? (danger ? "#4A1512" : "#21362A") : danger ? "#FFC9C3" : "#E7FDCD";
+  // ⭐ El degradado de profundidad es SIEMPRE una versión MÁS CLARA que el relleno — es un brillo,
+  // no una sombra. Se ve en los pares de marca: `#C2FB7E`→`#E7FDCD` y `#001A0C`→`#21362A`, los dos
+  // hacia arriba. Con una carta, se deriva del propio tinte en vez de escribirse: pasarle la tinta
+  // del par (que es el color OSCURO) pintaba una sombra donde va el brillo.
+  // El degradado de profundidad es lo que hace que un disco sólido se lea sucio en vez de plano:
+  // sobre un blanco opaco, una rampa encima es un velo gris. El sólido va SIN él.
+  const solid = palette?.solid === true;
+  const gradientColor = palette
+    ? lighten(palette.tint, 0.2)
+    : styleDark ? (danger ? "#4A1512" : "#21362A") : danger ? "#FFC9C3" : "#E7FDCD";
 
   // Press feedback: a springy scale-down. The native liquid-glass "light up" is masked by the
   // depth gradient on top, so we drive the tactile feedback ourselves — consistent on iOS & Android.
@@ -161,6 +205,22 @@ export function GlassButton({
     pressScale.value = withSpring(1, { damping: 11, stiffness: 220, mass: 0.7 });
   };
 
+  // El contenido se declara UNA vez: las dos cáscaras —vidrio y sólido— pintan exactamente lo
+  // mismo dentro, y duplicarlo es cómo acabarían divergiendo al retocar una.
+  const content = (
+    <>
+      <Icon as={icon} size={iconSize} color={iconColor} />
+      {text ? (
+        <Text
+          style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: size * 0.36, color: iconColor }}
+          numberOfLines={1}
+        >
+          {text}
+        </Text>
+      ) : null}
+    </>
+  );
+
   return (
     <AnimatedPressable
       accessibilityRole="button"
@@ -170,32 +230,30 @@ export function GlassButton({
       onPressOut={onPressOut}
       style={[shape, animStyle]}
     >
-      <GlassSurface
-        isInteractive
-        tint={tint}
-        style={{
-          ...shape,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: text ? 8 : 0,
-        }}
-      >
-        <ButtonDepthGradient
-          color={gradientColor}
-          width={text ? undefined : size}
-          height={size}
-        />
-        <Icon as={icon} size={iconSize} color={iconColor} />
-        {text ? (
-          <Text
-            style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: size * 0.36, color: iconColor }}
-            numberOfLines={1}
-          >
-            {text}
-          </Text>
-        ) : null}
-      </GlassSurface>
+      {/* ⭐ SÓLIDO ES OTRO COMPONENTE, no el vidrio con un fondo detrás. Se intentó primero poner un
+          relleno opaco bajo el `GlassSurface` y NO sirve: el `GlassView` pinta su propio material
+          encima y lo tapa — medido, el disco se quedaba en `#0D3759`, 1.13:1 contra su cabecera.
+          Cuando la piel pide sólido, aquí no hay cristal. */}
+      {solid ? (
+        <View style={{ ...shape, ...CONTENT_LAYOUT, gap: text ? 8 : 0, backgroundColor: tint }}>
+          {content}
+        </View>
+      ) : (
+        <GlassSurface
+          isInteractive
+          tint={tint}
+          style={{ ...shape, ...CONTENT_LAYOUT, gap: text ? 8 : 0 }}
+        >
+          {/* El degradado de profundidad es del VIDRIO: sobre un relleno opaco se lee como un velo
+              gris en vez de como volumen. */}
+          <ButtonDepthGradient
+            color={gradientColor}
+            width={text ? undefined : size}
+            height={size}
+          />
+          {content}
+        </GlassSurface>
+      )}
 
       {/* Fuera del `GlassSurface`, no dentro: el vidrio nativo TIÑE lo que tiene encima, y un punto
           rojo pasado por el tinte lima deja de leerse como aviso. Va como hermano, por delante.

@@ -22,12 +22,20 @@ describe("la cascada de entrada", () => {
   });
 
   test("los bloques que HAY caben en el reloj", () => {
-    // No es holgura: con `STEP` 0.085 y `SPAN` 0.34 el noveno bloque terminaría en 1.02 y NUNCA
-    // llegaría a opacidad plena — se quedaría a medio aparecer para siempre. Ocho es el techo con
-    // estos números, así que este test es la barandilla de verdad: si alguien añade un bloque
-    // más, aquí se entera, y no mirando muy fijo una pantalla en el dispositivo.
+    // La barandilla de verdad: si alguien añade bloques hasta pasarse, aquí se entera — y no
+    // mirando muy fijo una pantalla en el dispositivo.
     expect(lastStepEndsAt(STEP_COUNT)).toBeLessThanOrEqual(1);
-    expect(lastStepEndsAt(STEP_COUNT + 1)).toBeGreaterThan(1);
+  });
+
+  test("OCHO sigue siendo el techo con la cadencia medida", () => {
+    // No es holgura: con `STEP` 0.085 y `SPAN` 0.34 el noveno bloque terminaría en 1.02 y NUNCA
+    // llegaría a opacidad plena — se quedaría a medio aparecer para siempre.
+    //
+    // El techo se afirma con el NÚMERO, no con `STEP_COUNT + 1`: al retirarse las acciones de
+    // tienda quedan siete bloques y hay un puesto libre, así que «uno más de los que hay» ya no
+    // desborda. Lo que no puede cambiar sin recortar la cadencia medida es dónde está el techo.
+    expect(lastStepEndsAt(8)).toBeLessThanOrEqual(1);
+    expect(lastStepEndsAt(9)).toBeGreaterThan(1);
   });
 
   test("cada escalón dura lo MEDIDO en el clip, no lo que salga", () => {
@@ -142,11 +150,17 @@ describe("el reparto de puestos en la cascada", () => {
     // que cuenta la maquetación.
     expect(STEPS.Photo).toBeLessThan(STEPS.Identity);
     expect(STEPS.Identity).toBeLessThan(STEPS.Price);
-    expect(STEPS.Price).toBeLessThan(STEPS.Actions);
-    expect(STEPS.Actions).toBeLessThan(STEPS.Insight);
+    expect(STEPS.Price).toBeLessThan(STEPS.Insight);
     expect(STEPS.Insight).toBeLessThan(STEPS.Description);
     expect(STEPS.Description).toBeLessThan(STEPS.StorePanel);
     expect(STEPS.StorePanel).toBeLessThan(STEPS.History);
+  });
+
+  test("las acciones de tienda ya NO ocupan puesto", () => {
+    // El botón «Comprar en la tienda» y el enlace del súper se retiraron de la cabecera. Un puesto
+    // reservado para un bloque que ya no se dibuja es un SILENCIO a media escalera: la cascada se
+    // queda 33 ms sin revelar nada y se lee como un tirón, no como una pausa.
+    expect(STEPS).not.toHaveProperty("Actions");
   });
 
   test("el último bloque llega a opacidad PLENA dentro del reloj", () => {

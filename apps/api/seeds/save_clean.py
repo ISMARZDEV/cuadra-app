@@ -61,6 +61,8 @@ _ALL_TABLES = [
     "category_decision",       # bitácora de clasificación (FK → store_product/canonical/taxonomy)
     "alert_notification",
     "price_alert",
+    "product_group_item",      # FK → product_group + canonical_product
+    "product_group",
     "price",
     "collection_product",
     "store_product_image",     # FK → store_product

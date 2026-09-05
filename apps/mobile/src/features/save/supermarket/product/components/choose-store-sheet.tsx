@@ -6,6 +6,7 @@ import type { useDeliberateSheet } from "../motion/use-deliberate-sheet";
 import { t } from "@/i18n";
 import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
+import { LAYER } from "../../layers";
 import type { StoreStanding } from "../product-view";
 import { StoreRow } from "./store-row";
 
@@ -102,12 +103,25 @@ export function ChooseStoreSheet({
 // escritos. Ver `cuadra-motion`.
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  veil: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "#000" },
+  // ⚠️ El `zIndex` NO es decorativo, y su ausencia fue un defecto real: sin él el velo pintaba en 0
+  // y las cuatro piezas de la página que SÍ llevan el suyo —desenfoque, header, foto y tirador— se
+  // quedaban por encima, sin atenuar. Un velo modal va por encima del cromo de la página, siempre.
+  // Ver `layers.ts`.
+  veil: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "#000",
+    zIndex: LAYER.veil,
+  },
   sheet: {
     position: "absolute",
     right: 0,
     bottom: 0,
     left: 0,
+    zIndex: LAYER.sheet,
     maxHeight: "82%",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,

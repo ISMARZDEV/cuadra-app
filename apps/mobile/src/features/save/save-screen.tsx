@@ -3,7 +3,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { AppBackground } from "@/components/ui/app-background";
+import { SaveBackground } from "./save-background";
 import { Icon } from "@/components/ui/icon";
 import { t, useLang } from "@/i18n";
 import { palette } from "@/theme";
@@ -43,7 +43,7 @@ export function SaveScreen() {
 
   return (
     <SafeAreaView className="flex-1" edges={["top"]}>
-      <AppBackground />
+      <SaveBackground />
       <ScrollView
         contentContainerClassName="px-5 pb-10 pt-4"
         refreshControl={

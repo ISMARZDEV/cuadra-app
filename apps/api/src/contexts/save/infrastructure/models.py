@@ -932,3 +932,62 @@ class OrchestrationRunSnapshotModel(Base):
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class ProductGroupModel(Base):
+    """Carpeta de productos de un usuario. `user_id` sin FK (cross-context, ADR 33).
+
+    ⚠️ La unicidad de nombre a nivel de tabla es por el par EXACTO `(user_id, name)`, no por una
+    llave normalizada: quien decide que «Fiesta» y «fiesta» son el mismo grupo es el caso de uso,
+    que es quien ESCRIBE (doctrina §4b). Una llave derivada en columna necesitaría un trigger para
+    no mentir, y aquí el único escritor es un endpoint propio.
+    """
+
+    __tablename__ = "product_group"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_product_group_user_name"),
+        Index("ix_product_group_user", "user_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)  # cross-context
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    market_id: Mapped[str] = mapped_column(Text, nullable=False)  # por ID (ADR 33)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ProductGroupItemModel(Base):
+    """Pertenencia producto↔grupo (M:N). Única por (grupo, producto) → añadir es idempotente.
+
+    Los DOS índices de FK se ganan su sitio con consultas reales (doctrina §4b): por `group_id` se
+    cuenta el contenido de cada grupo y por `canonical_product_id` se resuelve «¿en cuáles de mis
+    grupos está esto?», que es lo que pinta la palomita de la hoja.
+    """
+
+    __tablename__ = "product_group_item"
+    __table_args__ = (
+        UniqueConstraint("group_id", "canonical_product_id", name="uq_product_group_item"),
+        Index("ix_product_group_item_group", "group_id"),
+        Index("ix_product_group_item_product", "canonical_product_id"),
+        {"schema": _SCHEMA},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("save.product_group.id", ondelete="CASCADE"), nullable=False
+    )
+    canonical_product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("save.canonical_product.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

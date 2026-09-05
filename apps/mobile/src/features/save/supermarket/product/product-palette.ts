@@ -44,14 +44,6 @@ export const WAS_BADGE_INK = "#680000";
  * `boxShadow` existe en React Native desde la 0.76 y acepta la forma CSS entera, así que el número
  * del diseño entra sin traducción — que es justo lo que evita que se desincronicen.
  */
-export const CARD_SHADOW = "0px 4px 30.6px -10px rgba(0, 0, 0, 0.50)";
-/** El canto de la píldora del enlace de la tienda. */
+export const CARD_SHADOW = "0px 4px 30.6px -10px rgba(0, 0, 0, 0.10)";
+/** El canto del cuadro claro sobre la franja de Cuadra: hoy, «seguir el precio». */
 export const CHIP_EDGE = "#E6E6E6";
-
-/**
- * El degradado del botón «Comprar en la tienda». Tres paradas y no dos: el mock le pone un brillo
- * en el medio que un degradado de dos extremos no reproduce.
- */
-export const SHOP_BUTTON_GRADIENT = ["#0A4D3D", "#258065", "#0A4D3D"] as const;
-/** El filo inferior del mismo botón, que es lo que le da el relieve. */
-export const SHOP_BUTTON_EDGE = "#0B6A53";

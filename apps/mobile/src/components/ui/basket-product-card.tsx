@@ -34,6 +34,15 @@ export interface ProductListItemData {
   image_url?: string | null;
   url?: string | null;
   unit_price: string;
+  /**
+   * El precio por unidad tal como se LEE, ya calculado por el dominio, y su rótulo ("100 Gr").
+   *
+   * ⭐ Cuando llegan, MANDAN. La alternativa de abajo divide el precio de góndola por el tamaño
+   * parseado del string, en coma flotante y en el cliente — que es exactamente cómo esta tarjeta y
+   * el detalle acabaron enseñando cifras distintas del mismo producto. Ver `display_units.py`.
+   */
+  display_unit_price?: string | null;
+  display_unit?: string | null;
 }
 
 // Product card inside the basket carousel — mobile adaptation of the web ProductPreviewCard
@@ -281,7 +290,21 @@ interface UnitLabelParts {
 function buildUnitLabelParts(
   unitPrice: string,
   size: string | null | undefined,
+  displayUnitPrice?: string | null,
+  displayUnit?: string | null,
 ): UnitLabelParts {
+  // ⭐ EL SERVIDOR MANDA. El dominio ya resolvió el número y el rótulo en enteros (half-up), con la
+  // unidad del envase. Todo lo de abajo es la vía antigua —float, en el cliente, parseando el
+  // string de tamaño— y sobrevive SÓLO para las formas que aún no traen el par: hoy, la canasta
+  // del chat, cuyo DTO viene del agente. Ver `display_units.py`.
+  if (displayUnitPrice && displayUnit) {
+    const full = t("chat.basket.pricePerUnit", { price: displayUnitPrice, unit: displayUnit });
+    const parts = full.split(" X ");
+    if (parts.length === 2) {
+      return { left: `${parts[0]} `, x: "X", right: ` ${parts[1]}` };
+    }
+  }
+
   const parsedSize = parseSize(size);
   if (!parsedSize || parsedSize.unitType === "unit") {
     const full = t("chat.basket.unitCount");
@@ -454,7 +477,12 @@ function BasketProductCard({
   const [localQuantity, setLocalQuantity] = useState(0);
   const quantity = controlledQuantity ?? localQuantity;
   const { whole, cents } = formatPriceParts(item.unit_price);
-  const unitLabel = buildUnitLabelParts(item.unit_price, item.size);
+  const unitLabel = buildUnitLabelParts(
+    item.unit_price,
+    item.size,
+    item.display_unit_price,
+    item.display_unit,
+  );
   const isAdded = quantity > 0;
   // bps → porcentaje entero para el sello. Se descartan el 0 y los negativos: «−0%» no es una
   // oferta, y una SUBIDA de precio no se anuncia con el sello de descuento.

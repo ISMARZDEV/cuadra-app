@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_, exists, func, or_, select, text, update
+from sqlalchemy import and_, delete, exists, func, or_, select, text, update
 from sqlalchemy.orm import Session, aliased
 
 from src.shared.money import Currency, Money
@@ -53,6 +53,7 @@ from ..domain.entities import (
     StoreProduct,
     StoreRegistry,
 )
+from ..domain.groups import ProductGroup
 from ..domain.history import PricePoint
 from ..domain.listing import OfferingRow
 from ..domain.store_product_identity import StoreProductLocator
@@ -83,6 +84,8 @@ from .models import (
     CollectionProductModel,
     PriceAlertModel,
     PriceModel,
+    ProductGroupItemModel,
+    ProductGroupModel,
     ProductMatchModel,
     ProviderModel,
     PushTokenModel,
@@ -3120,3 +3123,110 @@ class SqlBasketOfferRepository:
             )
             for r in rows
         ]
+
+
+class SqlProductGroupRepository:
+    """Grupos de productos del usuario. `user_id` cross-context (ADR 33), sin FK.
+
+    ⚠️ **Cada método filtra por `user_id`, incluidos los de escritura.** No es cinturón y tirantes:
+    el id del grupo viaja en la URL, así que ese `WHERE` es lo único que separa la carpeta de un
+    usuario de la de otro. Un `get` sin filtro seguido de un `if` en el caso de uso dejaría la puerta
+    abierta el día que alguien reuse el repo desde otro sitio.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def create(self, user_id: str, name: str, market_id: str) -> str:
+        group = ProductGroupModel(
+            user_id=uuid.UUID(user_id), name=name, market_id=market_id
+        )
+        self._s.add(group)
+        self._s.flush()
+        return str(group.id)
+
+    def list_by_user(self, user_id: str) -> list[ProductGroup]:
+        # El conteo va en la MISMA consulta con un LEFT JOIN agrupado: pedirlo aparte por grupo es
+        # el N+1 clásico, y la hoja los pinta todos de una vez.
+        rows = self._s.execute(
+            select(
+                ProductGroupModel.id,
+                ProductGroupModel.name,
+                ProductGroupModel.created_at,
+                func.count(ProductGroupItemModel.id).label("n"),
+            )
+            .outerjoin(
+                ProductGroupItemModel,
+                ProductGroupItemModel.group_id == ProductGroupModel.id,
+            )
+            .where(ProductGroupModel.user_id == uuid.UUID(user_id))
+            .group_by(ProductGroupModel.id)
+            .order_by(ProductGroupModel.created_at.desc())
+        ).all()
+        return [
+            ProductGroup(
+                id=str(row.id), name=row.name, product_count=row.n, created_at=row.created_at
+            )
+            for row in rows
+        ]
+
+    def delete(self, user_id: str, group_id: str) -> bool:
+        group = self._owned(user_id, group_id)
+        if group is None:
+            return False
+        self._s.delete(group)  # los items se van por CASCADE
+        self._s.flush()
+        return True
+
+    def add_product(self, user_id: str, group_id: str, canonical_product_id: str) -> bool:
+        if self._owned(user_id, group_id) is None:
+            return False
+        gid, cid = uuid.UUID(group_id), uuid.UUID(canonical_product_id)
+        # Idempotente: si ya está, no hay nada que hacer y NO es un error.
+        ya = self._s.scalars(
+            select(ProductGroupItemModel).where(
+                ProductGroupItemModel.group_id == gid,
+                ProductGroupItemModel.canonical_product_id == cid,
+            )
+        ).first()
+        if ya is None:
+            self._s.add(ProductGroupItemModel(group_id=gid, canonical_product_id=cid))
+            self._s.flush()
+        return True
+
+    def remove_product(self, user_id: str, group_id: str, canonical_product_id: str) -> bool:
+        if self._owned(user_id, group_id) is None:
+            return False
+        self._s.execute(
+            delete(ProductGroupItemModel).where(
+                ProductGroupItemModel.group_id == uuid.UUID(group_id),
+                ProductGroupItemModel.canonical_product_id == uuid.UUID(canonical_product_id),
+            )
+        )
+        self._s.flush()
+        return True
+
+    def group_ids_with_product(self, user_id: str, canonical_product_id: str) -> set[str]:
+        rows = self._s.scalars(
+            select(ProductGroupItemModel.group_id)
+            .join(ProductGroupModel, ProductGroupModel.id == ProductGroupItemModel.group_id)
+            .where(
+                ProductGroupModel.user_id == uuid.UUID(user_id),
+                ProductGroupItemModel.canonical_product_id == uuid.UUID(canonical_product_id),
+            )
+        ).all()
+        return {str(r) for r in rows}
+
+    def _owned(self, user_id: str, group_id: str) -> ProductGroupModel | None:
+        """El grupo SÓLO si es de este usuario. El «no es tuyo» y el «no existe» son lo mismo aquí."""
+        # Un id que ni siquiera es UUID no puede ser de nadie. Sin esta guarda, un id inventado en la
+        # URL revienta con un 500 en vez de con el 404 que le corresponde.
+        gid = _parse_uuid(group_id)
+        if gid is None:
+            return None
+        return self._s.scalars(
+            select(ProductGroupModel).where(
+                ProductGroupModel.id == gid,
+                ProductGroupModel.user_id == uuid.UUID(user_id),
+            )
+        ).first()

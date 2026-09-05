@@ -12,6 +12,11 @@ import {
   searchProducts,
   similarProducts,
   subscribeAlert,
+  listProductGroups,
+  createProductGroup,
+  addProductToGroup,
+  removeProductFromGroup,
+  deleteProductGroup,
   todaysDeals,
   unsubscribeAlert,
 } from "@cuadra/api-client";
@@ -332,5 +337,77 @@ export function useBrandProducts(productId: string | undefined) {
       ),
     staleTime: DETAIL_STALE_MS,
     enabled: Boolean(productId),
+  });
+}
+
+
+// ── Grupos de productos ────────────────────────────────────────────────────────────────────────
+//
+// Las carpetas que el usuario arma desde el detalle. El listado se pide SIEMPRE con el producto
+// delante (`product_id`) porque la hoja necesita dos cosas a la vez: qué grupos hay y en cuáles
+// está ESTE producto — y el backend resuelve la pertenencia en la misma llamada.
+
+/** La llave lleva el producto: dos productos distintos NO comparten la respuesta, porque `contains`
+ *  cambia entre ellos. Con una llave sin producto, abrir la hoja en el segundo mostraría las
+ *  palomitas del primero hasta que revalidara. */
+export const MY_GROUPS_KEY = ["save", "groups"] as const;
+
+export function useMyGroups(productId?: string) {
+  return useQuery({
+    queryKey: [...MY_GROUPS_KEY, productId ?? null],
+    queryFn: () =>
+      listProductGroups({ query: productId ? { product_id: productId } : {} }).then(
+        (r) => r.data ?? [],
+      ),
+    // Sin producto todavía no hay pertenencia que pintar, y la hoja no se puede abrir: pedirlo
+    // sería gastar una consulta para tirarla.
+    enabled: productId != null,
+  });
+}
+
+/** Invalida TODOS los listados de grupos, no sólo el del producto actual: crear o borrar un grupo
+ *  cambia la lista que ve cualquier otro producto. */
+function useGroupsInvalidator() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: MY_GROUPS_KEY });
+}
+
+export function useCreateGroup() {
+  const invalidate = useGroupsInvalidator();
+  return useMutation({
+    mutationFn: (vars: { name: string; productId?: string }) =>
+      createProductGroup({ body: { name: vars.name, product_id: vars.productId ?? null } }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useAddToGroup() {
+  const invalidate = useGroupsInvalidator();
+  return useMutation({
+    mutationFn: (vars: { groupId: string; productId: string }) =>
+      addProductToGroup({
+        path: { group_id: vars.groupId },
+        body: { product_id: vars.productId },
+      }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRemoveFromGroup() {
+  const invalidate = useGroupsInvalidator();
+  return useMutation({
+    mutationFn: (vars: { groupId: string; productId: string }) =>
+      removeProductFromGroup({
+        path: { group_id: vars.groupId, product_id: vars.productId },
+      }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteGroup() {
+  const invalidate = useGroupsInvalidator();
+  return useMutation({
+    mutationFn: (groupId: string) => deleteProductGroup({ path: { group_id: groupId } }),
+    onSuccess: invalidate,
   });
 }
