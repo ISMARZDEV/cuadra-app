@@ -12,6 +12,7 @@ import SquircleView from "react-native-fast-squircle";
 
 import { CascadeItem } from "@/components/ui/cascade-item";
 
+import { LAYER } from "../../layers";
 import { STEPS as Step } from "../motion/entrance";
 import {
   galleryControlsOpacity,
@@ -117,7 +118,7 @@ export function HeroPhotoCard({
       // deslizamiento de la galería— sí reciben el dedo.
       pointerEvents="box-none"
       style={[
-        { position: "absolute", top, left: 0, right: 0, alignItems: "center", zIndex: 3 },
+        { position: "absolute", top, left: 0, right: 0, alignItems: "center", zIndex: LAYER.heroPhoto },
         travel,
       ]}
     >

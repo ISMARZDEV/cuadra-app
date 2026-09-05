@@ -38,6 +38,11 @@ interface Props {
  * ⭐ Y los dos llevan su precio POR UNIDAD debajo, que es la comparación que de verdad ahorra: dos
  * envases de tamaños distintos sólo se pueden comparar por ahí. El de antes se DERIVA de la
  * proporción (ver `previousUnitPriceMinor`), no se pide al API.
+ *
+ * ⭐ **La balanza va CENTRADA en la pantalla, y cada lado centrado sobre sí mismo** (igual que
+ * `ProductIdentity`). Con la fila pegada a la izquierda, el separador caía en cualquier sitio según
+ * lo largo que fuera el número de hoy, y una balanza cuyo fiel se mueve deja de leerse como una
+ * balanza. Centrada, la línea queda donde el ojo la espera y los dos precios pesan lo mismo.
  */
 export function ProductPriceBlock({
   priceMinor,
@@ -60,8 +65,8 @@ export function ProductPriceBlock({
   const unitWas = previousUnit != null ? formatMoney(previousUnit, currency) : null;
 
   return (
-    <View className="flex-row items-center" style={{ gap: 20 }}>
-      <View style={{ flexShrink: 1 }}>
+    <View className="flex-row items-center justify-center" style={{ gap: 20 }}>
+      <View className="items-center" style={{ flexShrink: 1 }}>
         <View className="flex-row items-start">
           <Text
             style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: PRICE, color: DEEP_GREEN }}

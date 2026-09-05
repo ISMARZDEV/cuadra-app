@@ -21,8 +21,8 @@ export const ENTRANCE_MS = Math.round(MEASURED_STEP_MS / SPAN);
 /**
  * Los bloques que entran en cascada, en el ORDEN EN QUE SE LEEN de arriba abajo.
  *
- * Vive aquí y no en un componente porque ya no lo usa uno solo: la cabecera pone los seis primeros
- * y la pantalla pone los dos últimos. Con el reparto repartido, dos bloques acabarían compartiendo
+ * Vive aquí y no en un componente porque ya no lo usa uno solo: la cabecera pone los cinco
+ * primeros y la pantalla pone los dos últimos. Con el reparto repartido, dos bloques acabarían compartiendo
  * puesto —entran a la vez, y eso no se ve: se lee como que «ahí la cascada va rápida»—.
  *
  * ⚠️ OCHO ES EL TECHO con `STEP` 0.085 y `SPAN` 0.34: el noveno terminaría en 1.02 y nunca llegaría
@@ -36,16 +36,14 @@ export const STEPS = {
   Identity: 1,
   /** Precio de hoy, precio de antes y sus unitarios. */
   Price: 2,
-  /** «Comprar en la tienda» + el enlace del súper. */
-  Actions: 3,
   /** La franja de Cuadra: tendencia y ahorro. */
-  Insight: 4,
+  Insight: 3,
   /** La prosa comercial del producto. */
-  Description: 5,
+  Description: 4,
   /** «Otras tiendas»: el titular, las tiles y las filas. Lo pone la pantalla, no la cabecera. */
-  StorePanel: 6,
+  StorePanel: 5,
   /** El histórico de precios. */
-  History: 7,
+  History: 6,
 } as const;
 
 export const STEP_COUNT = Object.keys(STEPS).length;

@@ -10,7 +10,10 @@ import Animated, {
 import Svg, { Path } from "react-native-svg";
 
 import { GlassButton } from "@/components/ui/glass-button";
-import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
+import { KANTUMRUY_MEDIUM } from "@/theme/fonts";
+
+import { LAYER } from "../layers";
+import { HEADER_SKIN_GREEN, type HeaderSkin } from "../header-palette";
 
 // El header verde de Supermarket, con el canto inferior CURVO y capaz de COLAPSAR al desplazarse.
 //
@@ -21,7 +24,8 @@ import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 //
 // No se usa `borderBottomRadius`: los radios redondean las DOS puntas y dejan el centro recto,
 // mientras que el diseño pide una panza continua que baja en el medio. Son formas distintas.
-const GREEN = "#034842";
+// El verde vive en `header-palette.ts` junto a las cinco cartas: es la misma decisión.
+const GREEN = HEADER_SKIN_GREEN.bg;
 
 // Cuánto BAJA la panza en el centro respecto a los costados. Por debajo de ~20 la curva se lee como
 // un error de redondeo; por encima de ~36 se come la primera fila en una pantalla corta.
@@ -99,6 +103,17 @@ interface CurvedHeaderProps {
    * que asciende hacia la foto, en vez de como un fondo que el header pisa.
    */
   curve?: CurveDirection;
+  /**
+   * La PIEL de color ya resuelta para el tema: su fondo y su tinta, del mismo tono.
+   *
+   * Por defecto el verde de Supermarket, que es lo que quieren la home y la rejilla; el detalle de
+   * producto pasa una distinta en cada llegada (ver `header-palette.ts`).
+   *
+   * ⭐ Viaja como PAREJA y no como dos props sueltas: separadas se podría pasar el fondo y olvidar
+   * la tinta, y esa combinación existe rota — sobre el lima, el blanco da 1.40:1 de contraste. Un
+   * solo objeto hace imposible el estado a medias.
+   */
+  skin?: HeaderSkin;
   /** Las pestañas de categoría, que viajan DENTRO del verde. */
   children?: ReactNode;
 }
@@ -137,8 +152,17 @@ export function CurvedHeader({
   contentProgress,
   contentLift = 34,
   contentFadeEnd = 0.6,
+  skin = HEADER_SKIN_GREEN,
   children,
 }: CurvedHeaderProps) {
+  // ⭐ Los colores del botón los trae la PIEL, y puede no traerlos: la cabecera verde deja el lima
+  // de marca de siempre. Cuando los trae, el vidrio va de la tinta y el glifo del fondo — el botón
+  // se lee como un hueco recortado en la cabecera y no como una pieza pegada encima.
+  //
+  // Se resuelve en `resolveSkin` y no aquí porque la regla depende del TEMA (en oscuro el tinte es
+  // blanco: el material del vidrio se oscurece y se traga los tonos claros — ver `buttonTint`), y
+  // esa decisión pertenece a la paleta, no a la maquetación.
+  const buttonPalette = skin.button;
   // ⭐ El alto de las PESTAÑAS sólo se reserva si hay pestañas. Sin esto, una pantalla sin ellas
   // —el detalle de producto— arrastraba 52pt de verde vacío bajo la fila de botones: casi el doble
   // de cabecera que el diseño, y el contenido empezaba muy por debajo de donde debía.
@@ -166,7 +190,7 @@ export function CurvedHeader({
   }));
 
   return (
-    <Animated.View style={[{ backgroundColor: GREEN, zIndex: 2 }, shellStyle]}>
+    <Animated.View style={[{ backgroundColor: skin.bg, zIndex: LAYER.header }, shellStyle]}>
       {/* La panza CUELGA por debajo del verde. Al vivir fuera de la caja, encoger el header la
           arrastra sin que su path cambie ni un punto. */}
       <Svg
@@ -177,7 +201,7 @@ export function CurvedHeader({
         pointerEvents="none"
         style={{ position: "absolute", bottom: -HEADER_BULGE, left: 0, right: 0 }}
       >
-        <Path d={curvePath(curve)} fill={GREEN} />
+        <Path d={curvePath(curve)} fill={skin.bg} />
       </Svg>
 
 
@@ -188,6 +212,7 @@ export function CurvedHeader({
             label={backLabel}
             onPress={onBack}
             size={HEADER_BUTTON}
+            palette={buttonPalette}
           />
           {/* El título va CENTRADO en absoluto y los botones anclados a los costados: con un
               `justify-between` se descentraría en cuanto un lado cambie de ancho — y acá uno de los
@@ -199,7 +224,7 @@ export function CurvedHeader({
           >
             <Text
               numberOfLines={1}
-              style={{ fontFamily: KANTUMRUY_SEMIBOLD, fontSize: 22, color: "#FFFFFF" }}
+              style={{ fontFamily: KANTUMRUY_MEDIUM, fontSize: 20, color: skin.ink }}
             >
               {title}
             </Text>
@@ -210,6 +235,7 @@ export function CurvedHeader({
             onPress={onBasket}
             size={HEADER_BUTTON}
             badge={basketCount}
+            palette={buttonPalette}
           />
         </View>
 

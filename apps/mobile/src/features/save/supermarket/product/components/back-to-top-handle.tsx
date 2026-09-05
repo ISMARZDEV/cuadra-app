@@ -4,6 +4,7 @@ import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reani
 import ArrowTop from "@/assets/save/arrow-top-header-up.svg";
 import { t } from "@/i18n";
 
+import { LAYER } from "../../layers";
 import { indicatorProgress, indicatorTop } from "../motion/gallery-collapse";
 
 interface Props {
@@ -15,6 +16,13 @@ interface Props {
   expandedTop: number;
   /** Y con la cabecera COMPACTA. Entre los dos interpola: el tirador pertenece a la curva. */
   collapsedTop: number;
+  /**
+   * La tinta de la carta de la cabecera sobre la que se posa.
+   *
+   * El trazo estaba clavado en `#E5E5E5` y sobre una cabecera clara daba 1.11:1 — un tirador
+   * invisible. Ahora sale del mismo par que el título, así que no puede discrepar de él.
+   */
+  ink: string;
   onPress: () => void;
 }
 
@@ -28,7 +36,14 @@ interface Props {
  * JS en cada fotograma del gesto para redibujar un icono; interpolando el mismo `scrollY` que ya
  * viaja por el hilo de UI, la aparición es una resta y nadie se entera.
  */
-export function BackToTopHandle({ scrollY, distance, expandedTop, collapsedTop, onPress }: Props) {
+export function BackToTopHandle({
+  scrollY,
+  distance,
+  expandedTop,
+  collapsedTop,
+  ink,
+  onPress,
+}: Props) {
   const style = useAnimatedStyle(() => {
     // Cuándo aparece lo decide `gallery-collapse`, que es quien conoce el orden del plegado: el
     // tirador no puede asomar mientras la galería siga ahí — sería un atajo para volver arriba
@@ -49,7 +64,7 @@ export function BackToTopHandle({ scrollY, distance, expandedTop, collapsedTop, 
   return (
     <Animated.View
       style={[
-        { position: "absolute", left: 0, right: 0, alignItems: "center", zIndex: 4 },
+        { position: "absolute", left: 0, right: 0, alignItems: "center", zIndex: LAYER.floatingControl },
         style,
       ]}
     >
@@ -61,7 +76,10 @@ export function BackToTopHandle({ scrollY, distance, expandedTop, collapsedTop, 
         // Área tocable generosa: el dibujo mide 13pt de alto y un objetivo de 13pt no se acierta.
         hitSlop={{ top: 14, bottom: 20, left: 40, right: 40 }}
       >
-        <ArrowTop width={53} height={13} />
+        {/* `color` alimenta el `currentColor` del asset: así el trazo es del componente y no
+            del fichero, que es lo que permite que siga a la carta de la cabecera. Se dibuja algo
+            translúcido: el tirador acompaña al título, no compite con él. */}
+        <ArrowTop width={53} height={13} color={ink} opacity={0.55} />
       </Pressable>
     </Animated.View>
   );
