@@ -40,7 +40,20 @@ export function formatUnitPriceDisplay(
   displaySize: string | null | undefined,
   baseUnitPriceMinor: number | null | undefined,
   baseMeasure: string | null | undefined,
+  displayUnitPriceMinor?: number | null,
+  displayUnit?: string | null,
 ): string {
+  // ⭐ EL SERVIDOR MANDA. El dominio resuelve el número y el rótulo en enteros (half-up) con la
+  // unidad del envase, y es la MISMA respuesta que reciben la tarjeta y el detalle del móvil.
+  //
+  // Lo de abajo era una TERCERA forma de contestar lo mismo: dividía por el tamaño parseado y
+  // rotulaba con el token crudo, así que un envase de "900 Gr" salía como «RD$0.23/Gr» —por gramo—
+  // mientras la tarjeta del móvil decía «RD$22.78 X 100 Gr» y el detalle «RD$227.78 X kg». Tres
+  // cifras para un dato. Sobrevive sólo como degradación. Ver `display_units.py`.
+  if (displayUnitPriceMinor != null && displayUnit) {
+    return `${formatMoney(displayUnitPriceMinor, currency)}/${displayUnit}`;
+  }
+
   const parsed = parseDisplaySize(displaySize);
   if (parsed) {
     return `${formatMoney(Math.round(priceMinor / parsed.amount), currency)}/${parsed.unit}`;

@@ -20,6 +20,7 @@ from ..domain.ports import (
     TaxonomyRepository,
 )
 from ..domain.value_objects import Quantity, unit_price_or_none
+from ..domain.value_objects.display_units import DisplayUnitPrice, display_unit_price_or_none
 from src.shared.money import Money
 from .categories import _find_path
 from .dtos import (
@@ -66,6 +67,11 @@ class _Aggregated:
         """`None` cuando el producto no declara cantidad — ver `unit_price_or_none`."""
         precio = unit_price_or_none(self.min_price, self.quantity)
         return precio.amount_minor if precio else None
+
+    @property
+    def display_unit_price(self) -> DisplayUnitPrice | None:
+        """El mismo precio en la unidad del ENVASE, que es como se lee. Ver `display_units.py`."""
+        return display_unit_price_or_none(self.min_price, self.quantity, self.display_size)
 
 
 def _aggregate(rows: Iterable[OfferingRow]) -> dict[str, _Aggregated]:
@@ -215,6 +221,8 @@ def _to_card(p: _Aggregated, discount: _Discount | None = None) -> ProductCardDt
         currency=p.min_price.currency.code,
         unit_price_minor=p.unit_price_minor,
         unit_measure=p.quantity.measure.value if p.quantity else None,
+        display_unit_price_minor=p.display_unit_price.amount_minor if p.display_unit_price else None,
+        display_unit=p.display_unit_price.label if p.display_unit_price else None,
         store_count=len(p.providers),
         discount_bps=discount.bps if discount else None,
         previous_price_minor=discount.previous_minor if discount else None,

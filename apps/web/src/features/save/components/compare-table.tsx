@@ -60,6 +60,8 @@ export function CompareTable({
                 comparison.display_size,
                 entry.unit_price_minor,
                 entry.unit_measure,
+                entry.display_unit_price_minor,
+                entry.display_unit,
               )}
             </p>
           </div>
