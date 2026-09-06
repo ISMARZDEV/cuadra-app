@@ -38,12 +38,14 @@ export const STEPS = {
   Price: 2,
   /** La franja de Cuadra: tendencia y ahorro. */
   Insight: 3,
+  /** A qué categoría pertenece, con su ilustración y la puerta al listado. */
+  Category: 4,
   /** La prosa comercial del producto. */
-  Description: 4,
+  Description: 5,
   /** «Otras tiendas»: el titular, las tiles y las filas. Lo pone la pantalla, no la cabecera. */
-  StorePanel: 5,
+  StorePanel: 6,
   /** El histórico de precios. */
-  History: 6,
+  History: 7,
 } as const;
 
 export const STEP_COUNT = Object.keys(STEPS).length;

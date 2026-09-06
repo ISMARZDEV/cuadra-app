@@ -1,9 +1,8 @@
 import type { LucideIcon } from "lucide-react-native";
-import { memo, useId, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
 import { Bookmark, Heart, Info } from "lucide-react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { Icon } from "@/components/ui/icon";
 import { t } from "@/i18n";
@@ -12,6 +11,7 @@ import { KANTUMRUY_MEDIUM } from "@/theme/fonts";
 import { useMyAlerts, useSubscribeAlert, useUnsubscribeAlert } from "../../../api";
 import type { HeaderSkin } from "../../header-palette";
 import { followedAlertId } from "../follow-state";
+import { DepthGradient, lighten } from "./depth-gradient";
 
 /** El disco entero. El mismo tamaño que los botones de la cabecera, un punto más generoso. */
 const DISC = 62;
@@ -286,54 +286,4 @@ function Action({
       </Text>
     </View>
   );
-}
-
-
-/**
- * El brillo del canto, copiado del botón de la cabecera (`glass-button.tsx`).
- *
- * ⭐ **De abajo a arriba**: el borde denso va en el CANTO INFERIOR, así el disco se lee como una
- * superficie curvada que recoge el rebote de la luz por debajo. Al revés —denso arriba— se lee como
- * una tapa iluminada de frente y con los tintes claros de las cartas ensucia la parte alta.
- *
- * Se dibuja ya REDONDO para que el disco no necesite `overflow: hidden`, que bajo un `scale` no
- * sigue a la transformación y deja asomar las esquinas cuadradas.
- */
-const DepthGradient = memo(function DepthGradient({
-  color,
-  size,
-}: {
-  color: string;
-  size: number;
-}) {
-  // Un id por instancia: tres `<Defs>` con el mismo id en el mismo árbol y las tres piezas cogen el
-  // primero que encuentren.
-  const gid = `actionGrad-${useId()}`;
-  return (
-    <Svg style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}>
-      <Defs>
-        <LinearGradient id={gid} x1="0" y1="1" x2="0" y2="0">
-          <Stop offset="0" stopColor={color} stopOpacity="0.55" />
-          <Stop offset="0.5" stopColor={color} stopOpacity="0.18" />
-          <Stop offset="1" stopColor={color} stopOpacity="0" />
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width={size} height={size} rx={size / 2} ry={size / 2} fill={`url(#${gid})`} />
-    </Svg>
-  );
-});
-
-/**
- * Un paso hacia el blanco. El brillo SIEMPRE aclara el relleno: pasarle el tinte tal cual pintaría
- * una sombra donde va una luz.
- *
- * ⚠️ Está duplicado de `glass-button.tsx`, donde es privado. Se copian cuatro líneas a propósito
- * antes que exportar y acoplar esta pantalla al botón del que depende toda la app.
- */
-function lighten(hex: string, amount: number): string {
-  const n = Number.parseInt(hex.replace("#", ""), 16);
-  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) =>
-    Math.round(v + (255 - v) * amount),
-  );
-  return `#${ch.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }

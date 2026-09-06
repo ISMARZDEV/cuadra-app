@@ -343,6 +343,14 @@ export function ProductScreen() {
   // exactamente donde se dejó es el argumento entero del regreso lento del patrón.
   const { hostStyle, sheetStyle, veilStyle, onSheetLayout } = useDeliberateSheet(chooserOpen);
 
+  // ── Categoría ───────────────────────────────────────────────────────────────────────────────
+  //
+  // ⭐ **La RAÍZ del breadcrumb, no la hoja.** Sólo las de primer nivel tienen ilustración exportada
+  // (`category-images` va por slug y es un mapa explícito), y son las que el usuario reconoce de la
+  // ruleta de la home: «Despensa & Abarrotes» le dice algo, «Cremas y leches vegetales» es una rama
+  // que no ha visto nunca. Sin breadcrumb no hay fila — ver `ProductSummary`.
+  const rootCategory = comparison.data?.breadcrumb?.[0] ?? null;
+
   // ── Grupos ──────────────────────────────────────────────────────────────────────────────────
   //
   // ⚠️ La hoja de grupos tiene su PROPIO reloj de movimiento. Las dos hojas nunca están abiertas a
@@ -508,6 +516,17 @@ export function ProductScreen() {
                   // hoja que no sabría a qué producto añadir.
                   onAddToGroup={canonicalId ? () => setGroupsOpen(true) : undefined}
                   inGroup={inSomeGroup}
+                  category={rootCategory}
+                  // El MISMO destino que la ruleta de la home, para que la categoría signifique lo
+                  // mismo se llegue por donde se llegue.
+                  onOpenCategory={
+                    rootCategory
+                      ? () =>
+                          router.push(
+                            `/save/supermarket/browse?category=${rootCategory.slug}` as Href,
+                          )
+                      : undefined
+                  }
                   history={historyPoints}
                   description={product.description}
                   photoSlot={photoSlot}

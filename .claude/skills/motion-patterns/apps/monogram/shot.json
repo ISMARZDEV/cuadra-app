@@ -1,0 +1,66 @@
+{
+  "slug": "monogram-tap-and-hold-mic-liquid-blur-pulse-interaction",
+  "shot_url": "https://60fps.design/shots/monogram-tap-and-hold-mic-liquid-blur-pulse-interaction",
+  "video_url": "https://video.gumlet.io/66b49d08225b7b88f78b7b44/6a5e2980a151fd52183e4012/main.mp4",
+  "video_url_kind": "direct mp4; resolved with yt-dlp and SHA256 matched to the ingested clip",
+  "clip_sha256": "0bbe028c6a09b50ef258b2360657b8130f98fee9fd750e59c0a445a28badf972",
+  "clip_file": "hold-to-focus-liquid-lens.mp4",
+  "app": "monogram",
+  "platform": "ios",
+  "source": "manual",
+  "evidence": "corroborated",
+  "evidence_note": "Checklist 1/3/4 passes for the abstract hold-to-focus mechanism. The lens silhouette remains single-source. library.py suggested confirmed via Arc sequence and Brilliant audio preview, rejected after reading actual neighbors: no matching lens mechanism. Airbnb corroborates contextual focus only. No MCP output used.",
+  "dimensions": "2160x2160",
+  "duration_s": 16.966667,
+  "native_fps": 60,
+  "frames_fps": 60,
+  "patterns": ["hold-to-focus-liquid-lens"],
+  "animation": "Translation choice: withTiming, ease-out, 250ms lens entry / 350ms withdrawal. Not a recovered spring or exact easing fit.",
+  "stagger_delay": 0,
+  "measured": {
+    "method": "Visual reading of 1080px dense frames plus cropped 20fps contact sheets; no pixel-edge detector. Times approximate, source frame step 16.667ms; extra contact sheets 50ms.",
+    "detector_windows_ms": [[1333,1783],[3717,4167],[6817,7433],[13250,13650],[14450,14983],[15850,16267]],
+    "ingested_windows_ms": [[1433,1683],[3817,4067],[6917,7333],[13350,13550],[14550,14883],[15950,16167]],
+    "window_warning": "These are detection/context bounds, NOT onset-to-settle measurements. Ingestion uses 3-frame padding and trims low-energy tails.",
+    "entry_estimate_ms": {"onset":3950,"established":4200,"duration":250,"uncertainty_ms":75},
+    "withdrawal_estimate_ms": {"onset":7200,"established":7550,"duration":350,"uncertainty_ms":75},
+    "screen_box_at_1080_px": {"x":337,"y":100,"width":406,"height":876,"tolerance_px":6},
+    "card_edge_at_4067_ms_px": {"center_y":613,"side_y":628,"bow_approx_px":15,"tolerance_px":5,"note":"Manual estimate at x approximately 540 vs 370/712; not device points or a fitted displacement field."},
+    "observations": [
+      "At nominal 3900ms mic has expanded; cards remain straight. At 3967ms background dim and side controls disappear. At 4050ms cards and text curve and lower content blurs.",
+      "At 6917ms transcript and Thinking pill already exist; at 7333ms lens is withdrawing but text still distorted. Dimming survives the withdrawal.",
+      "4fps cropped cadence study from 3800 to 7200ms shows changing lens shape but no defensible stable oscillation period. Do not infer audio amplitude coupling.",
+      "Clip starts mid-effect; first detector window is not a clean initial condition. Later windows concern processing/response and are outside the standalone pattern."
+    ],
+    "unidentified": ["touch-down/release timestamps", "long-press threshold", "spring constants", "blur sigma", "original shader", "pulse period", "audio coupling"]
+  },
+  "description": {
+    "one_line_summary": "Holding a bottom microphone focuses capture with a rising, curved blur lens over the background while the control and transcript remain sharp.",
+    "detailed_description": "The recording opens during a brief partial focus effect and returns to a readable suggestion list. A later hold enlarges the microphone, removes side controls and dims the context. A bowed boundary travels upward through cards, visibly distorting their edges and text before stronger blur covers the lower region. A transcript appears above the persistent microphone. The control becomes a processing pill while the lens withdraws; background dimming persists. A response later replaces the content. Only the hold/focus lens is distilled, not the response UI.",
+    "interaction_pattern": ["audio preview", "sequence"],
+    "gesture_or_trigger": "hold",
+    "motion_behavior": ["blur", "stretch", "reveal", "fade", "morph"],
+    "ui_elements": ["button", "icon", "text", "card", "input"],
+    "visual_style": ["light mode", "minimal", "translucent"],
+    "product_context": ["voice", "assistant", "search"],
+    "intensity": "balanced",
+    "mood": ["fluid", "focused", "tactile", "responsive"],
+    "motion_breakdown": {
+      "start_state": "Readable cards, bottom microphone and adjacent controls; use the quiet interval before the second hold, not the already-active first frame.",
+      "transition": "Mic feedback first, then dim and side-control removal; localized curved distortion/blur rises over lower content. Sharp transcript arrives independently. Processing replaces mic contents, lens retreats, dim remains until the later response transition.",
+      "end_state": "For this pattern: background undistorted again, processing control still available and context still dim. Full clip ends on a response with idle microphone.",
+      "why_it_works": "The persistent, sharp capture control anchors an otherwise softened and spatially displaced context; withdrawal restores legibility without falsely signaling that processing has finished.",
+      "motion_params": {
+        "timing": "fast",
+        "easing": "ease-out",
+        "springiness": "subtle",
+        "stagger": "none",
+        "direction": ["up", "down", "fade"]
+      }
+    },
+    "search_keywords": ["hold microphone", "liquid lens", "localized blur", "curved text distortion", "voice capture", "focus veil", "pulse unmeasured"],
+    "assigned_filter_slugs": ["hold", "blur", "elastic", "voice", "assistant", "button", "text", "search"],
+    "confidence": 0.78,
+    "confidence_note": "High confidence in spatial distortion and sequence, moderate in temporal bounds; springiness is a schema label, not a recovered spring. Public title says pulse; periodicity, audio response and native implementation remain unknown."
+  }
+}
