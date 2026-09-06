@@ -12,6 +12,7 @@ import { STEPS as Step } from "../motion/entrance";
 import { DEEP_GREEN } from "../product-palette";
 import { CuadraInsightBar } from "./cuadra-insight-bar";
 import { ProductActions } from "./product-actions";
+import { ProductCategoryRow, type RowCategory } from "./product-category-row";
 import { ProductIdentity } from "./product-identity";
 import { ProductPriceBlock } from "./product-price-block";
 
@@ -40,6 +41,14 @@ interface Props {
   inGroup?: boolean;
   history?: readonly HistoryPoint[] | null;
   description?: string | null;
+  /**
+   * La categoría RAÍZ del producto. `null` mientras viaja la comparación o si el canónico no está
+   * clasificado — y entonces la fila no se dibuja: una fila de categoría vacía no informa de nada
+   * y encima deja una raya suelta en medio de la pantalla.
+   */
+  category?: RowCategory | null;
+  /** Lleva al listado de esa categoría. */
+  onOpenCategory?: () => void;
   /**
    * El reloj COMPARTIDO de la cascada. No es de esta cabecera: la pantalla pone dos bloques más
    * («Otras tiendas» y el histórico) y tienen que ir en la MISMA escalera. Ver `ProductEntrance`.
@@ -85,6 +94,8 @@ export function ProductSummary({
   inGroup,
   history,
   description,
+  category,
+  onOpenCategory,
   cascade,
   photoSlot,
 }: Props) {
@@ -144,9 +155,28 @@ export function ProductSummary({
           </View>
         </CascadeItem>
 
+        {/* A QUÉ CATEGORÍA PERTENECE, y la puerta al listado. Va DEBAJO de las acciones porque es
+            navegación, no acción sobre el producto: primero lo que se puede hacer con ESTE
+            producto, después por dónde seguir mirando. */}
+        {category && onOpenCategory ? (
+          <CascadeItem progress={cascade} index={Step.Category}>
+            <ProductCategoryRow category={category} skin={skin} onPress={onOpenCategory} />
+          </CascadeItem>
+        ) : null}
+
         {description ? (
           <CascadeItem progress={cascade} index={Step.Description}>
-            <View className="border-t border-border pt-4 dark:border-border-dark">
+            {/* ⚠️ La raya de arriba SÓLO cuando no hay fila de categoría. La fila ya cierra con la
+                suya, y las dos juntas —separadas por `BLOCK_GAP`— se leen como un doble filete: dos
+                trazos paralelos que no separan nada, que es exactamente lo que un separador no
+                debe hacer. */}
+            <View
+              className={
+                category
+                  ? "pt-4"
+                  : "border-t border-border pt-4 dark:border-border-dark"
+              }
+            >
               <Text
                 className="text-muted dark:text-muted-dark"
                 style={{ fontFamily: KANTUMRUY_MEDIUM, fontSize: 13, lineHeight: 19 }}
