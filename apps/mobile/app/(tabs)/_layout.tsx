@@ -2,9 +2,11 @@ import { Tabs } from "expo-router";
 import { useRef } from "react";
 import { type GestureResponderEvent, View } from "react-native";
 
+import { AppBackground } from "@/components/ui/app-background";
 import { CuadraTabBar } from "@/components/navigation/cuadra-tab-bar";
 import { isRevealTap } from "@/components/navigation/reveal-tap";
 import { DevMockToggle } from "@/features/insights/components/dev-mock-toggle";
+import { OrbLiquidFocus } from "@/components/ui/liquid-focus/orb-liquid-focus";
 import { useNavHideStore } from "@/store/nav-hide-store";
 
 // Tab bar — News · Insights · [iM logo · AISpace] · Save · Config.
@@ -20,6 +22,10 @@ import { useNavHideStore } from "@/store/nav-hide-store";
 export default function TabsLayout() {
   const tap = useNavHideStore((s) => s.tap);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  // Lo que la lente FOTOGRAFÍA. Envuelve sólo a <Tabs>: así ni la propia lente ni el botón de
+  // mocks acaban dentro de su propia imagen. `collapsable={false}` es obligatorio o Android puede
+  // fundir la vista con su padre y dejar la ref sin nodo que capturar.
+  const backdropRef = useRef<View>(null);
 
   const onTouchStart = (e: GestureResponderEvent) => {
     touchStart.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
@@ -40,6 +46,17 @@ export default function TabsLayout() {
     // pantalla y no puede escuchar toques. `onTouchStart`/`onTouchEnd` burbujean desde cualquier
     // hijo SIN reclamar el gesto, así que observan sin robárselo a nadie.
     <View style={{ flex: 1 }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <View ref={backdropRef} collapsable={false} style={{ flex: 1 }}>
+        {/* ⭐⭐ EL FONDO VA DENTRO DE LO QUE SE FOTOGRAFÍA, y esto no es decorativo.
+            La lente dibuja la foto ENCIMA del contenido vivo. Si la foto trae canal alfa, las dos
+            capas se COMPONEN y se ve todo duplicado —el patrón lo llama «ghost»—, y además la
+            aberración cromática muestrea a través del borde alfa y traza un contorno de colores
+            alrededor de todo.
+            El degradado de la app se monta en `theme-provider`, FUERA de este árbol, así que aquí
+            sólo había transparencia. Con una copia propia dentro, la captura sale OPACA y los dos
+            defectos desaparecen de raíz. Visualmente no cambia nada: tapa al de fuera, que es
+            idéntico. */}
+        <AppBackground />
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -67,6 +84,12 @@ export default function TabsLayout() {
         <Tabs.Screen name="save" options={{ title: "Save" }} />
         <Tabs.Screen name="config" options={{ title: "Config" }} />
       </Tabs>
+      </View>
+      {/* La lente líquida del orbe: hermano POSTERIOR a <Tabs>, así que cubre las pantallas. La
+          barra —y con ella el orbe— se sube por encima con `SHELL_LAYER.tabBar`, que es lo que la
+          mantiene nítida y tocable mientras el fondo se atenúa. */}
+      <OrbLiquidFocus backdropRef={backdropRef} />
+
       {/* Dev-only mock-data toggle — always mounted (like Expo Go's own dev-menu bubble, visible
           app-wide, not gated to one screen), as a LATER sibling than the whole <Tabs> (screens +
           tab bar), so plain sibling paint order puts it on top of both with no zIndex/Modal tricks

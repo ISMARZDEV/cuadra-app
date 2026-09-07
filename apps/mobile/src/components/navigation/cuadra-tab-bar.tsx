@@ -36,6 +36,8 @@ import { NAV_HIDE_TIMING } from "./nav-hide-motion";
 import { IDLE_HIDE_MS } from "./use-nav-visibility";
 import { useDrawer } from "@/store/drawer-store";
 import { useOrbStore } from "@/store/orb-store";
+import { orbDismiss, orbListenStart } from "@/lib/haptics/orb-haptics";
+import { orbFrame } from "./orb-frame";
 
 import { NAVBAR_CIRCLE, NAVBAR_VIEWBOX, NotchedGlass } from "./notched-glass";
 
@@ -120,8 +122,12 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const hideOrb = useOrbStore((s) => s.hide);
   const bumpOrb = useOrbStore((s) => s.bump);
   const setPressing = useOrbStore((s) => s.setPressing);
-  const orbSize = NAVBAR_CIRCLE.r * 2 * scale * 1.35; // oval width
-  const orbTop = NAVBAR_CIRCLE.cy * scale - (orbSize * 0.86) / 2; // oval (h = w·0.86), centred on the dip
+  const pressing = useOrbStore((s) => s.pressing);
+  // La geometría del orbe sale de `orb-frame`, compartida con la copia NÍTIDA que se dibuja encima
+  // de la lente: calculada dos veces, las dos se separarían y el orbe de arriba saldría desplazado
+  // respecto al que recibe el dedo.
+  const orbSize = orbFrame(width, insets.bottom).size;
+  const orbTop = orbFrame(width, insets.bottom).top;
 
   const onPress = (routeName: string, routeKey: string, focused: boolean) => {
     const event = navigation.emit({ type: "tabPress", target: routeKey, canPreventDefault: true });
@@ -191,6 +197,9 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
       setPressing(true);
       bumpOrb();
       stepRef.current = 0;
+      // EMPIEZA LA ESCUCHA. La receta vive en `orb-haptics`, no aquí: el lenguaje háptico del orbe
+      // se reparte entre la barra y la lente, y con la fórmula copiada en cada sitio se separan.
+      orbListenStart();
     },
     onPanResponderMove: (_, g) => {
       const step = Math.floor(Math.max(0, -g.dy) / SELECT_STEP);
@@ -204,7 +213,14 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     },
     onPanResponderRelease: (_, g) => {
       setPressing(false);
-      if (g.dy > SWIPE_DY || g.vy > SWIPE_VY) hideOrb();
+      if (g.dy > SWIPE_DY || g.vy > SWIPE_VY) {
+        orbDismiss();
+        hideOrb();
+        return;
+      }
+      // Al soltar SIN descartar no se marca nada aquí: el remate lo pone la voz —éxito si dictó
+      // algo, un toque seco si no— y ponerlo también aquí serían dos golpes para un solo suceso.
+      // Ver `orb-liquid-focus`.
     },
     onPanResponderTerminate: () => setPressing(false),
   });
@@ -368,7 +384,13 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
             }}
             {...orbResponder.panHandlers}
           >
-            <OrbSphere size={orbSize} visible={orbVisible} />
+            {/* ⚠️ Se apaga por OPACIDAD, jamás desmontando: el dedo está encima en ese preciso
+                instante, y quitar la vista a mitad de gesto TERMINA el `PanResponder` —`pressing`
+                volvería a false y el efecto parpadearía en bucle—. Con opacidad 0 la vista sigue
+                ahí y el gesto no se entera. La copia nítida se dibuja sobre la lente. */}
+            <View style={{ opacity: pressing ? 0 : 1 }}>
+              <OrbSphere size={orbSize} visible={orbVisible} />
+            </View>
           </View>
         </View>
 

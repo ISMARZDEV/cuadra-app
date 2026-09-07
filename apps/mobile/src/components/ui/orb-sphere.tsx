@@ -25,6 +25,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useOrbStore } from "@/store/orb-store";
+import { LENS_MOTION } from "./liquid-focus/use-liquid-focus";
 
 // Siri-style AI orb as a 3D GLASS DROP (pure Skia → smooth, anti-aliased edges). The wave is a
 // faithful kopiro/siriwave (iOS9) port — additive RGB-gradient lobes, asymmetric (warm top / cool
@@ -165,6 +166,18 @@ half4 main(float2 fragCoord) {
 }
 `);
 
+/** Cuánto se contrae el orbe al mantenerlo pulsado. Del ~0.82× medido en la referencia se baja a
+ *  0.12 porque allí la píldora era ANCHA y aquí el control ya es redondo: la misma proporción sobre
+ *  un círculo se lee como un salto, no como un asentamiento. */
+const FOCUS_CONTRACT = 0.12;
+/** El anillo asoma por fuera del orbe; si quedara por dentro lo taparía el propio orbe. */
+const HALO_PAD = 5;
+const HALO_WIDTH = 1.5;
+/** Un halo, no un borde: tiene que insinuarse, no dibujar un contorno. Siempre presente. */
+const HALO_OPACITY = 0.55;
+/** Mientras se mantiene pulsado compite con un fondo esmerilado y pide algo más de cuerpo. */
+const HALO_OPACITY_FOCUS = 0.85;
+
 export function OrbSphere({ size = 64, visible = true }: { size?: number; visible?: boolean }) {
   const clock = useClock();
   const w = size;
@@ -269,9 +282,26 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   // Press / hold → the orb wobbles fluidly (scale pulse + tiny side sway) and KEEPS wobbling while
   // held; on release it settles with a little bounce. No haptic — this is the visual "vibration".
   const pressing = useOrbStore((s) => s.pressing);
+  // ── EL MORPH ────────────────────────────────────────────────────────────────────────────────
+  //
+  // ⭐ **Se traduce el MECANISMO, no la forma.** En Monogram la píldora ancha del micrófono se
+  // ESTRECHA hasta un botón circular y gana un halo claro (medido entre `frames/w1/f001` y
+  // `f015`: ~110 → ~90 px, o sea ~0.82×). Nosotros no tenemos píldora —el orbe ya es redondo—, así
+  // que copiar «píldora → círculo» sería copiar SU pantalla, no su idea. Lo que hace legible el
+  // gesto es otra cosa: **el control se CONTRAE y se recorta contra el fondo**, y eso sí se traduce.
+  //
+  // ⚠️ El reloj es el MISMO que el de la lente (`LENS_TIMING`), importado y no copiado: si el orbe
+  // se contrajera en un tiempo y el fondo se esmerilara en otro, se leerían como dos sucesos
+  // distintos en vez de uno. Ver `cuadra-motion` §5 — un número duplicado ya está desincronizado.
+  const focus = useSharedValue(0); // 0 en reposo, 1 mientras se mantiene pulsado
   const wob = useSharedValue(1); // scale multiplier
   const sway = useSharedValue(0); // -1..1 → small translateX
   useEffect(() => {
+    // EL MISMO movimiento que la cúpula, importado y no copiado: si el orbe se contrajera con otra
+    // curva, el control y el fondo se leerían como dos sucesos en vez de uno.
+    focus.value = pressing
+      ? withSpring(1, LENS_MOTION.rise)
+      : withTiming(0, { duration: LENS_MOTION.fallMs, easing: Easing.out(Easing.cubic) });
     if (pressing) {
       // Gentle "breathing" — subtle scale pulse, barely any sway (it will be a wheel selector,
       // so it must feel calm/precise, not jittery).
@@ -295,21 +325,49 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
       wob.value = withSpring(1, { damping: 12, stiffness: 200, mass: 0.6 });
       sway.value = withSpring(0, { damping: 12, stiffness: 160 });
     }
-  }, [pressing, wob, sway]);
+  }, [pressing, wob, sway, focus]);
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: op.value,
     transform: [
       { translateX: sway.value * (w * 0.02) },
       { translateY: ty.value },
-      { scale: sc.value * wob.value },
+      // La respiración sigue existiendo: ahora oscila ALREDEDOR del tamaño contraído.
+      { scale: sc.value * wob.value * (1 - focus.value * FOCUS_CONTRACT) },
     ],
+  }));
+
+  // ⭐ EL HALO ESTÁ SIEMPRE, no sólo al pulsar. Atado a `focus` aparecía y desaparecía con el dedo,
+  // y eso lo convertía en un efecto de pulsación; es un BORDE del orbe, parte de cómo se recorta
+  // contra lo que tenga detrás. Se refuerza un poco al mantener pulsado —ahí compite con un fondo
+  // esmerilado y necesita algo más de cuerpo— pero nunca baja de su valor en reposo.
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: HALO_OPACITY + focus.value * (HALO_OPACITY_FOCUS - HALO_OPACITY),
   }));
 
   if (!GLASS) return null;
 
   return (
     <Animated.View style={[{ width: w, height: h }, containerStyle]}>
+      {/* EL HALO. En la referencia el control activo se recorta con un anillo claro contra el
+          fondo ya esmerilado — es lo que dice «esto sigue vivo, lo de atrás no». Va ANTES del
+          Canvas para quedar detrás del orbe, y crece un pelo por fuera para asomar por el canto. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          {
+            position: "absolute",
+            left: -HALO_PAD,
+            top: -HALO_PAD,
+            width: w + HALO_PAD * 2,
+            height: h + HALO_PAD * 2,
+            borderRadius: (w + HALO_PAD * 2) / 2,
+            borderWidth: HALO_WIDTH,
+            borderColor: "#FFFFFF",
+          },
+          haloStyle,
+        ]}
+      />
       {/* Soft animated colour bloom — a heavily-blurred, faint copy of the wave behind the orb,
           so the glow follows the wave's colours and motion (subtle). */}
       <Canvas style={{ position: "absolute", left: -PAD, top: -PAD, width: CW, height: CH }}>

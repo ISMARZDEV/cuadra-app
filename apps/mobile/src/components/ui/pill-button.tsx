@@ -137,6 +137,13 @@ type PillButtonProps = {
    *  `accessibilityLabel` deja de ser opcional en la práctica, porque es lo único que le queda
    *  para anunciarse. Un botón que un lector de pantalla no sabe nombrar no es un botón. */
   label?: string;
+  /**
+   * Etiqueta como NODO, cuando el texto necesita pintarse él mismo (un shimmer, por ejemplo).
+   *
+   * ⚠️ Sustituye al `<Text>` interno, pero `label` SIGUE HACIENDO FALTA: es lo que anuncia el lector
+   * de pantalla y lo que mide el truncado. Un nodo decorativo no puede llevarse la accesibilidad.
+   */
+  labelNode?: React.ReactNode;
   onPress?: () => void;
   /** Etiqueta accesible; si falta se usa `label`, que casi siempre es la correcta. */
   accessibilityLabel?: string;
@@ -169,6 +176,7 @@ type PillButtonProps = {
 export function PillButton({
   icon,
   label,
+  labelNode,
   onPress,
   accessibilityLabel,
   height = DEFAULT_HEIGHT,
@@ -315,7 +323,7 @@ export function PillButton({
       {icon ? <View>{icon}</View> : null}
       {/* Sin texto no se pinta el `Text`, en vez de pintarlo vacío: una caja de texto de ancho cero
           sigue aportando el `gap` de la fila, y la píldora de sólo icono saldría descentrada. */}
-      {label ? (
+      {labelNode ?? (label ? (
         <Text
           numberOfLines={maxLines}
           ellipsizeMode={maxLines ? "tail" : undefined}
@@ -326,7 +334,7 @@ export function PillButton({
         >
           {label}
         </Text>
-      ) : null}
+      ) : null)}
     </AnimatedPressable>
   );
 }

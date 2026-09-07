@@ -22,11 +22,26 @@ type OrbState = {
 
 export const useOrbStore = create<OrbState>((set) => {
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  // ¿Hay un dedo apoyado ahora mismo? Lo consultan `armIdle` y `bump`. Se declara ANTES que ellos.
+  let holding = false;
 
   const armIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       idleTimer = null;
+      // ⚠️⚠️ **LA GUARDA VA AQUÍ, en el disparo, y no sólo en quien arma el temporizador.**
+      //
+      // Antes bastaba con que alguien armara el ocioso en mal momento para que el orbe se cerrara
+      // con el dedo encima. Comprobarlo sólo en `bump` deja el invariante repartido entre varios
+      // sitios: cualquier camino nuevo que llame a `armIdle()` vuelve a romperlo, y el defecto
+      // reaparece a los 8 segundos —tarde, intermitente y difícil de atribuir—.
+      //
+      // Preguntándolo en el disparo, el invariante es UNO y no depende de por dónde se llegó:
+      // el auto-ocultado es para el ABANDONO, y un dedo apoyado es lo contrario de abandonar.
+      if (holding) {
+        armIdle(); // sigue habiendo dedo: se vuelve a contar desde cero al soltarlo
+        return;
+      }
       set({ active: false, pressing: false });
     }, AUTO_HIDE_MS);
   };
@@ -46,13 +61,25 @@ export const useOrbStore = create<OrbState>((set) => {
     },
     hide: () => {
       clearIdle();
+      holding = false;
       set({ active: false, pressing: false });
     },
     bump: () => {
       set((s) => ({ pulse: s.pulse + 1 }));
-      armIdle(); // touching the orb counts as interaction → reset the idle countdown
+      // ⚠️⚠️ **NO se rearma el ocioso si hay un dedo encima, y aquí vivía un defecto real.**
+      //
+      // La barra llama `setPressing(true)` —que CANCELA el temporizador— e inmediatamente después
+      // `bump()`, que lo volvía a armar. Resultado: el orbe se auto-ocultaba a los 8 s AUNQUE lo
+      // estuvieras manteniendo pulsado, en mitad del gesto.
+      //
+      // El auto-ocultado es para el ABANDONO —el orbe quedó abierto y nadie lo usa—, y mantener el
+      // dedo encima es lo contrario de abandonar. Se arregla aquí y no reordenando las llamadas en
+      // la barra: el invariante es de este store, y con el orden como red se rompería en cuanto
+      // alguien llamara a `bump` desde otro sitio.
+      if (!holding) armIdle();
     },
     setPressing: (value) => {
+      holding = value;
       set({ pressing: value });
       if (value) clearIdle(); // don't auto-hide while held
       else armIdle(); // restart the 8s countdown on release
