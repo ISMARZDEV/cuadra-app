@@ -1,61 +1,32 @@
 /**
- * EL MODELO DE LA LENTE LÍQUIDA — geometría pura, sin React ni Skia.
+ * Modelo geométrico de la lente de Monogram, separado de React y Skia para poder verificarlo.
  *
- * Portado TAL CUAL del patrón autónomo `monogram/hold-to-focus-liquid-lens` (ver
- * `.claude/skills/motion-patterns/`), que a su vez traduce la referencia de 60fps.design. No se
- * reajustan sus números aquí: son aproximaciones visuales PARAMETRIZADAS en proporciones del
- * viewport —no píxeles del teléfono del mock—, y tocarlas sin volver a mirar el vídeo sería
- * inventar precisión.
- *
- * ⚠️ Los tiempos son ESTIMACIONES de intervalos visibles, NO constantes de muelle medidas. El
- * patrón es explícito: sin un sobrepaso defendible, un `withTiming` es preferible a inventarse
- * `damping`/`stiffness`. Ver `cuadra-motion` §8.
+ * La referencia muestra UN solo menisco: el mismo canto arqueado dobla el contenido, introduce el
+ * esmerilado y deja crecer el velo hacia el pie. La implementación anterior movía una frontera de
+ * refracción y otra de blanco hasta lugares distintos, de modo que la cúpula terminaba pareciendo
+ * una niebla global. También añadió un muelle y un vaivén perpetuo que no aparecen medidos en el
+ * clip. La respiración sí existe, pero cambia la FORMA del canto (altura, arco y asimetría), no
+ * traslada la misma máscara arriba y abajo para siempre.
  */
-/** Translation estimates, not measured spring constants. */
-export const LENS_TIMING = { enterMs: 250, withdrawMs: 350, dimMs: 180 } as const;
 
-/**
- * LA COREOGRAFÍA — quién llega antes que quién.
- *
- * ⭐⭐ **El efecto tiene ORDEN DE CAUSAS, y sin él se lee como un interruptor.** Antes el velo, el
- * pliegue y el desenfoque salían todos del mismo `p` multiplicado, así que aparecían los tres a la
- * vez: el usuario lo describió exacto — «aparece porque sí». En un fenómeno físico el agua primero
- * EMPUJA, luego BLANQUEA y al final ESMERILA.
- *
- * Y al soltar la escalera se deshace sola por donde se hizo: al llevar el reloj de 1 a 0 las
- * ventanas se cruzan al revés, así que el desenfoque se va primero y el pliegue es lo último en
- * relajarse. No hay que escribir la vuelta (ver `cuadra-motion` §7).
- *
- * El desfase (~0.13 del reloj ≈ 68 ms sobre 520) sale del `stagger: "subtle"` que declara el shot
- * de referencia; su `stagger_delay: 0.04` es para filas de una lista, y entre capas de un material
- * se lee corto.
- */
-const STEP = {
-  /** El pliegue: es la CAUSA, arranca al instante. */
-  push: [0.0, 0.5],
-  /** El blanco viene detrás del empuje. */
-  veil: [0.13, 0.92],
-  /** El esmerilado es lo último: primero deforma, después difumina. */
-  blur: [0.26, 1.0],
+/** Tiempos guiados por el clip y afinados en el simulador; no son constantes de un muelle. */
+export const LENS_TIMING = {
+  /** El control reacciona primero; el menisco empieza a subir un instante después. */
+  leadMs: 32,
+  /** Entrada larga con cola suave: responde pronto, pero la masa tarda en asentarse. */
+  enterMs: 520,
+  /** ⭐ Subido de 350: la retirada tiene que dejar SEGUIR el frente con la vista. A 350 la onda se
+   *  percibía como un corte; el ojo necesita más recorrido para leerla como agua que se va. */
+  withdrawMs: 620,
+  /** La atenuación acompaña a la masa; no debe terminar mientras el menisco apenas empieza. */
+  dimMs: 420,
+  /** Onda radial que nace en el orbe al soltar y alcanza el techo. */
+  /** ⭐ Subido de 480 por el mismo motivo: es el viaje de la onda radial desde el orbe hasta el
+   *  techo, y es LO QUE MÁS SE MIRA de toda la salida. Correrlo la abarata. */
+  releaseMs: 900,
+  /** El morph del control cabe antes de que la cúpula quede establecida. */
+  controlMs: 220,
 } as const;
-
-/**
- * Una ventana del reloj compartido, en 0..1.
- *
- * ⚠️⚠️ **`"worklet"` NO ES OPCIONAL AQUÍ.** `lensUniforms` corre en el HILO DE UI, y desde un worklet
- * sólo se puede llamar a otros worklets: sin la directiva revienta en el dispositivo con
- * «Tried to synchronously call a non-worklet function `windowAt` on the UI thread» — con el
- * typecheck limpio y los tests en verde, porque en el arnés `"worklet"` es una cadena inerte.
- * Ver `cuadra-motion` §12. Y va declarada ANTES de quien la usa, por la misma regla.
- *
- * Recibe los extremos SUELTOS y no una tupla: el plugin de Babel captura lo que el worklet
- * referencia, y desestructurar un objeto capturado es una fuente de sorpresas que no compensa
- * ahorrar un argumento.
- */
-function windowAt(clock: number, from: number, to: number): number {
-  "worklet";
-  return Math.max(0, Math.min(1, (clock - from) / (to - from)));
-}
 
 export function lensUniforms(
   width: number,
@@ -63,93 +34,107 @@ export function lensUniforms(
   progress: number,
   pulse: number,
   reducedMotion: boolean,
+  /** Reloj lineal 0..1 de una respiración larga; la forma combina armónicos dentro del worklet. */
+  breath = 0,
+  /** Reloj 0..1 de la onda radial de liberación. */
+  release = 0,
   /**
-   * EL VAIVÉN de la cúpula, en −1..1 y con 0 en reposo.
+   * EL SELLADO DEL TELÓN, 0..1.
    *
-   * ⚠️ Va APARTE de `pulse` a propósito. `pulse` es del patrón, vive en 0..1 y su 0 significa «sin
-   * modulación»; si el vaivén se derivara de él, el valor por defecto (0) equivaldría a «cúpula
-   * hundida del todo» y cualquiera que no pasara pulso vería la geometría desplazada. Dos ideas
-   * distintas, dos entradas distintas.
+   * Cierra el velo de borde a borde para tapar una navegación que ocurre por debajo. Es un trabajo
+   * DISTINTO del velo de dictado —aquél acompaña, éste oculta— y por eso entra aparte en vez de
+   * retocar los números del menisco.
    */
-  swing = 0,
-  /**
-   * EL RELOJ DE LA COREOGRAFÍA, aparte del progreso.
-   *
-   * ⚠️ **Tiene que ser LINEAL, y por eso no puede ser `progress`.** El progreso es un MUELLE —de ahí
-   * el peso de la entrada— y un reloj con curva APLASTA el escalonado: los pasos del medio se
-   * amontonan y los de los extremos se separan (`cuadra-motion` §7a, medido en la cascada del
-   * detalle de producto). Son dos cosas distintas: dónde ESTÁ la cúpula, y en qué orden LLEGAN sus
-   * capas. Dos relojes.
-   */
-  phase = 1,
+  seal = 0,
 ) {
   "worklet";
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    throw new RangeError('The lens requires a finite, positive viewport.');
+    throw new RangeError("The lens requires a finite, positive viewport.");
   }
-  const p = reducedMotion || !Number.isFinite(progress) ? 0 : Math.max(0, Math.min(1, progress));
-  // ⭐⭐ LA GEOMETRÍA PUEDE PASARSE DE 1; LA INTENSIDAD NO.
-  //
-  // La subida es un muelle y su gracia está en el SOBREPASO: la cúpula llega arriba, se pasa un
-  // pelo y se asienta —como una masa de agua con inercia—. Si se acotara todo a 1, ese sobrepaso no
-  // existiría: el muelle terminaría en el mismo sitio que una curva y no se notaría ninguna
-  // diferencia. Pero el velo y el desenfoque SÍ se acotan: un velo por encima de 1 no significa
-  // nada y un desenfoque de más sólo cuesta fotogramas.
-  const pGeo = reducedMotion || !Number.isFinite(progress)
-    ? 0
-    : Math.max(0, Math.min(1.15, progress));
 
-  // Las tres capas, cada una en su ventana del reloj lineal.
-  const clock = reducedMotion || !Number.isFinite(phase) ? 0 : Math.max(0, Math.min(1, phase));
-  const kPush = windowAt(clock, STEP.push[0], STEP.push[1]);
-  const kVeil = windowAt(clock, STEP.veil[0], STEP.veil[1]);
-  const kBlur = windowAt(clock, STEP.blur[0], STEP.blur[1]);
+  const p = reducedMotion || !Number.isFinite(progress)
+    ? 0
+    : Math.max(0, Math.min(1, progress));
   const modulation = Number.isFinite(pulse) ? Math.max(0, Math.min(1, pulse)) : 0;
-  // El vaivén se acota y se apaga con el progreso: en reposo la cúpula no puede estar movida.
-  const sway = (Number.isFinite(swing) ? Math.max(-1, Math.min(1, swing)) : 0) * p;
+  const boundedCycle = Number.isFinite(breath) ? Math.max(0, Math.min(1, breath)) : 0;
+  const cycle = boundedCycle === 1 ? 0 : boundedCycle;
+  const angle = cycle * Math.PI * 2;
+  // Dos armónicos enteros: la curva cambia durante el ciclo y vuelve sin costura al empezar.
+  const primary = Math.sin(angle);
+  const secondary = Math.sin(angle * 2 + 0.8);
+  const tertiary = Math.sin(angle * 3 - 0.45);
+  // La entrada no debe asomar como una línea horizontal. El arco revela primero el centro, cerca
+  // del orbe, y abre los hombros después; al establecerse vuelve a la curvatura final ya aprobada.
+  // El centro tiene que asomar desde el primer tramo aunque la masa completa siga subiendo lenta.
+  // A 0.42 el smoothstep quedaba enteramente bajo el viewport durante demasiado tiempo.
+  const revealClock = Math.min(1, p / 0.29);
+  // Smoothstep: también anula la velocidad en ambos extremos. El multiplicador lineal anterior
+  // abría el arco cuatro veces más rápido que el resto de la masa y daba un tirón visible.
+  const domeReveal = revealClock * revealClock * (3 - 2 * revealClock);
+  // Pulso que existe SÓLO durante la entrada: nace y termina en cero, con máxima masa a mitad del
+  // recorrido. Da el pliegue profundo y asimétrico de la referencia sin cambiar la forma estable.
+  const entrySine = Math.sin(p * Math.PI);
+  // La onda al cuadrado nace y muere con pendiente cero; así el pliegue no «golpea» al aparecer.
+  const entrySurge = entrySine * entrySine;
+  const releaseProgress = reducedMotion || !Number.isFinite(release)
+    ? 0
+    : Math.max(0, Math.min(1, release));
+  // La gota no sólo borra: primero hunde el menisco y luego lo deja recuperar. La envolvente vale
+  // cero en ambos extremos, de modo que soltar no introduce un salto y completar la onda tampoco.
+  const releaseEnvelope = Math.sin(releaseProgress * Math.PI);
+  const releaseOscillation = Math.sin(releaseProgress * Math.PI * 2);
+  const baseBow = width * (
+    0.056 + 0.02 * secondary + 0.055 * (1 - p) + 0.055 * entrySurge
+  ) * domeReveal;
 
   return {
     size: [width, height],
     strength: p,
-    /** El canto de la cúpula, con su VAIVÉN encima: sube y baja mientras se mantiene pulsado, y al
-     *  moverse cambia dónde cae el pliegue. Ese movimiento es lo que se lee como líquido. */
-    boundary: height * (1.08 - 0.49 * pGeo) + height * 0.055 * sway,
-    bow: width * 0.04 * p,
-    /** ⭐⭐ EL ANCHO DEL CANTO DE LA CÚPULA — el número que produce el «corte».
-     *  Estaba en 0.075 (≈63 pt): a esa escala el paso de nítido a velado ocurre en un dedo de
-     *  pantalla y el ojo lo lee como un BORDE. A 0.20 (≈170 pt) el contenido se hunde en la cúpula
-     *  progresivamente y ya no hay canto que ver. */
-    feather: height * 0.20,
-    /** ⭐ EL PLIEGUE. Subido de 0.04 a 0.10: a 0.04 el contenido apenas se movía y el efecto se
-     *  leía como un desenfoque con velo. Lo que hace «líquido» es ver la GEOMETRÍA doblarse. */
-    displacement: width * 0.10 * p * kPush * (1 + 0.2 * modulation),
-    // ⚠️ AJUSTADOS CONTRA LA PANTALLA REAL. Los del patrón eran `blurRadius: width * 0.018` y
-    // `veil: 0.48`, y en Cuadra BORRABAN el contenido: gris lechoso plano, ilegible. Dos motivos,
-    // los dos ausentes en la referencia:
-    //
-    //   · El patrón traduce una UI de fondo GRIS con texto oscuro; un velo claro ahí desatura. La
-    //     pantalla de Cuadra ya es casi blanca, así que un velo blanco al 48 % la deja en blanco.
-    //   · 7 pt de radio con kernel 7×7 sobre una pantalla a 3× es un desenfoque enorme. En el
-    //     fotograma de referencia (`frames/w2/f012`) las tarjetas de debajo SE SIGUEN LEYENDO:
-    //     el análisis de 60fps lo llama «frosted blur», no una destrucción.
-    //
-    // El patrón declara estos números «parameterized visual approximations», así que ajustarlos es
-    // lo esperado — pero se dejan los originales escritos para que siga siendo trazable.
-    blurRadius: width * 0.008 * p * kBlur,
-    /** ⭐ La CÚPULA. En la referencia, bajo el canto el fondo es del color del tema —blanco puro en
-     *  claro—, no una neblina tímida. Estuvo en 0.48 y se veía a gris sucio, pero la culpa NO era
-     *  del velo: encima caía una capa negra al 18 % que lo aplanaba. Retirada aquélla, el velo puede
-     *  volver a pesar lo que pesa en el original — y con la rampa lineal, este 0.96 es el blanco del
-     *  FONDO de la pantalla, no el de toda la zona velada. */
-    veil: 1.0 * p * kVeil,
-    /** ⭐ Dónde EMPIEZA el velo, en píxeles desde arriba. Viaja del suelo (sin velo) a `0.10·alto`
-     *  —casi el techo— al pulsar del todo. Desde ahí hasta el fondo el blanco crece LINEALMENTE:
-     *  es lo que deja la cabecera legible y el pie completamente blanco, como en la referencia. */
-    veilStart: height * (1.0 - 0.94 * pGeo) + height * 0.05 * sway,
-    /** Dónde el velo llega a su MÁXIMO. No es el suelo de la pantalla: si el blanco pleno sólo se
-     *  alcanzara en el último píxel, el pie nunca llegaría a verse blanco del todo. */
-    veilFull: height * 0.78,
-    /** Separación RGB en el canto. Lo justo para que se lea como vidrio y no como un defecto. */
-    chroma: width * 0.006 * p * kPush,
+    /**
+     * En Cuadra hay un hueco grande entre las acciones y el dock. Detener el canto a 0.54H lo
+     * dejaba flotando en ese vacío; a 0.43H atraviesa la fila inferior, como el menisco de la
+     * referencia atraviesa la última tarjeta en vez de dibujarse debajo de ella.
+     */
+    boundary: height * (1.08 - 0.65 * p)
+      + height * 0.018 * p * primary
+      + height * 0.075 * releaseEnvelope,
+    /** Al nacer el arco es más profundo: centro visible, extremos todavía fuera del viewport. */
+    bow: baseBow * (1 - 0.55 * releaseEnvelope),
+    /** Banda más concentrada: reemplaza píxeles alrededor del pliegue sin crear una reflexión. */
+    feather: height * (0.05 + 0.008 * tertiary),
+    /** El texto se pliega con claridad; ya no hay que esconder el defecto reduciendo el alfa. */
+    displacement: width * (0.066 + 0.048 * entrySurge) * p
+      * (1 + 0.22 * secondary) * (1 + 0.2 * modulation),
+    /** El blur crece junto al mismo canto; el velo termina de disolver el pie. */
+    blurRadius: width * (0.016 + 0.003 * primary) * p,
+    /**
+     * Densidad del MATERIAL, no otro reloj. `lensMix` ya introduce `p`; multiplicarlo también aquí
+     * hacía que la opacidad entrara como p² y el comienzo pareciera una lámina transparente. Así el
+     * blanco/oscuro nace linealmente y termina con un poco más de cuerpo sin volverse plano.
+     */
+    veil: 0.92,
+    seal: Number.isFinite(seal) ? Math.max(0, Math.min(1, seal)) : 0,
+    /** El blanco llega a pleno antes del borde físico inferior, como en el plano de referencia. */
+    veilFull: height * 0.88,
+    /** La respiración ladea y ondula el menisco; ambos se apagan al retirar la lente. */
+    edgeTilt: p === 0
+      ? 0
+      : width * (
+        0.024 * p * secondary
+        + 0.024 * entrySurge
+        + 0.018 * releaseEnvelope * releaseOscillation
+      ),
+    ripple: p === 0
+      ? 0
+      : width * (
+        0.02 * p * tertiary
+        + 0.018 * entrySurge
+        + 0.065 * releaseEnvelope
+      ),
+    wavePhase: angle,
+    release: releaseProgress,
+    dropOrigin: [width * 0.5, height * 0.91],
+    dropRadius: height * 1.08 * releaseProgress,
+    dropWidth: height * 0.095,
   };
 }

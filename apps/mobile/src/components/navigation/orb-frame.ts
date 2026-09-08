@@ -21,8 +21,8 @@ export function orbFrame(width: number, insetsBottom: number) {
   const navHeight = NAVBAR_VIEWBOX.height * scale;
   /** Ancho del óvalo. El 1.35 lo desborda un poco de la muesca, a propósito. */
   const size = NAVBAR_CIRCLE.r * 2 * scale * 1.35;
-  /** El orbe es un ÓVALO: alto = ancho × 0.86. */
-  const height = size * 0.86;
+  /** El orbe es un ÓVALO: el Canvas real de `OrbSphere` mide ancho × 0.85. */
+  const height = size * 0.85;
   /** Centrado sobre la muesca, medido desde el techo de la composición de la barra. */
   const top = NAVBAR_CIRCLE.cy * scale - height / 2;
   /** El aire que la barra se deja contra el borde inferior de la pantalla. */

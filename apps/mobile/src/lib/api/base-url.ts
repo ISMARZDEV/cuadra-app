@@ -1,4 +1,4 @@
-// Puerto de la API en el registro FIJO del repo (web 3006 · api 8005 · metro 8087 · db 5433).
+// Puerto de la API en el registro FIJO del repo (web 3006 · api 8005 · metro 8098 · db 5433).
 //
 // En desarrollo se usa ÉSTE y no el de la URL configurada, y la diferencia costó una sesión: un
 // `.env` con `localhost:3000` mandó las peticiones a un puerto donde no hay nada, y el síntoma —un

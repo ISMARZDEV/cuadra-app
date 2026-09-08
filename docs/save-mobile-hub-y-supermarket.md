@@ -792,7 +792,7 @@ Al cerrar la Fase 5, en un dispositivo real:
 ## Apéndice A — Entorno y comandos
 
 ```bash
-# Puertos FIJOS: web :3006 · api :8005 · metro :8087 · postgres :5433
+# Puertos FIJOS: web :3006 · api :8005 · metro :8098 · postgres :5433
 ./scripts/dev-up.sh
 
 # Móvil

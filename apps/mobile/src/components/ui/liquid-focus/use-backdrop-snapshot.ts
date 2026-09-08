@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { View } from "react-native";
 import { Skia, type SkImage } from "@shopify/react-native-skia";
 import { captureRef } from "react-native-view-shot";
@@ -33,19 +33,21 @@ export function useBackdropSnapshot(
   viewRef: RefObject<View | null>,
 ): SkImage | null {
   const [image, setImage] = useState<SkImage | null>(null);
+  const wasActive = useRef(active);
+  const isNewActivation = active && !wasActive.current;
+
+  // La captura anterior puede seguir en estado para completar su salida, pero JAMÁS debe llegar al
+  // primer fotograma visible de una activación nueva. El layout effect la suelta antes de pintar;
+  // el arranque de Reanimated tiene además 65 ms de margen, así que su rerender cancela cualquier
+  // reloj preparado con la imagen anterior antes de que pueda avanzar.
+  useLayoutEffect(() => {
+    if (active && !wasActive.current) setImage(null);
+    wasActive.current = active;
+  }, [active]);
 
   useEffect(() => {
     // Al desactivarse NO se limpia: ver arriba, la retirada todavía la necesita.
     if (!active) return;
-
-    // ⚠️ PERO AL VOLVER A ACTIVARSE SÍ, Y ANTES DE NADA. La foto que sobrevivió a la retirada es de
-    // la pulsación ANTERIOR, y para entonces el usuario puede estar en otra pantalla: durante el
-    // fotograma que tarda la captura nueva, el shader estaría deformando la pantalla VIEJA. Se veía
-    // como un parpadeo de contenido ajeno justo al pulsar.
-    //
-    // Soltarla aquí deja un fotograma sin imagen, no con la imagen equivocada — y ese fotograma es
-    // invisible porque los relojes acaban de arrancar y todavía no hay nada que dibujar.
-    setImage(null);
 
     let alive = true;
 
@@ -93,5 +95,8 @@ export function useBackdropSnapshot(
     };
   }, [active, viewRef]);
 
-  return image;
+  // Leer el borde del ciclo durante render es intencional: un layout effect ya llega después de
+  // construir los hijos y permite que la foto anterior alcance el Canvas durante un fotograma.
+  // Aquí se entrega `null` sólo para ese primer render; la captura nueva provoca el siguiente.
+  return isNewActivation ? null : image;
 }

@@ -1735,7 +1735,7 @@ runner en `evals/` — la separación es estructural.
 |---|---:|
 | web (Vike) | **3006** — nunca 3000 |
 | api (FastAPI) | **8005** |
-| metro (Expo) | **8087** |
+| metro (Expo) | **8098** |
 | postgres | **5433** |
 
 ### A.2 ⚠️ Gotchas del entorno

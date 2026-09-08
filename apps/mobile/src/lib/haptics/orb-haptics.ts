@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import { Platform } from "react-native";
 
 /**
  * EL LENGUAJE HÁPTICO DEL ORBE, en un solo sitio.
@@ -8,30 +9,25 @@ import * as Haptics from "expo-haptics";
  * acaba de pasar enseña qué pasó. Por eso el tic de dictado va atado a que llegue una PALABRA nueva
  * y no a un intervalo.
  *
- * ⭐⭐ **La receta base sale del propio shot de referencia** —`.impact(medium, 0.8)` al escuchar,
- * `.impact(light)` al procesar, `.success` al resolver— y aquí se sube un escalón porque el usuario
- * pidió sentirlo más: la entrada pasa a `Heavy` y se le añade un segundo golpe.
+ * ⭐⭐ La presión física es UN solo suceso. Antes el arranque encadenaba `Heavy` + `Rigid` 55 ms
+ * después: dos avisos para una acción, y el segundo podía coincidir con el inicio del micrófono. La
+ * receta actual usa el significado NATIVO de cada plataforma: contacto rígido en iOS y tecla
+ * virtual en Android. Se dispara en press-in, en el mismo gesto que contrae el control.
  *
  * ⚠️ **iOS DESACTIVA TODOS LOS HÁPTICOS EN MODO DE BAJO CONSUMO.** Si no se siente nada, eso es lo
  * primero que hay que descartar — es del sistema y ninguna de estas llamadas puede sortearlo.
  * También hacen falta un iPhone con Taptic Engine y el interruptor de sistema activo.
  */
 
-/** Espera entre los dos golpes del arranque. Corta: si se separan más se sienten como DOS avisos. */
-const THUNK_GAP_MS = 55;
-
 /**
- * ARRANCA LA ESCUCHA — el golpe más contundente de la interacción.
- *
- * Son DOS impactos encadenados, no uno más fuerte: `Heavy` no tiene nada por encima, así que el
- * peso extra se consigue con un segundo toque muy pegado. El oído háptico lo lee como un «thunk»
- * único y macizo —el mismo truco de un cierre de puerta de coche— en lugar de dos avisos.
+ * EL DEDO HUNDE EL ORBE — corto y definido, como tocar un botón físico.
  */
-export function orbListenStart(): void {
-  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-  setTimeout(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
-  }, THUNK_GAP_MS);
+export function orbListenStart(platform = Platform.OS): void {
+  if (platform === "android") {
+    void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Virtual_Key);
+    return;
+  }
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
 }
 
 /**
@@ -72,4 +68,15 @@ export function orbCaptureEmpty(): void {
  */
 export function orbDismiss(): void {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+}
+
+/**
+ * SE EJECUTÓ UN COMANDO de dictado («borra eso», «empieza de nuevo»).
+ *
+ * ⚠️ Necesita señal PROPIA, y no es un adorno: sin ella, obedecer una orden y no haber entendido al
+ * usuario se ven EXACTAMENTE IGUAL —el texto desaparece— y no hay forma de saber cuál de las dos
+ * pasó. Un `Warning` del sistema (dos pulsos) se distingue del tic de palabra y del éxito final.
+ */
+export function orbCommandApplied(): void {
+  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 }

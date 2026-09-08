@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_PORT=8005
 WEB_PORT=3006
-METRO_PORT=8087
+METRO_PORT=8098
 
 # En DEV queremos CORS abierto (`*`, el default de config.py). Si la shell trae un
 # `CORS_ORIGINS` exportado a mano (p. ej. apuntando a un puerto viejo), el API nace

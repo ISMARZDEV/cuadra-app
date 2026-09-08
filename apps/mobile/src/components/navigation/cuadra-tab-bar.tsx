@@ -26,7 +26,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { Icon } from "@/components/ui/icon";
-import { OrbSphere } from "@/components/ui/orb-sphere";
 import { t, type TranslationKey } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { useChatExpandStore } from "@/store/chat-expand-store";
@@ -122,12 +121,11 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const hideOrb = useOrbStore((s) => s.hide);
   const bumpOrb = useOrbStore((s) => s.bump);
   const setPressing = useOrbStore((s) => s.setPressing);
-  const pressing = useOrbStore((s) => s.pressing);
-  // La geometría del orbe sale de `orb-frame`, compartida con la copia NÍTIDA que se dibuja encima
-  // de la lente: calculada dos veces, las dos se separarían y el orbe de arriba saldría desplazado
-  // respecto al que recibe el dedo.
-  const orbSize = orbFrame(width, insets.bottom).size;
-  const orbTop = orbFrame(width, insets.bottom).top;
+  // La barra conserva sólo el HITBOX. La única instancia visual vive en `OrbLiquidFocus`, por
+  // encima de la lente, y nunca se intercambia por otra al soltar.
+  const orbGeometry = orbFrame(width, insets.bottom);
+  const orbSize = orbGeometry.size;
+  const orbTop = orbGeometry.top;
 
   const onPress = (routeName: string, routeKey: string, focused: boolean) => {
     const event = navigation.emit({ type: "tabPress", target: routeKey, canPreventDefault: true });
@@ -186,7 +184,7 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     return Math.pow(Math.abs(nx), 2.2) + Math.pow(Math.abs(ny), 2.2) <= 0.9;
   };
 
-  // Orb: press/hold → wobble (visual, no haptic) + wave swell. Press + drag UP scrubs the (future)
+  // Orb: press/hold → contacto háptico + wobble visual + wave swell. Press + drag UP scrubs the
   // wheel selector → a selection "tick" per step (Haptics.selectionAsync, the date-picker feel).
   // Swipe DOWN → hide. No navigation.
   const stepRef = useRef(0);
@@ -207,7 +205,12 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
         stepRef.current = step;
         if (step > 0) {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid); // stronger, crisper tick
-          sounds.tick();
+          // ⚠️ **SIN SONIDO MIENTRAS SE DICTA.** El tic es del futuro selector de rueda, pero hoy
+          // este mismo gesto está grabando: reproducir audio durante la captura es exactamente lo
+          // que rompía el reconocimiento de forma intermitente. La sesión ya se declara compatible
+          // (`iosCategory` en `use-voice-capture`), y aun así no se reproduce — un cinturón y unos
+          // tirantes cuestan una línea, y el defecto costaba una sesión entera de diagnóstico.
+          // El háptico se queda: no toca el audio.
         }
       }
     },
@@ -384,13 +387,10 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
             }}
             {...orbResponder.panHandlers}
           >
-            {/* ⚠️ Se apaga por OPACIDAD, jamás desmontando: el dedo está encima en ese preciso
-                instante, y quitar la vista a mitad de gesto TERMINA el `PanResponder` —`pressing`
-                volvería a false y el efecto parpadearía en bucle—. Con opacidad 0 la vista sigue
-                ahí y el gesto no se entera. La copia nítida se dibuja sobre la lente. */}
-            <View style={{ opacity: pressing ? 0 : 1 }}>
-              <OrbSphere size={orbSize} visible={orbVisible} />
-            </View>
+            {/* HITBOX persistente y transparente. Dos `OrbSphere` podían compartir coordenadas,
+                pero no su estado animado, y el relevo se delataba como un salto de color/posición.
+                Mantener esta caja conserva el `PanResponder` sin volver a dibujar el control. */}
+            <View style={{ width: orbSize, height: orbGeometry.height }} />
           </View>
         </View>
 

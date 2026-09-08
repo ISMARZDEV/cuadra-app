@@ -85,9 +85,9 @@ export default function TabsLayout() {
         <Tabs.Screen name="config" options={{ title: "Config" }} />
       </Tabs>
       </View>
-      {/* La lente líquida del orbe: hermano POSTERIOR a <Tabs>, así que cubre las pantallas. La
-          barra —y con ella el orbe— se sube por encima con `SHELL_LAYER.tabBar`, que es lo que la
-          mantiene nítida y tocable mientras el fondo se atenúa. */}
+      {/* La lente líquida del orbe: hermano POSTERIOR a <Tabs>, así que cubre las pantallas y la
+          barra. Su foreground vuelve a dibujar sólo el orbe nítido; `pointerEvents="none"` deja
+          que el responder original conserve el gesto debajo. */}
       <OrbLiquidFocus backdropRef={backdropRef} />
 
       {/* Dev-only mock-data toggle — always mounted (like Expo Go's own dev-menu bubble, visible

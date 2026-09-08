@@ -23,16 +23,28 @@ export type LiquidFocusProps = {
   pulse?: SharedValue<number>;
   /** RGB floats in 0..1; use a dark neutral for a dark background. */
   veilColor?: readonly [number, number, number];
+  /** Cierra el velo de borde a borde para tapar una navegación por debajo. Ver `lensUniforms`. */
+  sealed?: boolean;
 };
 
 export function LiquidFocus({
   listening, dimmed, width, height, backdrop, snapshot, foreground, pulse,
   veilColor = [0.96, 0.96, 0.94],
+  sealed = false,
 }: LiquidFocusProps) {
-  const { progress, swing, phase, lensStyle, dimStyle, reducedMotion } = useLiquidFocus(listening, dimmed);
+  const { progress, dim, breath, release, lensStyle, dimStyle, reducedMotion } = useLiquidFocus(listening, dimmed);
   const [red, green, blue] = veilColor;
   const uniforms = useDerivedValue(() => ({
-    ...lensUniforms(width, height, progress.value, pulse?.value ?? 0, reducedMotion, swing.value, phase.value),
+    ...lensUniforms(
+      width,
+      height,
+      progress.value,
+      pulse?.value ?? 0,
+      reducedMotion,
+      breath.value,
+      release.value,
+    ),
+    dim: dim.value,
     veilColor: [red, green, blue],
   }));
   const blocked = listening || dimmed;
@@ -47,6 +59,9 @@ export function LiquidFocus({
       >
         {backdrop}
       </View>
+      {/* El contexto se atenúa primero. La lente translúcida se compone ENCIMA y recupera luz en
+          la zona que atraviesa; invertir estas capas ensuciaba de gris la cúpula blanca. */}
+      <Animated.View style={[styles.fill, styles.dim, dimStyle]} pointerEvents="none" />
       <Animated.View
         style={[styles.fill, lensStyle]}
         pointerEvents="none"
@@ -63,7 +78,6 @@ export function LiquidFocus({
           </Canvas>
         ) : null}
       </Animated.View>
-      <Animated.View style={[styles.fill, styles.dim, dimStyle]} pointerEvents="none" />
       <View style={styles.fill} pointerEvents="box-none">{foreground}</View>
     </View>
   );

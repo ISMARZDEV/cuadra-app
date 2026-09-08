@@ -586,7 +586,7 @@ Averiguado el 13-ago, sin compilar nada — para que la próxima sesión no vuel
 
 | Hecho | Consecuencia |
 |---|---|
-| `ios/Podfile.lock` (9-ago) YA trae `ExpoiOSPopoverModule 0.1.5`, y lo único que entró en `package.json` desde ese build es ese mismo paquete | el binario de iOS está al día: **iOS no necesita rebuild**, Metro + recarga alcanza. `pod-install` y `--port 8087` son trampas del build de **Android** |
+| `ios/Podfile.lock` (9-ago) YA trae `ExpoiOSPopoverModule 0.1.5`, y lo único que entró en `package.json` desde ese build es ese mismo paquete | el binario de iOS está al día: **iOS no necesita rebuild**, Metro + recarga alcanza. `pod-install` y `--port 8098` son trampas del build de **Android** |
 | `android/` se generó el 8-ago pero **no existe `android/app/build`** | nunca se compiló: es un primer build completo de Gradle, 10-20 min |
 | `expo-ios-popover` declara `"platforms": ["apple"]` y no trae carpeta `android/` | el autolinking lo salta y `resolveHoldStrategy` cae a `"js"` **por construcción**. Correcto en el papel; jamás ejecutado |
 | `EXPO_PUBLIC_API_URL=http://localhost:8005`, y en el emulador `localhost` es el emulador | `adb reverse tcp:8005 tcp:8005` — resuelve sin tocar `.env`. AVD disponible: `Pixel_9_Pro_XL` |

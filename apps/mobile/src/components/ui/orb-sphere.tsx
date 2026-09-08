@@ -8,7 +8,6 @@ import {
   Path,
   RuntimeShader,
   Skia,
-  useClock,
   vec,
 } from "@shopify/react-native-skia";
 import { useEffect, useMemo, useRef } from "react";
@@ -167,9 +166,10 @@ half4 main(float2 fragCoord) {
 `);
 
 /** Cuánto se contrae el orbe al mantenerlo pulsado. Del ~0.82× medido en la referencia se baja a
- *  0.12 porque allí la píldora era ANCHA y aquí el control ya es redondo: la misma proporción sobre
+ *  0.10 porque allí la píldora era ANCHA y aquí el control ya es redondo: la misma proporción sobre
  *  un círculo se lee como un salto, no como un asentamiento. */
-const FOCUS_CONTRACT = 0.12;
+const FOCUS_CONTRACT = 0.10;
+const FOCUS_RELEASE_MS = 260;
 /** El anillo asoma por fuera del orbe; si quedara por dentro lo taparía el propio orbe. */
 const HALO_PAD = 5;
 const HALO_WIDTH = 1.5;
@@ -179,7 +179,6 @@ const HALO_OPACITY = 0.55;
 const HALO_OPACITY_FOCUS = 0.85;
 
 export function OrbSphere({ size = 64, visible = true }: { size?: number; visible?: boolean }) {
-  const clock = useClock();
   const w = size;
   const h = size * ASPECT;
   const PAD = size * 0.35; // room around the orb for the glow bloom
@@ -193,13 +192,14 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   const p3 = useSharedValue(Skia.Path.Make());
   const paths = [p0, p1, p2, p3];
 
-  // Drive the wave paths from the Skia clock on every frame. We intentionally avoid
-  // Reanimated's useDerivedValue with Skia's clock because Reanimated v4 can crash with
+  // Drive the wave paths from Reanimated's global frame timestamp. We intentionally avoid
+  // `useDerivedValue` with Skia's clock because Reanimated v4 can crash with
   // "animation.onStart is not a function" when mixing the two value systems.
   // `autostart: false` — el arranque lo decide `visible` (ver el efecto de abajo).
-  const frame = useFrameCallback(() => {
+  const frame = useFrameCallback(({ timestamp }) => {
     "worklet";
-    const time = clock.value / 1000;
+    // `timestamp` pertenece al frame global de Reanimated y no se reinicia al retargetear la pose.
+    const time = timestamp / 1000;
     p0.value = buildWave(COLORS[0], time, level.value, w, h);
     p1.value = buildWave(COLORS[1], time, level.value, w, h);
     p2.value = buildWave(COLORS[2], time, level.value, w, h);
@@ -220,8 +220,8 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   useEffect(() => {
     if (pulse === 0) return;
     level.value = withSequence(
-      withTiming(1.45, { duration: 300, easing: Easing.out(Easing.quad) }),
-      withTiming(0.6, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+      withTiming(1.18, { duration: 260, easing: Easing.out(Easing.cubic) }),
+      withTiming(0.6, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
     );
   }, [pulse, level]);
 
@@ -290,47 +290,40 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   // que copiar «píldora → círculo» sería copiar SU pantalla, no su idea. Lo que hace legible el
   // gesto es otra cosa: **el control se CONTRAE y se recorta contra el fondo**, y eso sí se traduce.
   //
-  // ⚠️ El reloj es el MISMO que el de la lente (`LENS_TIMING`), importado y no copiado: si el orbe
-  // se contrajera en un tiempo y el fondo se esmerilara en otro, se leerían como dos sucesos
-  // distintos en vez de uno. Ver `cuadra-motion` §5 — un número duplicado ya está desincronizado.
+  // El control LIDERA al fondo, como en los fotogramas: termina su asentamiento mientras la
+  // cúpula todavía está subiendo. El tiempo vive junto al de la lente para conservar esa relación.
   const focus = useSharedValue(0); // 0 en reposo, 1 mientras se mantiene pulsado
-  const wob = useSharedValue(1); // scale multiplier
-  const sway = useSharedValue(0); // -1..1 → small translateX
+  const wob = useSharedValue(1); // respiración mínima alrededor de la pose contraída
   useEffect(() => {
-    // EL MISMO movimiento que la cúpula, importado y no copiado: si el orbe se contrajera con otra
-    // curva, el control y el fondo se leerían como dos sucesos en vez de uno.
     focus.value = pressing
-      ? withSpring(1, LENS_MOTION.rise)
-      : withTiming(0, { duration: LENS_MOTION.fallMs, easing: Easing.out(Easing.cubic) });
+      ? withTiming(1, {
+          duration: LENS_MOTION.controlMs,
+          easing: Easing.bezier(0.2, 0, 0, 1),
+        })
+      : withTiming(0, { duration: FOCUS_RELEASE_MS, easing: Easing.bezier(0.2, 0, 0, 1) });
     if (pressing) {
-      // Gentle "breathing" — subtle scale pulse, barely any sway (it will be a wheel selector,
-      // so it must feel calm/precise, not jittery).
+      // Respiración contenida. El 1.05↔0.98 anterior peleaba con la contracción y se leía como dos
+      // órdenes simultáneas; aquí la variación es menor de 2% y sólo empieza a sentirse al reposar.
       wob.value = withRepeat(
         withSequence(
-          withTiming(1.05, { duration: 460, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0.98, { duration: 460, easing: Easing.inOut(Easing.sin) }),
-        ),
-        -1,
-        true,
-      );
-      sway.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 560, easing: Easing.inOut(Easing.sin) }),
-          withTiming(-1, { duration: 560, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1.014, { duration: 760, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.994, { duration: 760, easing: Easing.inOut(Easing.sin) }),
         ),
         -1,
         true,
       );
     } else {
-      wob.value = withSpring(1, { damping: 12, stiffness: 200, mass: 0.6 });
-      sway.value = withSpring(0, { damping: 12, stiffness: 160 });
+      // Sin rebote al soltar: vuelve a su pose con la misma cola suave que la cúpula.
+      wob.value = withTiming(1, {
+        duration: FOCUS_RELEASE_MS,
+        easing: Easing.bezier(0.2, 0, 0, 1),
+      });
     }
-  }, [pressing, wob, sway, focus]);
+  }, [pressing, wob, focus]);
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: op.value,
     transform: [
-      { translateX: sway.value * (w * 0.02) },
       { translateY: ty.value },
       // La respiración sigue existiendo: ahora oscila ALREDEDOR del tamaño contraído.
       { scale: sc.value * wob.value * (1 - focus.value * FOCUS_CONTRACT) },

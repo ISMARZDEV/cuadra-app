@@ -36,6 +36,7 @@ import {
   NAVBAR_VIEWBOX,
 } from "@/components/navigation/notched-glass";
 import { useOrbStore } from "@/store/orb-store";
+import { useVoiceSendStore } from "@/store/voice-send-store";
 import { useDrawer } from "@/store/drawer-store";
 import { useChatExpandStore } from "@/store/chat-expand-store";
 
@@ -411,6 +412,22 @@ export function ChatScreen() {
     },
     [chat],
   );
+
+  // ⭐ LO DICTADO POR VOZ SE ENVÍA SOLO, como si se hubiera escrito. El orbe vive en la barra y no
+  // puede llamar al `send` de esta pantalla, así que deja el texto en un buzón y aquí se recoge.
+  //
+  // ⚠️ Se lee con `take()`, que devuelve Y BORRA en el mismo paso: si sólo se leyera y se limpiara
+  // aparte, volver a esta pestaña reenviaría el último dictado.
+  const pendingVoice = useVoiceSendStore((s) => s.pending);
+  useEffect(() => {
+    if (!pendingVoice) return;
+    const texto = useVoiceSendStore.getState().take();
+    if (texto) sendAndAnchor(texto);
+  }, [pendingVoice, sendAndAnchor]);
+
+  // El chat YA NO gobierna el telón: para cuando este mensaje llega, la cúpula se ha ido y su
+  // animación de envío se ve a la vista. Antes tenía que avisar de que el agente había terminado
+  // —y esa espera era justo lo que escondía la animación—.
 
   // El scroll que sube el mensaje, DESPUÉS de que el ancla nueva ya está aplicada.
   //

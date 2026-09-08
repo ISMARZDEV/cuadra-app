@@ -33,7 +33,7 @@ export async function getApiAuthToken(): Promise<string | null> {
   return tokenGetter ? await tokenGetter() : null;
 }
 
-// Host de quien sirve el bundle (Metro). `hostUri` viene como "10.0.0.89:8087" — nos quedamos con
+// Host de quien sirve el bundle (Metro). `hostUri` viene como "10.0.0.89:8098" — nos quedamos con
 // la máquina y descartamos su puerto, que es el de Metro y no el de la API.
 // `expoGoConfig.debuggerHost` es el nombre viejo del mismo dato; se mira de segundo por si algún
 // entorno todavía lo reporta ahí. Fuera de Metro (build de release) no hay ninguno de los dos.

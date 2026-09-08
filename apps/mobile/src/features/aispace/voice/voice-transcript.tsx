@@ -1,12 +1,21 @@
-import { Text, View } from "react-native";
+import { useEffect } from "react";
+import { Text, useWindowDimensions, View } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
 
 import { PillButton } from "@/components/ui/pill-button";
 import { t } from "@/i18n";
-import { KANTUMRUY_MEDIUM } from "@/theme/fonts";
+import { KANTUMRUY_SEMIBOLD } from "@/theme/fonts";
 
 import SparkDark from "@/assets/chat/icon-spark-dark.svg";
 import SparkLight from "@/assets/chat/icon-spark-light.svg";
 import { ShimmerText } from "../components/shimmer-text";
+import { charFade, charProgress } from "./magic-dissolve";
 
 /** Tinta del dictado sobre la cúpula: casi negra en claro, casi blanca en oscuro. */
 const INK_LIGHT = "#141A17";
@@ -17,46 +26,193 @@ const SHIMMER_HIGH_LIGHT = "#141A17";
 const SHIMMER_BASE_DARK = "#5C6B64";
 const SHIMMER_HIGH_DARK = "#F7FAF7";
 
-interface Props {
-  /** Lo dictado hasta ahora. Vacío mientras no se ha dicho nada. */
-  transcript: string;
-  /** True mientras el dedo sigue apoyado y el reconocedor escucha. */
-  listening: boolean;
-  /** True tras soltar, mientras se resuelve qué hacer con lo dictado. */
-  thinking: boolean;
+/** Cuánto SUBE el texto al irse. Lo justo para leerse como que se lo lleva la onda. */
+const EXIT_RISE = 44;
+/**
+ * LA DESINTEGRACIÓN COMPLETA. Larga a propósito: una onda mágica que dura 380 ms no se ve, se
+ * intuye — y entonces no vale la pena hacerla.
+ *
+ * ⚠️⚠️ **SE EXPORTA, y no es un detalle.** Quien desmonta este texto (el orbe) tiene que esperar
+ * EXACTAMENTE esto. Estuvo duplicada allí con otro valor —380 contra 900— y el resultado fue que la
+ * desintegración se cortaba al 52 % y el texto desaparecía de golpe: parecía que no hubiera
+ * animación ninguna. Un número que dos archivos deben acordar vive en UNO y el otro lo importa
+ * (`cuadra-motion` §5).
+ */
+export const TEXT_EXIT_MS = 900;
+/**
+ * CUÁNTO VIAJA EL TEXTO AL IRSE, como fracción del alto de pantalla.
+ *
+ * ⭐⭐ **El texto no se desvanece: SE ENVÍA.** Con recorridos cortos (30, luego 72 pt) sólo se leía
+ * como que se apagaba en el sitio. Lo que da la lectura correcta es que RECORRA la pantalla hacia
+ * arriba, igual que un mensaje saliendo del input hacia la conversación: ése es el puente entre
+ * dictar y conversar, y sin él la transición no cuenta nada.
+ *
+ * En fracción y no en puntos por la razón de siempre: un número fijo ata el viaje a un teléfono
+ * (`cuadra-motion`). A 0.55 el texto sale por el techo en cualquier pantalla.
+ */
+const CHAR_RISE_RATIO = 0.55;
+/** La píldora se funde con el telón, no antes: es lo último que queda del estado «pensando». */
+const PILL_EXIT_MS = 420;
+
+/**
+ * LO DICTADO, SOBRE LA CÚPULA.
+ *
+ * ⭐ **El texto se escribe MIENTRAS hablas** — llega en parciales del reconocedor; no hay ningún
+ * temporizador simulando tecleo.
+ *
+ * ⭐⭐ **Y SE VA ANTES QUE LA CÚPULA, no con ella.** Sube y se desvanece con su propio reloj
+ * (`TEXT_EXIT_MS`), y sólo cuando ha terminado empieza a bajar el telón. Sacarlos a la vez los funde
+ * en un único suceso borroso; por separado se lee la CAUSA — se llevaron tu frase, y sólo entonces
+ * se retira lo que la sostenía.
+ */
+export function VoiceTranscriptText({
+  text,
+  visible,
+  isDark,
+}: {
+  text: string;
+  /** `false` dispara la salida: sube y se desvanece. */
+  visible: boolean;
   isDark: boolean;
+}) {
+  const { height } = useWindowDimensions();
+  const rise = height * CHAR_RISE_RATIO;
+  const show = useSharedValue(visible ? 1 : 0);
+
+  useEffect(() => {
+    show.value = withTiming(visible ? 1 : 0, {
+      // Entrar es inmediato —el texto ya está llegando—; salir va por delante del telón.
+      duration: visible ? 160 : TEXT_EXIT_MS,
+      // ⭐⭐ **LO QUE SE VA, ACELERA. LO QUE LLEGA, FRENA.**
+      //
+      // La salida iba con `out(cubic)`, que es la curva de ATERRIZAR: recorre casi todo al
+      // principio y después se arrastra. Con la misma duración se percibía LENTA, porque lo lento
+      // es la cola, no el total. `in(cubic)` arranca contenido y se dispara al final: se lee como
+      // un lanzamiento, que es justo lo que hace un mensaje al enviarse.
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+    });
+  }, [visible, show]);
+
+  const chars = [...text];
+
+  if (!text.trim()) return null;
+
+  return (
+    <View style={{ paddingHorizontal: 28, flexDirection: "row", flexWrap: "wrap", justifyContent: "center" }}>
+      {chars.map((ch, i) => (
+        <MagicChar
+          key={`${i}-${ch}`}
+          ch={ch}
+          index={i}
+          total={chars.length}
+          clock={show}
+          rise={rise}
+          isDark={isDark}
+        />
+      ))}
+    </View>
+  );
 }
 
 /**
- * LO QUE SE DICTA, SOBRE LA CÚPULA.
+ * UNA LETRA SUBIENDO Y DESHACIÉNDOSE.
  *
- * ⭐ **El texto se escribe MIENTRAS hablas.** Llega del reconocedor en parciales
- * (`use-voice-capture`), así que esto sólo lo pinta: no hay ningún temporizador simulando tecleo.
- * Un «typewriter» de retardo fijo sería inventarse un ritmo que el reconocedor no tiene, y el
- * patrón de referencia lo prohíbe explícitamente.
+ * ⭐⭐ **Un solo reloj para toda la frase, y una VENTANA por letra.** No son N animaciones: es una
+ * resta por fotograma en el hilo de UI (`cuadra-motion` §7). Con un reloj por carácter, una frase
+ * de sesenta letras montaría sesenta animaciones y el barrido iría a tirones justo cuando más se
+ * mira.
  *
- * ⭐⭐ **`Thinking…` es un `PillButton`, no una píldora nueva.** Es el mismo control del carrusel de
- * sugerencias, que era justo lo pedido: la forma, el canto en degradado y el material ya están
- * resueltos ahí. Lo único propio es que su etiqueta Y su icono llevan `ShimmerText` —el barrido
- * recorre los dos— para que se lea como una espera viva y no como un cartel.
+ * ⚠️ El espacio se dibuja igual —no se salta— porque es lo que sostiene la separación entre
+ * palabras mientras las letras de alrededor se van a alturas distintas.
  *
- * ⚠️ **Sólo aparece si SE TRANSCRIBIÓ algo.** Un «pensando» sin nada que pensar es una promesa
- * falsa: la app no estaría procesando nada.
+ * ⭐ **Y todo esto termina ANTES de que la cúpula empiece a bajar.** El orbe espera exactamente
+ * `TEXT_EXIT_MS` más un respiro antes de soltar el telón: primero se va la frase, después lo que la
+ * sostenía. Al revés —o a la vez— se leería como que la pantalla se limpia de golpe.
  */
-export function VoiceTranscript({ transcript, listening, thinking, isDark }: Props) {
-  const dictado = transcript.trim();
+function MagicChar({
+  ch,
+  index,
+  total,
+  clock,
+  rise,
+  isDark,
+}: {
+  ch: string;
+  index: number;
+  total: number;
+  /** 1 = puesto · 0 = deshecho. Compartido por toda la frase. */
+  clock: SharedValue<number>;
+  /** Cuánto recorre hacia arriba, en puntos. Sale del alto de pantalla — ver `CHAR_RISE_RATIO`. */
+  rise: number;
+  isDark: boolean;
+}) {
+  const letra = useAnimatedStyle(() => {
+    // El reloj llega como «cuánto queda»; la disolución avanza al revés.
+    const gone = charProgress(1 - clock.value, index, total);
+    return {
+      // Se mantiene legible durante el viaje y se apaga al final — ver `charFade`.
+      opacity: charFade(gone),
+      transform: [
+        { translateY: -gone * rise },
+        // Encoger mientras sube: una letra que sólo se desvanece se lee como que baja el brillo;
+        // encogiendo se lee como que se deshace.
+        { scale: 1 - gone * 0.35 },
+      ],
+    };
+  });
 
-  if (thinking && dictado) {
-    return (
+  return (
+    <View>
+      <Animated.Text
+        style={[
+          {
+            fontFamily: KANTUMRUY_SEMIBOLD,
+            fontSize: 24,
+            lineHeight: 32,
+            color: isDark ? INK_DARK : INK_LIGHT,
+          },
+          letra,
+        ]}
+      >
+        {ch}
+      </Animated.Text>
+    </View>
+  );
+}
+
+/**
+ * «PENSANDO…» — OCUPA EL SITIO DEL ORBE, no se pone a su lado.
+ *
+ * ⭐ El orbe se retira y la píldora entra en su lugar: es el mismo control cambiando de estado, no
+ * dos elementos disputándose la misma zona. Es lo que se pidió y lo que hace la referencia, donde
+ * el micrófono se convierte en la píldora de carga.
+ *
+ * ⭐⭐ Es el `PillButton` del carrusel de sugerencias con su icono propio (`icon-spark-*`), y el
+ * barrido recorre TEXTO E ICONO. `label` se mantiene aunque el shimmer pinte las letras: es lo que
+ * anuncia el lector de pantalla, y un barrido decorativo no puede llevarse la accesibilidad.
+ */
+export function VoiceThinkingPill({ visible, isDark }: { visible: boolean; isDark: boolean }) {
+  const show = useSharedValue(0);
+
+  useEffect(() => {
+    show.value = withTiming(visible ? 1 : 0, {
+      duration: visible ? 220 : PILL_EXIT_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [visible, show]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: show.value,
+    // Un pelo de escala al entrar y al salir: aparecer a opacidad seca se lee como un cartel.
+    transform: [{ scale: 0.92 + show.value * 0.08 }],
+  }));
+
+  return (
+    <Animated.View style={style} pointerEvents="none">
       <PillButton
         label={t("aispace.voice.thinking")}
         accessibilityLabel={t("aispace.voice.thinking")}
-        // ⭐ EL ICONO DEL BOTÓN DE SUGERENCIAS, que es el que se pidió: el SVG propio por tema
-        // (`icon-spark-*`), no la chispa de lucide. Son dos dibujos distintos y mezclarlos daría dos
-        // «sugerencias» que no se parecen.
         icon={isDark ? <SparkDark width={16} height={16} /> : <SparkLight width={16} height={16} />}
-        // El texto lo pinta el SHIMMER, no el `<Text>` de la píldora. `label` se mantiene porque es
-        // lo que anuncia el lector de pantalla: el barrido es decorativo y no puede llevarse eso.
         labelNode={
           <ShimmerText
             text={t("aispace.voice.thinking")}
@@ -67,26 +223,6 @@ export function VoiceTranscript({ transcript, listening, thinking, isDark }: Pro
           />
         }
       />
-    );
-  }
-
-  if (!listening || !dictado) return null;
-
-  return (
-    <View style={{ paddingHorizontal: 28 }}>
-      <Text
-        style={{
-          fontFamily: KANTUMRUY_MEDIUM,
-          fontSize: 20,
-          lineHeight: 27,
-          textAlign: "center",
-          color: isDark ? INK_DARK : INK_LIGHT,
-        }}
-        // Tres líneas: más y taparía la cúpula entera; menos y una frase normal se cortaría a mitad.
-        numberOfLines={3}
-      >
-        {dictado}
-      </Text>
-    </View>
+    </Animated.View>
   );
 }
