@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import { useRef } from "react";
 import { type GestureResponderEvent, View } from "react-native";
+import { useSharedValue } from "react-native-reanimated";
 
 import { AppBackground } from "@/components/ui/app-background";
 import { CuadraTabBar } from "@/components/navigation/cuadra-tab-bar";
@@ -26,6 +27,9 @@ export default function TabsLayout() {
   // mocks acaban dentro de su propia imagen. `collapsable={false}` es obligatorio o Android puede
   // fundir la vista con su padre y dejar la ref sin nodo que capturar.
   const backdropRef = useRef<View>(null);
+  // Un único valor físico compartido entre el hitbox de la barra y la lente que vive encima.
+  // Guardarlo aquí evita estado React por cada muestra del dedo y evita un segundo recognizer.
+  const touchPressure = useSharedValue(0);
 
   const onTouchStart = (e: GestureResponderEvent) => {
     touchStart.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
@@ -76,7 +80,7 @@ export default function TabsLayout() {
           // No la desmonta: al volver está donde estaba, sin recargar.
           freezeOnBlur: true,
         }}
-        tabBar={(props) => <CuadraTabBar {...props} />}
+        tabBar={(props) => <CuadraTabBar {...props} touchPressure={touchPressure} />}
       >
         <Tabs.Screen name="index" options={{ title: "AISpace" }} />
         <Tabs.Screen name="news" options={{ title: "News" }} />
@@ -88,7 +92,7 @@ export default function TabsLayout() {
       {/* La lente líquida del orbe: hermano POSTERIOR a <Tabs>, así que cubre las pantallas y la
           barra. Su foreground vuelve a dibujar sólo el orbe nítido; `pointerEvents="none"` deja
           que el responder original conserve el gesto debajo. */}
-      <OrbLiquidFocus backdropRef={backdropRef} />
+      <OrbLiquidFocus backdropRef={backdropRef} touchPressure={touchPressure} />
 
       {/* Dev-only mock-data toggle — always mounted (like Expo Go's own dev-menu bubble, visible
           app-wide, not gated to one screen), as a LATER sibling than the whole <Tabs> (screens +

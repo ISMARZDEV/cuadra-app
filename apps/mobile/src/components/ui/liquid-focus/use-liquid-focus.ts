@@ -4,10 +4,10 @@ import {
   cancelAnimation,
   Easing,
   useAnimatedStyle,
+  useFrameCallback,
   useReducedMotion,
   useSharedValue,
   withDelay,
-  withRepeat,
   withTiming,
 } from "react-native-reanimated";
 
@@ -24,6 +24,7 @@ export const LENS_MOTION = {
   leadMs: LENS_TIMING.leadMs,
   controlMs: LENS_TIMING.controlMs,
   releaseMs: LENS_TIMING.releaseMs,
+  emptyRetreatMs: LENS_TIMING.emptyRetreatMs,
 } as const;
 
 const EASE_OUT = Easing.bezier(0.2, 0, 0, 1);
@@ -31,7 +32,8 @@ const EASE_OUT = Easing.bezier(0.2, 0, 0, 1);
 // anterior acumulaba aceleración hasta mitad del recorrido y hacía que una masa de 520 ms pareciera
 // empujada de golpe; ésta sale con continuidad y desacelera durante la mayor parte de la subida.
 const ENTER_EASE = Easing.bezier(0.2, 0, 0, 1);
-const BREATH_CYCLE_MS = 4800;
+/** Evita que una pausa del debugger o un frame perdido empuje la forma varios segundos de golpe. */
+const MAX_BREATH_STEP_MS = 32;
 /**
  * EL SELLADO DEL TELÓN — cerrar el velo de borde a borde para tapar la navegación por debajo.
  *
@@ -41,7 +43,12 @@ const BREATH_CYCLE_MS = 4800;
 const SEAL_IN_MS = 520;
 const SEAL_OUT_MS = 320;
 
-export function useLiquidFocus(listening: boolean, dimmed: boolean, sealed = false) {
+export function useLiquidFocus(
+  listening: boolean,
+  dimmed: boolean,
+  sealed = false,
+  retreating = false,
+) {
   const startupReducedMotion = useReducedMotion();
   const [reducedMotion, setReducedMotion] = useState(startupReducedMotion);
   const progress = useSharedValue(listening ? 1 : 0);
@@ -49,7 +56,15 @@ export function useLiquidFocus(listening: boolean, dimmed: boolean, sealed = fal
   const breath = useSharedValue(0);
   const release = useSharedValue(0);
   const seal = useSharedValue(0);
+  const retreat = useSharedValue(retreating ? 1 : 0);
   const wasListening = useRef(listening);
+  // Reloj continuo en UI thread. `withRepeat(0→1)` siempre tiene un límite de iteración y ese
+  // límite se veía como un video reiniciándose; acumular el delta real no tiene vuelta ni pausa.
+  const breathFrame = useFrameCallback(({ timeSincePreviousFrame }) => {
+    "worklet";
+    if (timeSincePreviousFrame === null) return;
+    breath.value += Math.min(timeSincePreviousFrame, MAX_BREATH_STEP_MS) / 1000;
+  }, false);
 
   useEffect(() => {
     let acceptQuery = true;
@@ -98,20 +113,11 @@ export function useLiquidFocus(listening: boolean, dimmed: boolean, sealed = fal
   }, [listening, progress, reducedMotion, release]);
 
   useEffect(() => {
-    if (!listening || reducedMotion) {
-      // Al soltar se congela la forma actual mientras se retira; volver de golpe a fase cero haría
-      // saltar el menisco justo cuando el dedo deja el control.
-      cancelAnimation(breath);
-      return;
-    }
-    breath.value = 0;
-    breath.value = withRepeat(
-      withTiming(1, { duration: BREATH_CYCLE_MS, easing: Easing.linear }),
-      -1,
-      false,
-    );
-    return () => cancelAnimation(breath);
-  }, [breath, listening, reducedMotion]);
+    // Desactivarlo congela exactamente la pose actual para que la onda de salida la recoja sin un
+    // salto. Al pulsar otra vez continúa desde ahí: tampoco existe un reinicio entre gestos.
+    breathFrame.setActive(listening && !reducedMotion);
+    return () => breathFrame.setActive(false);
+  }, [breathFrame, listening, reducedMotion]);
 
   useEffect(() => {
     const previous = wasListening.current;
@@ -145,6 +151,16 @@ export function useLiquidFocus(listening: boolean, dimmed: boolean, sealed = fal
   }, [dimmed, dim, reducedMotion]);
 
   useEffect(() => {
+    retreat.set(withTiming(retreating ? 1 : 0, {
+      duration: reducedMotion ? 0 : retreating ? LENS_MOTION.emptyRetreatMs : 240,
+      // La recogida tiene dos actos legibles: empieza contenida y redondea al final. Si reaparece
+      // voz/texto, el ease-out devuelve la altura enseguida sin rebotar.
+      easing: retreating ? Easing.inOut(Easing.cubic) : EASE_OUT,
+    }));
+    return () => cancelAnimation(retreat);
+  }, [reducedMotion, retreat, retreating]);
+
+  useEffect(() => {
     seal.value = withTiming(sealed ? 1 : 0, {
       duration: sealed ? SEAL_IN_MS : SEAL_OUT_MS,
       easing: Easing.inOut(Easing.cubic),
@@ -160,5 +176,5 @@ export function useLiquidFocus(listening: boolean, dimmed: boolean, sealed = fal
   }));
   const dimStyle = useAnimatedStyle(() => ({ opacity: dim.value * 0.16 }));
 
-  return { progress, dim, breath, release, seal, lensStyle, dimStyle, reducedMotion };
+  return { progress, dim, breath, release, seal, retreat, lensStyle, dimStyle, reducedMotion };
 }

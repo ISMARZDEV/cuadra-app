@@ -21,6 +21,14 @@ export type LiquidFocusProps = {
   foreground: ReactNode;
   /** Optional 0..1 modulation. No automatic clock or implied audio dependency. */
   pulse?: SharedValue<number>;
+  /** Presión del dedo o aproximación por duración, 0..1. */
+  touchPressure?: SharedValue<number>;
+  /** Altura normalizada del texto transcrito, 0..1. */
+  transcriptInfluence?: SharedValue<number>;
+  /** Voz/texto detectado durante este gesto; impide la recogida del estado vacío. */
+  speechPresence?: SharedValue<number>;
+  /** Al soltar vacío, recoge el material antes de lanzar la onda de salida. */
+  retreating?: boolean;
   /** RGB floats in 0..1; use a dark neutral for a dark background. */
   veilColor?: readonly [number, number, number];
   /** Cierra el velo de borde a borde para tapar una navegación por debajo. Ver `lensUniforms`. */
@@ -29,10 +37,16 @@ export type LiquidFocusProps = {
 
 export function LiquidFocus({
   listening, dimmed, width, height, backdrop, snapshot, foreground, pulse,
+  touchPressure, transcriptInfluence, speechPresence, retreating = false,
   veilColor = [0.96, 0.96, 0.94],
   sealed = false,
 }: LiquidFocusProps) {
-  const { progress, dim, breath, release, lensStyle, dimStyle, reducedMotion } = useLiquidFocus(listening, dimmed);
+  const { progress, dim, breath, release, seal, retreat, lensStyle, dimStyle, reducedMotion } = useLiquidFocus(
+    listening,
+    dimmed,
+    sealed,
+    retreating,
+  );
   const [red, green, blue] = veilColor;
   const uniforms = useDerivedValue(() => ({
     ...lensUniforms(
@@ -43,6 +57,11 @@ export function LiquidFocus({
       reducedMotion,
       breath.value,
       release.value,
+      seal.value,
+      touchPressure?.value ?? 0,
+      transcriptInfluence?.value ?? 0,
+      retreat.value,
+      speechPresence?.value ?? 0,
     ),
     dim: dim.value,
     veilColor: [red, green, blue],

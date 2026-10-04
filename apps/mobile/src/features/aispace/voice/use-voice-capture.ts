@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSharedValue, type SharedValue } from "react-native-reanimated";
+import {
+  Easing,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
 import {
   AVAudioSessionCategory,
   AVAudioSessionCategoryOptions,
@@ -53,12 +58,32 @@ export interface VoiceCapture {
    */
   level: SharedValue<number>;
   /**
+   * Se queda en 1 si durante este gesto hubo voz o texto reconocible. No es volumen instantáneo:
+   * evita que la cúpula se recoja durante el pequeño silencio que queda entre hablar y recibir el
+   * resultado final del reconocedor.
+   */
+  speechPresence: SharedValue<number>;
+  /**
    * True cuando la sesión ha CERRADO por completo (evento `end`) tras un `stop()`.
    *
    * Es la señal de «ya no va a llegar más texto»: quien envíe el dictado debe esperar a esto y no
    * al instante de soltar el dedo, o mandaría la frase a medias.
    */
   settled: boolean;
+  /**
+   * OLVIDA LO DICTADO, sin esperar al siguiente dictado.
+   *
+   * ⭐⭐⭐ **Sin esto, lo dicho SOBREVIVE al ciclo.** Los tramos se limpiaban en un ÚNICO sitio
+   * —dentro de `startNow`—, o sea al ARRANCAR la sesión siguiente. Entre un dictado y el otro el
+   * texto seguía vivo aquí, invisible sólo porque el orbe estaba oculto, y reaparecía plantado en
+   * pantalla al volver a revelarlo. Un residuo que se esconde no está borrado: está esperando.
+   *
+   * ⚠️ **No puede hacerlo el evento `end`.** Quien envía espera a `settled` —para no mandar la frase
+   * a medias— y lee el texto DESPUÉS de que la sesión cierre. Limpiar al cerrar mandaría siempre
+   * vacío. Por eso es una orden explícita del dueño del ciclo, que es el único que sabe cuándo lo
+   * dictado dejó de importar.
+   */
+  clear: () => void;
 }
 
 /**
@@ -96,6 +121,8 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
   const [available, setAvailable] = useState(true);
   const [settled, setSettled] = useState(false);
   const level = useSharedValue(0);
+  const speechPresence = useSharedValue(0);
+  const lastLevel = useRef(0);
 
   const asked = useRef(false);
   const locale = useRef<string | null | undefined>(null);
@@ -107,6 +134,7 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
   useSpeechRecognitionEvent("result", (event) => {
     const best = event.results?.[0]?.transcript ?? "";
     if (!best) return;
+    speechPresence.set(withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) }));
     if (event.isFinal) {
       // ⭐ Antes de acumular: ¿este tramo era una ORDEN? El vocabulario es fijo y sólo casa si el
       // tramo es NADA MÁS que el comando — ver `voice-commands`.
@@ -135,7 +163,8 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
 
   useSpeechRecognitionEvent("end", () => {
     setListening(false);
-    level.value = 0;
+    lastLevel.current = 0;
+    level.value = withTiming(0, { duration: 150, easing: Easing.out(Easing.quad) });
     busy.current = false;
     setSettled(true);
     // Si mientras cerraba se volvió a pulsar, ahora sí se puede arrancar.
@@ -146,7 +175,20 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
     // El módulo entrega −2..10 y «por debajo de 0 es inaudible». Se normaliza a 0..1 sobre el tramo
     // AUDIBLE (0..10): mapear el rango entero metería silencio dentro de la escala y el pulso
     // nunca llegaría al reposo.
-    level.value = Math.max(0, Math.min(1, event.value / 10));
+    const nextLevel = Math.max(0, Math.min(1, event.value / 10));
+    // El umbral descarta el ruido de fondo habitual. Una vez cruzado se conserva hasta el próximo
+    // gesto: una pausa entre palabras no debe parecer «no habló» y contraer el material.
+    if (nextLevel >= 0.12) {
+      speechPresence.set(withTiming(1, { duration: 80, easing: Easing.out(Easing.quad) }));
+    }
+    const rising = nextLevel > lastLevel.current;
+    lastLevel.current = nextLevel;
+    // Ataque rápido para que cada sílaba empuje el agua; caída más lenta para unir las muestras de
+    // 100 ms en una respiración continua en vez de producir escalones o temblor.
+    level.value = withTiming(nextLevel, {
+      duration: rising ? 85 : 180,
+      easing: Easing.out(Easing.quad),
+    });
   });
 
   useSpeechRecognitionEvent("error", (event) => {
@@ -154,6 +196,14 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
     // `no-speech` es no haber hablado y `aborted` una cancelación nuestra: ninguno apaga la función.
     if (event.error !== "no-speech" && event.error !== "aborted") setAvailable(false);
   });
+
+  const clear = useCallback(() => {
+    // Devolver el MISMO valor hace que React se salte el re-render. `clear()` se llama en CADA
+    // ocultado del orbe, incluidos los muchos que no dictaron nada: sin la guarda, el reposo
+    // pagaría un render por un ciclo que no llegó a existir.
+    setSegments((prev) => (prev.length ? [] : prev));
+    setPartial((prev) => (prev ? "" : prev));
+  }, []);
 
   const startNow = useCallback(async () => {
     if (busy.current) {
@@ -185,6 +235,7 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
       setSegments([]);
       setPartial("");
       setSettled(false);
+      speechPresence.set(0);
       busy.current = true;
       ExpoSpeechRecognitionModule.start({
         lang: locale.current,
@@ -244,5 +295,5 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
   }, [active, startNow]);
 
   const transcript = [...segments, partial].filter(Boolean).join(" ").trim();
-  return { transcript, listening, available, settled, level };
+  return { transcript, listening, available, settled, level, speechPresence, clear };
 }

@@ -35,6 +35,7 @@ import {
   NAVBAR_CIRCLE,
   NAVBAR_VIEWBOX,
 } from "@/components/navigation/notched-glass";
+import { sounds } from "@/lib/sounds";
 import { useOrbStore } from "@/store/orb-store";
 import { useVoiceSendStore } from "@/store/voice-send-store";
 import { useDrawer } from "@/store/drawer-store";
@@ -454,6 +455,25 @@ export function ChatScreen() {
   // Un turno = una fila. Cada rama es la MISMA que tenía el ScrollView; lo único que cambia es que
   // ahora la lista las pide de a una en vez de recibirlas todas montadas.
   const isStreaming = chat.isStreaming;
+
+  /**
+   * LA IA EMPIEZA A RESPONDER — una sola vez, en el FLANCO.
+   *
+   * ⭐⭐ **Se dispara cuando `isStreaming` pasa de falso a verdadero, no mientras es verdadero.** Un
+   * efecto que sonara con el valor volvería a sonar en cada re-render que lo mantenga —y durante un
+   * streaming hay muchos, uno por trozo de texto que llega—. Lo que se anuncia es la TRANSICIÓN: la
+   * respuesta acaba de empezar.
+   *
+   * ⚠️ El «anterior» va en un `ref` y se actualiza DENTRO del efecto: aquí sí es correcto, porque
+   * esto no deriva nada que se pinte —sólo dispara un efecto secundario— y un render descartado no
+   * puede dejar el ref adelantado respecto a lo que el usuario oyó.
+   */
+  const respondiaAntes = useRef(false);
+  useEffect(() => {
+    if (isStreaming && !respondiaAntes.current) sounds.aiResponse();
+    respondiaAntes.current = isStreaming;
+  }, [isStreaming]);
+
   const lastIndex = chat.messages.length - 1;
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessage; index: number }) => {

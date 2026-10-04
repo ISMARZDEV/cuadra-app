@@ -21,12 +21,17 @@ uniform float boundary;
 uniform float bow;
 uniform float feather;
 uniform float displacement;
+uniform float ambientDisplacement;
 uniform float blurRadius;
+uniform float ambientBlur;
 uniform float veil;
+uniform float ambientVeil;
 uniform float veilFull;
 uniform float3 veilColor;
 uniform float edgeTilt;
 uniform float ripple;
+uniform float domePulse;
+uniform float gather;
 uniform float wavePhase;
 uniform float release;
 uniform float2 dropOrigin;
@@ -37,13 +42,47 @@ uniform float seal;
 
 half4 main(float2 xy) {
   float nx = (xy.x / size.x - 0.5) * 2.0;
-  float arch = max(0.0, 1.0 - nx * nx);
+  // El casquete respira como una membrana circular, no como una línea trasladándose. Al contraerse
+  // reduce su radio horizontal y profundiza el centro; al abrirse relaja ambos a la vez.
+  float domeSpan = clamp((1.0 + domePulse * 0.14) * (1.0 - gather * 0.16), 0.72, 1.16);
+  float domeX = clamp(nx / domeSpan, -1.0, 1.0);
+  float circularArch = sqrt(max(0.0, 1.0 - domeX * domeX));
+  float softArch = max(0.0, 1.0 - domeX * domeX);
+  float arch = mix(softArch, circularArch, 0.76);
+  float domeDepth = clamp(
+    (1.0 + domePulse * 0.42) * (1.0 + gather * 0.32),
+    0.62,
+    1.82
+  );
 
   // La respiración cambia la FORMA: arco, ladeo y una onda secundaria. \`arch\` apaga esa onda en
   // los costados para no abrir una discontinuidad contra el borde de pantalla.
-  float edge = boundary - bow * arch
+  // La deformación principal no vive clavada en un costado. Dos lóbulos de anchura cambiante
+  // recorren el canto con fases lentas independientes; unas veces tiran desde una esquina, otras
+  // desde el centro o el lado opuesto. Es movimiento continuo pseudoaleatorio, no ruido por frame.
+  float roamPhase = wavePhase * 0.29 + sin(wavePhase * 0.071) * 0.84;
+  float roamX = clamp(
+    sin(roamPhase) * 0.66 + sin(wavePhase * 0.61 + 1.3) * 0.18,
+    -0.82,
+    0.82
+  );
+  float counterX = clamp(
+    -roamX * 0.72 + sin(wavePhase * 0.43 - 0.8) * 0.22,
+    -0.84,
+    0.84
+  );
+  float roamWidth = 0.25 + 0.10 * (0.5 + 0.5 * sin(wavePhase * 0.23 + 0.4));
+  float counterWidth = 0.22 + 0.08 * (0.5 + 0.5 * sin(wavePhase * 0.17 - 1.0));
+  float roamLobe = exp(-pow((nx - roamX) / roamWidth, 2.0));
+  float counterLobe = exp(-pow((nx - counterX) / counterWidth, 2.0));
+  float roamPolarity = sin(wavePhase * 0.53 + sin(wavePhase * 0.113) * 0.65);
+  float counterPolarity = sin(wavePhase * 0.37 + 1.7 + sin(wavePhase * 0.089) * 0.52);
+  float movingFold = 0.24 * sin(nx * 3.4 + wavePhase * 0.47)
+    + 0.76 * roamLobe * roamPolarity
+    + 0.46 * counterLobe * counterPolarity;
+  float edge = boundary - bow * domeDepth * arch
     + edgeTilt * nx
-    + ripple * sin(nx * 3.4 + wavePhase) * arch;
+    + ripple * movingFold * arch;
   // Cuán DENTRO de la cúpula estamos: 0 por encima del canto, 1 en el fondo.
   float depth = smoothstep(edge - feather, edge + feather, xy.y);
   // Al soltar, una onda radial nace donde está el orbe y se abre por toda la pantalla. Dos lóbulos
@@ -74,6 +113,31 @@ half4 main(float2 xy) {
   );
   float lensPresence = mix(1.0, clearBehindWave, releaseGate);
 
+  // ── PLANO SUPERIOR ──
+  // La zona por encima del menisco no está completamente «fuera»: en Monogram conserva una bruma
+  // gaussiana tenue, como si el contenido estuviera visto desde otro plano del mismo líquido. No
+  // usamos ruido por fotograma —parpadearía— sino tres armónicos espaciales de baja frecuencia.
+  // Sus velocidades no son múltiplos entre sí y cada una lleva una deriva lenta: no hay un ciclo
+  // corto reconocible ni un fotograma donde el movimiento se congele para volver a comenzar.
+  float2 plane = xy / size;
+  float phaseDriftA = sin(wavePhase * 0.13 + 0.7) * 0.36;
+  float phaseDriftB = sin(wavePhase * 0.19 - 1.1) * 0.42;
+  float phaseDriftC = sin(wavePhase * 0.11 + 2.0) * 0.51;
+  float driftA = sin(
+    (plane.x * 2.20 + plane.y * 1.35) * 6.2831853 + wavePhase * 0.61 + phaseDriftA
+  );
+  float driftB = sin(
+    (plane.x * -1.15 + plane.y * 2.55) * 6.2831853 - wavePhase * 0.37 + phaseDriftB
+  );
+  float driftC = sin(
+    (plane.x * 3.70 - plane.y * 1.10) * 6.2831853 + wavePhase * 0.83 + phaseDriftC
+  );
+  float ambientMotion = clamp(0.66 + driftA * 0.16 + driftB * 0.11 + driftC * 0.07, 0.34, 1.0);
+  float aboveMeniscus = 1.0 - depth;
+  float materialStrength = smoothstep(0.015, 0.18, strength);
+  float ambientField = ambientBlur * ambientMotion * aboveMeniscus
+    * materialStrength * lensPresence;
+
   // ── DESPLAZAMIENTO ──
   // ⭐ La coordenada vertical sólo AVANZA con depth. La versión anterior añadía una campana
   // positiva basada en rim; al subir y luego bajar esa campana, uv.y podía devolverse y muestrear
@@ -83,18 +147,41 @@ half4 main(float2 xy) {
   // empuja radialmente una segunda imagen. La deformación es una sola rampa vertical MONÓTONA. Su
   // amplitud cambia a lo ancho con una onda positiva, así el contenido fluye en vez de trasladarse
   // como un bloque, pero ninguna coordenada retrocede ni repite una línea del fondo.
-  float verticalFlow = arch * (0.82 + 0.18 * sin(nx * 4.6 + wavePhase * 1.3));
+  // La densidad del pliegue sigue a los mismos lóbulos viajeros. El suelo positivo conserva el
+  // mapa vertical monótono (sin reflejo), mientras el máximo migra entre lados y esquinas.
+  float roamingDensity = roamLobe * (0.5 + 0.5 * roamPolarity)
+    + counterLobe * (0.5 + 0.5 * counterPolarity);
+  float verticalFlow = arch * clamp(
+    0.72 + 0.12 * sin(nx * 4.6 + wavePhase * 0.91) + 0.30 * roamingDensity,
+    0.62,
+    1.18
+  );
+  // Arriba sí hay DEFORMACIÓN, pero no refracción: una única coordenada avanza sólo en Y y su
+  // amplitud es ~12% de la masa inferior. La combinación no periódica en el espacio evita un
+  // vaivén mecánico; las frecuencias temporales enteras mantienen el cierre perfecto del ciclo.
+  // Con esta amplitud y estas longitudes de onda la derivada vertical permanece positiva: no se
+  // pliega el mapa, no se repite una línea y por tanto no reaparece el reflejo.
+  float ambientWarpWave = driftA * 0.56 + driftB * 0.29 + driftC * 0.15;
+  float ambientFlow = displacement * ambientDisplacement * ambientWarpWave
+    * aboveMeniscus * materialStrength * lensPresence;
+  // Una curva monótona menor que 1 adelanta el pliegue dentro del feather: el canto dobla con
+  // fuerza y luego continúa hacia el fondo sin la campana que antes hacía volver la coordenada y
+  // creaba un reflejo. Es glass-liquid en el borde, no una segunda imagen.
+  float liquidDepth = pow(max(depth, 0.0), 0.68);
   // La liberación añade un pliegue VERTICAL ancho y de poca amplitud. Es una sola muestra que
   // nunca se desplaza de lado ni se mezcla con el original: se siente acuoso sin volver a crear la
   // refracción/fantasma que se eliminó. La amplitud es pequeña frente al ancho del anillo, por lo
   // que la coordenada sigue avanzando y no repite líneas del fondo.
   float releaseFlow = dropGlass * dropWidth * 0.18 * (0.76 + 0.24 * arch);
   float2 uv = xy
-    + float2(0.0, displacement * verticalFlow * depth * 0.68 * lensPresence + releaseFlow);
+    + float2(
+      0.0,
+      displacement * verticalFlow * liquidDepth * 0.68 * lensPresence + ambientFlow + releaseFlow
+    );
 
   // Los dos anillos de liberación son VIDRIO: viajan como blur/densidad, no como refracción. Esto
   // hace visible la gota incluso sobre zonas lisas y evita el salto tardío del borrado anterior.
-  float blurField = max(depth * lensPresence, dropGlass);
+  float blurField = max(max(liquidDepth * lensPresence, dropGlass), ambientField);
   float radius = blurRadius * blurField;
   half4 color = image.eval(uv);
   // 25 muestras: conserva un blur continuo y reduce casi a la mitad el coste del kernel anterior
@@ -142,10 +229,14 @@ half4 main(float2 xy) {
   // casi transparente: se ve primero sólo el oscurecimiento global y luego aparece una placa. En
   // Monogram el pequeño casquete que nace abajo ya tiene densidad de vidrio y lo que crece es su
   // extensión. Esta rampa separa esas dos ideas sin crear otro frente ni una segunda imagen.
-  float materialStrength = smoothstep(0.015, 0.18, strength);
   float lensMix = materialStrength * lensPresence
     * smoothstep(edge - feather * 1.18, edge + feather * 0.62, xy.y);
   float releaseVeil = veil * dropGlass * 0.42;
+  // El velo ambiente hace visible la respiración incluso sobre superficies lisas. Su máximo es
+  // menor de una quinta parte del material en el borde; sólo cambia densidad/luminancia y por eso
+  // no puede producir la refracción ni el reflejo doble eliminados arriba.
+  float ambientGlass = ambientVeil * ambientMotion * aboveMeniscus
+    * materialStrength * lensPresence;
   // ⭐ EL SELLADO. Mientras se dicta, el velo es una RAMPA atada al menisco —blanco pleno abajo,
   // nada arriba— y por eso la cabecera se lee limpia. Pero una rampa NO PUEDE tapar una navegación
   // por debajo: al saltar al chat se vería la pantalla nueva asomando por arriba.
@@ -153,7 +244,11 @@ half4 main(float2 xy) {
   // ⚠️ Se resuelve con una MEZCLA hacia el velo pleno, sin tocar veilRamp ni lensMix: esa
   // matemática está calibrada contra la referencia y cualquier retoque ahí cambiaría cómo se lee el
   // menisco durante el dictado, que es lo que más se mira. Sellar es otro trabajo del mismo velo.
-  float vA = clamp(mix(veil * veilRamp * lensMix + releaseVeil, veil, seal), 0.0, 1.0);
+  float vA = clamp(
+    mix(veil * veilRamp * lensMix + releaseVeil + ambientGlass, veil, seal),
+    0.0,
+    1.0
+  );
   color.rgb = color.rgb * (1.0 - vA) + half3(veilColor) * vA;
 
   // El pequeño glitch cromático de Monogram vive ÚNICAMENTE en el menisco. No vuelve a muestrear
@@ -164,9 +259,42 @@ half4 main(float2 xy) {
     * arch * materialStrength * lensPresence;
   float glitchWave = sin(nx * 16.0 + wavePhase * 1.7)
     + 0.45 * sin(nx * 29.0 - wavePhase * 2.3);
-  float chroma = rimBand * glitchWave * 0.032;
+  float chroma = rimBand * glitchWave * 0.026;
   color.rgb = clamp(
     color.rgb + half3(chroma * 0.72, -abs(chroma) * 0.16, -chroma * 0.82),
+    half3(0.0),
+    half3(1.0)
+  );
+
+  // En el plano alto el mismo gesto cromático existe, pero al 12–15% del menisco. No desplaza
+  // canales ni vuelve a evaluar la captura: sólo tiñe muy levemente la muestra única ya ondulada,
+  // suficiente para revelar el movimiento sobre texto y botones sin convertirlo en un glitch UI.
+  float ambientGlitchWave = sin(
+    (plane.x * 7.3 + plane.y * 5.1) * 6.2831853 + wavePhase * 0.53 + phaseDriftB
+  );
+  float ambientChroma = ambientGlitchWave * aboveMeniscus * materialStrength
+    * lensPresence * ambientMotion * 0.0030;
+  color.rgb = clamp(
+    color.rgb + half3(ambientChroma * 0.62, -abs(ambientChroma) * 0.10, -ambientChroma * 0.70),
+    half3(0.0),
+    half3(1.0)
+  );
+
+  // CROMA IRIDISCENTE, no separación RGB. Una paleta de película fina gira con la misma deriva
+  // que deforma el contenido: cian → violeta → ámbar → verde. El menisco recibe el metal líquido
+  // evidente; arriba apenas un eco que sólo aparece donde la ondulación tiene amplitud.
+  float chromePhase = plane.x * 9.4 + plane.y * 7.1
+    + wavePhase * 0.43 + ambientWarpWave * 1.65;
+  float3 chrome = 0.5 + 0.5 * cos(
+    chromePhase + float3(0.0, 2.0943951, 4.1887902)
+  );
+  float ambientChrome = abs(ambientWarpWave) * ambientField * 0.045;
+  float rimChrome = rimBand * (0.072 + 0.022 * abs(glitchWave));
+  float chromeAmount = clamp(ambientChrome + rimChrome, 0.0, 0.11);
+  // Centrar la paleta en 0.5 conserva la luminancia media: aporta croma sin pintar una lámina de
+  // color encima ni aclarar el tema oscuro de forma acumulativa.
+  color.rgb = clamp(
+    color.rgb + half3((chrome - float3(0.5)) * chromeAmount),
     half3(0.0),
     half3(1.0)
   );

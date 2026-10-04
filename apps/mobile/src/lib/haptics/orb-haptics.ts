@@ -1,6 +1,8 @@
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 
+import type { StairStyle } from "@/features/aispace/voice/send-stairs";
+
 /**
  * EL LENGUAJE HÁPTICO DEL ORBE, en un solo sitio.
  *
@@ -14,9 +16,16 @@ import { Platform } from "react-native";
  * receta actual usa el significado NATIVO de cada plataforma: contacto rígido en iOS y tecla
  * virtual en Android. Se dispara en press-in, en el mismo gesto que contrae el control.
  *
- * ⚠️ **iOS DESACTIVA TODOS LOS HÁPTICOS EN MODO DE BAJO CONSUMO.** Si no se siente nada, eso es lo
- * primero que hay que descartar — es del sistema y ninguna de estas llamadas puede sortearlo.
- * También hacen falta un iPhone con Taptic Engine y el interruptor de sistema activo.
+ * ⚠️⚠️ **CUÁNDO NO SE SIENTE NADA, Y NO ES CULPA DE ESTE CÓDIGO.** La doc de `expo-haptics` (v56)
+ * enumera las condiciones en que iOS deja inerte el Taptic Engine, y ninguna se puede sortear desde
+ * aquí: modo de bajo consumo, el interruptor de sistema apagado, la CÁMARA activa y —importa para
+ * este flujo— **mientras corre la DICTATION**. Añade a eso que **en el simulador no existe**: los
+ * hápticos sólo se pueden verificar en un dispositivo real.
+ *
+ * ⚠️⚠️ **Y HAY UN TECHO DE CADENCIA.** El motor sólo separa pulsos a partir de ~100 ms, y su cola
+ * interna se desborda con llamadas seguidas descartándolas EN SILENCIO —el síntoma clásico es que
+ * funciona el primer segundo y luego muere—. Cualquier patrón repetido va contra ese límite: por eso
+ * el latido del envío tiene su plan en `send-pulse`, con tests que lo vigilan.
  */
 
 /**
@@ -41,13 +50,24 @@ export function orbTranscriptTick(): void {
 }
 
 /**
- * SE SOLTÓ Y HAY TEXTO — la confirmación.
+ * UN TOQUE DEL LATIDO QUE ANUNCIA EL ENVÍO.
  *
- * `.success` del sistema: tres pulsos ascendentes. Es el `sensoryFeedback(.success)` que el shot de
- * referencia dispara al resolver, y es la única señal de la secuencia que significa «salió bien».
+ * ⭐⭐ **`Soft` y no `Light`: es el más DIFUSO de la familia**, sin canto definido. Un impacto nítido
+ * dice «ha pasado algo» y pide atención; éste dice «sigo aquí» y se puede repetir sin cansar, que es
+ * justo lo que necesita un estado que dura segundos. Lo pidió así: «algo suave».
+ *
+ * ⚠️ La FORMA del latido no está aquí: está en el ritmo (`send-pulse`). `expo-haptics` no da
+ * intensidad variable —eso es Core Haptics, y exige un módulo nativo—, así que la envolvente se
+ * consigue con el ESPACIADO y el silencio, no con la amplitud.
+ *
+ * En Android, `Segment_Tick` es el equivalente sutil: el tic de un recorrido en curso, no un aviso.
  */
-export function orbCaptureSuccess(): void {
-  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+export function orbSendPulse(platform = Platform.OS): void {
+  if (platform === "android") {
+    void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Segment_Tick);
+    return;
+  }
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
 }
 
 /**
@@ -79,4 +99,34 @@ export function orbDismiss(): void {
  */
 export function orbCommandApplied(): void {
   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+}
+
+/**
+ * UN PELDAÑO DE LA ESCALERA DEL ENVÍO.
+ *
+ * ⭐⭐ **El carácter lo decide el AUDIO, no el gusto.** El clip sube de 258 a 786 Hz en cuatro
+ * golpes, así que el dedo tiene que subir con él: `Soft` es difuso y sin canto, `Light` ya se
+ * localiza, `Rigid` es el más nítido de la familia. Es lo más parecido a un barrido de tono que
+ * `expo-haptics` puede decir — la «sharpness» de verdad es Core Haptics, y eso pide módulo nativo.
+ *
+ * ⚠️ Los peldaños van a 100 ms exactos, el mínimo que el motor separa. Si en el dispositivo se
+ * sintiera un solo golpe en vez de tres, el problema no está aquí sino en `send-stairs`: ahí se
+ * documenta el repliegue a dos peldaños.
+ */
+export function orbStairStep(style: StairStyle, platform = Platform.OS): void {
+  if (platform === "android") {
+    const android = {
+      soft: Haptics.AndroidHaptics.Segment_Tick,
+      light: Haptics.AndroidHaptics.Segment_Frequent_Tick,
+      rigid: Haptics.AndroidHaptics.Confirm,
+    } as const;
+    void Haptics.performAndroidHapticsAsync(android[style]);
+    return;
+  }
+  const ios = {
+    soft: Haptics.ImpactFeedbackStyle.Soft,
+    light: Haptics.ImpactFeedbackStyle.Light,
+    rigid: Haptics.ImpactFeedbackStyle.Rigid,
+  } as const;
+  void Haptics.impactAsync(ios[style]);
 }

@@ -17,10 +17,12 @@ import {
   useWindowDimensions,
 } from "react-native";
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -51,6 +53,8 @@ type CuadraTabBarProps = {
     };
     navigate: (name: string) => void;
   };
+  /** Intensidad física 0..1 del contacto que conduce el menisco sin rerenderizar la app. */
+  touchPressure: SharedValue<number>;
 };
 
 // Per-route presentation. The center route (aispace — the literal `index.tsx` file, so it's HOME;
@@ -99,7 +103,7 @@ function AnimatedTabIcon({
 
 // Cuadra tab bar — exact Figma silhouette: one smooth wave with a central dip concentric to the
 // raised "iM" logo (AISpace). Geometry scales from the design viewBox so the curve stays faithful.
-export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
+export function CuadraTabBar({ state, navigation, touchPressure }: CuadraTabBarProps) {
   const { colorScheme } = useColorScheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -188,18 +192,47 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   // wheel selector → a selection "tick" per step (Haptics.selectionAsync, the date-picker feel).
   // Swipe DOWN → hide. No navigation.
   const stepRef = useRef(0);
+  const readForce = (event: GestureResponderEvent) => {
+    const force = event.nativeEvent.force;
+    // `force` es opcional: muchos iPhone modernos no tienen Force Touch. Cero significa «sin dato»
+    // aquí; en ese hardware la duración del contacto da una aproximación física continua.
+    return typeof force === "number" && Number.isFinite(force) && force > 0.015
+      ? Math.max(0, Math.min(1, force))
+      : null;
+  };
+  const releasePressure = () => {
+    touchPressure.set(withTiming(0, {
+      duration: 140,
+      easing: Easing.out(Easing.quad),
+    }));
+  };
   const orbResponder = PanResponder.create({
     onStartShouldSetPanResponder: insideOrb,
     onMoveShouldSetPanResponder: (evt, g) => insideOrb(evt) && Math.abs(g.dy) > 6,
-    onPanResponderGrant: () => {
+    onPanResponderGrant: (event) => {
       setPressing(true);
       bumpOrb();
       stepRef.current = 0;
+      const force = readForce(event);
+      touchPressure.set(force ?? 0.26);
+      // Sin sensor de fuerza, sostener el dedo gana peso gradualmente. Si existe fuerza real, los
+      // eventos de movimiento retargetean este valor sin cortar la curva.
+      touchPressure.set(withTiming(force ?? 0.78, {
+        duration: force === null ? 720 : 180,
+        easing: Easing.out(Easing.quad),
+      }));
       // EMPIEZA LA ESCUCHA. La receta vive en `orb-haptics`, no aquí: el lenguaje háptico del orbe
       // se reparte entre la barra y la lente, y con la fórmula copiada en cada sitio se separan.
       orbListenStart();
     },
-    onPanResponderMove: (_, g) => {
+    onPanResponderMove: (event, g) => {
+      const force = readForce(event);
+      if (force !== null) {
+        touchPressure.set(withTiming(force, {
+          duration: 70,
+          easing: Easing.out(Easing.quad),
+        }));
+      }
       const step = Math.floor(Math.max(0, -g.dy) / SELECT_STEP);
       if (step !== stepRef.current) {
         stepRef.current = step;
@@ -215,6 +248,7 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
       }
     },
     onPanResponderRelease: (_, g) => {
+      releasePressure();
       setPressing(false);
       if (g.dy > SWIPE_DY || g.vy > SWIPE_VY) {
         orbDismiss();
@@ -225,7 +259,10 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
       // algo, un toque seco si no— y ponerlo también aquí serían dos golpes para un solo suceso.
       // Ver `orb-liquid-focus`.
     },
-    onPanResponderTerminate: () => setPressing(false),
+    onPanResponderTerminate: () => {
+      releasePressure();
+      setPressing(false);
+    },
   });
 
   // Renders a single tab item (icon + label + optional badge).

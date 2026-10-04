@@ -178,14 +178,73 @@ const HALO_OPACITY = 0.55;
 /** Mientras se mantiene pulsado compite con un fondo esmerilado y pide algo más de cuerpo. */
 const HALO_OPACITY_FOCUS = 0.85;
 
-export function OrbSphere({ size = 64, visible = true }: { size?: number; visible?: boolean }) {
+// ── EL ORBE PENSANDO ──────────────────────────────────────────────────────────────────────────
+//
+// ⭐⭐ **El orbe ES el «pensando»; ya no hay píldora que lo sustituya.** Antes el control se retiraba
+// y entraba un `PillButton` con la palabra escrita — dos elementos disputándose el mismo sitio, y el
+// relevo entre ellos costó tres defectos distintos. Un orbe que se agita dice lo mismo sin cambiar
+// de objeto, y no hay relevo que pueda romperse.
+//
+// El estado tiene DOS palancas y hacen falta las dos: la ENERGÍA dice cuánto se agita el agua y el
+// TEMPO dice a qué velocidad. Sólo con energía se ve una ola grande y lenta —lo contrario de estar
+// ocupado—; sólo con tempo, un temblor sin cuerpo.
+
+/** Reposo: el agua respira. Es el valor con el que nace `level`. */
+const IDLE_LEVEL = 0.6;
+/**
+ * Energía SOSTENIDA mientras piensa. Por encima del reposo y por debajo del pico de un toque (1.18),
+ * que es un golpe y decae: esto tiene que poder mantenerse sin saturar la onda.
+ */
+const THINK_LEVEL = 1.0;
+/** El tempo del reposo. Uno, porque es el que define la unidad. */
+const IDLE_SPEED = 1;
+/** Cuántas veces más rápido late mientras piensa. */
+const THINK_SPEED = 2.6;
+/** La aceleración se OYE si es un salto: se entra y se sale del estado, no se conmuta. */
+const THINK_RAMP_MS = 420;
+/**
+ * TOPE del paso de tiempo entre fotogramas.
+ *
+ * ⚠️ Al volver de segundo plano —o al reactivar el callback— `timestamp` da un salto de segundos. Sin
+ * tope, la fase avanzaría ese salto entero de golpe y la onda se teletransportaría. Un treintavo es
+ * un fotograma lento: nunca estorba a un paso real.
+ */
+const MAX_DT = 1 / 30;
+
+export function OrbSphere({
+  size = 64,
+  visible = true,
+  thinking = false,
+}: {
+  size?: number;
+  visible?: boolean;
+  /** El agente está trabajando: el agua se agita más y MÁS RÁPIDO hasta que llega la respuesta. */
+  thinking?: boolean;
+}) {
   const w = size;
   const h = size * ASPECT;
   const PAD = size * 0.35; // room around the orb for the glow bloom
   const CW = w + PAD * 2;
   const CH = h + PAD * 2;
 
-  const level = useSharedValue(0.6); // wave energy (idle ≈ 0.6, swells on tap)
+  const level = useSharedValue(IDLE_LEVEL); // wave energy (idle ≈ 0.6, swells on tap)
+  /**
+   * EL TEMPO de la onda, como multiplicador del tiempo. 1 en reposo.
+   *
+   * ⚠️⚠️ **Y por eso la fase se ACUMULA en vez de escalar el reloj — aquí está la trampa entera.**
+   * Lo obvio es pasarle `timestamp * speed` a `buildWave`, y es lo que revienta: `timestamp` lleva
+   * MILLONES de milisegundos acumulados desde que arrancó la app, así que multiplicarlo por 2.6
+   * salta la fase varios millones de unidades de golpe. La onda no acelera: se TELETRANSPORTA a otra
+   * forma, y encima el salto es distinto cada vez porque depende de cuánto lleve la app abierta.
+   *
+   * Integrando (`phase += dt · speed`) el tempo puede cambiar cuando quiera sin discontinuidad: la
+   * fase es continua por construcción y la rampa de `speed` se oye como una aceleración de verdad.
+   */
+  const speed = useSharedValue(IDLE_SPEED);
+  /** La fase acumulada de la onda, en segundos «propios» del orbe — NO el reloj de la app. */
+  const phase = useSharedValue(0);
+  /** El `timestamp` del fotograma anterior. 0 = todavía no hay anterior del que restar. */
+  const lastFrame = useSharedValue(0);
   const p0 = useSharedValue(Skia.Path.Make());
   const p1 = useSharedValue(Skia.Path.Make());
   const p2 = useSharedValue(Skia.Path.Make());
@@ -199,7 +258,12 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   const frame = useFrameCallback(({ timestamp }) => {
     "worklet";
     // `timestamp` pertenece al frame global de Reanimated y no se reinicia al retargetear la pose.
-    const time = timestamp / 1000;
+    // De él sólo se usa la DIFERENCIA: la fase es nuestra y avanza al ritmo que marque `speed`.
+    const previous = lastFrame.value;
+    lastFrame.value = timestamp;
+    const dt = previous === 0 ? 0 : Math.min((timestamp - previous) / 1000, MAX_DT);
+    phase.value += dt * speed.value;
+    const time = phase.value;
     p0.value = buildWave(COLORS[0], time, level.value, w, h);
     p1.value = buildWave(COLORS[1], time, level.value, w, h);
     p2.value = buildWave(COLORS[2], time, level.value, w, h);
@@ -212,18 +276,42 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   // `frame` es estable (useRef interno) y reanimated re-aplica `isActive` al re-registrar el
   // callback, así que este setActive sobrevive a los re-renders.
   useEffect(() => {
+    // ⚠️ Se olvida el fotograma anterior ANTES de reactivar: mientras estuvo parado el reloj global
+    // siguió corriendo, así que ese `previous` describe un intervalo que el orbe no vivió. El tope
+    // de `MAX_DT` ya lo acotaría, pero acotar un dato falso sigue siendo usarlo.
+    if (visible) lastFrame.value = 0;
     frame.setActive(visible);
-  }, [visible, frame]);
+  }, [visible, frame, lastFrame]);
 
   // Tap → swell the wave then settle (water-style: quick rise, slow ease back).
   const pulse = useOrbStore((s) => s.pulse);
   useEffect(() => {
     if (pulse === 0) return;
+    // ⚠️ No hace falta guardar contra `thinking`: `bump()` sólo lo emite la barra con el dedo
+    // APOYADO, y con el dedo apoyado no se piensa todavía. Si algún día se emitiera desde otro
+    // sitio, este `withSequence` pisaría el estado sostenido — y entonces sí haría falta la guarda.
     level.value = withSequence(
       withTiming(1.18, { duration: 260, easing: Easing.out(Easing.cubic) }),
-      withTiming(0.6, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
+      withTiming(IDLE_LEVEL, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
     );
   }, [pulse, level]);
+
+  // ⭐⭐ **PENSAR ES AGITARSE MÁS Y MÁS RÁPIDO.** Las dos palancas suben juntas y con la misma rampa,
+  // así que se lee como UN estado y no como dos ajustes.
+  //
+  // ⚠️ Esto CANCELA la cola del último `bump` —un `withSequence` que tarda 1,5 s en volver al
+  // reposo—, y es lo correcto: al soltar el dedo el orbe deja de estar respondiendo a un toque y
+  // pasa a estar ocupado. Sin este relevo, el primer segundo de «pensando» seguiría desacelerando.
+  useEffect(() => {
+    level.value = withTiming(thinking ? THINK_LEVEL : IDLE_LEVEL, {
+      duration: THINK_RAMP_MS,
+      easing: Easing.inOut(Easing.quad),
+    });
+    speed.value = withTiming(thinking ? THINK_SPEED : IDLE_SPEED, {
+      duration: THINK_RAMP_MS,
+      easing: Easing.inOut(Easing.quad),
+    });
+  }, [thinking, level, speed]);
 
   // Squircle outline for the lower rim glow (matches the superellipse body).
   const ringPath = useMemo(() => {

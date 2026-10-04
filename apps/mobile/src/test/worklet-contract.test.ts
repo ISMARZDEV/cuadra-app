@@ -23,7 +23,7 @@ const RAIZ = join(__dirname, "..");
 /** Módulos cuyas funciones se llaman desde `useAnimatedStyle`, `useDerivedValue` o un worklet. */
 const MODULOS = [
   "components/ui/liquid-focus/model.ts",
-  "features/aispace/voice/magic-dissolve.ts",
+  "features/aispace/voice/text-shimmer.ts",
 ];
 
 /** Toda declaración de función del módulo, con su posición. */
