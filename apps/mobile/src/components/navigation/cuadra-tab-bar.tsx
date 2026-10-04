@@ -17,16 +17,17 @@ import {
   useWindowDimensions,
 } from "react-native";
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { Icon } from "@/components/ui/icon";
-import { OrbSphere } from "@/components/ui/orb-sphere";
 import { t, type TranslationKey } from "@/i18n";
 import { sounds } from "@/lib/sounds";
 import { useChatExpandStore } from "@/store/chat-expand-store";
@@ -36,6 +37,8 @@ import { NAV_HIDE_TIMING } from "./nav-hide-motion";
 import { IDLE_HIDE_MS } from "./use-nav-visibility";
 import { useDrawer } from "@/store/drawer-store";
 import { useOrbStore } from "@/store/orb-store";
+import { orbDismiss, orbListenStart } from "@/lib/haptics/orb-haptics";
+import { orbFrame } from "./orb-frame";
 
 import { NAVBAR_CIRCLE, NAVBAR_VIEWBOX, NotchedGlass } from "./notched-glass";
 
@@ -50,6 +53,8 @@ type CuadraTabBarProps = {
     };
     navigate: (name: string) => void;
   };
+  /** Intensidad física 0..1 del contacto que conduce el menisco sin rerenderizar la app. */
+  touchPressure: SharedValue<number>;
 };
 
 // Per-route presentation. The center route (aispace — the literal `index.tsx` file, so it's HOME;
@@ -98,7 +103,7 @@ function AnimatedTabIcon({
 
 // Cuadra tab bar — exact Figma silhouette: one smooth wave with a central dip concentric to the
 // raised "iM" logo (AISpace). Geometry scales from the design viewBox so the curve stays faithful.
-export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
+export function CuadraTabBar({ state, navigation, touchPressure }: CuadraTabBarProps) {
   const { colorScheme } = useColorScheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -120,8 +125,11 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
   const hideOrb = useOrbStore((s) => s.hide);
   const bumpOrb = useOrbStore((s) => s.bump);
   const setPressing = useOrbStore((s) => s.setPressing);
-  const orbSize = NAVBAR_CIRCLE.r * 2 * scale * 1.35; // oval width
-  const orbTop = NAVBAR_CIRCLE.cy * scale - (orbSize * 0.86) / 2; // oval (h = w·0.86), centred on the dip
+  // La barra conserva sólo el HITBOX. La única instancia visual vive en `OrbLiquidFocus`, por
+  // encima de la lente, y nunca se intercambia por otra al soltar.
+  const orbGeometry = orbFrame(width, insets.bottom);
+  const orbSize = orbGeometry.size;
+  const orbTop = orbGeometry.top;
 
   const onPress = (routeName: string, routeKey: string, focused: boolean) => {
     const event = navigation.emit({ type: "tabPress", target: routeKey, canPreventDefault: true });
@@ -180,33 +188,81 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
     return Math.pow(Math.abs(nx), 2.2) + Math.pow(Math.abs(ny), 2.2) <= 0.9;
   };
 
-  // Orb: press/hold → wobble (visual, no haptic) + wave swell. Press + drag UP scrubs the (future)
+  // Orb: press/hold → contacto háptico + wobble visual + wave swell. Press + drag UP scrubs the
   // wheel selector → a selection "tick" per step (Haptics.selectionAsync, the date-picker feel).
   // Swipe DOWN → hide. No navigation.
   const stepRef = useRef(0);
+  const readForce = (event: GestureResponderEvent) => {
+    const force = event.nativeEvent.force;
+    // `force` es opcional: muchos iPhone modernos no tienen Force Touch. Cero significa «sin dato»
+    // aquí; en ese hardware la duración del contacto da una aproximación física continua.
+    return typeof force === "number" && Number.isFinite(force) && force > 0.015
+      ? Math.max(0, Math.min(1, force))
+      : null;
+  };
+  const releasePressure = () => {
+    touchPressure.set(withTiming(0, {
+      duration: 140,
+      easing: Easing.out(Easing.quad),
+    }));
+  };
   const orbResponder = PanResponder.create({
     onStartShouldSetPanResponder: insideOrb,
     onMoveShouldSetPanResponder: (evt, g) => insideOrb(evt) && Math.abs(g.dy) > 6,
-    onPanResponderGrant: () => {
+    onPanResponderGrant: (event) => {
       setPressing(true);
       bumpOrb();
       stepRef.current = 0;
+      const force = readForce(event);
+      touchPressure.set(force ?? 0.26);
+      // Sin sensor de fuerza, sostener el dedo gana peso gradualmente. Si existe fuerza real, los
+      // eventos de movimiento retargetean este valor sin cortar la curva.
+      touchPressure.set(withTiming(force ?? 0.78, {
+        duration: force === null ? 720 : 180,
+        easing: Easing.out(Easing.quad),
+      }));
+      // EMPIEZA LA ESCUCHA. La receta vive en `orb-haptics`, no aquí: el lenguaje háptico del orbe
+      // se reparte entre la barra y la lente, y con la fórmula copiada en cada sitio se separan.
+      orbListenStart();
     },
-    onPanResponderMove: (_, g) => {
+    onPanResponderMove: (event, g) => {
+      const force = readForce(event);
+      if (force !== null) {
+        touchPressure.set(withTiming(force, {
+          duration: 70,
+          easing: Easing.out(Easing.quad),
+        }));
+      }
       const step = Math.floor(Math.max(0, -g.dy) / SELECT_STEP);
       if (step !== stepRef.current) {
         stepRef.current = step;
         if (step > 0) {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid); // stronger, crisper tick
-          sounds.tick();
+          // ⚠️ **SIN SONIDO MIENTRAS SE DICTA.** El tic es del futuro selector de rueda, pero hoy
+          // este mismo gesto está grabando: reproducir audio durante la captura es exactamente lo
+          // que rompía el reconocimiento de forma intermitente. La sesión ya se declara compatible
+          // (`iosCategory` en `use-voice-capture`), y aun así no se reproduce — un cinturón y unos
+          // tirantes cuestan una línea, y el defecto costaba una sesión entera de diagnóstico.
+          // El háptico se queda: no toca el audio.
         }
       }
     },
     onPanResponderRelease: (_, g) => {
+      releasePressure();
       setPressing(false);
-      if (g.dy > SWIPE_DY || g.vy > SWIPE_VY) hideOrb();
+      if (g.dy > SWIPE_DY || g.vy > SWIPE_VY) {
+        orbDismiss();
+        hideOrb();
+        return;
+      }
+      // Al soltar SIN descartar no se marca nada aquí: el remate lo pone la voz —éxito si dictó
+      // algo, un toque seco si no— y ponerlo también aquí serían dos golpes para un solo suceso.
+      // Ver `orb-liquid-focus`.
     },
-    onPanResponderTerminate: () => setPressing(false),
+    onPanResponderTerminate: () => {
+      releasePressure();
+      setPressing(false);
+    },
   });
 
   // Renders a single tab item (icon + label + optional badge).
@@ -368,7 +424,10 @@ export function CuadraTabBar({ state, navigation }: CuadraTabBarProps) {
             }}
             {...orbResponder.panHandlers}
           >
-            <OrbSphere size={orbSize} visible={orbVisible} />
+            {/* HITBOX persistente y transparente. Dos `OrbSphere` podían compartir coordenadas,
+                pero no su estado animado, y el relevo se delataba como un salto de color/posición.
+                Mantener esta caja conserva el `PanResponder` sin volver a dibujar el control. */}
+            <View style={{ width: orbSize, height: orbGeometry.height }} />
           </View>
         </View>
 

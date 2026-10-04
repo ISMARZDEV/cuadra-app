@@ -8,7 +8,6 @@ import {
   Path,
   RuntimeShader,
   Skia,
-  useClock,
   vec,
 } from "@shopify/react-native-skia";
 import { useEffect, useMemo, useRef } from "react";
@@ -25,6 +24,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useOrbStore } from "@/store/orb-store";
+import { LENS_MOTION } from "./liquid-focus/use-liquid-focus";
 
 // Siri-style AI orb as a 3D GLASS DROP (pure Skia → smooth, anti-aliased edges). The wave is a
 // faithful kopiro/siriwave (iOS9) port — additive RGB-gradient lobes, asymmetric (warm top / cool
@@ -165,28 +165,105 @@ half4 main(float2 fragCoord) {
 }
 `);
 
-export function OrbSphere({ size = 64, visible = true }: { size?: number; visible?: boolean }) {
-  const clock = useClock();
+/** Cuánto se contrae el orbe al mantenerlo pulsado. Del ~0.82× medido en la referencia se baja a
+ *  0.10 porque allí la píldora era ANCHA y aquí el control ya es redondo: la misma proporción sobre
+ *  un círculo se lee como un salto, no como un asentamiento. */
+const FOCUS_CONTRACT = 0.10;
+const FOCUS_RELEASE_MS = 260;
+/** El anillo asoma por fuera del orbe; si quedara por dentro lo taparía el propio orbe. */
+const HALO_PAD = 5;
+const HALO_WIDTH = 1.5;
+/** Un halo, no un borde: tiene que insinuarse, no dibujar un contorno. Siempre presente. */
+const HALO_OPACITY = 0.55;
+/** Mientras se mantiene pulsado compite con un fondo esmerilado y pide algo más de cuerpo. */
+const HALO_OPACITY_FOCUS = 0.85;
+
+// ── EL ORBE PENSANDO ──────────────────────────────────────────────────────────────────────────
+//
+// ⭐⭐ **El orbe ES el «pensando»; ya no hay píldora que lo sustituya.** Antes el control se retiraba
+// y entraba un `PillButton` con la palabra escrita — dos elementos disputándose el mismo sitio, y el
+// relevo entre ellos costó tres defectos distintos. Un orbe que se agita dice lo mismo sin cambiar
+// de objeto, y no hay relevo que pueda romperse.
+//
+// El estado tiene DOS palancas y hacen falta las dos: la ENERGÍA dice cuánto se agita el agua y el
+// TEMPO dice a qué velocidad. Sólo con energía se ve una ola grande y lenta —lo contrario de estar
+// ocupado—; sólo con tempo, un temblor sin cuerpo.
+
+/** Reposo: el agua respira. Es el valor con el que nace `level`. */
+const IDLE_LEVEL = 0.6;
+/**
+ * Energía SOSTENIDA mientras piensa. Por encima del reposo y por debajo del pico de un toque (1.18),
+ * que es un golpe y decae: esto tiene que poder mantenerse sin saturar la onda.
+ */
+const THINK_LEVEL = 1.0;
+/** El tempo del reposo. Uno, porque es el que define la unidad. */
+const IDLE_SPEED = 1;
+/** Cuántas veces más rápido late mientras piensa. */
+const THINK_SPEED = 2.6;
+/** La aceleración se OYE si es un salto: se entra y se sale del estado, no se conmuta. */
+const THINK_RAMP_MS = 420;
+/**
+ * TOPE del paso de tiempo entre fotogramas.
+ *
+ * ⚠️ Al volver de segundo plano —o al reactivar el callback— `timestamp` da un salto de segundos. Sin
+ * tope, la fase avanzaría ese salto entero de golpe y la onda se teletransportaría. Un treintavo es
+ * un fotograma lento: nunca estorba a un paso real.
+ */
+const MAX_DT = 1 / 30;
+
+export function OrbSphere({
+  size = 64,
+  visible = true,
+  thinking = false,
+}: {
+  size?: number;
+  visible?: boolean;
+  /** El agente está trabajando: el agua se agita más y MÁS RÁPIDO hasta que llega la respuesta. */
+  thinking?: boolean;
+}) {
   const w = size;
   const h = size * ASPECT;
   const PAD = size * 0.35; // room around the orb for the glow bloom
   const CW = w + PAD * 2;
   const CH = h + PAD * 2;
 
-  const level = useSharedValue(0.6); // wave energy (idle ≈ 0.6, swells on tap)
+  const level = useSharedValue(IDLE_LEVEL); // wave energy (idle ≈ 0.6, swells on tap)
+  /**
+   * EL TEMPO de la onda, como multiplicador del tiempo. 1 en reposo.
+   *
+   * ⚠️⚠️ **Y por eso la fase se ACUMULA en vez de escalar el reloj — aquí está la trampa entera.**
+   * Lo obvio es pasarle `timestamp * speed` a `buildWave`, y es lo que revienta: `timestamp` lleva
+   * MILLONES de milisegundos acumulados desde que arrancó la app, así que multiplicarlo por 2.6
+   * salta la fase varios millones de unidades de golpe. La onda no acelera: se TELETRANSPORTA a otra
+   * forma, y encima el salto es distinto cada vez porque depende de cuánto lleve la app abierta.
+   *
+   * Integrando (`phase += dt · speed`) el tempo puede cambiar cuando quiera sin discontinuidad: la
+   * fase es continua por construcción y la rampa de `speed` se oye como una aceleración de verdad.
+   */
+  const speed = useSharedValue(IDLE_SPEED);
+  /** La fase acumulada de la onda, en segundos «propios» del orbe — NO el reloj de la app. */
+  const phase = useSharedValue(0);
+  /** El `timestamp` del fotograma anterior. 0 = todavía no hay anterior del que restar. */
+  const lastFrame = useSharedValue(0);
   const p0 = useSharedValue(Skia.Path.Make());
   const p1 = useSharedValue(Skia.Path.Make());
   const p2 = useSharedValue(Skia.Path.Make());
   const p3 = useSharedValue(Skia.Path.Make());
   const paths = [p0, p1, p2, p3];
 
-  // Drive the wave paths from the Skia clock on every frame. We intentionally avoid
-  // Reanimated's useDerivedValue with Skia's clock because Reanimated v4 can crash with
+  // Drive the wave paths from Reanimated's global frame timestamp. We intentionally avoid
+  // `useDerivedValue` with Skia's clock because Reanimated v4 can crash with
   // "animation.onStart is not a function" when mixing the two value systems.
   // `autostart: false` — el arranque lo decide `visible` (ver el efecto de abajo).
-  const frame = useFrameCallback(() => {
+  const frame = useFrameCallback(({ timestamp }) => {
     "worklet";
-    const time = clock.value / 1000;
+    // `timestamp` pertenece al frame global de Reanimated y no se reinicia al retargetear la pose.
+    // De él sólo se usa la DIFERENCIA: la fase es nuestra y avanza al ritmo que marque `speed`.
+    const previous = lastFrame.value;
+    lastFrame.value = timestamp;
+    const dt = previous === 0 ? 0 : Math.min((timestamp - previous) / 1000, MAX_DT);
+    phase.value += dt * speed.value;
+    const time = phase.value;
     p0.value = buildWave(COLORS[0], time, level.value, w, h);
     p1.value = buildWave(COLORS[1], time, level.value, w, h);
     p2.value = buildWave(COLORS[2], time, level.value, w, h);
@@ -199,18 +276,42 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   // `frame` es estable (useRef interno) y reanimated re-aplica `isActive` al re-registrar el
   // callback, así que este setActive sobrevive a los re-renders.
   useEffect(() => {
+    // ⚠️ Se olvida el fotograma anterior ANTES de reactivar: mientras estuvo parado el reloj global
+    // siguió corriendo, así que ese `previous` describe un intervalo que el orbe no vivió. El tope
+    // de `MAX_DT` ya lo acotaría, pero acotar un dato falso sigue siendo usarlo.
+    if (visible) lastFrame.value = 0;
     frame.setActive(visible);
-  }, [visible, frame]);
+  }, [visible, frame, lastFrame]);
 
   // Tap → swell the wave then settle (water-style: quick rise, slow ease back).
   const pulse = useOrbStore((s) => s.pulse);
   useEffect(() => {
     if (pulse === 0) return;
+    // ⚠️ No hace falta guardar contra `thinking`: `bump()` sólo lo emite la barra con el dedo
+    // APOYADO, y con el dedo apoyado no se piensa todavía. Si algún día se emitiera desde otro
+    // sitio, este `withSequence` pisaría el estado sostenido — y entonces sí haría falta la guarda.
     level.value = withSequence(
-      withTiming(1.45, { duration: 300, easing: Easing.out(Easing.quad) }),
-      withTiming(0.6, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+      withTiming(1.18, { duration: 260, easing: Easing.out(Easing.cubic) }),
+      withTiming(IDLE_LEVEL, { duration: 1500, easing: Easing.inOut(Easing.sin) }),
     );
   }, [pulse, level]);
+
+  // ⭐⭐ **PENSAR ES AGITARSE MÁS Y MÁS RÁPIDO.** Las dos palancas suben juntas y con la misma rampa,
+  // así que se lee como UN estado y no como dos ajustes.
+  //
+  // ⚠️ Esto CANCELA la cola del último `bump` —un `withSequence` que tarda 1,5 s en volver al
+  // reposo—, y es lo correcto: al soltar el dedo el orbe deja de estar respondiendo a un toque y
+  // pasa a estar ocupado. Sin este relevo, el primer segundo de «pensando» seguiría desacelerando.
+  useEffect(() => {
+    level.value = withTiming(thinking ? THINK_LEVEL : IDLE_LEVEL, {
+      duration: THINK_RAMP_MS,
+      easing: Easing.inOut(Easing.quad),
+    });
+    speed.value = withTiming(thinking ? THINK_SPEED : IDLE_SPEED, {
+      duration: THINK_RAMP_MS,
+      easing: Easing.inOut(Easing.quad),
+    });
+  }, [thinking, level, speed]);
 
   // Squircle outline for the lower rim glow (matches the superellipse body).
   const ringPath = useMemo(() => {
@@ -269,47 +370,85 @@ export function OrbSphere({ size = 64, visible = true }: { size?: number; visibl
   // Press / hold → the orb wobbles fluidly (scale pulse + tiny side sway) and KEEPS wobbling while
   // held; on release it settles with a little bounce. No haptic — this is the visual "vibration".
   const pressing = useOrbStore((s) => s.pressing);
-  const wob = useSharedValue(1); // scale multiplier
-  const sway = useSharedValue(0); // -1..1 → small translateX
+  // ── EL MORPH ────────────────────────────────────────────────────────────────────────────────
+  //
+  // ⭐ **Se traduce el MECANISMO, no la forma.** En Monogram la píldora ancha del micrófono se
+  // ESTRECHA hasta un botón circular y gana un halo claro (medido entre `frames/w1/f001` y
+  // `f015`: ~110 → ~90 px, o sea ~0.82×). Nosotros no tenemos píldora —el orbe ya es redondo—, así
+  // que copiar «píldora → círculo» sería copiar SU pantalla, no su idea. Lo que hace legible el
+  // gesto es otra cosa: **el control se CONTRAE y se recorta contra el fondo**, y eso sí se traduce.
+  //
+  // El control LIDERA al fondo, como en los fotogramas: termina su asentamiento mientras la
+  // cúpula todavía está subiendo. El tiempo vive junto al de la lente para conservar esa relación.
+  const focus = useSharedValue(0); // 0 en reposo, 1 mientras se mantiene pulsado
+  const wob = useSharedValue(1); // respiración mínima alrededor de la pose contraída
   useEffect(() => {
+    focus.value = pressing
+      ? withTiming(1, {
+          duration: LENS_MOTION.controlMs,
+          easing: Easing.bezier(0.2, 0, 0, 1),
+        })
+      : withTiming(0, { duration: FOCUS_RELEASE_MS, easing: Easing.bezier(0.2, 0, 0, 1) });
     if (pressing) {
-      // Gentle "breathing" — subtle scale pulse, barely any sway (it will be a wheel selector,
-      // so it must feel calm/precise, not jittery).
+      // Respiración contenida. El 1.05↔0.98 anterior peleaba con la contracción y se leía como dos
+      // órdenes simultáneas; aquí la variación es menor de 2% y sólo empieza a sentirse al reposar.
       wob.value = withRepeat(
         withSequence(
-          withTiming(1.05, { duration: 460, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0.98, { duration: 460, easing: Easing.inOut(Easing.sin) }),
-        ),
-        -1,
-        true,
-      );
-      sway.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 560, easing: Easing.inOut(Easing.sin) }),
-          withTiming(-1, { duration: 560, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1.014, { duration: 760, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.994, { duration: 760, easing: Easing.inOut(Easing.sin) }),
         ),
         -1,
         true,
       );
     } else {
-      wob.value = withSpring(1, { damping: 12, stiffness: 200, mass: 0.6 });
-      sway.value = withSpring(0, { damping: 12, stiffness: 160 });
+      // Sin rebote al soltar: vuelve a su pose con la misma cola suave que la cúpula.
+      wob.value = withTiming(1, {
+        duration: FOCUS_RELEASE_MS,
+        easing: Easing.bezier(0.2, 0, 0, 1),
+      });
     }
-  }, [pressing, wob, sway]);
+  }, [pressing, wob, focus]);
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: op.value,
     transform: [
-      { translateX: sway.value * (w * 0.02) },
       { translateY: ty.value },
-      { scale: sc.value * wob.value },
+      // La respiración sigue existiendo: ahora oscila ALREDEDOR del tamaño contraído.
+      { scale: sc.value * wob.value * (1 - focus.value * FOCUS_CONTRACT) },
     ],
+  }));
+
+  // ⭐ EL HALO ESTÁ SIEMPRE, no sólo al pulsar. Atado a `focus` aparecía y desaparecía con el dedo,
+  // y eso lo convertía en un efecto de pulsación; es un BORDE del orbe, parte de cómo se recorta
+  // contra lo que tenga detrás. Se refuerza un poco al mantener pulsado —ahí compite con un fondo
+  // esmerilado y necesita algo más de cuerpo— pero nunca baja de su valor en reposo.
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: HALO_OPACITY + focus.value * (HALO_OPACITY_FOCUS - HALO_OPACITY),
   }));
 
   if (!GLASS) return null;
 
   return (
     <Animated.View style={[{ width: w, height: h }, containerStyle]}>
+      {/* EL HALO. En la referencia el control activo se recorta con un anillo claro contra el
+          fondo ya esmerilado — es lo que dice «esto sigue vivo, lo de atrás no». Va ANTES del
+          Canvas para quedar detrás del orbe, y crece un pelo por fuera para asomar por el canto. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          {
+            position: "absolute",
+            left: -HALO_PAD,
+            top: -HALO_PAD,
+            width: w + HALO_PAD * 2,
+            height: h + HALO_PAD * 2,
+            borderRadius: (w + HALO_PAD * 2) / 2,
+            borderWidth: HALO_WIDTH,
+            borderColor: "#FFFFFF",
+          },
+          haloStyle,
+        ]}
+      />
       {/* Soft animated colour bloom — a heavily-blurred, faint copy of the wave behind the orb,
           so the glow follows the wave's colours and motion (subtle). */}
       <Canvas style={{ position: "absolute", left: -PAD, top: -PAD, width: CW, height: CH }}>

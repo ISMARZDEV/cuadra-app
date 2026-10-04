@@ -66,8 +66,10 @@ echo "▶ Backend: ${API_URL}  (queda HORNEADO en el binario)"
 # `... | grep -q` FALLA aunque encuentre lo que busca: `grep -q` sale al primer acierto y cierra la
 # tubería, `xcrun` recibe SIGPIPE y muere, y pipefail se queda con ESE código. La guarda daba «no
 # hay ningún device» con el iPhone conectado y disponible.
+# Se mira la línea de ESTE UDID (antes valía cualquier device) y se acepta también `connected`:
+# un iPhone emparejado, por cable y con túnel abierto sale así y compila sin problema (04-10-2026).
 DEVICES="$(xcrun devicectl list devices 2>/dev/null || true)"
-if ! grep -q "available" <<<"${DEVICES}"; then
+if ! grep -E "${UDID}.*(available|connected)" <<<"${DEVICES}" >/dev/null; then
   echo "✖ No hay ningún device disponible. Conectá el iPhone por cable, desbloquealo y dale 'Confiar'." >&2
   exit 1
 fi
@@ -101,11 +103,17 @@ fi
 # ⚠️ SIN `| tail` NI TUBERÍAS AL FINAL. Con `set -o pipefail` ausente en la tubería, el estado que
 # sobrevive es el del ÚLTIMO comando, así que un build FALLIDO sale con código 0 y el script sigue
 # como si nada hasta reventar más adelante con un mensaje que no tiene que ver. Ya pasó.
+# ⚠️ Xcode 27 convirtió en ERROR un deployment target < 15.0, y varios pods viejos (GoogleSignIn,
+# Promises, RNViewShot…) declaran 9.0–12.4 → BUILD FAILED sin ningún otro error. Se fuerza el target
+# del APP en todos los targets: ningún pod pide más que él, así que sólo sube a los viejos.
+# Va aquí y no en el Podfile porque `ios/` no se versiona y el próximo prebuild lo regenera.
+DEPLOYMENT_TARGET="$(node -p "require('${ROOT}/apps/mobile/ios/Podfile.properties.json')['ios.deploymentTarget']")"
 echo "▶ Compilando en ${CONFIG} (la primera vez tarda varios minutos)…"
 EXPO_PUBLIC_API_URL="${API_URL}" \
 xcodebuild -workspace "${WORKSPACE}" -scheme "${SCHEME}" -configuration "${CONFIG}" \
   -destination "id=${UDID}" \
   -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+  IPHONEOS_DEPLOYMENT_TARGET="${DEPLOYMENT_TARGET}" \
   build
 
 # Misma trampa que arriba: `find | head -1` puede matar a `find` con SIGPIPE en cuanto `head` tiene

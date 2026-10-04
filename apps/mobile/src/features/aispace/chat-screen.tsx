@@ -35,7 +35,9 @@ import {
   NAVBAR_CIRCLE,
   NAVBAR_VIEWBOX,
 } from "@/components/navigation/notched-glass";
+import { sounds } from "@/lib/sounds";
 import { useOrbStore } from "@/store/orb-store";
+import { useVoiceSendStore } from "@/store/voice-send-store";
 import { useDrawer } from "@/store/drawer-store";
 import { useChatExpandStore } from "@/store/chat-expand-store";
 
@@ -412,6 +414,22 @@ export function ChatScreen() {
     [chat],
   );
 
+  // ⭐ LO DICTADO POR VOZ SE ENVÍA SOLO, como si se hubiera escrito. El orbe vive en la barra y no
+  // puede llamar al `send` de esta pantalla, así que deja el texto en un buzón y aquí se recoge.
+  //
+  // ⚠️ Se lee con `take()`, que devuelve Y BORRA en el mismo paso: si sólo se leyera y se limpiara
+  // aparte, volver a esta pestaña reenviaría el último dictado.
+  const pendingVoice = useVoiceSendStore((s) => s.pending);
+  useEffect(() => {
+    if (!pendingVoice) return;
+    const texto = useVoiceSendStore.getState().take();
+    if (texto) sendAndAnchor(texto);
+  }, [pendingVoice, sendAndAnchor]);
+
+  // El chat YA NO gobierna el telón: para cuando este mensaje llega, la cúpula se ha ido y su
+  // animación de envío se ve a la vista. Antes tenía que avisar de que el agente había terminado
+  // —y esa espera era justo lo que escondía la animación—.
+
   // El scroll que sube el mensaje, DESPUÉS de que el ancla nueva ya está aplicada.
   //
   // Llamarlo dentro de `sendAndAnchor` —en la misma línea que `setAnchorIndex`— era el «rebote»:
@@ -437,6 +455,25 @@ export function ChatScreen() {
   // Un turno = una fila. Cada rama es la MISMA que tenía el ScrollView; lo único que cambia es que
   // ahora la lista las pide de a una en vez de recibirlas todas montadas.
   const isStreaming = chat.isStreaming;
+
+  /**
+   * LA IA EMPIEZA A RESPONDER — una sola vez, en el FLANCO.
+   *
+   * ⭐⭐ **Se dispara cuando `isStreaming` pasa de falso a verdadero, no mientras es verdadero.** Un
+   * efecto que sonara con el valor volvería a sonar en cada re-render que lo mantenga —y durante un
+   * streaming hay muchos, uno por trozo de texto que llega—. Lo que se anuncia es la TRANSICIÓN: la
+   * respuesta acaba de empezar.
+   *
+   * ⚠️ El «anterior» va en un `ref` y se actualiza DENTRO del efecto: aquí sí es correcto, porque
+   * esto no deriva nada que se pinte —sólo dispara un efecto secundario— y un render descartado no
+   * puede dejar el ref adelantado respecto a lo que el usuario oyó.
+   */
+  const respondiaAntes = useRef(false);
+  useEffect(() => {
+    if (isStreaming && !respondiaAntes.current) sounds.aiResponse();
+    respondiaAntes.current = isStreaming;
+  }, [isStreaming]);
+
   const lastIndex = chat.messages.length - 1;
   const renderMessage = useCallback(
     ({ item, index }: { item: ChatMessage; index: number }) => {

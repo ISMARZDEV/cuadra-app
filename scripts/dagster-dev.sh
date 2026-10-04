@@ -6,7 +6,7 @@
 #    file-watch de uvicorn) y CONSERVA el historial de corridas entre reinicios.
 #  - Cascada de matching activada + canasta ACOTADA por default → las materializaciones son livianas
 #    (cargar el modelo BGE-M3/torch es lo pesado; menos queries = menos presión de CPU/RAM).
-#  - Puerto 3070 (web=3006, api=8005, metro=8087 quedan libres).
+#  - Puerto 3070 (web=3006, api=8005, metro=8098 quedan libres).
 #
 # Uso:
 #   ./scripts/dagster-dev.sh                 # UI en http://localhost:3070, límite 30 queries

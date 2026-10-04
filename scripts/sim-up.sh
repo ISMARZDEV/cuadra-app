@@ -28,7 +28,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Registro FIJO de puertos del repo (mismo valor que dev-up.sh; env-doctor.sh lo audita).
-METRO_PORT="${METRO_PORT:-8087}"
+METRO_PORT="${METRO_PORT:-8098}"
 
 # El bundle id se LEE de app.json — si algún día cambia, este script no queda mintiendo.
 APP_ID="$(node -p "JSON.parse(require('fs').readFileSync('${ROOT}/apps/mobile/app.json','utf8')).expo.ios.bundleIdentifier")"

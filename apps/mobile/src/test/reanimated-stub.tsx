@@ -24,11 +24,33 @@ const Animated = {
 export default Animated;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const useSharedValue = (value: any) => ({ value });
+export const useSharedValue = (value: any) => {
+  const shared = {
+    value,
+    get: () => shared.value,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    set: (next: any) => {
+      shared.value = typeof next === "function" ? next(shared.value) : next;
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    modify: (modifier?: (current: any) => any) => {
+      if (modifier) shared.value = modifier(shared.value);
+    },
+    addListener: () => {},
+    removeListener: () => {},
+  };
+  return shared;
+};
 export const useAnimatedStyle = () => ({});
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const useDerivedValue = (fn: () => any) => ({ value: fn() });
 export const useAnimatedRef = () => ({ current: null });
+// El reloj real corre en UI thread; en jsdom sólo necesitamos un controlador estable e inerte.
+export const useFrameCallback = () => ({
+  setActive: (_active: boolean) => {},
+  isActive: false,
+  callbackId: 0,
+});
 // `scrollTo` es el worklet que empuja la ruleta de categorías fotograma a fotograma durante su
 // barrido de presentación. Inerte acá —no hay lista nativa que desplazar— pero DEBE existir: el
 // módulo lo exporta y importar algo que el stub no tiene revienta el árbol entero, lección que ya

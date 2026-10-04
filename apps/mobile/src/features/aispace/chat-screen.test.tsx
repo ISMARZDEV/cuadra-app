@@ -19,7 +19,11 @@ vi.mock("expo-router", () => ({
 }));
 // `lib/sounds` arranca `expo-audio` al importarse, y su runtime no existe en jsdom (mismo mock que
 // chat-input-bar.test.tsx).
-vi.mock("@/lib/sounds", () => ({ sounds: { send: vi.fn(), dock: vi.fn() } }));
+// ⚠️ Un mock PARCIAL sigue al módulo real o revienta al añadirle una función: `aiResponse` se
+// añadió y este objeto no se enteró hasta que el test falló en rojo.
+vi.mock("@/lib/sounds", () => ({
+  sounds: { send: vi.fn(), dock: vi.fn(), aiResponse: vi.fn() },
+}));
 vi.mock("expo-haptics", () => ({
   selectionAsync: vi.fn(),
   impactAsync: vi.fn(),

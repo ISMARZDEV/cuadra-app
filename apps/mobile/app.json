@@ -27,7 +27,17 @@
       "expo-font",
       "expo-notifications",
       "@clerk/expo",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Cuadra usa el micrófono para que puedas dictarle en vez de escribir.",
+          "speechRecognitionPermission": "Cuadra convierte tu voz en texto EN EL PROPIO TELÉFONO. El audio no se envía a ningún servidor.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

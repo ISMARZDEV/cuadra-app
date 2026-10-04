@@ -55,8 +55,8 @@ for envfile in "apps/api/.env" "apps/mobile/.env" "apps/web/.env" ".env"; do
 done
 
 echo
-echo "-- Puertos (registro fijo: web 3006 · api 8005 · metro 8087 · db 5433) --"
-for p in 3006 8005 8087 5433 3000; do
+echo "-- Puertos (registro fijo: web 3006 · api 8005 · metro 8098 · db 5433) --"
+for p in 3006 8005 8098 5433 3000; do
   pid="$(lsof -nP -tiTCP:"$p" -sTCP:LISTEN 2>/dev/null | head -1)"
   if [ -n "$pid" ]; then
     pname="$(ps -p "$pid" -o comm= 2>/dev/null)"
